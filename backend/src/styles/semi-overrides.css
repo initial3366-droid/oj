@@ -1,0 +1,49 @@
+/* Semi Design 组件样式覆盖 */
+
+/* 按钮样式增强 */
+.semi-button {
+  transition: all 0.2s ease;
+}
+
+.semi-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 表格样式优化 */
+.semi-table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.semi-table-thead > .semi-table-row {
+  background-color: var(--semi-color-fill-0);
+}
+
+.semi-table-tbody > .semi-table-row:hover {
+  background-color: var(--semi-color-fill-0);
+}
+
+/* 卡片样式 */
+.semi-card {
+  transition: box-shadow 0.2s ease;
+}
+
+.semi-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* 标签样式 */
+.semi-tag {
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+/* 输入框样式 */
+.semi-input-wrapper {
+  border-radius: 6px;
+}
+
+.semi-input:focus {
+  box-shadow: 0 0 0 3px var(--semi-color-primary-light-default);
+}

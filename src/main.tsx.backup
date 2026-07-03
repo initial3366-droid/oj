@@ -1,0 +1,19 @@
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import { App } from "./App";
+import { OjDataProvider } from "./data/OjDataProvider";
+import "./styles/semi-base.css";
+import "./styles/semi-theme.css";
+import "./styles/semi-overrides.css";
+import "./styles.css";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <OjDataProvider>
+        <App />
+      </OjDataProvider>
+    </BrowserRouter>
+  </React.StrictMode>,
+);

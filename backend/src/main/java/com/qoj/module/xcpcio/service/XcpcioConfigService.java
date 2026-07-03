@@ -1,0 +1,309 @@
+package com.qoj.module.xcpcio.service;
+
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.qoj.common.ErrorCode;
+import com.qoj.common.exception.BizException;
+import com.qoj.module.contest.entity.Contest;
+import com.qoj.module.contest.mapper.ContestMapper;
+import com.qoj.module.xcpcio.dto.XcpcioConfigRequest;
+import com.qoj.module.xcpcio.entity.ContestXcpcioConfig;
+import com.qoj.module.xcpcio.entity.ContestXcpcioSyncLog;
+import com.qoj.module.xcpcio.mapper.ContestXcpcioConfigMapper;
+import com.qoj.module.xcpcio.mapper.ContestXcpcioSyncLogMapper;
+import com.qoj.module.xcpcio.vo.XcpcioConfigVO;
+import com.qoj.module.xcpcio.vo.XcpcioPublicConfigVO;
+import com.qoj.module.xcpcio.vo.XcpcioSyncLogVO;
+import com.qoj.security.AuthUser;
+import com.qoj.security.CurrentUser;
+import com.qoj.security.policy.ContestAccessPolicy;
+import com.qoj.security.policy.Permission;
+import java.net.URI;
+import java.security.MessageDigest;
+import java.time.LocalDateTime;
+import java.util.Base64;
+import java.util.List;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class XcpcioConfigService {
+    public static final String MODE_CLICS_EXPORT = "CLICS_EXPORT";
+    public static final String MODE_XCPCIO_PUSH = "XCPCIO_PUSH";
+    public static final String STATUS_DISABLED = "DISABLED";
+    public static final String STATUS_PENDING = "PENDING";
+    public static final String STATUS_SYNCING = "SYNCING";
+    public static final String STATUS_OK = "OK";
+    public static final String STATUS_FAILED = "FAILED";
+
+    private final ContestXcpcioConfigMapper configMapper;
+    private final ContestXcpcioSyncLogMapper syncLogMapper;
+    private final ContestMapper contestMapper;
+    private final ContestAccessPolicy contestAccessPolicy;
+    private final XcpcioSecretCipher secretCipher;
+
+    public XcpcioConfigService(
+        ContestXcpcioConfigMapper configMapper,
+        ContestXcpcioSyncLogMapper syncLogMapper,
+        ContestMapper contestMapper,
+        ContestAccessPolicy contestAccessPolicy,
+        XcpcioSecretCipher secretCipher
+    ) {
+        this.configMapper = configMapper;
+        this.syncLogMapper = syncLogMapper;
+        this.contestMapper = contestMapper;
+        this.contestAccessPolicy = contestAccessPolicy;
+        this.secretCipher = secretCipher;
+    }
+
+    public XcpcioConfigVO getAdminConfig(Long contestId) {
+        Contest contest = requireContest(contestId);
+        requireManage(contest);
+        ContestXcpcioConfig config = findByContestId(contestId);
+        return toAdminVO(contestId, config == null ? defaultConfig(contestId) : config);
+    }
+
+    @Transactional
+    public XcpcioConfigVO updateConfig(Long contestId, XcpcioConfigRequest request) {
+        Contest contest = requireContest(contestId);
+        AuthUser user = requireManage(contest);
+        ContestXcpcioConfig config = findByContestId(contestId);
+        boolean insert = config == null;
+        if (insert) {
+            config = defaultConfig(contestId);
+            config.createdAt = LocalDateTime.now();
+        }
+
+        if (request.enabled() != null) {
+            config.enabled = request.enabled();
+        }
+        config.mode = normalizeMode(request.mode() == null ? config.mode : request.mode());
+        if (request.xcpcioContestId() != null) {
+            config.xcpcioContestId = blankToNull(request.xcpcioContestId());
+        }
+        if (request.token() != null && !request.token().isBlank()) {
+            config.tokenEncrypted = secretCipher.encrypt(request.token().trim());
+        }
+        if (request.boardUrl() != null) {
+            config.boardUrl = normalizeBoardUrl(request.boardUrl());
+        }
+        if (request.clicsAccessToken() != null) {
+            config.clicsAccessToken = blankToNull(request.clicsAccessToken());
+        }
+        if (request.syncEnabled() != null) {
+            config.syncEnabled = request.syncEnabled();
+        }
+        if (request.syncIntervalSeconds() != null) {
+            config.syncIntervalSeconds = Math.max(5, request.syncIntervalSeconds());
+        }
+        config.status = Boolean.TRUE.equals(config.enabled) ? normalizeActiveStatus(config.status) : STATUS_DISABLED;
+        config.updatedBy = user.id();
+
+        if (insert) {
+            configMapper.insert(config);
+        } else {
+            configMapper.updateById(config);
+        }
+        return toAdminVO(contestId, config);
+    }
+
+    public XcpcioPublicConfigVO getPublicConfig(Long contestId) {
+        Contest contest = requireContest(contestId);
+        if (Boolean.TRUE.equals(contest.isDeleted)) {
+            throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
+        }
+        ContestXcpcioConfig config = findByContestId(contestId);
+        if (config == null || !Boolean.TRUE.equals(config.enabled)) {
+            return new XcpcioPublicConfigVO(contestId, false, MODE_CLICS_EXPORT, null, false, STATUS_DISABLED, null);
+        }
+        String boardUrl = blankToNull(config.boardUrl);
+        return new XcpcioPublicConfigVO(
+            contestId,
+            true,
+            config.mode == null ? MODE_CLICS_EXPORT : config.mode,
+            boardUrl,
+            boardUrl != null,
+            config.status == null ? STATUS_PENDING : config.status,
+            clicsScoreboardUrl(contestId)
+        );
+    }
+
+    public List<XcpcioSyncLogVO> listLogs(Long contestId) {
+        Contest contest = requireContest(contestId);
+        requireManage(contest);
+        return syncLogMapper.selectList(
+                new QueryWrapper<ContestXcpcioSyncLog>()
+                    .eq("contest_id", contestId)
+                    .orderByDesc("started_at")
+                    .last("LIMIT 50")
+            )
+            .stream()
+            .map(this::toLogVO)
+            .toList();
+    }
+
+    public ContestXcpcioConfig findByContestId(Long contestId) {
+        if (contestId == null) {
+            return null;
+        }
+        return configMapper.selectOne(
+            new QueryWrapper<ContestXcpcioConfig>().eq("contest_id", contestId).last("LIMIT 1")
+        );
+    }
+
+    public void requireClicsAccess(Long contestId, String accessToken, String authorizationHeader) {
+        ContestXcpcioConfig config = findByContestId(contestId);
+        if (config == null || !Boolean.TRUE.equals(config.enabled)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "该比赛未启用 XCPCIO/CLICS 榜单导出");
+        }
+        String requiredToken = blankToNull(config.clicsAccessToken);
+        if (requiredToken == null) {
+            return;
+        }
+        String actual = blankToNull(accessToken);
+        if (actual == null && authorizationHeader != null) {
+            if (authorizationHeader.startsWith("Bearer ")) {
+                actual = authorizationHeader.substring("Bearer ".length()).trim();
+            } else if (authorizationHeader.startsWith("Basic ")) {
+                actual = basicAuthPassword(authorizationHeader);
+            }
+        }
+        if (actual == null || !constantTimeEquals(requiredToken, actual)) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "CLICS 导出访问 token 无效");
+        }
+    }
+
+    public Contest requireContest(Long contestId) {
+        Contest contest = contestMapper.selectById(contestId);
+        if (contest == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
+        }
+        return contest;
+    }
+
+    public AuthUser requireManage(Contest contest) {
+        AuthUser user = CurrentUser.required();
+        if (!contestAccessPolicy.can(user, Permission.MANAGE_SCOREBOARD, contest)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权管理该比赛 XCPCIO 榜单");
+        }
+        return user;
+    }
+
+    public XcpcioConfigVO toAdminVO(Long contestId, ContestXcpcioConfig config) {
+        return new XcpcioConfigVO(
+            contestId,
+            Boolean.TRUE.equals(config.enabled),
+            config.mode == null ? MODE_CLICS_EXPORT : config.mode,
+            config.xcpcioContestId,
+            config.tokenEncrypted != null && !config.tokenEncrypted.isBlank(),
+            config.clicsAccessToken != null && !config.clicsAccessToken.isBlank(),
+            config.boardUrl,
+            Boolean.TRUE.equals(config.syncEnabled),
+            config.syncIntervalSeconds == null ? 5 : config.syncIntervalSeconds,
+            config.status == null ? STATUS_DISABLED : config.status,
+            config.lastSyncAt,
+            config.lastSuccessAt,
+            sanitize(config.lastError),
+            config.lastErrorAt,
+            config.consecutiveFailures == null ? 0 : config.consecutiveFailures,
+            "/api/v1/clics/contests/" + contestId,
+            clicsScoreboardUrl(contestId)
+        );
+    }
+
+    public String sanitize(String message) {
+        if (message == null) {
+            return null;
+        }
+        return message
+            .replaceAll("(?i)bearer\\s+[A-Za-z0-9._\\-]+", "Bearer ******")
+            .replaceAll("(?i)(token|access_token)=([^\\s&]+)", "$1=******");
+    }
+
+    private XcpcioSyncLogVO toLogVO(ContestXcpcioSyncLog log) {
+        return new XcpcioSyncLogVO(
+            log.id,
+            log.contestId,
+            log.syncType,
+            log.status,
+            log.startedAt,
+            log.finishedAt,
+            log.pushedSubmissions,
+            log.httpStatus,
+            sanitize(log.errorMessage)
+        );
+    }
+
+    private ContestXcpcioConfig defaultConfig(Long contestId) {
+        ContestXcpcioConfig config = new ContestXcpcioConfig();
+        config.contestId = contestId;
+        config.enabled = false;
+        config.mode = MODE_CLICS_EXPORT;
+        config.syncEnabled = false;
+        config.syncIntervalSeconds = 5;
+        config.status = STATUS_DISABLED;
+        config.consecutiveFailures = 0;
+        return config;
+    }
+
+    private String normalizeMode(String mode) {
+        String value = mode == null || mode.isBlank() ? MODE_CLICS_EXPORT : mode.trim().toUpperCase();
+        if (!MODE_CLICS_EXPORT.equals(value) && !MODE_XCPCIO_PUSH.equals(value)) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "同步模式必须是 CLICS_EXPORT 或 XCPCIO_PUSH");
+        }
+        return value;
+    }
+
+    private String normalizeActiveStatus(String status) {
+        if (STATUS_OK.equals(status) || STATUS_SYNCING.equals(status) || STATUS_FAILED.equals(status)) {
+            return status;
+        }
+        return STATUS_PENDING;
+    }
+
+    private String normalizeBoardUrl(String boardUrl) {
+        String value = blankToNull(boardUrl);
+        if (value == null) {
+            return null;
+        }
+        try {
+            URI uri = URI.create(value);
+            String scheme = uri.getScheme();
+            if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+                throw new IllegalArgumentException();
+            }
+            if (uri.getHost() == null || value.length() > 512) {
+                throw new IllegalArgumentException();
+            }
+            return value;
+        } catch (Exception ex) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "boardUrl 必须是有效的 http/https 地址");
+        }
+    }
+
+    private String clicsScoreboardUrl(Long contestId) {
+        return "/api/v1/clics/contests/" + contestId + "/scoreboard";
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private boolean constantTimeEquals(String expected, String actual) {
+        return MessageDigest.isEqual(expected.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+            actual.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private String basicAuthPassword(String authorizationHeader) {
+        try {
+            String encoded = authorizationHeader.substring("Basic ".length()).trim();
+            String decoded = new String(Base64.getDecoder().decode(encoded), java.nio.charset.StandardCharsets.UTF_8);
+            int separator = decoded.indexOf(':');
+            if (separator < 0) {
+                return null;
+            }
+            return blankToNull(decoded.substring(separator + 1));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+}

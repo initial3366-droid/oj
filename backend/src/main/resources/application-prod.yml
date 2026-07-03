@@ -1,0 +1,7 @@
+# Production profile overrides
+# Disable API documentation in production
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

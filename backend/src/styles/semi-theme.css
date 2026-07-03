@@ -1,0 +1,45 @@
+/* Semi Design 主题变量 */
+:root {
+  /* 主色调 */
+  --semi-color-primary: #0066ff;
+  --semi-color-primary-hover: #0052cc;
+  --semi-color-primary-active: #0047b3;
+  --semi-color-primary-light-default: rgba(0, 102, 255, 0.1);
+  --semi-color-primary-light-hover: rgba(0, 102, 255, 0.2);
+  --semi-color-primary-light-active: rgba(0, 102, 255, 0.3);
+
+  /* 成功色 */
+  --semi-color-success: #10b981;
+  --semi-color-success-light-default: rgba(16, 185, 129, 0.1);
+  --semi-color-success-dark: #059669;
+
+  /* 警告色 */
+  --semi-color-warning: #f59e0b;
+  --semi-color-warning-light-default: rgba(245, 158, 11, 0.1);
+  --semi-color-warning-dark: #d97706;
+
+  /* 危险色 */
+  --semi-color-danger: #ef4444;
+  --semi-color-danger-light-default: rgba(239, 68, 68, 0.1);
+  --semi-color-danger-dark: #dc2626;
+
+  /* 文本颜色 */
+  --semi-color-text-0: rgba(0, 0, 0, 0.9);
+  --semi-color-text-1: rgba(0, 0, 0, 0.7);
+  --semi-color-text-2: rgba(0, 0, 0, 0.5);
+  --semi-color-text-3: rgba(0, 0, 0, 0.35);
+
+  /* 背景色 */
+  --semi-color-bg-0: #ffffff;
+  --semi-color-bg-1: #fafafa;
+  --semi-color-bg-2: #f5f5f5;
+  --semi-color-bg-3: #f0f0f0;
+
+  /* 填充色 */
+  --semi-color-fill-0: rgba(0, 0, 0, 0.04);
+  --semi-color-fill-1: rgba(0, 0, 0, 0.06);
+  --semi-color-fill-2: rgba(0, 0, 0, 0.08);
+
+  /* 边框色 */
+  --semi-color-border: rgba(0, 0, 0, 0.08);
+}

@@ -1,0 +1,44 @@
+# 依赖和构建产物
+node_modules/
+dist/
+backend/target/
+package-lock.json
+*.tsbuildinfo
+.tsbuild
+
+# 环境配置
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# 数据库备份和SQL导出
+*.sql
+*.sql.bak
+qoj_database_backup.sql
+
+# IDE
+.DS_Store
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+
+# 日志
+*.log
+logs/
+
+# Vite临时文件
+vite.config.js
+vite.config.d.ts
+
+# 发布产物和大型二进制
+release/
+
+# AI 工具本地配置
+.claude/
+
+# 杂项
+wd.docx

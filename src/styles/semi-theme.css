@@ -1,0 +1,124 @@
+/**
+ * Semi Design 主题配置
+ * OJ 平台前台样式
+ */
+
+:root {
+  /* 主色调 - 科技蓝 */
+  --semi-color-primary: #1C64F2;
+  --semi-color-primary-hover: #1557D8;
+  --semi-color-primary-active: #0E46BE;
+  --semi-color-primary-light-default: rgba(28, 100, 242, 0.1);
+  --semi-color-primary-light-hover: rgba(28, 100, 242, 0.15);
+  --semi-color-primary-light-active: rgba(28, 100, 242, 0.2);
+
+  /* 成功色 - AC 绿 */
+  --semi-color-success: #10B981;
+  --semi-color-success-hover: #0D9668;
+  --semi-color-success-active: #0A7A52;
+  --semi-color-success-light-default: rgba(16, 185, 129, 0.1);
+  --semi-color-success-light-hover: rgba(16, 185, 129, 0.15);
+
+  /* 危险色 - WA 红 */
+  --semi-color-danger: #EF4444;
+  --semi-color-danger-hover: #DC2626;
+  --semi-color-danger-active: #B91C1C;
+  --semi-color-danger-light-default: rgba(239, 68, 68, 0.1);
+  --semi-color-danger-light-hover: rgba(239, 68, 68, 0.15);
+
+  /* 警告色 - TLE 橙 */
+  --semi-color-warning: #F59E0B;
+  --semi-color-warning-hover: #D97706;
+  --semi-color-warning-active: #B45309;
+  --semi-color-warning-light-default: rgba(245, 158, 11, 0.1);
+  --semi-color-warning-light-hover: rgba(245, 158, 11, 0.15);
+
+  /* 背景色 */
+  --semi-color-bg-0: #FFFFFF;
+  --semi-color-bg-1: #FAFAFA;
+  --semi-color-bg-2: #F5F5F5;
+  --semi-color-bg-3: #F0F0F0;
+
+  /* 文字颜色 */
+  --semi-color-text-0: #1F2937;
+  --semi-color-text-1: #374151;
+  --semi-color-text-2: #6B7280;
+  --semi-color-text-3: #9CA3AF;
+
+  /* 边框 */
+  --semi-color-border: #E5E7EB;
+
+  /* 圆角 */
+  --semi-border-radius-small: 4px;
+  --semi-border-radius-medium: 8px;
+  --semi-border-radius-large: 12px;
+
+  /* 阴影 */
+  --semi-shadow-elevated: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+
+  /* 代码字体 */
+  --semi-font-family-mono: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Consolas', monospace;
+}
+
+/* 前台布局特定样式 */
+.front-layout {
+  background: linear-gradient(180deg, rgba(28, 100, 242, 0.03), rgba(248, 250, 252, 0) 280px), #FAFAFA;
+  min-height: 100vh;
+}
+
+/* Semi 组件微调 */
+.semi-card {
+  border-radius: var(--semi-border-radius-medium);
+  box-shadow: var(--semi-shadow-elevated);
+}
+
+.semi-table {
+  font-size: 14px;
+}
+
+.semi-table-thead > tr > th {
+  background-color: var(--semi-color-bg-2);
+  font-weight: 600;
+  color: var(--semi-color-text-1);
+}
+
+.semi-button {
+  border-radius: var(--semi-border-radius-small);
+  font-weight: 500;
+}
+
+.semi-input,
+.semi-select,
+.semi-textarea {
+  border-radius: var(--semi-border-radius-small);
+}
+
+/* Tag 样式 */
+.semi-tag {
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+/* 代码区域 */
+.code-block,
+.code-viewer {
+  font-family: var(--semi-font-family-mono);
+  background: #1E293B;
+  color: #E2E8F0;
+  border-radius: var(--semi-border-radius-medium);
+  padding: 1rem;
+}
+
+/* Monaco Editor 容器 */
+.monaco-editor-container {
+  border-radius: var(--semi-border-radius-medium);
+  overflow: hidden;
+  border: 1px solid var(--semi-color-border);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .semi-table {
+    font-size: 13px;
+  }
+}
