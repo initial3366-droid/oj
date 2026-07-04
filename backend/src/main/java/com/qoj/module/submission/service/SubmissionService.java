@@ -30,7 +30,9 @@ import com.qoj.module.judge.service.DomjudgeAdapter;
 import com.qoj.module.judge.service.LocalJudgeService;
 import com.qoj.module.practice.entity.Practice;
 import com.qoj.module.problem.entity.Problem;
+import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.problem.mapper.ProblemMapper;
+import com.qoj.module.problem.mapper.ProblemTestCaseMapper;
 import com.qoj.module.classroom.entity.ClassMember;
 import com.qoj.module.classroom.mapper.ClassMemberMapper;
 import com.qoj.module.submission.dto.SandboxRunRequest;
@@ -57,7 +59,9 @@ import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -69,6 +73,7 @@ public class SubmissionService {
     private final SubmissionCaseResultMapper submissionCaseResultMapper;
     private final SandboxRunMapper sandboxRunMapper;
     private final ProblemMapper problemMapper;
+    private final ProblemTestCaseMapper problemTestCaseMapper;
     private final DomjudgeAdapter domjudgeAdapter;
     private final DockerJudgeService dockerJudgeService;
     private final LocalJudgeService localJudgeService;
@@ -97,6 +102,7 @@ public class SubmissionService {
         SubmissionCaseResultMapper submissionCaseResultMapper,
         SandboxRunMapper sandboxRunMapper,
         ProblemMapper problemMapper,
+        ProblemTestCaseMapper problemTestCaseMapper,
         DomjudgeAdapter domjudgeAdapter,
         @Autowired(required = false) DockerJudgeService dockerJudgeService,
         @Autowired(required = false) LocalJudgeService localJudgeService,
@@ -124,6 +130,7 @@ public class SubmissionService {
         this.submissionCaseResultMapper = submissionCaseResultMapper;
         this.sandboxRunMapper = sandboxRunMapper;
         this.problemMapper = problemMapper;
+        this.problemTestCaseMapper = problemTestCaseMapper;
         this.domjudgeAdapter = domjudgeAdapter;
         this.dockerJudgeService = dockerJudgeService;
         this.localJudgeService = localJudgeService;
@@ -676,11 +683,12 @@ public class SubmissionService {
                 .eq("submission_id", submission.id)
                 .eq("status", SubmissionStatus.AC.name())
         );
+        Map<Integer, ProblemTestCase> testCaseMap = includeCases ? buildTestCaseMap(submission.problemId) : Map.of();
         List<SubmissionCaseVO> cases = includeCases
             ? submissionCaseResultMapper
                 .selectList(new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id).orderByAsc("case_no"))
                 .stream()
-                .map(this::toCaseVO)
+                .map(item -> toCaseVO(item, testCaseMap))
                 .toList()
             : List.of();
         return new AdminSubmissionVO(
@@ -735,11 +743,12 @@ public class SubmissionService {
                 .eq("submission_id", submission.id)
                 .eq("status", SubmissionStatus.AC.name())
         );
+        Map<Integer, ProblemTestCase> testCaseMap = includeCases ? buildTestCaseMap(submission.problemId) : Map.of();
         List<SubmissionCaseVO> cases = includeCases
             ? submissionCaseResultMapper
                 .selectList(new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id).orderByAsc("case_no"))
                 .stream()
-                .map(this::toCaseVO)
+                .map(item -> toCaseVO(item, testCaseMap))
                 .toList()
             : List.of();
         return new SubmissionVO(
@@ -776,7 +785,24 @@ public class SubmissionService {
         return problem == null ? String.valueOf(submission.problemId) : problem.title;
     }
 
-    private SubmissionCaseVO toCaseVO(SubmissionCaseResult item) {
+    private SubmissionCaseVO toCaseVO(SubmissionCaseResult item, Map<Integer, ProblemTestCase> testCaseMap) {
+        String inputPreview = item.inputPreview;
+        String outputPreview = item.outputPreview;
+        String expectedPreview = item.expectedPreview;
+        if (testCaseMap != null) {
+            ProblemTestCase tc = testCaseMap.get(item.caseNo);
+            if (tc != null) {
+                if (inputPreview == null || inputPreview.isBlank()) {
+                    inputPreview = preview(tc.inputData);
+                }
+                if (outputPreview == null || outputPreview.isBlank()) {
+                    outputPreview = preview(tc.outputData);
+                }
+                if (expectedPreview == null || expectedPreview.isBlank()) {
+                    expectedPreview = preview(tc.outputData);
+                }
+            }
+        }
         return new SubmissionCaseVO(
             item.id,
             item.submissionId,
@@ -787,11 +813,26 @@ public class SubmissionService {
             item.maxScore,
             item.timeUsed,
             item.memoryUsed,
-            item.inputPreview,
-            item.outputPreview,
-            item.expectedPreview,
+            inputPreview,
+            outputPreview,
+            expectedPreview,
             item.judgeMessage
         );
+    }
+
+    private Map<Integer, ProblemTestCase> buildTestCaseMap(Long problemId) {
+        Map<Integer, ProblemTestCase> map = new HashMap<>();
+        if (problemId != null) {
+            for (ProblemTestCase tc : problemTestCaseMapper.selectByProblemId(problemId)) {
+                map.put(tc.caseNo, tc);
+            }
+        }
+        return map;
+    }
+
+    private String preview(String text) {
+        if (text == null) return null;
+        return text.length() > 200 ? text.substring(0, 200) + "..." : text;
     }
 
     private String firstNonBlank(String... values) {

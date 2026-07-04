@@ -237,7 +237,13 @@ public class DockerJudgeService implements JudgeService {
     }
 
     private RunResult runTestCase(Path workDir, List<String> command, String input, int timeLimitMs, int memoryLimitMb) {
+        Path metricsDir = null;
         try {
+            // 创建可写目录用于 /usr/bin/time 输出
+            metricsDir = workDir.resolve("metrics_" + System.nanoTime());
+            Files.createDirectories(metricsDir);
+            makeWorkDirAccessible(metricsDir);
+
             // 构建 Docker 运行命令
             List<String> dockerCmd = new ArrayList<>();
             dockerCmd.add("docker");
@@ -256,9 +262,16 @@ public class DockerJudgeService implements JudgeService {
             dockerCmd.add(String.valueOf(MAX_PROCESSES));
             dockerCmd.add("-v");
             dockerCmd.add(workDir.toString() + ":/workspace:ro");  // 只读挂载
+            dockerCmd.add("-v");
+            dockerCmd.add(metricsDir.toString() + ":/metrics:rw");  // 可写挂载用于 time 输出
             dockerCmd.add("-w");
             dockerCmd.add("/workspace");
             dockerCmd.add(DOCKER_IMAGE);
+            // 使用 /usr/bin/time 包装用户命令以获取内存峰值
+            dockerCmd.add("/usr/bin/time");
+            dockerCmd.add("-v");
+            dockerCmd.add("-o");
+            dockerCmd.add("/metrics/time.txt");
             dockerCmd.addAll(command);
 
             ProcessResult result = runProcess(dockerCmd, workDir, input == null ? "" : input, timeLimitMs + 1000);
@@ -283,18 +296,56 @@ public class DockerJudgeService implements JudgeService {
                 message = "Memory Limit Exceeded";
             }
 
+            // 从 /usr/bin/time 输出文件解析内存峰值
+            int memoryKb = parseMemoryKb(metricsDir.resolve("time.txt"));
+
             return new RunResult(
                 status,
                 truncateOutput(result.stdout()),
                 truncateOutput(result.stderr()),
                 result.timeMs(),
-                result.memoryKb(),
+                memoryKb,
                 message
             );
 
         } catch (Exception ex) {
             log.error("Run test case error", ex);
             return new RunResult(SubmissionStatus.SE, "", ex.getMessage(), 0, 0, "系统错误");
+        } finally {
+            cleanupMetricsDir(metricsDir);
+        }
+    }
+
+    /**
+     * 从 /usr/bin/time -v 的输出文件中解析最大驻留集大小（RSS），单位 KB。
+     * 文件不存在或解析失败时返回 0（如进程被 OOM kill 或超时强杀）。
+     */
+    private int parseMemoryKb(Path timeFile) {
+        try {
+            if (!Files.exists(timeFile)) return 0;
+            List<String> lines = Files.readAllLines(timeFile, StandardCharsets.UTF_8);
+            for (String line : lines) {
+                if (line.startsWith("Maximum resident set size (kbytes):")) {
+                    String value = line.substring("Maximum resident set size (kbytes):".length()).trim();
+                    return Integer.parseInt(value);
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to parse memory from time output: {}", timeFile, ex);
+        }
+        return 0;
+    }
+
+    private void cleanupMetricsDir(Path metricsDir) {
+        if (metricsDir == null) return;
+        try (var stream = Files.walk(metricsDir)) {
+            stream.sorted(Comparator.reverseOrder()).forEach(item -> {
+                try {
+                    Files.deleteIfExists(item);
+                } catch (IOException ignored) {}
+            });
+        } catch (IOException ex) {
+            log.warn("Failed to cleanup metrics directory: {}", metricsDir, ex);
         }
     }
 
