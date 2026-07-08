@@ -105,10 +105,17 @@ public class DomjudgeAdapter {
             Integer timeUsed = latest.hasNonNull("max_run_time")
                 ? (int) Math.round(latest.path("max_run_time").asDouble() * 1000)
                 : null;
-            return new DomjudgeJudgementResult(type, timeUsed, null, finalResult);
+            Integer memoryUsed = latest.hasNonNull("max_memory")
+                ? positiveOrNull(latest.path("max_memory").asInt())
+                : null;
+            return new DomjudgeJudgementResult(type, positiveOrNull(timeUsed), memoryUsed, finalResult);
         } catch (RestClientException ex) {
             return null;
         }
+    }
+
+    private Integer positiveOrNull(Integer value) {
+        return value != null && value > 0 ? value : null;
     }
 
     private String text(JsonNode node, String field) {

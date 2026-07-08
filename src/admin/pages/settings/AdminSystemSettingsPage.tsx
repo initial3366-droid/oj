@@ -149,10 +149,10 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
         setJudgeThreadPoolSize(judgeSettings.threadPoolSize ?? 2);
         judgeForm.setFieldsValue({
           enabled: judgeSettings.enabled ?? true,
-          mode: judgeSettings.mode ?? 'unsafe-local',
+          mode: judgeSettings.mode ?? 'docker',
           contestMode: judgeSettings.contestMode ?? 'domjudge',
-          enableUnsafeLocalJudge: judgeSettings.enableUnsafeLocalJudge ?? true,
-          enableSandbox: judgeSettings.enableSandbox ?? true,
+          enableUnsafeLocalJudge: judgeSettings.enableUnsafeLocalJudge ?? false,
+          enableSandbox: judgeSettings.enableSandbox ?? false,
           maxConcurrent: judgeSettings.maxConcurrent ?? 2,
           threadPoolSize: judgeSettings.threadPoolSize ?? 2,
           queueBatchSize: judgeSettings.queueBatchSize ?? 2,
@@ -336,7 +336,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     try {
       await adminPut('/api/admin/v1/settings/judge', {
         enabled: values.enabled ?? false,
-        mode: values.mode || 'unsafe-local',
+        mode: values.mode || 'docker',
         contestMode: values.contestMode || 'domjudge',
         enableUnsafeLocalJudge: values.enableUnsafeLocalJudge ?? false,
         enableSandbox: values.enableSandbox ?? false,
@@ -726,7 +726,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
               rules={[{ required: true, message: '请选择判题模式' }]}
             >
               <Select>
-                <Option value="unsafe-local">本地判题</Option>
+                <Option value="unsafe-local">本地判题（仅开发）</Option>
                 <Option value="docker">Docker 判题</Option>
                 <Option value="domjudge">DOMjudge</Option>
               </Select>
@@ -741,7 +741,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
               <Select>
                 <Option value="domjudge">DOMjudge</Option>
                 <Option value="docker">Docker 判题</Option>
-                <Option value="unsafe-local">本地判题</Option>
+                <Option value="unsafe-local">本地判题（仅开发）</Option>
               </Select>
             </FormItem>
 

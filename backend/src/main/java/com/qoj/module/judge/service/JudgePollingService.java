@@ -120,8 +120,14 @@ public class JudgePollingService {
         boolean firstAccepted = mapped == SubmissionStatus.AC && isFirstAccepted(submission);
         LocalDateTime finishedAt = LocalDateTime.now();
         submission.status = mapped.name();
-        submission.timeUsed = result.timeUsed();
-        submission.memoryUsed = result.memoryUsed();
+        Integer timeUsed = positiveOrNull(result.timeUsed());
+        Integer memoryUsed = positiveOrNull(result.memoryUsed());
+        if (timeUsed != null) {
+            submission.timeUsed = timeUsed;
+        }
+        if (memoryUsed != null) {
+            submission.memoryUsed = memoryUsed;
+        }
         if (submission.judgeStartTime == null) {
             submission.judgeStartTime = finishedAt;
         }
@@ -140,6 +146,10 @@ public class JudgePollingService {
         redisTemplate.delete(RedisKeys.judgePending(submission.userId, contestProblemKey(submission), submission.contestId));
         updateContestRank(submission);
         judgeMessagePublisher.submissionChanged(submission.id, submission.status, submission.timeUsed, submission.memoryUsed);
+    }
+
+    private Integer positiveOrNull(Integer value) {
+        return value != null && value > 0 ? value : null;
     }
 
     private SubmissionStatus mapStatus(DomjudgeJudgementResult result) {

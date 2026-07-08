@@ -18,6 +18,7 @@ import { IconDelete, IconRefresh } from '@arco-design/web-react/icon';
 import { Statistic, Progress } from '@arco-design/web-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { showConfirm } from '../../../utils/confirm';
 import { adminDelete, adminGet, adminPost } from '../../api/adminClient';
 
 const { Row, Col } = Grid;
@@ -301,13 +302,13 @@ export function AdminSubmissionQueuePage() {
   }
 
   function confirmDelete(record: QueueRecord) {
-    Modal.confirm({
+    showConfirm({
       title: '删除队列任务',
       content: `确定要删除提交 #${record.submissionId} 吗？相关测试点结果也会被清理。`,
       okText: '继续',
       cancelText: '取消',
       onOk: () => {
-        Modal.confirm({
+        showConfirm({
           title: '二次确认',
           content: '删除后不可恢复，请再次确认。',
           okButtonProps: { status: 'danger' },

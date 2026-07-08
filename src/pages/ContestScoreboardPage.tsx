@@ -18,7 +18,6 @@ function cellClass(accepted: boolean, attempts: number, score: number, type: Con
 }
 
 function identityBadge(type?: string | null) {
-  if (type === 'CLUB') return '社团';
   return '个人';
 }
 

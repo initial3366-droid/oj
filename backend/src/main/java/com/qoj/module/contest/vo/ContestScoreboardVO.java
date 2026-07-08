@@ -12,6 +12,7 @@ public record ContestScoreboardVO(
     LocalDateTime endTime,
     Integer durationMinutes,
     List<ContestScoreboardProblemVO> problems,
-    List<ContestScoreboardRowVO> rows
+    List<ContestScoreboardRowVO> rows,
+    Boolean showClassOnScoreboard
 ) {
 }

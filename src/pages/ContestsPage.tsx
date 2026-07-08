@@ -1,5 +1,5 @@
-import { Button, Checkbox, Tag, Typography, Spin, Modal, Banner, Space, Table } from '@douyinfe/semi-ui';
-import { IconCheckCircleStroked, IconCode, IconShield } from '@douyinfe/semi-icons';
+import { Button, Checkbox, Tag, Typography, Spin, Modal, Banner, Space, Table, Input, Select } from '@douyinfe/semi-ui';
+import { IconCheckCircleStroked, IconCode, IconShield, IconSearch } from '@douyinfe/semi-icons';
 import { useEffect, useMemo, useState } from 'react';
 import {
   fetchContestRegistrationOptions,
@@ -56,6 +56,17 @@ export function ContestsPage() {
   const [registrationPassword, setRegistrationPassword] = useState('');
   const [optionLoading, setOptionLoading] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>('');
+
+  const filteredContests = useMemo(() => {
+    const kw = searchKeyword.trim().toLowerCase();
+    return contests.filter((c) => {
+      if (kw && !c.title.toLowerCase().includes(kw)) return false;
+      if (typeFilter && c.type !== typeFilter) return false;
+      return true;
+    });
+  }, [contests, searchKeyword, typeFilter]);
 
   const loadContests = () => {
     setLoading(true);
@@ -137,7 +148,12 @@ export function ContestsPage() {
       dataIndex: 'title',
       render: (title: string, contest: PublicContest) => (
         <div style={{ minWidth: 0 }}>
-          <Typography.Text strong ellipsis={{ showTooltip: true }}>
+          <Typography.Text
+            strong
+            ellipsis={{ showTooltip: true }}
+            style={{ cursor: 'pointer', color: 'var(--semi-color-link)' }}
+            onClick={() => { window.location.href = `/contests/${contest.id}`; }}
+          >
             {title}
           </Typography.Text>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
@@ -253,12 +269,35 @@ export function ContestsPage() {
       )}
 
       {!loading && contests.length > 0 && (
-        <Table
-          rowKey="id"
-          dataSource={contests}
-          columns={columns}
-          pagination={{ pageSize: 10 }}
-        />
+        <>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
+            <Input
+              prefix={<IconSearch />}
+              placeholder="搜索比赛名称"
+              value={searchKeyword}
+              onChange={(v) => setSearchKeyword(v)}
+              style={{ width: 260 }}
+              showClear
+            />
+            <Select
+              placeholder="赛制"
+              value={typeFilter || undefined}
+              onChange={(v) => setTypeFilter(typeof v === 'string' ? v : '')}
+              style={{ width: 140 }}
+              emptyContent
+            >
+              <Select.Option value="">全部赛制</Select.Option>
+              <Select.Option value="ACM">ACM</Select.Option>
+              <Select.Option value="OI">OI</Select.Option>
+            </Select>
+          </div>
+          <Table
+            rowKey="id"
+            dataSource={filteredContests}
+            columns={columns}
+            pagination={{ pageSize: 20 }}
+          />
+        </>
       )}
 
       {!loading && contests.length === 0 && (

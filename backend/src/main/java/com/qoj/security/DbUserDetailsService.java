@@ -35,7 +35,7 @@ public class DbUserDetailsService implements UserDetailsService {
         if (user == null) {
             throw new UsernameNotFoundException(username);
         }
-        // 过滤掉后台角色（SUPER_ADMIN/TEACHER/CLUB_ADMIN），仅前台学生/GUEST 可通过此服务登录
+        // 过滤掉后台角色（SUPER_ADMIN/TEACHER），仅前台学生/GUEST 可通过此服务登录
         if (!UserRole.isActiveFrontendRole(user.role)) {
             throw new UsernameNotFoundException(username);
         }

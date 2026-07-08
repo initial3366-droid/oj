@@ -37,6 +37,7 @@ public class AdminClassRoomController {
     }
 
     @GetMapping("/classes")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
     public ApiResponse<List<ClassRoomVO>> classes(@RequestParam(required = false) String keyword) {
         return ApiResponse.ok(classRoomService.adminList(keyword));
     }

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
   Alert,
+  Avatar,
   Button,
   Card,
   Form,
@@ -85,8 +86,51 @@ function statusTag(status: string) {
   return <Tag color={color}>{status}</Tag>;
 }
 
+function dash(value: unknown) {
+  if (value === null || value === undefined || value === '') return '-';
+  return String(value);
+}
+
+function roleText(role?: string | null) {
+  const map: Record<string, string> = {
+    SUPER_ADMIN: '系统管理员',
+    TEACHER: '教师',
+    STUDENT: '学生',
+    GUEST: '访客',
+  };
+  return role ? (map[role] || role) : '-';
+}
+
+function renderStudentAvatar(user: Pick<TeacherStudentDetail, 'avatarUrl' | 'displayName' | 'username'>, size = 72) {
+  const name = user.displayName || user.username || '学生';
+  return (
+    <Avatar size={size} style={{ backgroundColor: '#165dff' }}>
+      {user.avatarUrl ? (
+        <img
+          src={user.avatarUrl}
+          alt={name}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+      ) : name.charAt(0)}
+    </Avatar>
+  );
+}
+
 type TeacherAudience = 'ALL' | 'CLASS';
 type ContestType = 'ACM' | 'OI';
+
+interface TeacherStudentDetail {
+  id: number;
+  username?: string | null;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+  studentNo?: string | null;
+  email?: string | null;
+  role?: string | null;
+  className?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
 
 interface TeacherProblem {
   id: number;
@@ -350,9 +394,20 @@ function TeacherLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [me, setMe] = useState<TeacherMe | null>(null);
+  const [siteLogo, setSiteLogo] = useState('');
+  const [siteTitle, setSiteTitle] = useState('');
 
   useEffect(() => {
     teacherGet<TeacherMe>('/api/teacher/v1/me').then(setMe).catch(() => null);
+    fetch('/api/v1/settings/frontend')
+      .then((res) => res.json())
+      .then((body) => {
+        if (body?.code === 200) {
+          setSiteTitle(body.data?.siteTitle || '');
+          setSiteLogo(body.data?.siteLogo || '');
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const selected = useMemo(() => {
@@ -399,12 +454,24 @@ function TeacherLayout() {
             height: 60,
             display: 'flex',
             alignItems: 'center',
+            gap: 8,
             padding: '0 20px',
             fontWeight: 700,
             fontSize: 18,
           }}
         >
-          教师工作台
+          {siteLogo ? (
+            <>
+              <img
+                src={siteLogo}
+                alt={siteTitle || '教师工作台'}
+                style={{ height: 36, maxHeight: 36, maxWidth: 36, objectFit: 'contain', borderRadius: 6 }}
+              />
+              <span>{siteTitle || '教师工作台'}</span>
+            </>
+          ) : (
+            '教师工作台'
+          )}
         </div>
         <Menu selectedKeys={selected} defaultOpenKeys={defaultOpenKeys} onClickMenuItem={(key) => navigate(key)}>
           <Menu.Item key="/teacher/dashboard"><IconDashboard />首页</Menu.Item>
@@ -632,6 +699,13 @@ function TeacherStudents() {
   const [editStudent, setEditStudent] = useState<TeacherStudent | null>(null);
   const [deleteStudent, setDeleteStudent] = useState<TeacherStudent | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [viewingStudent, setViewingStudent] = useState<TeacherStudentDetail | null>(null);
+  const [detailSubmissions, setDetailSubmissions] = useState<TeacherSubmission[]>([]);
+  const [detailSubmissionTotal, setDetailSubmissionTotal] = useState(0);
+  const [detailSubmissionPage, setDetailSubmissionPage] = useState(1);
+  const [detailSubmissionLoading, setDetailSubmissionLoading] = useState(false);
   const [editForm] = Form.useForm<{ displayName: string; studentNo: string; email: string; password: string }>();
 
   const load = async () => {
@@ -701,14 +775,54 @@ function TeacherStudents() {
     }
   }
 
-  async function resetAiQuota(userId: number) {
+  async function loadStudentDetail(userId: number) {
+    setDetailLoading(true);
     try {
-      await teacherPost(`/api/admin/v1/agent/reset/user/${userId}`);
-      Message.success('AI 额度已重置');
-      load();
+      setViewingStudent(await teacherGet<TeacherStudentDetail>(`/api/teacher/v1/students/${userId}`));
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '重置失败');
+      Message.error(error instanceof Error ? error.message : '学生详情加载失败');
+    } finally {
+      setDetailLoading(false);
     }
+  }
+
+  async function loadStudentSubmissions(userId: number, nextPage = detailSubmissionPage) {
+    setDetailSubmissionLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(nextPage),
+        pageSize: '10',
+        userId: String(userId),
+        sortBy: 'submitTime',
+        sortOrder: 'desc',
+      });
+      const result = await teacherGet<PageResult<TeacherSubmission>>(`/api/teacher/v1/submissions?${params.toString()}`);
+      setDetailSubmissions(result.list || []);
+      setDetailSubmissionTotal(result.total || 0);
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '最近提交记录加载失败');
+    } finally {
+      setDetailSubmissionLoading(false);
+    }
+  }
+
+  function openView(student: TeacherStudent) {
+    setViewingStudent({
+      id: student.userId,
+      username: student.username,
+      displayName: student.displayName,
+      avatarUrl: student.avatarUrl,
+      studentNo: student.studentNo,
+      email: student.email,
+      role: 'STUDENT',
+      className: student.className,
+    });
+    setDetailSubmissions([]);
+    setDetailSubmissionTotal(0);
+    setDetailSubmissionPage(1);
+    setDetailVisible(true);
+    loadStudentDetail(student.userId);
+    loadStudentSubmissions(student.userId, 1);
   }
 
   async function confirmDelete() {
@@ -752,15 +866,6 @@ function TeacherStudents() {
           <Option value="has">有额度</Option>
           <Option value="none">无额度</Option>
         </Select>
-        <Popconfirm title="确定重置所有学生的 AI 额度吗？" onOk={async () => {
-          for (const r of rows) {
-            try { await teacherPost(`/api/admin/v1/agent/reset/user/${r.userId}`); } catch { /* skip */ }
-          }
-          Message.success('AI 额度已批量重置');
-          load();
-        }}>
-          <Button icon={<IconRefresh />}>重置AI额度</Button>
-        </Popconfirm>
       </Space>
       <Table
         rowKey="userId"
@@ -780,13 +885,11 @@ function TeacherStudents() {
             return <Tag color={q.remaining > 0 ? 'green' : 'red'}>{q.remaining}/{q.remaining + q.used}</Tag>;
           }},
           {
-            title: '操作', width: 240, align: 'center',
+            title: '操作', width: 190, align: 'center',
             render: (_: unknown, row: TeacherStudent) => (
               <Space size={2}>
+                <Button size="mini" icon={<IconUser />} onClick={() => openView(row)}>查看</Button>
                 <Button size="mini" icon={<IconEdit />} onClick={() => openEdit(row)}>编辑</Button>
-                <Popconfirm title="确定重置该学生的 AI 额度吗？" onOk={() => resetAiQuota(row.userId)}>
-                  <Button size="mini" icon={<IconRefresh />}>重置AI</Button>
-                </Popconfirm>
                 <Popconfirm title="确定从班级中移除该学生吗？" onOk={() => confirmDelete()}>
                   <Button size="mini" status="danger" icon={<IconDelete />} onClick={() => setDeleteStudent(row)}>删除</Button>
                 </Popconfirm>
@@ -818,6 +921,80 @@ function TeacherStudents() {
             <Input.Password placeholder="留空不修改密码" maxLength={64} />
           </FormItem>
         </Form>
+      </Modal>
+
+      <Modal
+        title="查看学生"
+        visible={detailVisible}
+        footer={null}
+        onCancel={() => setDetailVisible(false)}
+        style={{ width: 1000 }}
+      >
+        <Card title="个人信息" loading={detailLoading} style={{ marginBottom: 16 }}>
+          {viewingStudent ? (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+                {renderStudentAvatar(viewingStudent, 72)}
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 600 }}>{viewingStudent.displayName || '-'}</div>
+                  <div style={{ color: 'var(--color-text-3)' }}>@{viewingStudent.username}</div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px 24px' }}>
+                <div><b>ID：</b>{viewingStudent.id}</div>
+                <div><b>用户名：</b>{dash(viewingStudent.username)}</div>
+                <div><b>显示名称：</b>{dash(viewingStudent.displayName)}</div>
+                <div><b>角色：</b>{roleText(viewingStudent.role)}</div>
+                <div><b>学号：</b>{dash(viewingStudent.studentNo)}</div>
+                <div><b>邮箱：</b>{dash(viewingStudent.email)}</div>
+                <div><b>班级：</b>{dash(viewingStudent.className)}</div>
+                <div>
+                  <b>AI 额度：</b>
+                  {quotaMap[viewingStudent.id]
+                    ? `${quotaMap[viewingStudent.id].remaining}/${quotaMap[viewingStudent.id].remaining + quotaMap[viewingStudent.id].used}`
+                    : '-'}
+                </div>
+                <div><b>头像地址：</b>{viewingStudent.avatarUrl ? <a href={viewingStudent.avatarUrl} target="_blank" rel="noopener noreferrer">查看头像</a> : '-'}</div>
+                <div><b>创建时间：</b>{formatDate(viewingStudent.createdAt)}</div>
+                <div><b>更新时间：</b>{formatDate(viewingStudent.updatedAt)}</div>
+              </div>
+            </div>
+          ) : null}
+        </Card>
+
+        <Card title="最近提交记录">
+          <Table
+            rowKey="id"
+            loading={detailSubmissionLoading}
+            data={detailSubmissions}
+            pagination={{
+              total: detailSubmissionTotal,
+              current: detailSubmissionPage,
+              pageSize: 10,
+              onChange: (nextPage) => {
+                setDetailSubmissionPage(nextPage);
+                if (viewingStudent) loadStudentSubmissions(viewingStudent.id, nextPage);
+              },
+              showTotal: true,
+            }}
+            columns={[
+              { title: '提交ID', dataIndex: 'id', width: 90, align: 'center' },
+              { title: '题目', dataIndex: 'problemTitle', render: (value) => dash(value) },
+              { title: '语言', dataIndex: 'language', width: 100, align: 'center', render: (value) => dash(value) },
+              {
+                title: '状态',
+                dataIndex: 'status',
+                width: 110,
+                align: 'center',
+                render: (value) => value ? statusTag(value) : '-',
+              },
+              { title: '分数', dataIndex: 'score', width: 90, align: 'center', render: (value) => dash(value) },
+              { title: '时间', dataIndex: 'timeUsed', width: 100, align: 'center', render: (value) => value == null ? '-' : `${value} ms` },
+              { title: '内存', dataIndex: 'memoryUsed', width: 110, align: 'center', render: (value) => value == null ? '-' : `${value} KB` },
+              { title: '提交时间', dataIndex: 'submitTime', width: 180, render: (value) => formatDate(value) },
+            ]}
+          />
+        </Card>
       </Modal>
     </Card>
   );

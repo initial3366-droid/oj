@@ -11,6 +11,7 @@ export interface TeacherMe {
   id: number;
   username: string;
   displayName: string;
+  avatarUrl?: string | null;
   role: 'TEACHER';
   email?: string | null;
   studentNo?: string | null;
@@ -35,6 +36,7 @@ export interface TeacherStudent {
   userId: number;
   username?: string | null;
   displayName?: string | null;
+  avatarUrl?: string | null;
   studentNo?: string | null;
   email?: string | null;
   source?: string | null;
@@ -49,6 +51,7 @@ export interface TeacherApplication {
   userId: number;
   username?: string | null;
   displayName?: string | null;
+  avatarUrl?: string | null;
   studentNo?: string | null;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   reason?: string | null;
@@ -66,6 +69,7 @@ export interface TeacherSubmission {
   practiceTitle?: string | null;
   language: string;
   status: string;
+  score?: number | null;
   submitTime?: string | null;
   timeUsed?: number | null;
   memoryUsed?: number | null;
@@ -186,14 +190,22 @@ export function teacherGet<T>(url: string) {
 export function teacherPost<T>(url: string, body?: unknown) {
   return request<T>(url, {
     method: 'POST',
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined
+      ? undefined
+      : body instanceof FormData
+        ? body
+        : JSON.stringify(body),
   });
 }
 
 export function teacherPut<T>(url: string, body?: unknown) {
   return request<T>(url, {
     method: 'PUT',
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined
+      ? undefined
+      : body instanceof FormData
+        ? body
+        : JSON.stringify(body),
   });
 }
 

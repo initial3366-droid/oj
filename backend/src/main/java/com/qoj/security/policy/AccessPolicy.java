@@ -9,8 +9,8 @@ public abstract class AccessPolicy<T> {
         return user != null && "SUPER_ADMIN".equals(user.role());
     }
 
-    protected boolean isClubAdmin(AuthUser user) {
-        return user != null && "CLUB_ADMIN".equals(user.role());
+    protected boolean isContentAdmin(AuthUser user) {
+        return user != null && "TEACHER".equals(user.role());
     }
 
     protected boolean isTeacher(AuthUser user) {

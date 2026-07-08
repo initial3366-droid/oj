@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping({"/api/admin/v1/submission-queue", "/api/admin/submission-queue"})
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','CLUB_ADMIN')")
+@PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminSubmissionQueueController {
     private final SubmissionQueueService submissionQueueService;
 

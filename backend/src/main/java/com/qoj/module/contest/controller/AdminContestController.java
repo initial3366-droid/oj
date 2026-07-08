@@ -40,7 +40,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/admin/v1/contests")
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','CLUB_ADMIN','TEACHER')")
+@PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminContestController {
     private final ContestService contestService;
     private final ContestMapper contestMapper;
@@ -151,10 +151,15 @@ public class AdminContestController {
         if (contest == null) {
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
+        AuthUser user = CurrentUser.required();
+        if (!contestAccessPolicy.can(user, Permission.MANAGE_REGISTRATION, contest)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权查看该比赛报名列表");
+        }
 
         List<ContestRegistration> registrations = contestRegistrationMapper.selectList(
             new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ContestRegistration>()
                 .eq("contest_id", id)
+                .eq("status", "APPROVED")
                 .orderByDesc("registered_at")
         );
 
@@ -193,6 +198,15 @@ public class AdminContestController {
             .header(HttpHeaders.CONTENT_DISPOSITION, attachment(filename))
             .contentType(MediaType.APPLICATION_OCTET_STREAM)
             .body(contestInspectionExportService.submissionsZip(id));
+    }
+
+    @GetMapping("/{id}/registrations/export")
+    public ResponseEntity<byte[]> exportRegistrationUsers(@PathVariable long id) {
+        String filename = contestInspectionExportService.registrationUsersFilename(id);
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, attachment(filename))
+            .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+            .body(contestInspectionExportService.registrationUsersCsv(id));
     }
 
     private String attachment(String filename) {

@@ -368,3 +368,7 @@
     max-width: 100%;
   }
 }
+
+.uc-avatar-actions {
+  margin-top: 10px;
+}

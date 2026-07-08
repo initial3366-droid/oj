@@ -9,6 +9,7 @@ public record ClassRoomMemberVO(
     Long userId,
     String username,
     String displayName,
+    String avatarUrl,
     String studentNo,
     String email,
     String source,

@@ -4,25 +4,24 @@ import {
   Button,
   Card,
   Form,
-  Grid,
   Input,
   InputNumber,
   Message,
+  Modal,
+  Popconfirm,
   Select,
   Space,
   Steps,
   Switch,
-  Table,
   Tag,
-  Typography,
+  Upload,
 } from '@arco-design/web-react';
-import { IconDelete, IconEdit, IconLeft, IconPlus, IconSave, IconUpload } from '@arco-design/web-react/icon';
+import { IconDelete, IconEdit, IconPlus, IconUpload } from '@arco-design/web-react/icon';
 import { teacherGet, teacherPost, teacherPut } from '../teacherApi';
 import { decryptIdFromUrl } from '../../utils/cipher';
 import { MarkdownInsertModal } from '../../admin/components/MarkdownInsertModal';
 import { CodeInsertModal } from '../../admin/components/CodeInsertModal';
 
-const { Row, Col } = Grid;
 const FormItem = Form.Item;
 const TextArea = Input.TextArea;
 const Step = Steps.Step;
@@ -61,6 +60,11 @@ interface TestCase {
   input: string;
   output: string;
 }
+
+type RawTestCase = Partial<TestCase> & {
+  inputData?: string;
+  outputData?: string;
+};
 
 interface DraftData {
   draftId: string;
@@ -116,6 +120,17 @@ function normalizeTestCases(testCases: TestCase[]) {
     .sort((left, right) => left.caseNo - right.caseNo);
 }
 
+function normalizeLoadedTestCases(testCases: RawTestCase[]) {
+  return (testCases || [])
+    .map((tc, index) => ({
+      id: tc.id,
+      caseNo: Number.isFinite(Number(tc.caseNo)) && Number(tc.caseNo) > 0 ? Number(tc.caseNo) : index + 1,
+      input: tc.input ?? tc.inputData ?? '',
+      output: tc.output ?? tc.outputData ?? '',
+    }))
+    .sort((left, right) => left.caseNo - right.caseNo);
+}
+
 export function TeacherProblemCreatePage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -136,6 +151,8 @@ export function TeacherProblemCreatePage() {
   const [statementModalVisible, setStatementModalVisible] = useState(false);
   const [inputFormatModalVisible, setInputFormatModalVisible] = useState(false);
   const [outputFormatModalVisible, setOutputFormatModalVisible] = useState(false);
+  const [importZipFile, setImportZipFile] = useState<File | null>(null);
+  const [importZipVisible, setImportZipVisible] = useState(false);
 
   useEffect(() => {
     if (isEditMode && problemId) {
@@ -177,8 +194,8 @@ export function TeacherProblemCreatePage() {
 
   async function loadTestCases(id: number) {
     try {
-      const cases = await teacherGet<TestCase[]>(`/api/admin/v1/problems/${id}/test-cases`);
-      setTestCases(cases.map((c, i) => ({ ...c, caseNo: c.caseNo || i + 1 })));
+      const cases = await teacherGet<RawTestCase[]>(`/api/admin/v1/problems/${id}/test-cases`);
+      setTestCases(normalizeLoadedTestCases(cases));
     } catch {
       // ignore
     }
@@ -263,11 +280,11 @@ export function TeacherProblemCreatePage() {
       setLoading(true);
       const payload = { testCases: normalized };
       if (isEditMode && problemId) {
-        const saved = await teacherPut<TestCase[]>(`/api/admin/v1/problems/${problemId}/test-cases`, payload);
-        setTestCases(saved.map((testCase, index) => ({ ...testCase, caseNo: testCase.caseNo || index + 1 })));
+        const saved = await teacherPut<RawTestCase[]>(`/api/admin/v1/problems/${problemId}/test-cases`, payload);
+        setTestCases(normalizeLoadedTestCases(saved));
       } else if (draftId) {
         const savedDraft = await teacherPut<DraftData>(`/api/admin/v1/problem-drafts/${draftId}/test-cases`, payload);
-        setTestCases((savedDraft.testCases || []).map((testCase, index) => ({ ...testCase, caseNo: testCase.caseNo || index + 1 })));
+        setTestCases(normalizeLoadedTestCases(savedDraft.testCases || []));
       }
       if (showSuccess) {
         Message.success('测试点已保存');
@@ -293,6 +310,55 @@ export function TeacherProblemCreatePage() {
       navigate('/teacher/problems');
     } catch (error) {
       if (error instanceof Error) Message.error(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSubmit() {
+    try {
+      if (isEditMode) {
+        const saved = await saveTestCases(false);
+        if (saved) {
+          Message.success('测试点已保存');
+          navigate('/teacher/problems');
+        }
+        return;
+      }
+      const saved = await saveTestCases(false);
+      if (!saved) return;
+      setLoading(true);
+      await teacherPost(`/api/admin/v1/problem-drafts/${draftId}/commit`);
+      Message.success('题目已创建');
+      navigate('/teacher/problems');
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '创建失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleImportZip(file: File, overwrite: boolean) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      setLoading(true);
+      const url = isEditMode && problemId
+        ? `/api/admin/v1/problems/${problemId}/test-cases/zip?overwrite=${overwrite}`
+        : `/api/admin/v1/problem-drafts/${draftId}/test-cases/zip?overwrite=${overwrite}`;
+      const result = await teacherPost<{ testCases?: RawTestCase[] }>(url, formData);
+
+      if (isEditMode && problemId) {
+        await loadTestCases(problemId);
+      } else {
+        setTestCases(normalizeLoadedTestCases(result.testCases || []));
+      }
+      Message.success('导入成功');
+      return true;
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '导入失败');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -339,51 +405,35 @@ export function TeacherProblemCreatePage() {
   }
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card
-        bordered={false}
-        title={isEditMode ? '编辑题目' : '添加题目'}
-        extra={
-          <Space>
-            <Button icon={<IconLeft />} onClick={() => navigate('/teacher/problems')}>
-              返回列表
-            </Button>
-            {currentStep === 0 ? (
-              <Button type="primary" icon={<IconSave />} loading={loading} onClick={saveBasicInfo}>
-                保存基本信息
-              </Button>
-            ) : isEditMode ? (
-              <Button type="primary" icon={<IconSave />} loading={loading} onClick={() => saveTestCases()}>
-                保存测试点
-              </Button>
-            ) : (
-              <Button type="primary" icon={<IconSave />} loading={loading} onClick={handleCommit}>
-                创建题目
-              </Button>
-            )}
-          </Space>
-        }
-      >
-        <Steps current={currentStep} style={{ maxWidth: 400, marginBottom: 24 }}>
-          <Step title="基本信息" />
+    <Card style={{ maxWidth: '100%', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <Steps current={currentStep}>
+          <Step title={isEditMode ? '编辑题目' : '基本信息'} />
           <Step title="测试点" />
         </Steps>
+      </div>
 
-        {currentStep === 0 ? (
-          <Form form={form} labelCol={{ span: 4 }} wrapperCol={{ span: 18 }} labelAlign="left" requiredSymbol={false}
+      <div style={{ display: currentStep === 0 ? 'block' : 'none', maxWidth: '100%', overflow: 'hidden' }}>
+        <div style={{ maxWidth: '100%', overflow: 'hidden' }}>
+          <Form
+            form={form}
+            labelCol={{ span: 4 }}
+            wrapperCol={{ span: 18 }}
+            labelAlign="left"
+            requiredSymbol={false}
             initialValues={{ timeLimit: 1000, memoryLimit: 256, isPublic: true, difficulty: 1, samples: [] }}
-            style={{ maxWidth: 1000 }}
+            style={{ maxWidth: '1200px', margin: '0 auto' }}
           >
             <FormItem label="题目名称" field="title" rules={[{ required: true, message: '请输入题目名称' }]}>
               <Input placeholder="题目名称" maxLength={200} />
             </FormItem>
-            <FormItem label="时间限制" field="timeLimit" rules={[{ required: true }]} extra="单位：毫秒(ms)">
+            <FormItem label="时间限制" field="timeLimit" rules={[{ required: true, message: '请输入时间限制' }]} extra="单位：毫秒(ms)">
               <InputNumber min={100} max={10000} style={{ width: '100%' }} />
             </FormItem>
-            <FormItem label="内存限制" field="memoryLimit" rules={[{ required: true }]} extra="单位：兆字节(MB)">
+            <FormItem label="内存限制" field="memoryLimit" rules={[{ required: true, message: '请输入内存限制' }]} extra="单位：兆字节(MB)">
               <InputNumber min={16} max={1024} style={{ width: '100%' }} />
             </FormItem>
-            <FormItem label="可见性" field="isPublic" triggerPropName="checked">
+            <FormItem label="可见性" field="isPublic" triggerPropName="checked" extra="关闭后普通用户、前台题库、直接访问题目链接和普通提交接口都不可见。">
               <Switch checkedText="公开" uncheckedText="隐藏" />
             </FormItem>
             <FormItem label="难度" field="difficulty" rules={[{ required: true, message: '请选择难度' }]}>
@@ -425,10 +475,10 @@ export function TeacherProblemCreatePage() {
                 }}>添加</Button>
               </Space>
             </FormItem>
-            <FormItem label="题目描述" field="statement" rules={[{ required: true }]} triggerPropName="value">
+            <FormItem label="题目描述" field="statement" rules={[{ required: true, message: '请输入题目描述' }]} triggerPropName="value">
               <TextArea placeholder="支持 Markdown 和 LaTeX 格式" rows={10} style={{ fontFamily: 'monospace' }} />
             </FormItem>
-            <div style={{ marginLeft: '16.66%', marginTop: -8, marginBottom: 16 }}>
+            <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
               <Space>
                 <Button size="small" icon={<IconEdit />} onClick={() => setStatementModalVisible(true)}>
                   插入 Markdown
@@ -441,7 +491,7 @@ export function TeacherProblemCreatePage() {
             <FormItem label="输入格式" field="inputFormat">
               <TextArea placeholder="输入格式说明" rows={3} style={{ fontFamily: 'monospace' }} />
             </FormItem>
-            <div style={{ marginLeft: '16.66%', marginTop: -8, marginBottom: 16 }}>
+            <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
               <Button size="small" icon={<IconEdit />} onClick={() => setInputFormatModalVisible(true)}>
                 插入 Markdown
               </Button>
@@ -449,28 +499,28 @@ export function TeacherProblemCreatePage() {
             <FormItem label="输出格式" field="outputFormat">
               <TextArea placeholder="输出格式说明" rows={3} style={{ fontFamily: 'monospace' }} />
             </FormItem>
-            <div style={{ marginLeft: '16.66%', marginTop: -8, marginBottom: 16 }}>
+            <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
               <Button size="small" icon={<IconEdit />} onClick={() => setOutputFormatModalVisible(true)}>
                 插入 Markdown
               </Button>
             </div>
-            <FormItem label="样例">
+            <FormItem label="样例" required>
               <Form.List field="samples">
                 {(fields, { add, remove }) => (
                   <>
                     {fields.map((field, index) => (
-                      <Card key={field.key} style={{ marginBottom: 16 }}
+                      <Card key={field.key} style={{ marginBottom: '16px' }}
                         extra={<Button type="text" size="small" status="danger" icon={<IconDelete />} onClick={() => remove(index)}>删除</Button>}
                         title={`样例 ${index + 1}`}
                       >
-                        <FormItem label="输入" field={`${field.field}.input`}>
+                        <FormItem label="输入" field={`${field.field}.input`} rules={[{ required: true, message: '请输入样例输入' }]}>
                           <TextArea placeholder="样例输入" rows={3} />
                         </FormItem>
-                        <FormItem label="输出" field={`${field.field}.output`}>
+                        <FormItem label="输出" field={`${field.field}.output`} rules={[{ required: true, message: '请输入样例输出' }]}>
                           <TextArea placeholder="样例输出" rows={3} />
                         </FormItem>
-                        <FormItem label="解释" field={`${field.field}.explanation`}>
-                          <TextArea placeholder="可选" rows={2} />
+                        <FormItem label="说明" field={`${field.field}.explanation`}>
+                          <TextArea placeholder="样例说明（可选）" rows={2} />
                         </FormItem>
                       </Card>
                     ))}
@@ -481,64 +531,86 @@ export function TeacherProblemCreatePage() {
                 )}
               </Form.List>
             </FormItem>
-            <div style={{ marginLeft: '16.66%', marginTop: 16 }}>
+            <FormItem wrapperCol={{ offset: 4 }}>
               <Space>
-                <Button onClick={saveBasicInfoAndNext} loading={loading}>下一步：测试点</Button>
+                <Button type="primary" onClick={saveBasicInfoAndNext} loading={loading}>
+                  {isEditMode ? '保存并编辑测试点' : '下一步'}
+                </Button>
+                <Button onClick={() => navigate('/teacher/problems')}>取消</Button>
               </Space>
-            </div>
+            </FormItem>
           </Form>
-        ) : (
-          <div>
-            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-              <Typography.Text>共 {testCases.length} 个测试点</Typography.Text>
-              <Space>
-                <Button size="small" icon={<IconPlus />} onClick={addTestCase}>添加测试点</Button>
-                <Button size="small" onClick={() => setCurrentStep(0)}>返回基本信息</Button>
-              </Space>
-            </div>
-            <Table
-              rowKey="caseNo"
-              data={testCases}
-              pagination={false}
-              columns={[
-                { title: '#', dataIndex: 'caseNo', width: 60, align: 'center' },
-                {
-                  title: '输入',
-                  dataIndex: 'input',
-                  render: (_: unknown, __: TestCase, index: number) => (
-                    <TextArea
-                      value={testCases[index]?.input || ''}
-                      onChange={(val) => updateTestCase(index, 'input', val)}
-                      rows={2}
-                      style={{ fontFamily: 'monospace', fontSize: 12 }}
-                    />
-                  ),
-                },
-                {
-                  title: '输出',
-                  dataIndex: 'output',
-                  render: (_: unknown, __: TestCase, index: number) => (
-                    <TextArea
-                      value={testCases[index]?.output || ''}
-                      onChange={(val) => updateTestCase(index, 'output', val)}
-                      rows={2}
-                      style={{ fontFamily: 'monospace', fontSize: 12 }}
-                    />
-                  ),
-                },
-                {
-                  title: '操作',
-                  width: 80,
-                  align: 'center',
-                  render: (_: unknown, __: TestCase, index: number) => (
-                    <Button type="text" size="small" status="danger" icon={<IconDelete />} onClick={() => removeTestCase(index)} />
-                  ),
-                },
-              ]}
-            />
+        </div>
+      </div>
+
+      <div style={{ display: currentStep === 1 ? 'block' : 'none', maxWidth: '1200px', margin: '0 auto', overflow: 'hidden' }}>
+          <div style={{ marginBottom: '16px' }}>
+            <Space>
+              <Upload
+                accept=".zip"
+                beforeUpload={(file) => {
+                  setImportZipFile(file);
+                  setImportZipVisible(true);
+                  return false;
+                }}
+              >
+                <Button icon={<IconUpload />}>导入 ZIP 文件</Button>
+              </Upload>
+            </Space>
           </div>
-        )}
-      </Card>
+
+          {testCases.map((testCase, index) => (
+            <Card
+              key={index}
+              style={{ marginBottom: '16px' }}
+              title={`测试点 ${testCase.caseNo}`}
+              extra={
+                <Popconfirm title="确定删除该测试点吗？" onOk={() => removeTestCase(index)}>
+                  <Button type="text" size="small" status="danger" icon={<IconDelete />}>
+                    删除
+                  </Button>
+                </Popconfirm>
+              }
+            >
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>输入数据</div>
+                <TextArea
+                  value={testCase.input}
+                  onChange={(value: string) => updateTestCase(index, 'input', value)}
+                  placeholder="测试点输入数据"
+                  rows={4}
+                />
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>输出数据</div>
+                <TextArea
+                  value={testCase.output}
+                  onChange={(value: string) => updateTestCase(index, 'output', value)}
+                  placeholder="测试点输出数据"
+                  rows={4}
+                />
+              </div>
+            </Card>
+          ))}
+
+          <div style={{ marginBottom: '16px' }}>
+            <Button icon={<IconPlus />} onClick={addTestCase}>
+              手动添加测试点
+            </Button>
+          </div>
+
+          <div style={{ marginTop: '24px' }}>
+            <Space>
+              <Button onClick={() => setCurrentStep(0)}>上一步</Button>
+              <Button onClick={() => saveTestCases()} loading={loading}>
+                保存测试点
+              </Button>
+              <Button type="primary" onClick={handleSubmit} loading={loading}>
+                {isEditMode ? '完成' : '创建题目'}
+              </Button>
+            </Space>
+          </div>
+      </div>
 
       <CodeInsertModal
         visible={codeModalVisible}
@@ -569,6 +641,23 @@ export function TeacherProblemCreatePage() {
         title="插入输出格式"
         initialValue=""
       />
-    </Space>
+
+      <Modal
+        title="导入测试点"
+        visible={importZipVisible}
+        onCancel={() => {
+          setImportZipVisible(false);
+          if (importZipFile) handleImportZip(importZipFile, false);
+        }}
+        onOk={() => {
+          setImportZipVisible(false);
+          if (importZipFile) handleImportZip(importZipFile, true);
+        }}
+        okText="覆盖"
+        cancelText="追加"
+      >
+        是否覆盖现有测试点？
+      </Modal>
+    </Card>
   );
 }

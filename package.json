@@ -17,6 +17,7 @@
     "@douyinfe/semi-ui": "^2.100.0",
     "@monaco-editor/react": "4.7.0",
     "@stomp/stompjs": "7.0.0",
+    "antd": "^6.5.0",
     "katex": "0.17.0",
     "monaco-editor": "0.55.1",
     "react": "19.1.0",

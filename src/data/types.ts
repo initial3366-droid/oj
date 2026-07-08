@@ -78,6 +78,7 @@ export interface UserProfile {
   id: string;
   username: string;
   displayName: string;
+  avatarUrl?: string;
   name: string;
   studentNo: string;
   email: string;

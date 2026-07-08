@@ -69,11 +69,10 @@ public class AuthUser implements UserDetails {
     }
 
     /**
-     * 检查是否是管理员（SUPER_ADMIN, CLUB_ADMIN）
+     * 检查是否是管理员（SUPER_ADMIN）
      */
     public boolean isAdmin() {
-        return adminAccount &&
-               ("SUPER_ADMIN".equals(role) || "CLUB_ADMIN".equals(role));
+        return adminAccount && "SUPER_ADMIN".equals(role);
     }
 
     @Override

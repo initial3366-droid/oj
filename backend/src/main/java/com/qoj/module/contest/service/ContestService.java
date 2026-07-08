@@ -249,6 +249,10 @@ public class ContestService {
             }
         }
 
+        if (!canCurrentUserViewContest(contest)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权查看该比赛");
+        }
+
         return toVO(contest);
     }
 
@@ -258,10 +262,9 @@ public class ContestService {
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
 
-        // 使用Policy检查是否可以查看题目详情
         AuthUser user = CurrentUser.get();
-        if (!contestAccessPolicy.canViewProblemDetail(user, contest)) {
-            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "比赛尚未开始");
+        if (!canCurrentUserViewContestProblemDetail(user, contest)) {
+            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权查看比赛题目");
         }
 
         // 检查用户是否有权访问该比赛（非 ALL 类型需要报名）
@@ -319,8 +322,11 @@ public class ContestService {
         contest.maxSwitches = request.maxSwitches() == null ? 3 : request.maxSwitches();
         contest.allowAfterEndSubmit = Boolean.TRUE.equals(request.allowAfterEndSubmit());
         contest.allowAfterEndViewProblem = request.allowAfterEndViewProblem() == null || Boolean.TRUE.equals(request.allowAfterEndViewProblem());
+        contest.allowAfterEndViewCode = Boolean.TRUE.equals(request.allowAfterEndViewCode());
         contest.publicScoreboardEnabled = request.publicScoreboardEnabled() == null || Boolean.TRUE.equals(request.publicScoreboardEnabled());
+        contest.showClassOnScoreboard = Boolean.TRUE.equals(request.showClassOnScoreboard());
         contest.allowStarRegistration = Boolean.TRUE.equals(request.allowStarRegistration());
+        contest.allowViewAllSubmissions = request.allowViewAllSubmissions() == null || Boolean.TRUE.equals(request.allowViewAllSubmissions());
         contest.registrationPassword = encodeRegistrationPassword(request.registrationPassword());
         contest.registrationType = contest.registrationPassword == null
             ? (request.registrationType() == null ? "PUBLIC" : request.registrationType())
@@ -398,11 +404,20 @@ public class ContestService {
         if (request.allowAfterEndViewProblem() != null) {
             contest.allowAfterEndViewProblem = request.allowAfterEndViewProblem();
         }
+        if (request.allowAfterEndViewCode() != null) {
+            contest.allowAfterEndViewCode = request.allowAfterEndViewCode();
+        }
         if (request.publicScoreboardEnabled() != null) {
             contest.publicScoreboardEnabled = request.publicScoreboardEnabled();
         }
+        if (request.showClassOnScoreboard() != null) {
+            contest.showClassOnScoreboard = request.showClassOnScoreboard();
+        }
         if (request.allowStarRegistration() != null) {
             contest.allowStarRegistration = request.allowStarRegistration();
+        }
+        if (request.allowViewAllSubmissions() != null) {
+            contest.allowViewAllSubmissions = request.allowViewAllSubmissions();
         }
         if (request.registrationType() != null) {
             contest.registrationType = request.registrationType();
@@ -576,6 +591,7 @@ public class ContestService {
             ? oiScoreboardRows(contest, contestProblems, submissions)
             : acmScoreboardRows(contest, contestProblems, submissions);
         rows = applyMedals(rows, contest, showMedals);
+        rows = enrichScoreboardClassInfo(contest, rows);
         return new ContestScoreboardVO(
             contest.id,
             contest.title,
@@ -585,7 +601,8 @@ public class ContestService {
             contest.endTime,
             contest.durationMinutes == null ? durationMinutes(null, contest.startTime, contest.endTime) : contest.durationMinutes,
             problemVOs,
-            rows
+            rows,
+            Boolean.TRUE.equals(contest.showClassOnScoreboard)
         );
     }
 
@@ -616,6 +633,17 @@ public class ContestService {
 
 
     private void replaceProblems(Long contestId, List<ContestProblemRequest> problems) {
+        // 在删除旧 contest_problems 之前，建立 sourceProblemId -> oldContestProblemId 的映射
+        List<ContestProblem> oldContestProblems = contestProblemMapper.selectList(
+            new QueryWrapper<ContestProblem>().eq("contest_id", contestId)
+        );
+        Map<Long, Long> sourceToOldId = new java.util.LinkedHashMap<>();
+        for (ContestProblem cp : oldContestProblems) {
+            if (cp.problemId != null) {
+                sourceToOldId.put(cp.problemId, cp.id);
+            }
+        }
+
         contestProblemTestCaseMapper.delete(
             new QueryWrapper<ContestProblemTestCase>()
                 .inSql("contest_problem_id", "SELECT id FROM contest_problems WHERE contest_id = " + contestId)
@@ -625,6 +653,10 @@ public class ContestService {
         if (problems == null) {
             return;
         }
+
+        // sourceProblemId -> newContestProblemId 的映射
+        Map<Long, Long> sourceToNewId = new java.util.LinkedHashMap<>();
+
         for (ContestProblemRequest request : problems) {
             Problem sourceProblem = problemMapper.selectById(request.problemId());
             if (sourceProblem == null) {
@@ -647,6 +679,7 @@ public class ContestService {
             contestProblem.tags = sourceProblem.tags;
             contestProblem.domjudgeProblemId = sourceProblem.domjudgeProblemId;
             contestProblemMapper.insert(contestProblem);
+            sourceToNewId.put(request.problemId(), contestProblem.id);
             copyProblemTestCasesToContestProblem(sourceProblem.id, contestProblem.id);
             if (request.caseScores() != null) {
                 Map<Integer, Integer> caseScores = new LinkedHashMap<>();
@@ -664,6 +697,22 @@ public class ContestService {
                     caseScore.score = entry.getValue();
                     caseScoreMapper.insert(caseScore);
                 }
+            }
+        }
+
+        // 将已有提交记录的 contest_problem_id 从旧ID重新映射到新ID
+        for (Map.Entry<Long, Long> entry : sourceToOldId.entrySet()) {
+            Long sourceProblemId = entry.getKey();
+            Long oldContestProblemId = entry.getValue();
+            Long newContestProblemId = sourceToNewId.get(sourceProblemId);
+            if (newContestProblemId != null && !newContestProblemId.equals(oldContestProblemId)) {
+                Submission update = new Submission();
+                update.contestProblemId = newContestProblemId;
+                submissionMapper.update(update,
+                    new QueryWrapper<Submission>()
+                        .eq("contest_id", contestId)
+                        .eq("contest_problem_id", oldContestProblemId)
+                );
             }
         }
     }
@@ -796,6 +845,62 @@ public class ContestService {
             return new RegistrationIdentity(type, userId);
         }
         throw new BizException(400, "不支持的报名身份");
+    }
+
+    private boolean canCurrentUserViewContest(Contest contest) {
+        if (contest == null) {
+            return false;
+        }
+        AuthUser user = CurrentUser.get();
+        if (isContestOwnerOrSuperAdmin(contest, user)) {
+            return true;
+        }
+        if (audienceAllows(contest.id, AudienceType.ALL, 0L)) {
+            return true;
+        }
+        if (user == null || user.adminAccount() || user.id() == null) {
+            return false;
+        }
+        return isContestVisibleToUser(contest.id, user.id());
+    }
+
+    private boolean canCurrentUserViewContestProblemDetail(AuthUser user, Contest contest) {
+        if (contest == null) {
+            return false;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        boolean privileged = isContestOwnerOrSuperAdmin(contest, user);
+        if (now.isBefore(contest.startTime)) {
+            return privileged;
+        }
+        if (now.isAfter(contest.endTime)
+            && Boolean.FALSE.equals(contest.allowAfterEndViewProblem)
+            && !privileged) {
+            return false;
+        }
+        if (privileged) {
+            return true;
+        }
+        if (audienceAllows(contest.id, AudienceType.ALL, 0L)) {
+            return true;
+        }
+        return user != null && !user.adminAccount() && user.id() != null && isContestVisibleToUser(contest.id, user.id());
+    }
+
+    private boolean isContestOwnerOrSuperAdmin(Contest contest, AuthUser user) {
+        if (user == null) {
+            return false;
+        }
+        if ("SUPER_ADMIN".equals(user.role())) {
+            return true;
+        }
+        if (contest.ownerId == null) {
+            return false;
+        }
+        String ownerType = contest.ownerAccountType == null ? "USER" : contest.ownerAccountType;
+        return contest.ownerId.equals(user.id())
+            && ((user.adminAccount() && "ADMIN".equals(ownerType))
+                || (!user.adminAccount() && "USER".equals(ownerType)));
     }
 
     private boolean isContestVisibleToUser(Long contestId, Long userId) {
@@ -997,16 +1102,33 @@ public class ContestService {
     private ContestVO toVO(Contest contest) {
         // 判断当前用户是否可以查看题目详情
         AuthUser user = CurrentUser.get();
-        boolean canViewProblems = contestAccessPolicy.canViewProblemDetail(user, contest);
+        boolean canViewProblems = canCurrentUserViewContestProblemDetail(user, contest);
 
         // 只有在可以查看题目时才返回题目列表，否则返回空列表
-        List<ContestProblemVO> problems = canViewProblems
-            ? contestProblemMapper
-                .selectList(new QueryWrapper<ContestProblem>().eq("contest_id", contest.id).orderByAsc("display_order"))
-                .stream()
-                .map(this::toProblemVO)
-                .toList()
+        List<ContestProblem> contestProblems = canViewProblems
+            ? contestProblemMapper.selectList(new QueryWrapper<ContestProblem>().eq("contest_id", contest.id).orderByAsc("display_order"))
             : List.of();
+
+        // 批量查询每题的提交数和通过数
+        java.util.Map<Long, Long> submissionCountMap = new java.util.HashMap<>();
+        java.util.Map<Long, Long> acceptedCountMap = new java.util.HashMap<>();
+        if (!contestProblems.isEmpty()) {
+            List<Submission> allSubmissions = submissionMapper.selectList(
+                new QueryWrapper<Submission>().eq("contest_id", contest.id).select("contest_problem_id", "status")
+            );
+            for (Submission s : allSubmissions) {
+                Long cpId = s.contestProblemId;
+                if (cpId == null) continue;
+                submissionCountMap.merge(cpId, 1L, Long::sum);
+                if ("AC".equals(s.status) || "ACCEPTED".equals(s.status)) {
+                    acceptedCountMap.merge(cpId, 1L, Long::sum);
+                }
+            }
+        }
+
+        List<ContestProblemVO> problems = contestProblems.stream()
+            .map(item -> toProblemVO(item, submissionCountMap, acceptedCountMap))
+            .toList();
 
         List<ContestAudienceVO> audiences = contestAudienceMapper
             .selectList(new QueryWrapper<ContestAudience>().eq("contest_id", contest.id))
@@ -1038,7 +1160,10 @@ public class ContestService {
             contest.maxSwitches,
             Boolean.TRUE.equals(contest.allowAfterEndSubmit),
             contest.allowAfterEndViewProblem == null || Boolean.TRUE.equals(contest.allowAfterEndViewProblem),
+            Boolean.TRUE.equals(contest.allowAfterEndViewCode),
             contest.publicScoreboardEnabled == null || Boolean.TRUE.equals(contest.publicScoreboardEnabled),
+            Boolean.TRUE.equals(contest.showClassOnScoreboard),
+            contest.allowViewAllSubmissions == null || Boolean.TRUE.equals(contest.allowViewAllSubmissions),
             Boolean.TRUE.equals(contest.allowStarRegistration),
             contest.registrationType,
             hasRegistrationPassword(contest),
@@ -1055,7 +1180,7 @@ public class ContestService {
         );
     }
 
-    private ContestProblemVO toProblemVO(ContestProblem item) {
+    private ContestProblemVO toProblemVO(ContestProblem item, java.util.Map<Long, Long> submissionCountMap, java.util.Map<Long, Long> acceptedCountMap) {
         List<ContestProblemCaseScoreVO> caseScores = caseScoreMapper
             .selectList(
                 new QueryWrapper<ContestProblemCaseScore>()
@@ -1073,7 +1198,9 @@ public class ContestService {
             item.label,
             item.score,
             item.displayOrder,
-            caseScores
+            caseScores,
+            submissionCountMap.getOrDefault(item.id, 0L),
+            acceptedCountMap.getOrDefault(item.id, 0L)
         );
     }
 
@@ -1209,6 +1336,8 @@ public class ContestService {
             identity.type().name(),
             identity.id(),
             identity.starred(),
+            null,
+            null,
             null
         );
     }
@@ -1281,6 +1410,8 @@ public class ContestService {
             identity.type().name(),
             identity.id(),
             identity.starred(),
+            null,
+            null,
             null
         );
     }
@@ -1302,7 +1433,9 @@ public class ContestService {
                 row.identityType(),
                 row.identityId(),
                 row.starred(),
-                row.medal()
+                row.medal(),
+                row.classId(),
+                row.className()
             ));
         }
         return ranked;
@@ -1340,7 +1473,86 @@ public class ContestService {
             row.identityType(),
             row.identityId(),
             row.starred(),
-            medal
+            medal,
+            row.classId(),
+            row.className()
+        );
+    }
+
+    private List<ContestScoreboardRowVO> enrichScoreboardClassInfo(Contest contest, List<ContestScoreboardRowVO> rows) {
+        if (!Boolean.TRUE.equals(contest.showClassOnScoreboard) || rows == null || rows.isEmpty()) {
+            return rows;
+        }
+
+        Set<Long> userIds = new HashSet<>();
+        for (ContestScoreboardRowVO row : rows) {
+            if (row.userId() != null) {
+                userIds.add(row.userId());
+            }
+        }
+        if (userIds.isEmpty()) {
+            return rows;
+        }
+
+        Map<Long, Long> classIdByUserId = new HashMap<>();
+        List<User> users = userMapper.selectBatchIds(userIds);
+        for (User user : users) {
+            if (user != null && user.id != null && user.classId != null) {
+                classIdByUserId.put(user.id, user.classId);
+            }
+        }
+
+        Set<Long> missingUserIds = new HashSet<>(userIds);
+        missingUserIds.removeAll(classIdByUserId.keySet());
+        if (!missingUserIds.isEmpty()) {
+            List<ClassMember> members = classMemberMapper.selectList(new QueryWrapper<ClassMember>().in("user_id", missingUserIds));
+            for (ClassMember member : members) {
+                if (member != null && member.userId != null && member.classId != null) {
+                    classIdByUserId.putIfAbsent(member.userId, member.classId);
+                }
+            }
+        }
+
+        Set<Long> classIds = new HashSet<>();
+        for (Long classId : classIdByUserId.values()) {
+            if (classId != null) {
+                classIds.add(classId);
+            }
+        }
+        Map<Long, String> classNameById = new HashMap<>();
+        if (!classIds.isEmpty()) {
+            List<ClassRoom> classes = classRoomMapper.selectBatchIds(classIds);
+            for (ClassRoom classRoom : classes) {
+                if (classRoom != null && classRoom.id != null) {
+                    classNameById.put(classRoom.id, classRoom.name);
+                }
+            }
+        }
+
+        List<ContestScoreboardRowVO> result = new ArrayList<>();
+        for (ContestScoreboardRowVO row : rows) {
+            Long classId = classIdByUserId.get(row.userId());
+            result.add(withClassInfo(row, classId, classId == null ? null : classNameById.get(classId)));
+        }
+        return result;
+    }
+
+    private ContestScoreboardRowVO withClassInfo(ContestScoreboardRowVO row, Long classId, String className) {
+        return new ContestScoreboardRowVO(
+            row.rank(),
+            row.userId(),
+            row.displayName(),
+            row.solved(),
+            row.penalty(),
+            row.score(),
+            row.lastAcceptedAt(),
+            row.cells(),
+            row.identityType(),
+            row.identityId(),
+            row.starred(),
+            row.medal(),
+            classId,
+            className
         );
     }
 
@@ -1671,7 +1883,7 @@ public class ContestService {
             new QueryWrapper<ContestRegistration>().eq("contest_id", contestId)
         );
 
-        // 统计参赛人数（已通过审核的）
+        // 统计参赛人数（有效报名）
         Long participantCount = registrationMapper.selectCount(
             new QueryWrapper<ContestRegistration>()
                 .eq("contest_id", contestId)
@@ -1748,6 +1960,7 @@ public class ContestService {
         vo.frozen = contest.frozen;
         vo.freezeTime = contest.freezeTime;
         vo.boardState = boardState;
+        vo.showClassOnScoreboard = scoreboard.showClassOnScoreboard();
 
         // 问题列表
         vo.problems = scoreboard.problems().stream().map(p -> {
@@ -1796,6 +2009,8 @@ public class ContestService {
             userRank.userId = row.userId();
             userRank.username = user == null ? String.valueOf(row.userId()) : user.username;
             userRank.displayName = row.displayName();
+            userRank.classId = row.classId();
+            userRank.className = row.className();
             userRank.solved = row.solved();
             userRank.penalty = row.penalty();
             userRank.totalScore = row.score();
@@ -1853,7 +2068,8 @@ public class ContestService {
             finalScoreboard.endTime(),
             finalScoreboard.durationMinutes(),
             finalScoreboard.problems(),
-            rows
+            rows,
+            finalScoreboard.showClassOnScoreboard()
         );
     }
 

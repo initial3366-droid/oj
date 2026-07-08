@@ -11,9 +11,7 @@ import com.qoj.module.contest.mapper.ContestParticipantMapper;
 import com.qoj.module.contest.mapper.ContestProblemMapper;
 import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.mapper.SubmissionMapper;
-import com.qoj.module.user.entity.Club;
 import com.qoj.module.user.entity.User;
-import com.qoj.module.user.mapper.ClubMapper;
 import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.module.xcpcio.entity.ContestXcpcioConfig;
 import com.qoj.module.xcpcio.mapper.ContestXcpcioConfigMapper;
@@ -55,7 +53,6 @@ public class ClicsExportService {
     private final ContestProblemMapper contestProblemMapper;
     private final SubmissionMapper submissionMapper;
     private final UserMapper userMapper;
-    private final ClubMapper clubMapper;
     private final ContestXcpcioConfigMapper configMapper;
     private final ZoneId zoneId = ZoneId.systemDefault();
 
@@ -65,7 +62,6 @@ public class ClicsExportService {
         ContestProblemMapper contestProblemMapper,
         SubmissionMapper submissionMapper,
         UserMapper userMapper,
-        ClubMapper clubMapper,
         ContestXcpcioConfigMapper configMapper
     ) {
         this.contestMapper = contestMapper;
@@ -73,7 +69,6 @@ public class ClicsExportService {
         this.contestProblemMapper = contestProblemMapper;
         this.submissionMapper = submissionMapper;
         this.userMapper = userMapper;
-        this.clubMapper = clubMapper;
         this.configMapper = configMapper;
     }
 
@@ -85,13 +80,10 @@ public class ClicsExportService {
         );
     }
 
-    public List<ClicsContestDTO> contests() {
-        List<Long> enabledContestIds = configMapper.selectList(
-                new QueryWrapper<ContestXcpcioConfig>().eq("enabled", true)
-            )
-            .stream()
-            .map(config -> config.contestId)
+    public List<ClicsContestDTO> contests(List<Long> accessibleContestIds) {
+        List<Long> enabledContestIds = accessibleContestIds == null ? List.of() : accessibleContestIds.stream()
             .filter(Objects::nonNull)
+            .distinct()
             .toList();
         if (enabledContestIds.isEmpty()) {
             return List.of();
@@ -143,16 +135,6 @@ public class ClicsExportService {
         LinkedHashMap<String, ClicsGroupDTO> groups = new LinkedHashMap<>();
         groups.put("official", new ClicsGroupDTO("official", "Official", "contest"));
         groups.put("unofficial", new ClicsGroupDTO("unofficial", "Unofficial", "contest"));
-        for (ContestParticipant participant : participants(contestId)) {
-            if ("CLUB".equals(participant.identityType) && participant.identityId != null) {
-                Club club = clubMapper.selectById(participant.identityId);
-                groups.put("club-" + participant.identityId, new ClicsGroupDTO(
-                    "club-" + participant.identityId,
-                    club == null ? "社团 " + participant.identityId : club.name,
-                    "club"
-                ));
-            }
-        }
         return new ArrayList<>(groups.values());
     }
 
@@ -170,11 +152,6 @@ public class ClicsExportService {
                         null
                     )
                 );
-            }
-            if ("CLUB".equals(participant.identityType) && participant.identityId != null) {
-                Club club = clubMapper.selectById(participant.identityId);
-                String name = club == null ? "社团 " + participant.identityId : club.name;
-                organizations.put("club-" + participant.identityId, new ClicsOrganizationDTO("club-" + participant.identityId, name, name, null));
             }
         }
         return new ArrayList<>(organizations.values());
@@ -463,9 +440,6 @@ public class ClicsExportService {
     private List<String> groupIds(ContestParticipant participant) {
         List<String> ids = new ArrayList<>();
         ids.add("UNOFFICIAL".equals(participant.status) ? "unofficial" : "official");
-        if ("CLUB".equals(participant.identityType) && participant.identityId != null) {
-            ids.add("club-" + participant.identityId);
-        }
         return ids.stream().distinct().toList();
     }
 

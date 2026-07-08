@@ -152,6 +152,8 @@ export function AdminProblemCreatePage() {
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [folders, setFolders] = useState<Array<{ id: number; name: string }>>([]);
+  const [importZipFile, setImportZipFile] = useState<File | null>(null);
+  const [importZipVisible, setImportZipVisible] = useState(false);
 
   useEffect(() => {
     if (isEditMode && problemId) {
@@ -493,7 +495,7 @@ export function AdminProblemCreatePage() {
         )}
       </div>
 
-      {currentStep === 0 && (
+      <div style={{ display: currentStep === 0 ? 'block' : 'none', maxWidth: '100%', overflow: 'hidden' }}>
         <div style={{ maxWidth: '100%', overflow: 'hidden' }}>
           <Form
             form={basicForm}
@@ -719,31 +721,21 @@ export function AdminProblemCreatePage() {
           </FormItem>
         </Form>
         </div>
-      )}
+      </div>
 
-      {currentStep === 1 && (
-        <div style={{ maxWidth: '1200px', margin: '0 auto', overflow: 'hidden' }}>
+      <div style={{ display: currentStep === 1 ? 'block' : 'none', maxWidth: '1200px', margin: '0 auto', overflow: 'hidden' }}>
           <div style={{ marginBottom: '16px' }}>
             <Space>
               <Upload
                 accept=".zip"
                 beforeUpload={(file) => {
-                  Modal.confirm({
-                    title: '导入测试点',
-                    content: '是否覆盖现有测试点？',
-                    okText: '覆盖',
-                    cancelText: '追加',
-                    onOk: () => handleImportZip(file, true),
-                    onCancel: () => handleImportZip(file, false),
-                  });
+                  setImportZipFile(file);
+                  setImportZipVisible(true);
                   return false;
                 }}
               >
                 <Button icon={<IconUpload />}>导入 ZIP 文件</Button>
               </Upload>
-              <Button icon={<IconPlus />} onClick={addTestCase}>
-                手动添加测试点
-              </Button>
             </Space>
           </div>
 
@@ -781,6 +773,12 @@ export function AdminProblemCreatePage() {
             </Card>
           ))}
 
+          <div style={{ marginBottom: '16px' }}>
+            <Button icon={<IconPlus />} onClick={addTestCase}>
+              手动添加测试点
+            </Button>
+          </div>
+
           <div style={{ marginTop: '24px' }}>
             <Space>
               <Button onClick={() => setCurrentStep(0)}>上一步</Button>
@@ -792,8 +790,7 @@ export function AdminProblemCreatePage() {
               </Button>
             </Space>
           </div>
-        </div>
-      )}
+      </div>
 
       <CodeInsertModal
         visible={codeModalVisible}
@@ -824,6 +821,23 @@ export function AdminProblemCreatePage() {
         title="插入输出格式"
         initialValue=""
       />
+
+      <Modal
+        title="导入测试点"
+        visible={importZipVisible}
+        onCancel={() => {
+          setImportZipVisible(false);
+          if (importZipFile) handleImportZip(importZipFile, false);
+        }}
+        onOk={() => {
+          setImportZipVisible(false);
+          if (importZipFile) handleImportZip(importZipFile, true);
+        }}
+        okText="覆盖"
+        cancelText="追加"
+      >
+        是否覆盖现有测试点？
+      </Modal>
     </Card>
   );
 }

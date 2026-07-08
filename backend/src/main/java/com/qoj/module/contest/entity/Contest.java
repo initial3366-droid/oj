@@ -34,8 +34,11 @@ public class Contest {
     public Integer maxSwitches;
     public Boolean allowAfterEndSubmit;
     public Boolean allowAfterEndViewProblem;
+    public Boolean allowAfterEndViewCode;
     public Boolean publicScoreboardEnabled;
+    public Boolean showClassOnScoreboard;
     public Boolean allowStarRegistration;
+    public Boolean allowViewAllSubmissions;
     public String registrationType;
     public String registrationPassword;
     public String status;

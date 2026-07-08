@@ -41,8 +41,8 @@ public class ClicsExportController {
     }
 
     @GetMapping("/contests")
-    public List<ClicsContestDTO> contests() {
-        return exportService.contests();
+    public List<ClicsContestDTO> contests(@RequestParam(required = false) String accessToken, @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+        return exportService.contests(configService.accessibleClicsContestIds(accessToken, authorization));
     }
 
     @GetMapping("/contests/{contestId}")

@@ -35,6 +35,8 @@ import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.HashMap;
@@ -54,6 +56,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class ProblemService {
+    private static final int MAX_ZIP_TEST_CASES = 200;
+    private static final int MAX_ZIP_ENTRIES = 500;
+    private static final int MAX_ZIP_ENTRY_BYTES = 2 * 1024 * 1024;
+    private static final int MAX_ZIP_TOTAL_BYTES = 50 * 1024 * 1024;
+
     private final ProblemMapper problemMapper;
     private final ProblemTestCaseMapper problemTestCaseMapper;
     private final SubmissionMapper submissionMapper;
@@ -132,11 +139,11 @@ public class ProblemService {
             wrapper.eq("folder_id", folderId);
         }
         if (ownerName != null && !ownerName.isBlank()) {
-            String escaped = ownerName.replace("'", "''");
+            String normalizedOwnerName = ownerName.trim();
             wrapper.and(w -> w
-                .apply("owner_id IN (SELECT id FROM users WHERE display_name LIKE '%" + escaped + "%')")
+                .apply("owner_id IN (SELECT id FROM users WHERE display_name LIKE CONCAT('%', {0}, '%'))", normalizedOwnerName)
                 .or()
-                .apply("owner_id IN (SELECT id FROM admin_users WHERE display_name LIKE '%" + escaped + "%')")
+                .apply("owner_id IN (SELECT id FROM admin_users WHERE display_name LIKE CONCAT('%', {0}, '%'))", normalizedOwnerName)
             );
         }
         wrapper.orderByDesc("created_at");
@@ -437,7 +444,7 @@ public class ProblemService {
     private Problem requirePublicManageOwner(long id) {
         Problem problem = requireOwnerOrSuperAdmin(id);
         String role = CurrentUser.required().role();
-        if (!"SUPER_ADMIN".equals(role) && !"CLUB_ADMIN".equals(role)) {
+        if (!"SUPER_ADMIN".equals(role) && !"TEACHER".equals(role)) {
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无公开题目权限");
         }
         return problem;
@@ -899,28 +906,33 @@ public class ProblemService {
     private List<ProblemTestCase> parseZipTestCases(MultipartFile file) {
         Map<Integer, String> inputs = new HashMap<>();
         Map<Integer, String> outputs = new HashMap<>();
+        int[] counters = new int[] {0, 0};
         try (ZipInputStream zip = new ZipInputStream(file.getInputStream())) {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
                 if (entry.isDirectory()) {
                     continue;
                 }
-                String name = entry.getName();
-                int slash = name.lastIndexOf('/');
-                if (slash >= 0) {
-                    name = name.substring(slash + 1);
+                if (++counters[0] > MAX_ZIP_ENTRIES) {
+                    throw new BizException(400, "测试点 ZIP 文件数量过多");
                 }
+                String name = safeZipEntryName(entry.getName());
                 Integer caseNo = caseNumber(name);
                 if (caseNo == null) {
                     continue;
                 }
-                String content = new String(zip.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                if (inputs.size() + outputs.size() >= MAX_ZIP_TEST_CASES * 2) {
+                    throw new BizException(400, "测试点数量过多");
+                }
+                String content = readZipEntryText(zip, counters);
                 if (name.endsWith(".in")) {
                     inputs.put(caseNo, content);
                 } else if (name.endsWith(".out")) {
                     outputs.put(caseNo, content);
                 }
             }
+        } catch (BizException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new BizException(400, "测试点 ZIP 解析失败");
         }
@@ -942,6 +954,37 @@ public class ProblemService {
             testCases.add(testCase);
         }
         return testCases;
+    }
+
+    private String safeZipEntryName(String rawName) {
+        String name = rawName == null ? "" : rawName.replace('\\', '/');
+        if (name.contains("../") || name.startsWith("/")) {
+            throw new BizException(400, "测试点 ZIP 包含非法路径");
+        }
+        int slash = name.lastIndexOf('/');
+        if (slash >= 0) {
+            name = name.substring(slash + 1);
+        }
+        return name;
+    }
+
+    private String readZipEntryText(ZipInputStream zip, int[] counters) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int entryBytes = 0;
+        int read;
+        while ((read = zip.read(buffer)) != -1) {
+            entryBytes += read;
+            counters[1] += read;
+            if (entryBytes > MAX_ZIP_ENTRY_BYTES) {
+                throw new BizException(400, "单个测试点文件过大");
+            }
+            if (counters[1] > MAX_ZIP_TOTAL_BYTES) {
+                throw new BizException(400, "测试点 ZIP 解压后过大");
+            }
+            out.write(buffer, 0, read);
+        }
+        return out.toString(java.nio.charset.StandardCharsets.UTF_8);
     }
 
     private Integer caseNumber(String filename) {

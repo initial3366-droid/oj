@@ -19,7 +19,7 @@ export interface HomeContest {
   startTime: string;
   endTime: string;
   type: "ACM" | "OI";
-  audience: "ALL" | "CLUB";
+  audience: "ALL" | "CLASS";
   status: "NOT_STARTED" | "RUNNING" | "ENDED";
   participantCount?: number;
 }

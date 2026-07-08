@@ -2,6 +2,8 @@ package com.qoj.module.problem.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.common.exception.BizException;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import com.qoj.common.redis.RedisKeys;
 import com.qoj.module.problem.dto.ProblemDraftBasicRequest;
 import com.qoj.module.problem.dto.ProblemDraftTestCasesRequest;
@@ -31,6 +33,10 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class ProblemDraftService {
     private static final Duration DRAFT_TTL = Duration.ofHours(6);
+    private static final int MAX_ZIP_TEST_CASES = 200;
+    private static final int MAX_ZIP_ENTRIES = 500;
+    private static final int MAX_ZIP_ENTRY_BYTES = 2 * 1024 * 1024;
+    private static final int MAX_ZIP_TOTAL_BYTES = 50 * 1024 * 1024;
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
@@ -196,28 +202,33 @@ public class ProblemDraftService {
         }
         Map<Integer, String> inputs = new HashMap<>();
         Map<Integer, String> outputs = new HashMap<>();
+        int[] counters = new int[] {0, 0};
         try (ZipInputStream zip = new ZipInputStream(file.getInputStream())) {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
                 if (entry.isDirectory()) {
                     continue;
                 }
-                String name = entry.getName();
-                int slash = name.lastIndexOf('/');
-                if (slash >= 0) {
-                    name = name.substring(slash + 1);
+                if (++counters[0] > MAX_ZIP_ENTRIES) {
+                    throw new BizException(400, "测试点 ZIP 文件数量过多");
                 }
+                String name = safeZipEntryName(entry.getName());
                 Integer caseNo = caseNumber(name);
                 if (caseNo == null) {
                     continue;
                 }
-                String content = new String(zip.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                if (inputs.size() + outputs.size() >= MAX_ZIP_TEST_CASES * 2) {
+                    throw new BizException(400, "测试点数量过多");
+                }
+                String content = readZipEntryText(zip, counters);
                 if (name.endsWith(".in")) {
                     inputs.put(caseNo, content);
                 } else {
                     outputs.put(caseNo, content);
                 }
             }
+        } catch (BizException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new BizException(400, "测试点 ZIP 解析失败");
         }
@@ -233,6 +244,37 @@ public class ProblemDraftService {
             result.add(new ProblemTestCaseRequest(caseNo, inputs.get(caseNo), outputs.get(caseNo)));
         }
         return result;
+    }
+
+    private String safeZipEntryName(String rawName) {
+        String name = rawName == null ? "" : rawName.replace('\\', '/');
+        if (name.contains("../") || name.startsWith("/")) {
+            throw new BizException(400, "测试点 ZIP 包含非法路径");
+        }
+        int slash = name.lastIndexOf('/');
+        if (slash >= 0) {
+            name = name.substring(slash + 1);
+        }
+        return name;
+    }
+
+    private String readZipEntryText(ZipInputStream zip, int[] counters) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int entryBytes = 0;
+        int read;
+        while ((read = zip.read(buffer)) != -1) {
+            entryBytes += read;
+            counters[1] += read;
+            if (entryBytes > MAX_ZIP_ENTRY_BYTES) {
+                throw new BizException(400, "单个测试点文件过大");
+            }
+            if (counters[1] > MAX_ZIP_TOTAL_BYTES) {
+                throw new BizException(400, "测试点 ZIP 解压后过大");
+            }
+            out.write(buffer, 0, read);
+        }
+        return out.toString(java.nio.charset.StandardCharsets.UTF_8);
     }
 
     private Integer caseNumber(String filename) {

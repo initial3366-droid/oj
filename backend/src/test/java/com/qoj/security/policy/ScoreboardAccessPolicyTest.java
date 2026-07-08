@@ -49,16 +49,6 @@ class ScoreboardAccessPolicyTest {
         return new AuthUser(user);
     }
 
-    private AuthUser createUser(Long userId, String role) {
-        User user = new User();
-        user.id = userId;
-        user.username = "user" + userId;
-        user.role = role;
-        user.displayName = "User " + userId;
-        user.passwordHash = "hash";
-        return new AuthUser(user);
-    }
-
     // canViewGlobalScoreboard Tests
 
     @Test
@@ -87,43 +77,6 @@ class ScoreboardAccessPolicyTest {
         assertTrue(policy.canViewGlobalScoreboard(createSuperAdmin()));
         assertTrue(policy.canViewGlobalScoreboard(createTeacher(2L)));
         assertTrue(policy.canViewGlobalScoreboard(createStudent()));
-    }
-
-    // canViewClubScoreboard Tests
-
-    @Test
-    @DisplayName("canViewClubScoreboard: null user should deny")
-    void testViewClubScoreboard_NullUser_ShouldDeny() {
-        assertFalse(policy.canViewClubScoreboard(null, 1L));
-    }
-
-    @Test
-    @DisplayName("canViewClubScoreboard: super admin can view any club scoreboard")
-    void testViewClubScoreboard_SuperAdmin_ShouldAllow() {
-        AuthUser admin = createSuperAdmin();
-        assertTrue(policy.canViewClubScoreboard(admin, 1L));
-        assertTrue(policy.canViewClubScoreboard(admin, 999L));
-    }
-
-    @Test
-    @DisplayName("canViewClubScoreboard: teacher cannot view by default")
-    void testViewClubScoreboard_Teacher_ShouldDeny() {
-        AuthUser teacher = createTeacher(2L);
-        assertFalse(policy.canViewClubScoreboard(teacher, 1L));
-    }
-
-    @Test
-    @DisplayName("canViewClubScoreboard: student cannot view by default")
-    void testViewClubScoreboard_Student_ShouldDeny() {
-        AuthUser student = createStudent();
-        assertFalse(policy.canViewClubScoreboard(student, 1L));
-    }
-
-    @Test
-    @DisplayName("canViewClubScoreboard: club admin cannot view by default")
-    void testViewClubScoreboard_ClubAdmin_ShouldDeny() {
-        AuthUser clubAdmin = createUser(3L, "CLUB_ADMIN");
-        assertFalse(policy.canViewClubScoreboard(clubAdmin, 1L));
     }
 
     // canViewContestScoreboard Tests

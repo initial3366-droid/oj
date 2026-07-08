@@ -57,7 +57,7 @@ export function AdminHeader({ username, displayName, role, onLogout }: AdminHead
       }}
     >
       <div style={{ fontSize: '16px', fontWeight: 500, color: '#1d2129' }}>
-        QOJ 后台管理系统
+        后台管理
       </div>
 
       <Dropdown droplist={droplist} position="br">

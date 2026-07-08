@@ -1,27 +1,19 @@
 import { Avatar, Button, Card, Progress, Typography, Tabs, TabPane, Table, Tag, Input, Modal, Toast, Space, TextArea, Spin, Select } from '@douyinfe/semi-ui';
 import { IconTreeTriangleDown, IconChecklistStroked, IconCode } from '@douyinfe/semi-icons';
 import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CodeViewer } from '../components/common/CodeViewer';
 import './UserCenterPage.css';
 import {
-  approveClubApplication,
   applyToClass,
-  fetchClubApplications,
-  fetchManagedClubDetail,
-  fetchManagedClubs,
   fetchMe,
   fetchMySubmissions,
   fetchPractices,
   fetchSubmissionDetail,
-  rejectClubApplication,
-  removeManagedClubMember,
   updatePassword,
   updateProfile,
-  type ClubJoinApplicationRecord,
-  type ManagedClub,
-  type ManagedClubMember,
+  uploadMyAvatar,
   type Practice,
   type SubmissionRecord,
   type UpdateProfilePayload,
@@ -63,19 +55,16 @@ export function UserCenterPage() {
   const [captchaId, setCaptchaId] = useState('');
   const [captchaInput, setCaptchaInput] = useState('');
   const [pendingProfileUpdate, setPendingProfileUpdate] = useState<UpdateProfilePayload | null>(null);
-  const [managedClubs, setManagedClubs] = useState<ManagedClub[]>([]);
-  const [selectedClubId, setSelectedClubId] = useState<number | null>(null);
-  const [clubApplications, setClubApplications] = useState<ClubJoinApplicationRecord[]>([]);
-  const [clubLoading, setClubLoading] = useState(false);
-  const [clubJoinForm, setClubJoinForm] = useState({
+  const [classJoinForm, setClassJoinForm] = useState({
     classId: '',
     reason: '',
   });
-  const [clubJoinLoading, setClubJoinLoading] = useState(false);
+  const [classJoinLoading, setClassJoinLoading] = useState(false);
+  const [applySuccess, setApplySuccess] = useState(false);
   const [classPractices, setClassPractices] = useState<Practice[]>([]);
   const [classPracticeTotal, setClassPracticeTotal] = useState(0);
   const [classPracticePage, setClassPracticePage] = useState(1);
-  const [classPracticePageSize, setClassPracticePageSize] = useState(10);
+  const [classPracticePageSize, setClassPracticePageSize] = useState(20);
 
   // 代码查看弹窗
   const [codeModalVisible, setCodeModalVisible] = useState(false);
@@ -89,9 +78,11 @@ export function UserCenterPage() {
   const [subStatusFilter, setSubStatusFilter] = useState('');
   const [subLangFilter, setSubLangFilter] = useState('');
   const [subPage, setSubPage] = useState(1);
-  const [subPageSize, setSubPageSize] = useState(10);
+  const [subPageSize, setSubPageSize] = useState(20);
   const [classPracticeKeyword, setClassPracticeKeyword] = useState('');
   const [classPracticeLoading, setClassPracticeLoading] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const token = window.localStorage.getItem('qoj.accessToken');
@@ -244,6 +235,30 @@ export function UserCenterPage() {
     }
   };
 
+
+  const handleAvatarFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      Toast.error('请选择图片文件');
+      return;
+    }
+    try {
+      const token = window.localStorage.getItem('qoj.accessToken');
+      if (!token) return;
+      setAvatarUploading(true);
+      await uploadMyAvatar(file, token);
+      const newUser = await fetchMe(token);
+      setUser(newUser);
+      Toast.success('头像已更新');
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : '头像上传失败');
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   // 提交个人信息修改
   const handleProfileSubmit = () => {
     const payload: UpdateProfilePayload = {
@@ -351,39 +366,6 @@ export function UserCenterPage() {
     }
   };
 
-  const loadClubManagement = async (clubId?: number | null) => {
-    if (user?.role !== 'TEACHER') {
-      return;
-    }
-    setClubLoading(true);
-    try {
-      const clubs = await fetchManagedClubs();
-      const targetId = clubId ?? selectedClubId ?? clubs[0]?.id ?? null;
-      setSelectedClubId(targetId);
-      if (!targetId) {
-        setManagedClubs(clubs);
-        setClubApplications([]);
-        return;
-      }
-      const [detail, applications] = await Promise.all([
-        fetchManagedClubDetail(targetId),
-        fetchClubApplications(targetId),
-      ]);
-      setManagedClubs(clubs.map((club) => (club.id === detail.id ? detail : club)));
-      setClubApplications(applications);
-    } catch (error) {
-      Toast.error(error instanceof Error ? error.message : '社团管理数据加载失败');
-    } finally {
-      setClubLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'club' && user?.role === 'TEACHER') {
-      loadClubManagement(selectedClubId);
-    }
-  }, [activeTab, user?.role]);
-
   useEffect(() => {
     if (activeTab !== 'class-practices' || !user?.classId) {
       return;
@@ -412,64 +394,23 @@ export function UserCenterPage() {
     };
   }, [activeTab, user?.classId, classPracticePage, classPracticePageSize]);
 
-  const handleApproveApplication = async (applicationId: number) => {
-    try {
-      await approveClubApplication(applicationId);
-      Toast.success('已通过申请');
-      loadClubManagement(selectedClubId);
-    } catch (error) {
-      Toast.error(error instanceof Error ? error.message : '操作失败');
-    }
-  };
-
-  const handleRejectApplication = async (applicationId: number) => {
-    try {
-      await rejectClubApplication(applicationId);
-      Toast.success('已拒绝申请');
-      loadClubManagement(selectedClubId);
-    } catch (error) {
-      Toast.error(error instanceof Error ? error.message : '操作失败');
-    }
-  };
-
-  const handleRemoveMember = (member: ManagedClubMember) => {
-    if (!selectedClubId) return;
-    Modal.confirm({
-      title: '移除成员',
-      content: `确定要移除 ${member.displayName || member.username || member.userId} 吗？`,
-      okText: '确认移除',
-      cancelText: '取消',
-      onOk: async () => {
-        try {
-          await removeManagedClubMember(selectedClubId, member.userId);
-          Toast.success('成员已移除');
-          loadClubManagement(selectedClubId);
-        } catch (error) {
-          Toast.error(error instanceof Error ? error.message : '移除失败');
-        }
-      },
-    });
-  };
-
-  const [applySuccess, setApplySuccess] = useState(false);
-
-  const handleApplyToClub = async () => {
-    const classId = Number(clubJoinForm.classId);
+  const handleApplyToClass = async () => {
+    const classId = Number(classJoinForm.classId);
     if (!Number.isInteger(classId) || classId <= 0) {
       Toast.error('请输入有效的班级 ID');
       return;
     }
-    setClubJoinLoading(true);
+    setClassJoinLoading(true);
     setApplySuccess(false);
     try {
-      await applyToClass(classId, { reason: clubJoinForm.reason.trim() || undefined });
+      await applyToClass(classId, { reason: classJoinForm.reason.trim() || undefined });
       Toast.success('入班申请已发送，请等待教师审核');
-      setClubJoinForm({ classId: '', reason: '' });
+      setClassJoinForm({ classId: '', reason: '' });
       setApplySuccess(true);
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '申请发送失败');
     } finally {
-      setClubJoinLoading(false);
+      setClassJoinLoading(false);
     }
   };
 
@@ -560,107 +501,6 @@ export function UserCenterPage() {
     },
   ];
 
-  const selectedClub = managedClubs.find((club) => club.id === selectedClubId) ?? managedClubs[0] ?? null;
-  const memberColumns: ColumnProps<ManagedClubMember>[] = [
-    {
-      title: '用户',
-      dataIndex: 'displayName',
-      render: (_name: string, record: ManagedClubMember) => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Typography.Text>{record.displayName || record.username || `用户 ${record.userId}`}</Typography.Text>
-          <Typography.Text type="tertiary" style={{ fontSize: 12 }}>{record.username || record.userId}</Typography.Text>
-        </div>
-      ),
-    },
-    {
-      title: '角色',
-      dataIndex: 'memberRole',
-      width: 100,
-      render: (role: string) => (
-        <Tag color={role === 'ADMIN' ? 'blue' : 'grey'} size="small">
-          {role === 'ADMIN' ? '负责人' : '成员'}
-        </Tag>
-      ),
-    },
-    {
-      title: '入团时间',
-      dataIndex: 'joinedAt',
-      width: 180,
-      render: (time: string) => formatDateTime(time),
-    },
-    {
-      title: 'AC 数量',
-      dataIndex: 'acCount',
-      width: 100,
-    },
-    {
-      title: '操作',
-      width: 140,
-      render: (_value: unknown, record: ManagedClubMember) => (
-        <Space>
-          <Button size="small" theme="borderless" onClick={() => navigate(`/users/${record.userId}`)}>
-            查看
-          </Button>
-          {record.memberRole !== 'ADMIN' && (
-            <Button size="small" type="danger" theme="borderless" onClick={() => handleRemoveMember(record)}>
-              移除
-            </Button>
-          )}
-        </Space>
-      ),
-    },
-  ];
-
-  const applicationColumns: ColumnProps<ClubJoinApplicationRecord>[] = [
-    {
-      title: '申请用户',
-      dataIndex: 'displayName',
-      render: (_name: string, record: ClubJoinApplicationRecord) => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Typography.Text>{record.displayName || record.username || `用户 ${record.userId}`}</Typography.Text>
-          <Typography.Text type="tertiary" style={{ fontSize: 12 }}>{record.username || record.userId}</Typography.Text>
-        </div>
-      ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 110,
-      render: (status: string) => {
-        const textMap: Record<string, string> = { PENDING: '待处理', APPROVED: '已通过', REJECTED: '已拒绝' };
-        const colorMap: Record<string, 'blue' | 'green' | 'red'> = { PENDING: 'blue', APPROVED: 'green', REJECTED: 'red' };
-        return <Tag color={colorMap[status] || 'blue'} size="small">{textMap[status] || status}</Tag>;
-      },
-    },
-    {
-      title: '申请时间',
-      dataIndex: 'createdAt',
-      width: 180,
-      render: (time: string) => formatDateTime(time),
-    },
-    {
-      title: '备注',
-      dataIndex: 'reason',
-      render: (reason: string | null) => reason || '-',
-    },
-    {
-      title: '操作',
-      width: 160,
-      render: (_value: unknown, record: ClubJoinApplicationRecord) => (
-        record.status === 'PENDING' ? (
-          <Space>
-            <Button size="small" theme="solid" onClick={() => handleApproveApplication(record.id)}>
-              通过
-            </Button>
-            <Button size="small" type="danger" theme="borderless" onClick={() => handleRejectApplication(record.id)}>
-              拒绝
-            </Button>
-          </Space>
-        ) : '-'
-      ),
-    },
-  ];
-
   const filteredClassPractices = classPracticeKeyword.trim()
     ? classPractices.filter((practice) => {
         const query = classPracticeKeyword.trim().toLowerCase();
@@ -710,8 +550,8 @@ export function UserCenterPage() {
       <div className="uc-profile-card">
         <div className="uc-profile-inner">
           <div className="uc-avatar-section">
-            <Avatar size="extra-large" color="blue">
-              {user.name?.charAt(0).toUpperCase() || 'U'}
+            <Avatar size="extra-large" color="blue" src={user.avatarUrl || undefined}>
+              {!user.avatarUrl && (user.name?.charAt(0).toUpperCase() || 'U')}
             </Avatar>
             <div>
               <div className="uc-avatar-name">{user.displayName || user.username}</div>
@@ -719,6 +559,18 @@ export function UserCenterPage() {
                 @{user.username}{user.studentNo ? ` · ${user.studentNo}` : ''}
               </div>
               <Tag color="blue" className="uc-role-tag">{user.role}</Tag>
+              <div className="uc-avatar-actions">
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
+                  style={{ display: 'none' }}
+                  onChange={handleAvatarFileChange}
+                />
+                <Button size="small" loading={avatarUploading} onClick={() => avatarInputRef.current?.click()}>
+                  修改头像
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -876,22 +728,22 @@ export function UserCenterPage() {
                     <label className="uc-field-label">班级 ID <span className="uc-required">*</span></label>
                     <Input
                       placeholder="请输入班级 ID"
-                      value={clubJoinForm.classId}
-                      onChange={(classId) => setClubJoinForm({ ...clubJoinForm, classId })}
+                      value={classJoinForm.classId}
+                      onChange={(classId) => setClassJoinForm({ ...classJoinForm, classId })}
                     />
                   </div>
                   <div>
                     <label className="uc-field-label">申请备注</label>
                     <TextArea
                       placeholder="可以简单说明你的姓名、学号或加入原因"
-                      value={clubJoinForm.reason}
+                      value={classJoinForm.reason}
                       autosize={{ minRows: 3, maxRows: 6 }}
                       maxCount={500}
                       showCounter
-                      onChange={(reason) => setClubJoinForm({ ...clubJoinForm, reason })}
+                      onChange={(reason) => setClassJoinForm({ ...classJoinForm, reason })}
                     />
                   </div>
-                  <Button type="primary" loading={clubJoinLoading} onClick={handleApplyToClub}>
+                  <Button type="primary" loading={classJoinLoading} onClick={handleApplyToClass}>
                     发送申请
                   </Button>
                 </div>

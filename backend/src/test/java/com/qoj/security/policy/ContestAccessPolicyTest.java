@@ -45,12 +45,12 @@ class ContestAccessPolicyTest {
         return new AuthUser(user);
     }
 
-    private AuthUser createClubAdmin() {
+    private AuthUser createContentAdmin() {
         User user = new User();
         user.id = 3L;
-        user.username = "clubadmin";
-        user.role = "CLUB_ADMIN";
-        user.displayName = "Club Admin";
+        user.username = "teacher_content";
+        user.role = "TEACHER";
+        user.displayName = "Teacher Content";
         user.passwordHash = "hash";
         return new AuthUser(user);
     }
@@ -103,7 +103,7 @@ class ContestAccessPolicyTest {
         contest.title = "Private Contest";
         contest.ownerId = ownerId;
         contest.ownerAccountType = "USER";
-        contest.audience = "CLUB";
+        contest.audience = "CLASS";
         contest.audienceId = 1L;
         contest.startTime = LocalDateTime.now().plusHours(1);
         contest.endTime = LocalDateTime.now().plusHours(3);
@@ -207,19 +207,19 @@ class ContestAccessPolicyTest {
     }
 
     @Test
-    @DisplayName("CREATE: removed teacher role should deny")
-    void testCreate_RemovedTeacherRole_ShouldDeny() {
+    @DisplayName("CREATE: teacher content role should allow")
+    void testCreate_TeacherContentRole_ShouldAllow() {
         Contest contest = createPublicContest(1L);
         AuthUser teacher = createTeacher();
-        assertFalse(policy.can(teacher, Permission.CREATE, contest));
+        assertTrue(policy.can(teacher, Permission.CREATE, contest));
     }
 
     @Test
-    @DisplayName("CREATE: club admin should allow")
-    void testCreate_ClubAdmin_ShouldAllow() {
+    @DisplayName("CREATE: another teacher content role should allow")
+    void testCreate_AnotherTeacherContentRole_ShouldAllow() {
         Contest contest = createPublicContest(1L);
-        AuthUser clubAdmin = createClubAdmin();
-        assertTrue(policy.can(clubAdmin, Permission.CREATE, contest));
+        AuthUser contentAdmin = createContentAdmin();
+        assertTrue(policy.can(contentAdmin, Permission.CREATE, contest));
     }
 
     @Test

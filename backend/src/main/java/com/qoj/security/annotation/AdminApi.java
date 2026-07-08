@@ -44,7 +44,7 @@ public @interface AdminApi {
         CONTEST,        // 比赛
         PRACTICE,       // 练习
         USER,           // 用户
-        ORGANIZATION,   // 社团组织
+        ORGANIZATION,   // 组织
         SUBMISSION,     // 提交
         ANNOUNCEMENT    // 公告
     }

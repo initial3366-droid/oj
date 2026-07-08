@@ -12,16 +12,20 @@ import com.qoj.module.setting.mapper.SystemSettingMapper;
 import com.qoj.module.setting.vo.AgentSettingsVO;
 import com.qoj.module.setting.vo.FrontendSettingsVO;
 import com.qoj.module.setting.vo.JudgeSettingsVO;
+import com.qoj.module.setting.vo.PublicJudgeSettingsVO;
 import com.qoj.module.setting.vo.OssSettingsVO;
 import com.qoj.module.setting.vo.RegisterSettingsVO;
 import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.security.AuthUser;
+import com.qoj.security.SafeUrlValidator;
+import org.springframework.core.env.Environment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Map;
 
 @Service
@@ -59,17 +63,20 @@ public class SystemSettingService {
     private final AdminUserMapper adminUserMapper;
     private final PasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
+    private final Environment environment;
 
     public SystemSettingService(
         SystemSettingMapper settingMapper,
         AdminUserMapper adminUserMapper,
         PasswordEncoder passwordEncoder,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        Environment environment
     ) {
         this.settingMapper = settingMapper;
         this.adminUserMapper = adminUserMapper;
         this.passwordEncoder = passwordEncoder;
         this.objectMapper = objectMapper;
+        this.environment = environment;
     }
 
     /**
@@ -151,13 +158,18 @@ public class SystemSettingService {
         return vo;
     }
 
+    public PublicJudgeSettingsVO getPublicJudgeSettings() {
+        JudgeSettingsVO runtime = getJudgeRuntimeSettings();
+        return new PublicJudgeSettingsVO(runtime.enabled, runtime.enableSandbox);
+    }
+
     public JudgeSettingsVO getJudgeRuntimeSettings() {
         JudgeSettingsVO vo = new JudgeSettingsVO();
         vo.enabled = boolSetting("judge.enabled", true);
         vo.mode = normalizeJudgeMode(textSetting("judge.mode", "docker"));
         vo.contestMode = normalizeJudgeMode(textSetting("judge.contest_mode", vo.mode));
         vo.enableUnsafeLocalJudge = boolSetting("judge.enable_unsafe_local_judge", false);
-        vo.enableSandbox = boolSetting("judge.enable_sandbox", true);
+        vo.enableSandbox = boolSetting("judge.enable_sandbox", false);
         vo.threadPoolSize = positiveIntSetting("judge.thread_pool_size", DEFAULT_JUDGE_THREAD_POOL_SIZE);
         vo.maxConcurrent = positiveIntSetting("judge.max_concurrent", DEFAULT_JUDGE_CONCURRENCY);
         vo.queueBatchSize = positiveIntSetting("judge.queue_batch_size", DEFAULT_JUDGE_QUEUE_BATCH_SIZE);
@@ -167,6 +179,7 @@ public class SystemSettingService {
         vo.hasDomjudgeApiKey = hasText(vo.domjudgeApiKey);
         vo.domjudgeContestId = textSetting("judge.domjudge_contest_id", "");
         vo.domjudgePollIntervalMs = positiveLongSetting("judge.domjudge_poll_interval_ms", DEFAULT_DOMJUDGE_POLL_INTERVAL_MS);
+        ensureUnsafeLocalJudgeNotActiveInProduction(vo);
         return vo;
     }
 
@@ -302,6 +315,7 @@ public class SystemSettingService {
         next.maxCodeChars = request.maxCodeChars != null ? request.maxCodeChars : 12000;
 
         if (Boolean.TRUE.equals(next.enabled)) {
+            SafeUrlValidator.requirePublicHttpUrl(next.baseUrl, "AI 服务地址");
             if (!hasText(next.baseUrl)) {
                 throw new BizException(ErrorCode.BAD_REQUEST, "请填写 AI 服务地址");
             }
@@ -634,6 +648,10 @@ public class SystemSettingService {
         if (settings.domjudgePollIntervalMs < 500 || settings.domjudgePollIntervalMs > 60000) {
             throw new BizException(ErrorCode.BAD_REQUEST, "DOMjudge 轮询间隔必须在 500-60000 毫秒之间");
         }
+        if (isProductionProfile() && (usesUnsafeLocalJudge(settings) || settings.enableUnsafeLocalJudge)) {
+            throw new BizException(ErrorCode.BAD_REQUEST,
+                "生产环境禁止启用 unsafe-local 本地判题，请使用 docker 或 domjudge");
+        }
         if (("unsafe-local".equals(settings.mode) || "unsafe-local".equals(settings.contestMode))
             && !settings.enableUnsafeLocalJudge) {
             throw new BizException(ErrorCode.BAD_REQUEST, "使用不安全本地判题模式时必须开启不安全本地判题");
@@ -649,6 +667,41 @@ public class SystemSettingService {
                 throw new BizException(ErrorCode.BAD_REQUEST, "请填写 DOMjudge 默认比赛 ID");
             }
         }
+    }
+
+    private void ensureUnsafeLocalJudgeNotActiveInProduction(JudgeSettingsVO settings) {
+        if (!isProductionProfile()) {
+            return;
+        }
+        if (usesUnsafeLocalJudge(settings) || settings.enableUnsafeLocalJudge) {
+            throw new IllegalStateException(
+                "【生产环境启动失败】检测到 unsafe-local 本地判题配置。"
+                    + "请将 judge.mode/judge.contest_mode 改为 docker 或 domjudge，"
+                    + "并关闭 judge.enable_unsafe_local_judge。"
+            );
+        }
+    }
+
+    private boolean usesUnsafeLocalJudge(JudgeSettingsVO settings) {
+        return "unsafe-local".equalsIgnoreCase(settings.mode)
+            || "unsafe-local".equalsIgnoreCase(settings.contestMode);
+    }
+
+    private boolean isProductionProfile() {
+        if (environment == null) {
+            return false;
+        }
+        if (Arrays.stream(environment.getActiveProfiles()).anyMatch(this::isProductionProfileName)) {
+            return true;
+        }
+        String configuredProfiles = environment.getProperty("spring.profiles.active", "");
+        return Arrays.stream(configuredProfiles.split(","))
+            .map(String::trim)
+            .anyMatch(this::isProductionProfileName);
+    }
+
+    private boolean isProductionProfileName(String profile) {
+        return "prod".equalsIgnoreCase(profile) || "production".equalsIgnoreCase(profile);
     }
 
     private String normalizeJudgeMode(String value) {

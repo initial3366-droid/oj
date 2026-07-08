@@ -16,6 +16,7 @@ public class User {
     public String role;
     public Long classId;
     public String displayName;
+    public String avatarUrl;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;
 }

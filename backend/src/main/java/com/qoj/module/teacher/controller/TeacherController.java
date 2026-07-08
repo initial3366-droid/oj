@@ -25,6 +25,9 @@ import com.qoj.module.submission.service.SubmissionService;
 import com.qoj.module.submission.vo.AdminSubmissionVO;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.UserMapper;
+import com.qoj.module.user.service.UserAvatarService;
+import com.qoj.module.user.vo.AvatarUploadVO;
+import com.qoj.module.user.vo.UserVO;
 import com.qoj.module.user.vo.UserMeVO;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
@@ -60,6 +63,7 @@ public class TeacherController {
     private final SubmissionExportService submissionExportService;
     private final StudentImportFileService studentImportFileService;
     private final AdminDashboardService adminDashboardService;
+    private final UserAvatarService userAvatarService;
 
     public TeacherController(
         AuthService authService,
@@ -69,7 +73,8 @@ public class TeacherController {
         UserMapper userMapper,
         SubmissionExportService submissionExportService,
         StudentImportFileService studentImportFileService,
-        AdminDashboardService adminDashboardService
+        AdminDashboardService adminDashboardService,
+        UserAvatarService userAvatarService
     ) {
         this.authService = authService;
         this.classRoomService = classRoomService;
@@ -79,6 +84,7 @@ public class TeacherController {
         this.submissionExportService = submissionExportService;
         this.studentImportFileService = studentImportFileService;
         this.adminDashboardService = adminDashboardService;
+        this.userAvatarService = userAvatarService;
     }
 
     @GetMapping("/me")
@@ -104,6 +110,11 @@ public class TeacherController {
         user.displayName = request.displayName().trim();
         userMapper.updateById(user);
         return ApiResponse.ok();
+    }
+
+    @PostMapping(value = "/me/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<AvatarUploadVO> updateMyAvatar(@RequestParam("file") MultipartFile file) {
+        return ApiResponse.ok(userAvatarService.updateUserAvatar(CurrentUser.required().user(), file));
     }
 
     /**
@@ -153,6 +164,11 @@ public class TeacherController {
         return ApiResponse.ok(classRoomService.teacherStudents(classId));
     }
 
+    @GetMapping("/students/{userId}")
+    public ApiResponse<UserVO> studentDetail(@PathVariable long userId) {
+        return ApiResponse.ok(classRoomService.teacherStudentDetail(userId));
+    }
+
     @PostMapping("/students/import")
     public ApiResponse<StudentImportResultVO> importStudents(@Valid @RequestBody StudentImportRequest request) {
         return ApiResponse.ok(classRoomService.importStudents(request));
@@ -181,6 +197,15 @@ public class TeacherController {
         @Valid @RequestBody UpdateStudentRequest request
     ) {
         return ApiResponse.ok(classRoomService.teacherUpdateStudent(userId, request));
+    }
+
+    @PostMapping(value = "/students/{userId}/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<AvatarUploadVO> updateStudentAvatar(
+        @PathVariable long userId,
+        @RequestParam("file") MultipartFile file
+    ) {
+        User user = classRoomService.requireManagedStudent(userId);
+        return ApiResponse.ok(userAvatarService.updateUserAvatar(user, file));
     }
 
     @GetMapping("/applications")

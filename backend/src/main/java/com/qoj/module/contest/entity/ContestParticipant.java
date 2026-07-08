@@ -18,7 +18,7 @@ public class ContestParticipant {
     public String nickname;
 
     public Long organizationId;
-    public String identityType; // PERSONAL, CLUB
+    public String identityType; // PERSONAL
     public Long identityId;
     public Boolean starred;
 

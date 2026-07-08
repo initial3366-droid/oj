@@ -96,11 +96,6 @@ public class SubmissionAccessPolicy extends AccessPolicy<Submission> {
             return true;
         }
 
-        // 社团管理员可以查看社团成员的提交（需要在Service层判断）
-        if (isClubAdmin(user)) {
-            return true;
-        }
-
         // 用户可以查看自己的提交
         boolean allowed = submissionUserId.equals(user.id());
         if (!allowed) {

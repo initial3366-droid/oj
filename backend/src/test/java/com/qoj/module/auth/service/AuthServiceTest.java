@@ -76,15 +76,15 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("Frontend login: admin_users CLUB_ADMIN should sync to users and issue USER token")
-    void loginUser_ClubAdminAdminAccount_ShouldIssueFrontendToken() {
+    @DisplayName("Frontend login: admin_users TEACHER role should sync to users and issue USER token")
+    void loginUser_TeacherAdminAccount_ShouldIssueFrontendToken() {
         AdminUser adminUser = new AdminUser();
         adminUser.id = 8L;
-        adminUser.username = "club_admin";
+        adminUser.username = "teacher";
         adminUser.passwordHash = "encoded";
-        adminUser.role = "CLUB_ADMIN";
-        adminUser.displayName = "Club Admin";
-        adminUser.email = "club@example.com";
+        adminUser.role = "TEACHER";
+        adminUser.displayName = "Teacher";
+        adminUser.email = "teacher@example.com";
 
         when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
         when(adminUserMapper.selectOne(any(Wrapper.class))).thenReturn(adminUser);
@@ -97,19 +97,19 @@ class AuthServiceTest {
         }).when(userMapper).insert(any(User.class));
         when(userScoreMapper.selectById(100L)).thenReturn(null);
 
-        AuthTokenResponse response = authService.loginUser(new LoginRequest("club_admin", "secret"));
+        AuthTokenResponse response = authService.loginUser(new LoginRequest("teacher", "secret", null, null));
 
         Claims claims = jwtService.parse(response.accessToken());
         assertEquals("100", claims.getSubject());
         assertEquals("USER", claims.get("accountType", String.class));
-        assertEquals("CLUB_ADMIN", claims.get("role", String.class));
+        assertEquals("TEACHER", claims.get("role", String.class));
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
         verify(userMapper).insert(userCaptor.capture());
         User syncedUser = userCaptor.getValue();
-        assertEquals("club_admin", syncedUser.username);
+        assertEquals("teacher", syncedUser.username);
         assertEquals("encoded", syncedUser.passwordHash);
-        assertEquals("CLUB_ADMIN", syncedUser.role);
-        assertEquals("Club Admin", syncedUser.displayName);
+        assertEquals("TEACHER", syncedUser.role);
+        assertEquals("Teacher", syncedUser.displayName);
         verify(valueOperations).set(any(String.class), eq("1"), any(Duration.class));
     }
 
@@ -128,7 +128,7 @@ class AuthServiceTest {
 
         BizException exception = assertThrows(
             BizException.class,
-            () -> authService.loginUser(new LoginRequest("admin", "admin123"))
+            () -> authService.loginUser(new LoginRequest("admin", "admin123", null, null))
         );
 
         assertEquals(403, exception.getCode());
@@ -145,6 +145,11 @@ class AuthServiceTest {
         @Override
         public ValueOperations<String, String> opsForValue() {
             return valueOperations;
+        }
+
+        @Override
+        public Boolean delete(String key) {
+            return true;
         }
     }
 }

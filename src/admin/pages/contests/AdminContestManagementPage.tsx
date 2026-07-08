@@ -74,7 +74,7 @@ const emptyDraft: ContestDraftPayload = {
   type: 'ACM',
   audience: 'ALL',
   audienceTypes: ['ALL'],
-  clubIds: [],
+  classIds: [],
   frozen: false,
   freezeTime: null,
   enableRollingScoreboard: false,
@@ -83,8 +83,11 @@ const emptyDraft: ContestDraftPayload = {
   bronzeRatio: 30,
   allowAfterEndSubmit: false,
   allowAfterEndViewProblem: true,
+  allowAfterEndViewCode: false,
   publicScoreboardEnabled: true,
+  showClassOnScoreboard: false,
   allowStarRegistration: false,
+  allowViewAllSubmissions: true,
   registrationPassword: '',
   totalScore: 100,
   problems: [],
@@ -235,9 +238,9 @@ export function AdminContestManagementPage() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [contests, setContests] = useState<AdminContest[]>([]);
-  const [clubs, setClubs] = useState<AdminOrganizationOption[]>([]);
-  const [pendingClubIds, setPendingClubIds] = useState<number[]>([]);
-  const [clubModalVisible, setClubModalVisible] = useState(false);
+  const [classes, setClasses] = useState<AdminOrganizationOption[]>([]);
+  const [pendingClassIds, setPendingClassIds] = useState<number[]>([]);
+  const [classModalVisible, setClassModalVisible] = useState(false);
   const [problems, setProblems] = useState<Problem[]>([]);
   const [folders, setFolders] = useState<Array<{ id: number; name: string; problems: Problem[] }>>([]);
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<number>>(new Set());
@@ -310,7 +313,7 @@ export function AdminContestManagementPage() {
     setLoading(true);
     setDraftLoaded(false);
     Promise.all([fetchContestDraft(token), fetchAdminClasses(token), fetchFoldersWithProblems()])
-      .then(([remoteDraft, clubList, folderList]) => {
+      .then(([remoteDraft, classList, folderList]) => {
         const mergedDraft = { ...emptyDraft, ...(remoteDraft ?? {}) };
         setDraft({
           ...mergedDraft,
@@ -318,8 +321,8 @@ export function AdminContestManagementPage() {
           audienceTypes: initialAudienceTypes(mergedDraft),
           startTime: mergedDraft.startTime || nowLocalInput(),
         });
-        setPendingClubIds(remoteDraft?.clubIds ?? []);
-        setClubs(clubList);
+        setPendingClassIds(remoteDraft?.classIds ?? []);
+        setClasses(classList);
         setFolders(folderList);
         const allProblems = folderList.flatMap((f) => f.problems);
         setProblems(allProblems);
@@ -341,8 +344,8 @@ export function AdminContestManagementPage() {
     setLoading(true);
     setDraftLoaded(false);
     Promise.all([fetchAdminContest(token, numericContestId), fetchAdminClasses(token), fetchFoldersWithProblems()])
-      .then(([contest, clubList, folderList]) => {
-        const clubIds = contest.audiences
+      .then(([contest, classList, folderList]) => {
+        const classIds = contest.audiences
           .filter((item) => item.audienceType === 'CLASS' && item.audienceId > 0)
           .map((item) => item.audienceId);
         const audienceTypes = contest.audiences.some((item) => item.audienceType === 'ALL')
@@ -357,7 +360,7 @@ export function AdminContestManagementPage() {
           type: contest.type,
           audience: contest.audience === 'CLASS' ? 'CLASS' : 'ALL',
           audienceTypes: audienceTypes.length ? audienceTypes : [contest.audience === 'CLASS' ? 'CLASS' : 'ALL'],
-          clubIds,
+          classIds,
           frozen: contest.frozen,
           freezeTime: contest.freezeTime ? toDateTimeLocal(contest.freezeTime) : null,
           enableRollingScoreboard: contest.enableRollingScoreboard,
@@ -366,8 +369,11 @@ export function AdminContestManagementPage() {
           bronzeRatio: contest.bronzeRatio,
           allowAfterEndSubmit: contest.allowAfterEndSubmit,
           allowAfterEndViewProblem: contest.allowAfterEndViewProblem,
+          allowAfterEndViewCode: contest.allowAfterEndViewCode ?? false,
           publicScoreboardEnabled: contest.publicScoreboardEnabled,
+          showClassOnScoreboard: contest.showClassOnScoreboard ?? false,
           allowStarRegistration: contest.allowStarRegistration,
+          allowViewAllSubmissions: contest.allowViewAllSubmissions ?? true,
           registrationPassword: '',
           totalScore: contest.problems.reduce((sum, item) => sum + Number(item.score ?? 0), 0) || 100,
           problems: contest.problems.map((item, index) => ({
@@ -379,8 +385,8 @@ export function AdminContestManagementPage() {
             caseScores: item.caseScores ?? [],
           })),
         });
-        setPendingClubIds(clubIds);
-        setClubs(clubList);
+        setPendingClassIds(classIds);
+        setClasses(classList);
         setFolders(folderList);
         const allProblems = folderList.flatMap((f) => f.problems);
         setProblems(allProblems);
@@ -432,11 +438,16 @@ export function AdminContestManagementPage() {
 
   function chooseAudience(value: Audience) {
     if (value === 'ALL') {
-      updateDraft({ ...draft, audience: 'ALL', audienceTypes: ['ALL'], clubIds: [] });
-      setPendingClubIds([]);
+      updateDraft({ ...draft, audience: 'ALL', audienceTypes: ['ALL'], classIds: [] });
+      setPendingClassIds([]);
       return;
     }
     setAudienceTypeEnabled(value, true);
+  }
+
+  function openClassPicker() {
+    setPendingClassIds(draft.classIds ?? []);
+    setClassModalVisible(true);
   }
 
   function setAudienceTypeEnabled(value: Exclude<Audience, 'ALL'>, checked: boolean) {
@@ -446,9 +457,9 @@ export function AdminContestManagementPage() {
         ...draft,
         audience: nextTypes[0] ?? 'ALL',
         audienceTypes: nextTypes.length ? nextTypes : ['ALL'],
-        clubIds: value === 'CLASS' ? [] : draft.clubIds,
+        classIds: value === 'CLASS' ? [] : draft.classIds,
       });
-      if (value === 'CLASS') setPendingClubIds([]);
+      if (value === 'CLASS') setPendingClassIds([]);
       return;
     }
 
@@ -458,19 +469,20 @@ export function AdminContestManagementPage() {
       audience: value,
       audienceTypes: nextTypes,
     });
-    setPendingClubIds(draft.clubIds ?? []);
-    setClubModalVisible(true);
+    if (value === 'CLASS') {
+      openClassPicker();
+    }
   }
 
-  function confirmClubPicker() {
+  function confirmClassPicker() {
     const nextTypes = Array.from(new Set([...selectedAudienceTypes.filter((item) => item !== 'ALL'), 'CLASS' as const]));
     updateDraft({
       ...draft,
       audience: 'CLASS',
       audienceTypes: nextTypes,
-      clubIds: pendingClubIds,
+      classIds: pendingClassIds,
     });
-    setClubModalVisible(false);
+    setClassModalVisible(false);
   }
 
   async function clearAll() {
@@ -479,7 +491,7 @@ export function AdminContestManagementPage() {
         await clearContestDraft(token);
       }
       setDraft({ ...emptyDraft, startTime: nowLocalInput() });
-      setPendingClubIds([]);
+      setPendingClassIds([]);
       setEditingHasPassword(false);
       setStep(0);
       Message.success(mode === 'add' ? '比赛草稿已清空' : '比赛表单已清空');
@@ -640,7 +652,7 @@ export function AdminContestManagementPage() {
           audiences.push({ audienceType: 'ALL', audienceId: 0 });
           continue;
         }
-        for (const id of draft.clubIds?.length ? draft.clubIds : [0]) {
+        for (const id of draft.classIds?.length ? draft.classIds : [0]) {
           audiences.push({ audienceType: 'CLASS', audienceId: id });
         }
       }
@@ -669,8 +681,11 @@ export function AdminContestManagementPage() {
         maxSwitches: 3,
         allowAfterEndSubmit: Boolean(draft.allowAfterEndSubmit),
         allowAfterEndViewProblem: draft.allowAfterEndViewProblem !== false,
+        allowAfterEndViewCode: Boolean(draft.allowAfterEndViewCode),
         publicScoreboardEnabled: draft.publicScoreboardEnabled !== false,
+        showClassOnScoreboard: Boolean(draft.showClassOnScoreboard),
         allowStarRegistration: Boolean(draft.allowStarRegistration),
+        allowViewAllSubmissions: draft.allowViewAllSubmissions !== false,
         problems: normalizeSelectedProblems(selectedProblems),
       } satisfies ContestPayload;
 
@@ -1133,6 +1148,19 @@ export function AdminContestManagementPage() {
                 </FormItem>
               </Col>
               <Col span={12}>
+                <FormItem label="赛后查看他人代码">
+                  <Switch
+                    checked={Boolean(draft.allowAfterEndViewCode)}
+                    checkedText="允许"
+                    uncheckedText="关闭"
+                    onChange={(checked) => updateDraft({ ...draft, allowAfterEndViewCode: checked })}
+                  />
+                  <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
+                    开启后，比赛结束后参赛者可在前台所有提交列表查看他人代码
+                  </div>
+                </FormItem>
+              </Col>
+              <Col span={12}>
                 <FormItem label="公共榜单">
                   <Switch
                     checked={draft.publicScoreboardEnabled !== false}
@@ -1143,6 +1171,19 @@ export function AdminContestManagementPage() {
                 </FormItem>
               </Col>
               <Col span={12}>
+                <FormItem label="榜单显示班级">
+                  <Switch
+                    checked={Boolean(draft.showClassOnScoreboard)}
+                    checkedText="显示"
+                    uncheckedText="隐藏"
+                    onChange={(checked) => updateDraft({ ...draft, showClassOnScoreboard: checked })}
+                  />
+                  <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
+                    开启后，比赛详情页榜单与公开榜单将显示参赛者所在班级
+                  </div>
+                </FormItem>
+              </Col>
+              <Col span={12}>
                 <FormItem label="允许打星报名">
                   <Switch
                     checked={Boolean(draft.allowStarRegistration)}
@@ -1150,6 +1191,19 @@ export function AdminContestManagementPage() {
                     uncheckedText="关闭"
                     onChange={(checked) => updateDraft({ ...draft, allowStarRegistration: checked })}
                   />
+                </FormItem>
+              </Col>
+              <Col span={12}>
+                <FormItem label="查看他人提交状态">
+                  <Switch
+                    checked={draft.allowViewAllSubmissions !== false}
+                    checkedText="允许"
+                    uncheckedText="隐藏"
+                    onChange={(checked) => updateDraft({ ...draft, allowViewAllSubmissions: checked })}
+                  />
+                  <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
+                    关闭后，比赛期间参赛者只能看到自己的提交状态，他人状态显示为"等待中"
+                  </div>
                 </FormItem>
               </Col>
               <Col span={12}>
@@ -1173,7 +1227,6 @@ export function AdminContestManagementPage() {
                       </Radio>
                       <Checkbox
                         checked={selectedAudienceTypes.includes('CLASS')}
-                        disabled={selectedAudienceTypes.includes('ALL')}
                         onChange={(checked) => setAudienceTypeEnabled('CLASS', Boolean(checked))}
                       >
                         班级
@@ -1182,9 +1235,14 @@ export function AdminContestManagementPage() {
                     {currentAudience === 'ALL' ? (
                       <Typography.Text type="secondary">所有用户可参赛。</Typography.Text>
                     ) : (
-                      <Typography.Text type="secondary">
-                        已选择 {draft.clubIds?.length ?? 0} 个班级；未选择具体班级时，默认所有班级可参赛。
-                      </Typography.Text>
+                      <Space size={8} wrap>
+                        <Typography.Text type="secondary">
+                          已选择 {draft.classIds?.length ?? 0} 个班级；未选择具体班级时，默认所有班级可参赛。
+                        </Typography.Text>
+                        <Button size="mini" type="text" onClick={openClassPicker}>
+                          选择班级
+                        </Button>
+                      </Space>
                     )}
                   </Space>
                 </FormItem>
@@ -1317,18 +1375,18 @@ export function AdminContestManagementPage() {
 
       <Modal
         title="选择班级"
-        visible={clubModalVisible}
-        onCancel={() => setClubModalVisible(false)}
-        onOk={confirmClubPicker}
+        visible={classModalVisible}
+        onCancel={() => setClassModalVisible(false)}
+        onOk={confirmClassPicker}
         style={{ width: 720 }}
       >
         <CheckboxGroup
-          value={pendingClubIds}
-          onChange={(values) => setPendingClubIds(values.map((value) => Number(value)))}
+          value={pendingClassIds}
+          onChange={(values) => setPendingClassIds(values.map((value) => Number(value)))}
           style={{ width: '100%' }}
         >
           <Row gutter={[16, 16]}>
-            {clubs.map((item) => (
+            {classes.map((item) => (
               <Col span={12} key={item.id}>
                 <Checkbox value={item.id}>
                   <Space direction="vertical" size={2}>

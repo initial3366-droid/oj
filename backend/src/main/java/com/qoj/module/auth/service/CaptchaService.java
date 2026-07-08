@@ -18,7 +18,7 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
+import java.security.SecureRandom;
 import java.util.UUID;
 
 @Service
@@ -29,7 +29,7 @@ public class CaptchaService {
     private final StringRedisTemplate redisTemplate;
     private final SystemSettingMapper settingMapper;
     private final ObjectMapper objectMapper;
-    private final Random random = new Random();
+    private final SecureRandom random = new SecureRandom();
     private final org.springframework.core.env.Environment env;
 
     public CaptchaService(
@@ -75,11 +75,17 @@ public class CaptchaService {
             throw new BizException(400, "图形验证码错误");
         }
 
-        // 检查发送频率限制（60秒内只能发送一次）
+        // 检查发送频率限制（60秒内只能发送一次）和每日次数限制
         String rateLimitKey = "oj:email:rate:" + email;
         Long ttl = redisTemplate.getExpire(rateLimitKey);
         if (ttl != null && ttl > 0) {
             throw new BizException(429, "发送过于频繁，请" + ttl + "秒后再试");
+        }
+        String dailyLimitKey = "oj:email:daily:" + email + ":" + java.time.LocalDate.now();
+        String dailyCountValue = redisTemplate.opsForValue().get(dailyLimitKey);
+        int dailyCount = parseInt(dailyCountValue, 0);
+        if (dailyCount >= 10) {
+            throw new BizException(429, "今日验证码发送次数已达上限");
         }
 
         String code = generateRandomCode(6);
@@ -94,8 +100,12 @@ public class CaptchaService {
             Duration.ofMinutes(10)
         );
 
-        // 设置发送频率限制，60秒过期
+        // 设置发送频率限制，60秒过期，并记录每日次数
         redisTemplate.opsForValue().set(rateLimitKey, "1", Duration.ofSeconds(60));
+        Long nextDailyCount = redisTemplate.opsForValue().increment(dailyLimitKey);
+        if (nextDailyCount != null && nextDailyCount == 1L) {
+            redisTemplate.expire(dailyLimitKey, Duration.ofDays(1));
+        }
 
         // 从系统设置中获取邮件配置和模板
         String subject = DEFAULT_EMAIL_SUBJECT;
@@ -310,4 +320,12 @@ public class CaptchaService {
             throw new BizException(500, "生成验证码图片失败");
         }
     }
+    private int parseInt(String value, int fallback) {
+        try {
+            return value == null ? fallback : Integer.parseInt(value);
+        } catch (NumberFormatException ex) {
+            return fallback;
+        }
+    }
+
 }

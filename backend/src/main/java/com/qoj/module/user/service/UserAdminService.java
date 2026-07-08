@@ -45,6 +45,15 @@ public class UserAdminService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    public UserVO detail(long id) {
+        User user = userMapper.selectById(id);
+        if (user == null) {
+            throw new BizException(404, "用户不存在");
+        }
+        Map<Long, String> classNameMap = batchQueryClassNames(List.of(user));
+        return toVO(user, classNameMap.getOrDefault(user.id, null));
+    }
+
     public PageResult<UserVO> list(int page, int pageSize, String role, String keyword) {
         QueryWrapper<User> wrapper = new QueryWrapper<>();
         if (role != null && !role.isBlank()) {
@@ -153,6 +162,7 @@ public class UserAdminService {
             user.id,
             user.username,
             user.displayName,
+            user.avatarUrl,
             user.studentNo,
             user.email,
             user.role,

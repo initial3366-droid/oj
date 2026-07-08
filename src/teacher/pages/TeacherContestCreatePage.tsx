@@ -79,6 +79,7 @@ interface ContestDraft {
   allowAfterEndViewProblem: boolean;
   publicScoreboardEnabled: boolean;
   allowStarRegistration: boolean;
+  allowViewAllSubmissions: boolean;
   registrationPassword: string;
   totalScore: number;
   problems: SelectedProblem[];
@@ -102,6 +103,7 @@ const emptyDraft: ContestDraft = {
   allowAfterEndViewProblem: true,
   publicScoreboardEnabled: true,
   allowStarRegistration: false,
+  allowViewAllSubmissions: true,
   registrationPassword: '',
   totalScore: 100,
   problems: [],
@@ -185,6 +187,7 @@ export function TeacherContestCreatePage() {
           allowAfterEndViewProblem: contest.allowAfterEndViewProblem ?? true,
           publicScoreboardEnabled: contest.publicScoreboardEnabled ?? true,
           allowStarRegistration: contest.allowStarRegistration ?? false,
+          allowViewAllSubmissions: contest.allowViewAllSubmissions ?? true,
           registrationPassword: '',
           totalScore: contest.problems?.reduce((sum: number, p: any) => sum + Number(p.score ?? 0), 0) || 100,
           problems: (contest.problems ?? []).map((p: any, i: number) => ({
@@ -287,6 +290,7 @@ export function TeacherContestCreatePage() {
         allowAfterEndViewProblem: draft.allowAfterEndViewProblem,
         publicScoreboardEnabled: draft.publicScoreboardEnabled,
         allowStarRegistration: draft.allowStarRegistration,
+        allowViewAllSubmissions: draft.allowViewAllSubmissions,
         registrationType: 'PUBLIC',
         registrationPassword: draft.registrationPassword?.trim() || undefined,
         problems: draft.problems.map((p) => ({
@@ -424,6 +428,11 @@ export function TeacherContestCreatePage() {
               <Col span={6}>
                 <FormItem label="打星报名">
                   <Switch checked={draft.allowStarRegistration} onChange={(val) => updateDraft({ allowStarRegistration: val })} />
+                </FormItem>
+              </Col>
+              <Col span={6}>
+                <FormItem label="查看他人提交状态">
+                  <Switch checked={draft.allowViewAllSubmissions} onChange={(val) => updateDraft({ allowViewAllSubmissions: val })} />
                 </FormItem>
               </Col>
             </Row>

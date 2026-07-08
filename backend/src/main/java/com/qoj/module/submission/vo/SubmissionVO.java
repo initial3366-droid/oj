@@ -6,6 +6,8 @@ import java.util.List;
 public record SubmissionVO(
     Long id,
     Long userId,
+    String username,
+    String displayName,
     Long problemId,
     String problemTitle,
     Long contestId,

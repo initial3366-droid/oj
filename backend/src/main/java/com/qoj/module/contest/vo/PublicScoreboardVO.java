@@ -13,6 +13,7 @@ public class PublicScoreboardVO {
     public Boolean frozen;
     public LocalDateTime freezeTime;
     public String boardState; // LIVE/FROZEN/ROLLING/FINAL
+    public Boolean showClassOnScoreboard;
     public List<ProblemInfo> problems;
     public List<UserRank> rows;
 
@@ -27,6 +28,8 @@ public class PublicScoreboardVO {
         public Long userId;
         public String username;
         public String displayName;
+        public Long classId;
+        public String className;
         public Integer solved; // Number of problems solved (ACM)
         public Integer penalty; // Penalty time in minutes (ACM)
         public Integer totalScore; // Total score (OI)

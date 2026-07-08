@@ -1,6 +1,6 @@
 import { Banner, Button, Card, Input, Modal, Select, Spin, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import { IconExternalOpen, IconList, IconOrderedList, IconRefresh, IconShield } from '@douyinfe/semi-icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { UserAvatar } from '../components/common/UserAvatar';
 import {
@@ -135,6 +135,25 @@ export function ContestPublicScoreboardPage() {
     load();
   }, [id]);
 
+  const [countdown, setCountdown] = useState('');
+  useEffect(() => {
+    if (!scoreboard?.endTime) { setCountdown(''); return; }
+    const end = new Date(scoreboard.endTime).getTime();
+    const tick = () => {
+      const diff = end - Date.now();
+      if (diff <= 0) { setCountdown('已结束'); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [scoreboard?.endTime]);
+
+  const queueLoadedRef = useRef(false);
+
   const loadQueue = useCallback(async () => {
     if (!id) return;
     setQueueLoading(true);
@@ -145,14 +164,15 @@ export function ContestPublicScoreboardPage() {
       setSubmissions([]);
     } finally {
       setQueueLoading(false);
+      queueLoadedRef.current = true;
     }
   }, [id]);
 
   useEffect(() => {
-    if (viewMode === 'queue' && submissions.length === 0 && !queueLoading) {
+    if (viewMode === 'queue' && !queueLoadedRef.current && !queueLoading) {
       loadQueue();
     }
-  }, [viewMode, submissions.length, queueLoading, loadQueue]);
+  }, [viewMode, queueLoading, loadQueue]);
 
   const userNameMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -188,7 +208,7 @@ export function ContestPublicScoreboardPage() {
     const pkw = qProblemKw.trim().toLowerCase();
     if (ukw) {
       data = data.filter(r => {
-        const name = userNameMap.get(r.userId ?? 0) || '';
+        const name = r.displayName || r.username || userNameMap.get(r.userId ?? 0) || '';
         return name.toLowerCase().includes(ukw);
       });
     }
@@ -213,6 +233,7 @@ export function ContestPublicScoreboardPage() {
 
   const boardUrl = useMemo(() => absoluteUrl(config?.boardUrl), [config?.boardUrl]);
   const isOi = scoreboard?.contestType === 'OI';
+  const showClassOnScoreboard = Boolean(scoreboard?.showClassOnScoreboard);
   const boardState = scoreboard?.boardState ?? 'LIVE';
 
   const qStatusColor = (s: string): string => {
@@ -234,7 +255,7 @@ export function ContestPublicScoreboardPage() {
       dataIndex: 'userId',
       width: '16%',
       render: (_: unknown, record: SubmissionRecord) => {
-        const name = userNameMap.get(record.userId ?? 0) || `User ${record.userId ?? '?'}`;
+        const name = record.displayName || record.username || userNameMap.get(record.userId ?? 0) || `User ${record.userId ?? '?'}`;
         return <Typography.Text strong ellipsis={{ showTooltip: true }}>{name}</Typography.Text>;
       },
     },
@@ -306,6 +327,11 @@ export function ContestPublicScoreboardPage() {
               </Typography.Title>
               <Tag color="blue">{scoreboard.contestType}</Tag>
               <Tag color={boardStateColor(boardState)}>{boardStateText(boardState)}</Tag>
+              {countdown && (
+                <Tag color={countdown === '已结束' ? 'grey' : 'red'}>
+                  {countdown === '已结束' ? '比赛已结束' : `剩余 ${countdown}`}
+                </Tag>
+              )}
               {config?.enabled && <Tag color={statusColor(config.status)}>外榜 {config.status}</Tag>}
             </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -360,6 +386,9 @@ export function ContestPublicScoreboardPage() {
                   <th style={{ padding: 12, textAlign: 'left', borderBottom: '1px solid var(--semi-color-border)' }}>排名</th>
                   <th style={{ padding: 12, textAlign: 'center', borderBottom: '1px solid var(--semi-color-border)' }}>奖牌</th>
                   <th style={{ padding: 12, textAlign: 'left', borderBottom: '1px solid var(--semi-color-border)' }}>用户</th>
+                  {showClassOnScoreboard && (
+                    <th style={{ padding: 12, textAlign: 'left', borderBottom: '1px solid var(--semi-color-border)' }}>班级</th>
+                  )}
                   <th style={{ padding: 12, textAlign: 'center', borderBottom: '1px solid var(--semi-color-border)' }}>{isOi ? '总分' : '通过'}</th>
                   <th style={{ padding: 12, textAlign: 'center', borderBottom: '1px solid var(--semi-color-border)' }}>{isOi ? '通过' : '罚时'}</th>
                   {scoreboard.problems.map((problem) => (
@@ -397,16 +426,18 @@ export function ContestPublicScoreboardPage() {
                           textAlign: 'left',
                         }}
                       >
-                        <UserAvatar username={row.displayName || row.username} size="extra-small" showTooltip={false} />
-                        <span>
-                          <span style={{ display: 'block', fontWeight: 600, color: 'var(--semi-color-text-0)' }}>
-                            {row.displayName}
-                            {row.starred ? <Tag color="amber" size="small" style={{ marginLeft: 6 }}>打星</Tag> : null}
-                          </span>
-                          <span style={{ marginTop: 2, fontSize: 12, color: 'var(--semi-color-text-2)' }}>{row.username}</span>
+                        <UserAvatar username={row.username || row.displayName} size="extra-small" showTooltip={false} />
+                        <span style={{ fontWeight: 600, color: 'var(--semi-color-text-0)' }}>
+                          {row.displayName || row.username}
+                          {row.starred ? <Tag color="amber" size="small" style={{ marginLeft: 6 }}>打星</Tag> : null}
                         </span>
                       </button>
                     </td>
+                    {showClassOnScoreboard && (
+                      <td style={{ padding: 12, borderBottom: '1px solid var(--semi-color-border)', color: 'var(--semi-color-text-1)' }}>
+                        {row.className || '-'}
+                      </td>
+                    )}
                     <td style={{ padding: 12, borderBottom: '1px solid var(--semi-color-border)', textAlign: 'center', fontWeight: 600 }}>
                       {isOi ? row.totalScore : row.solved}
                     </td>
@@ -459,7 +490,7 @@ export function ContestPublicScoreboardPage() {
                 ))}
                 {scoreboard.rows.length === 0 && (
                   <tr>
-                    <td colSpan={5 + scoreboard.problems.length} style={{ padding: 40, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>
+                    <td colSpan={5 + (showClassOnScoreboard ? 1 : 0) + scoreboard.problems.length} style={{ padding: 40, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>
                       暂无提交数据
                     </td>
                   </tr>

@@ -153,11 +153,11 @@ class ProblemAccessPolicyTest {
     }
 
     @Test
-    @DisplayName("CREATE: removed teacher role should deny")
-    void testCreate_RemovedTeacherRole_ShouldDeny() {
+    @DisplayName("CREATE: teacher content role should allow")
+    void testCreate_TeacherContentRole_ShouldAllow() {
         Problem problem = createPublicProblem(1L);
         AuthUser teacher = createTeacher();
-        assertFalse(policy.can(teacher, Permission.CREATE, problem));
+        assertTrue(policy.can(teacher, Permission.CREATE, problem));
     }
 
     @Test
@@ -169,11 +169,11 @@ class ProblemAccessPolicyTest {
     }
 
     @Test
-    @DisplayName("CREATE: club admin should allow")
-    void testCreate_ClubAdmin_ShouldAllow() {
+    @DisplayName("CREATE: another teacher content role should allow")
+    void testCreate_AnotherTeacherContentRole_ShouldAllow() {
         Problem problem = createPublicProblem(1L);
-        AuthUser clubAdmin = createUser(4L, "CLUB_ADMIN");
-        assertTrue(policy.can(clubAdmin, Permission.CREATE, problem));
+        AuthUser contentAdmin = createUser(4L, "TEACHER");
+        assertTrue(policy.can(contentAdmin, Permission.CREATE, problem));
     }
 
     // UPDATE Permission Tests

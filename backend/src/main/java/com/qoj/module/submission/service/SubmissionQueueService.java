@@ -93,6 +93,8 @@ public class SubmissionQueueService {
         AuthUser authUser = CurrentUser.get();
         QueryWrapper<Submission> wrapper = new QueryWrapper<>();
         if (practiceOnly) {
+            // 前台提交队列只展示普通题库/练习提交，比赛提交只能在比赛内或后台查看。
+            wrapper.isNull("contest_id");
         } else {
             if (contestId != null) {
                 ensureCanManageContest(authUser, contestId);
@@ -114,6 +116,9 @@ public class SubmissionQueueService {
         AuthUser authUser = CurrentUser.get();
         Submission submission = requireSubmission(queueId);
         if (practiceOnly) {
+            if (submission.contestId != null) {
+                throw new BizException(ErrorCode.NOT_FOUND.getCode(), "队列任务不存在");
+            }
         } else if (!canViewQueue(authUser, submission)) {
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权查看该队列任务");
         }
@@ -406,7 +411,7 @@ public class SubmissionQueueService {
     }
 
     private boolean isContestAdminRole(AuthUser authUser) {
-        return authUser != null && "CLUB_ADMIN".equals(authUser.role());
+        return authUser != null && "TEACHER".equals(authUser.role());
     }
 
     private boolean isFinalStatus(String status) {

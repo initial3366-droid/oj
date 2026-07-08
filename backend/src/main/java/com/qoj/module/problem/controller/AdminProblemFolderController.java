@@ -13,7 +13,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin/v1/problem-folders")
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','CLUB_ADMIN','TEACHER')")
+@PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminProblemFolderController {
     private final ProblemFolderService folderService;
 

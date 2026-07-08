@@ -1,6 +1,7 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
-import { Button, Tag } from "@douyinfe/semi-ui";
-import { IconBulb, IconClose, IconCode, IconFile, IconHistory, IconMinus, IconPlus, IconSend } from "@douyinfe/semi-icons";
+import { Alert, Button, ConfigProvider, Input, Select, theme as antTheme } from "antd";
+import { Tag } from "@douyinfe/semi-ui";
+import { IconBulb, IconClose, IconCode, IconFile, IconMinus, IconPlus, IconSend } from "@douyinfe/semi-icons";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { MarkdownMath } from "../components/MarkdownMath";
@@ -19,6 +20,15 @@ type DebugAlert = {
   title: string;
   detail?: string;
   source?: "debug" | "submit";
+};
+
+type EditorMarker = {
+  message: string;
+  severity: number;
+  startLineNumber: number;
+  startColumn: number;
+  endLineNumber: number;
+  endColumn: number;
 };
 
 type SubmissionResult = Partial<Pick<
@@ -109,6 +119,16 @@ function clampHeight(value: number) {
   return Math.min(Math.max(value, 180), Math.floor(window.innerHeight * 0.68));
 }
 
+function toAntAlertType(type: DebugAlert["type"]): "success" | "info" | "warning" | "error" {
+  if (type === "danger") {
+    return "error";
+  }
+  if (type === "neutral") {
+    return "info";
+  }
+  return type;
+}
+
 function clampSplit(value: number) {
   return Math.min(Math.max(value, 18), 82);
 }
@@ -157,33 +177,39 @@ function isFinalSubmissionStatus(status?: string | null) {
   return Boolean(normalized) && !isRunningSubmissionStatus(normalized);
 }
 
-function formatSubmissionAlert(data: SubmissionResult, options?: { showCaseDetails?: boolean }): DebugAlert {
-  const showCaseDetails = options?.showCaseDetails ?? true;
+function maxSubmissionCaseMetric(
+  cases: SubmissionResult["cases"],
+  field: "timeMs" | "memoryKb",
+) {
+  const values = (cases ?? [])
+    .map((item) => item[field])
+    .filter((value): value is number => typeof value === "number" && value > 0);
+  return values.length > 0 ? Math.max(...values) : null;
+}
+
+function positiveMetric(value: number | null | undefined) {
+  return typeof value === "number" && value > 0 ? value : null;
+}
+
+function formatMetric(value: number | null | undefined, unit: string) {
+  const metric = positiveMetric(value);
+  return metric == null ? "-" : `${metric} ${unit}`;
+}
+
+function formatSubmissionAlert(data: SubmissionResult): DebugAlert {
   const status = String(data.status ?? "PENDING").toUpperCase();
   const statusLabel = submissionStatusLabels[status] ?? status;
-  const detail = [
-    data.id ? `提交 ID：${data.id}` : null,
-    data.language ? `提交语言：${data.language}` : null,
-    `测评状态：${statusLabel}`,
-    showCaseDetails && typeof data.passedCaseCount === "number" && typeof data.totalCaseCount === "number"
-      ? `测试点：${data.passedCaseCount} / ${data.totalCaseCount}`
-      : null,
-    typeof data.timeUsed === "number" ? `运行时间：${data.timeUsed} ms` : null,
-    typeof data.memoryUsed === "number" ? `运行内存：${data.memoryUsed} KB` : null,
-    ...(showCaseDetails && data.cases?.length
-      ? data.cases.map((item) => {
-          const caseStatus = item.status ? (submissionStatusLabels[item.status] ?? item.status) : "-";
-          const time = typeof item.timeMs === "number" ? `，${item.timeMs} ms` : "";
-          const memory = typeof item.memoryKb === "number" ? `，${item.memoryKb} KB` : "";
-          return `测试点 ${item.caseNo ?? "-"}：${caseStatus}${time}${memory}`;
-        })
-      : []),
-  ].filter(Boolean);
+  const timeUsed = positiveMetric(data.timeUsed) ?? maxSubmissionCaseMetric(data.cases, "timeMs");
+  const memoryUsed = positiveMetric(data.memoryUsed) ?? maxSubmissionCaseMetric(data.cases, "memoryKb");
+  const running = isRunningSubmissionStatus(status);
+  const detail = running
+    ? ""
+    : `运行时间：${formatMetric(timeUsed, "ms")} | 运行内存：${formatMetric(memoryUsed, "KB")}`;
 
   return {
-    type: status === "AC" || status === "ACCEPTED" ? "success" : isRunningSubmissionStatus(status) ? "info" : "danger",
+    type: status === "AC" || status === "ACCEPTED" ? "success" : running ? "info" : "danger",
     title: `提交结果：${statusLabel}`,
-    detail: detail.join("\n"),
+    detail,
     source: "submit",
   };
 }
@@ -191,6 +217,8 @@ function formatSubmissionAlert(data: SubmissionResult, options?: { showCaseDetai
 export function PracticePage() {
   const splitRootRef = useRef<HTMLDivElement | null>(null);
   const submissionWatcherCleanupRef = useRef<(() => void) | null>(null);
+  const monacoRef = useRef<any>(null);
+  const editorRef = useRef<any>(null);
   const navigate = useNavigate();
   const { problemId } = useParams();
   const [searchParams] = useSearchParams();
@@ -208,6 +236,8 @@ export function PracticePage() {
     return state.problems.find((item) => item.id === problemId) ?? (remoteProblem?.id === problemId ? remoteProblem : null);
   }, [problemId, remoteProblem, state.problems]);
   const [language, setLanguage] = useState<PracticeLanguage>("C++");
+  const languageRef = useRef<PracticeLanguage>(language);
+  languageRef.current = language;
   const [code, setCode] = useState("");
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugHeight, setDebugHeight] = useState(280);
@@ -220,6 +250,7 @@ export function PracticePage() {
   const [leftPanePercent, setLeftPanePercent] = useState(50);
   const [paneResizing, setPaneResizing] = useState(false);
   const [fontSize, setFontSize] = useState(18);
+  const [editorTheme, setEditorTheme] = useState<"light" | "dark">("light");
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentInput, setAgentInput] = useState("");
   const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([]);
@@ -232,7 +263,16 @@ export function PracticePage() {
   const samples = problem?.samples ?? [];
   const selectedSample = typeof sampleIndex === "number" ? samples[sampleIndex] : null;
   const sampleSelectValue = typeof sampleIndex === "number" ? String(sampleIndex) : "custom";
+  const sampleSelectOptions = samples.length
+    ? [
+        { label: "自定义输入", value: "custom" },
+        ...samples.map((_, index) => ({ label: `样例 ${index + 1}`, value: String(index) })),
+      ]
+    : [{ label: "无样例", value: "custom" }];
   const showDebugFields = debugAlert?.source !== "submit";
+  const isEditorDark = editorTheme === "dark";
+  const monacoThemeName = isEditorDark ? "qoj-vscode-dark" : "qoj-vscode-light";
+  const debugTextareaClassName = "min-h-0 flex-1 font-mono text-sm leading-6";
 
   useEffect(() => {
     return () => {
@@ -289,6 +329,11 @@ export function PracticePage() {
       setDebugInput("");
     }
   }, [samples, sampleIndex]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => runCustomSyntaxCheck(), 50);
+    return () => clearTimeout(timer);
+  }, [language]);
 
   const changeLanguage = (next: PracticeLanguage) => {
     if (problem?.id) {
@@ -405,7 +450,7 @@ export function PracticePage() {
         if (stopped) {
           return;
         }
-        setDebugAlert(formatSubmissionAlert(detail, { showCaseDetails: !isContestMode }));
+        setDebugAlert(formatSubmissionAlert(detail));
         if (isFinalSubmissionStatus(detail.status)) {
           stop();
         }
@@ -421,19 +466,16 @@ export function PracticePage() {
         if (stopped) {
           return;
         }
-        setDebugAlert(formatSubmissionAlert(
-          {
-            id: update.submissionId,
-            language: undefined,
-            status: update.status,
-            timeUsed: update.time,
-            memoryUsed: update.memory,
-            passedCaseCount: undefined,
-            totalCaseCount: undefined,
-            cases: null,
-          },
-          { showCaseDetails: !isContestMode },
-        ));
+        setDebugAlert(formatSubmissionAlert({
+          id: update.submissionId,
+          language: undefined,
+          status: update.status,
+          timeUsed: update.time,
+          memoryUsed: update.memory,
+          passedCaseCount: undefined,
+          totalCaseCount: undefined,
+          cases: null,
+        }));
         refreshSubmission();
       })
       .then((dispose) => {
@@ -493,7 +535,313 @@ export function PracticePage() {
     setFontSize((current) => clampFontSize(current + delta));
   };
 
+  const runCustomSyntaxCheck = () => {
+    const monaco = monacoRef.current;
+    const editor = editorRef.current;
+    if (!monaco || !editor) return;
+    const model = editor.getModel();
+    if (!model) return;
+
+    const markers: EditorMarker[] = [];
+    try {
+    const src = model.getValue();
+    const lang = monacoLanguages[languageRef.current];
+    const isSemicolonLang = lang === "c" || lang === "cpp" || lang === "java";
+
+    /* ── strip comments and strings to avoid false positives ── */
+    const stripped: string[] = [];
+    let inLineComment = false;
+    let inBlockComment = false;
+    let inString = false;
+    let inChar = false;
+    let stringQuote = "";
+    let isTripleQuoted = false;
+    let blockCommentStartLine = -1;
+
+    for (let i = 0; i < src.length; i++) {
+      const ch = src[i];
+      const next = src[i + 1] ?? "";
+      const afterNext = src[i + 2] ?? "";
+
+      if (inLineComment) {
+        if (ch === "\n") { inLineComment = false; stripped.push(ch); }
+        continue;
+      }
+      if (inBlockComment) {
+        if (ch === "*" && next === "/") { inBlockComment = false; i++; continue; }
+        if (ch === "\n") stripped.push(ch);
+        continue;
+      }
+      if (inString) {
+        if (ch === "\\") { i++; continue; }
+        if (isTripleQuoted) {
+          if (ch === stringQuote && next === stringQuote && afterNext === stringQuote) {
+            inString = false;
+            isTripleQuoted = false;
+            stripped.push('"');
+            i += 2;
+            continue;
+          }
+          if (ch === "\n") { stripped.push(ch); continue; }
+          continue;
+        }
+        if (ch === stringQuote) { inString = false; stripped.push('"'); continue; }
+        if (ch === "\n") { inString = false; stripped.push(ch); }
+        continue;
+      }
+      if (inChar) {
+        if (ch === "\\") { i++; continue; }
+        if (ch === "'") { inChar = false; stripped.push("'"); continue; }
+        if (ch === "\n") { inChar = false; stripped.push(ch); }
+        continue;
+      }
+
+      if ((ch === "/" && next === "/") || (ch === "#" && lang === "python")) {
+        inLineComment = true;
+        continue;
+      }
+      if (ch === "/" && next === "*") {
+        inBlockComment = true;
+        blockCommentStartLine = src.slice(0, i).split("\n").length;
+        i++;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        stringQuote = '"';
+        isTripleQuoted = lang === "python" && next === '"' && afterNext === '"';
+        stripped.push('"');
+        if (isTripleQuoted) i += 2;
+        continue;
+      }
+      if (ch === "'" && lang !== "python") {
+        inChar = true;
+        stripped.push("'");
+        continue;
+      }
+      if (ch === "'" && lang === "python") {
+        inString = true;
+        stringQuote = "'";
+        isTripleQuoted = next === "'" && afterNext === "'";
+        stripped.push('"');
+        if (isTripleQuoted) i += 2;
+        continue;
+      }
+
+      stripped.push(ch);
+    }
+
+    const clean = stripped.join("");
+    const lines = clean.split("\n");
+
+    /* ── 1. bracket matching ── */
+    const bracketPairs: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+    const stack: Array<{ char: string; line: number; col: number }> = [];
+
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      const line = lines[lineIdx];
+      for (let col = 0; col < line.length; col++) {
+        const ch = line[col];
+        if (ch === "(" || ch === "[" || ch === "{") {
+          stack.push({ char: ch, line: lineIdx + 1, col: col + 1 });
+        } else if (ch === ")" || ch === "]" || ch === "}") {
+          const top = stack.pop();
+          if (!top) {
+            markers.push({
+              message: `多余的闭合括号 "${ch}"，没有对应的开括号`,
+              severity: 8,
+              startLineNumber: lineIdx + 1,
+              startColumn: col + 1,
+              endLineNumber: lineIdx + 1,
+              endColumn: col + 2,
+            });
+          } else if (top.char !== bracketPairs[ch]) {
+            markers.push({
+              message: `括号不匹配: "${top.char}" 与 "${ch}" 不配对`,
+              severity: 8,
+              startLineNumber: lineIdx + 1,
+              startColumn: col + 1,
+              endLineNumber: lineIdx + 1,
+              endColumn: col + 2,
+            });
+          }
+        }
+      }
+    }
+    for (const item of stack) {
+      markers.push({
+        message: `未闭合的 "${item.char}"，缺少对应的闭合括号`,
+        severity: 8,
+        startLineNumber: item.line,
+        startColumn: item.col,
+        endLineNumber: item.line,
+        endColumn: item.col + 1,
+      });
+    }
+
+    /* ── 2. unclosed strings (track string + char state, skip comments) ── */
+    {
+      let inLC = false;
+      let inBC = false;
+      let inStr = false;
+      let inChr = false;
+      let strStartLine = 0;
+      let strStartCol = 0;
+      let strQuote = '"';
+      let isTriple = false;
+      for (let i = 0; i < src.length; i++) {
+        const ch = src[i];
+        const next = src[i + 1] ?? "";
+        const afterNext = src[i + 2] ?? "";
+        if (inStr) {
+          if (ch === "\\") { i++; continue; }
+          if (isTriple) {
+            if (ch === strQuote && next === strQuote && afterNext === strQuote) {
+              inStr = false;
+              isTriple = false;
+              i += 2;
+              continue;
+            }
+            if (ch === "\n") continue;
+            continue;
+          }
+          if (ch === strQuote) { inStr = false; continue; }
+          if (ch === "\n") {
+            markers.push({
+              message: "字符串未闭合，缺少结束引号 \"",
+              severity: 8,
+              startLineNumber: strStartLine,
+              startColumn: strStartCol,
+              endLineNumber: strStartLine,
+              endColumn: strStartCol + 1,
+            });
+            inStr = false;
+          }
+          continue;
+        }
+        if (inChr) {
+          if (ch === "\\") { i++; continue; }
+          if (ch === "'") { inChr = false; continue; }
+          if (ch === "\n") { inChr = false; }
+          continue;
+        }
+        if (inLC) {
+          if (ch === "\n") inLC = false;
+          continue;
+        }
+        if (inBC) {
+          if (ch === "*" && next === "/") { inBC = false; i++; }
+          continue;
+        }
+        if ((ch === "/" && next === "/") || (ch === "#" && lang === "python")) { inLC = true; continue; }
+        if (ch === "/" && next === "*") { inBC = true; i++; continue; }
+        if (ch === "'" && lang !== "python") { inChr = true; continue; }
+        if (ch === '"' || (ch === "'" && lang === "python")) {
+          strQuote = ch;
+          isTriple = next === ch && afterNext === ch;
+          inStr = true;
+          strStartLine = src.slice(0, i).split("\n").length;
+          strStartCol = i - src.lastIndexOf("\n", i);
+          if (isTriple) i += 2;
+        }
+      }
+      if (inStr && !isTriple) {
+        markers.push({
+          message: "字符串未闭合，缺少结束引号 \"",
+          severity: 8,
+          startLineNumber: strStartLine,
+          startColumn: strStartCol,
+          endLineNumber: strStartLine,
+          endColumn: strStartCol + 1,
+        });
+      }
+    }
+
+    /* ── 3. missing semicolons (C/C++/Java only) ── */
+    if (isSemicolonLang) {
+      const stmtKeywords = /\b(return|break|continue|int|long|short|double|float|char|bool|void|unsigned|auto|const|static|new|delete|throw)\b/;
+      const continuationEnd = /[+\-*/%&|^<>=!?.]$/;
+      const declKeywords = /\b(class|struct|enum|namespace|typedef|using|public|private|protected|import|package|template|friend|virtual|override|final)\b/;
+      const controlFlow = /^\s*(if|else|for|while|switch|case|default|do|try|catch|finally)\b/;
+      for (let i = 0; i < lines.length; i++) {
+        const raw = src.split("\n")[i] ?? "";
+        const line = lines[i].trimEnd();
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (/[{};,:)([\].]$/.test(trimmed)) continue;
+        if (continuationEnd.test(trimmed)) continue;
+        if (trimmed.startsWith("#") || trimmed.startsWith("//")) continue;
+        if (controlFlow.test(trimmed)) continue;
+        if (declKeywords.test(trimmed)) continue;
+        if (stmtKeywords.test(trimmed) && !trimmed.includes(";") && !trimmed.includes("{") && !trimmed.includes("}")) {
+          markers.push({
+            message: "可能缺少分号 ;",
+            severity: 4,
+            startLineNumber: i + 1,
+            startColumn: raw.trimEnd().length || 1,
+            endLineNumber: i + 1,
+            endColumn: (raw.trimEnd().length || 1) + 1,
+          });
+        }
+      }
+    }
+
+    /* ── 4. unclosed block comments (from stripping loop state) ── */
+    if (inBlockComment && blockCommentStartLine !== -1) {
+      markers.push({
+        message: "块注释未闭合，缺少 */",
+        severity: 8,
+        startLineNumber: blockCommentStartLine,
+        startColumn: 1,
+        endLineNumber: blockCommentStartLine,
+        endColumn: 3,
+      });
+    }
+    } catch {
+      /* if check throws, markers stays empty → clears all existing markers */
+    }
+
+    /* ── set markers on model ── */
+    const monacoMarkers = markers.map(m => ({
+      message: m.message,
+      severity: m.severity as 1 | 2 | 4 | 8,
+      startLineNumber: m.startLineNumber,
+      startColumn: m.startColumn,
+      endLineNumber: m.endLineNumber,
+      endColumn: m.endColumn,
+      source: "syntax-check",
+    }));
+    monaco.editor.setModelMarkers(model, "custom-syntax", monacoMarkers);
+  };
+
   const configureEditor: OnMount = (editor, monaco) => {
+    monacoRef.current = monaco;
+    editorRef.current = editor;
+
+    monaco.editor.defineTheme("qoj-vscode-light", {
+      base: "vs",
+      inherit: true,
+      rules: [
+        { token: "comment", foreground: "008000" },
+        { token: "keyword", foreground: "0000FF" },
+        { token: "number", foreground: "098658" },
+        { token: "string", foreground: "A31515" },
+        { token: "type", foreground: "267F99" },
+      ],
+      colors: {
+        "editor.background": "#FFFFFF",
+        "editor.foreground": "#1F2937",
+        "editorLineNumber.foreground": "#9CA3AF",
+        "editorLineNumber.activeForeground": "#374151",
+        "editorCursor.foreground": "#111827",
+        "editor.selectionBackground": "#ADD6FF",
+        "editor.inactiveSelectionBackground": "#E5EBF1",
+        "editorIndentGuide.background1": "#E5E7EB",
+        "editorIndentGuide.activeBackground1": "#CBD5E1",
+        "editor.lineHighlightBackground": "#F8FAFC",
+      },
+    });
+
     monaco.editor.defineTheme("qoj-vscode-dark", {
       base: "vs-dark",
       inherit: true,
@@ -517,9 +865,19 @@ export function PracticePage() {
         "editor.lineHighlightBackground": "#2A2D2E",
       },
     });
-    monaco.editor.setTheme("qoj-vscode-dark");
+    monaco.editor.setTheme(monacoThemeName);
+
+    editor.onDidChangeModelContent(() => {
+      runCustomSyntaxCheck();
+    });
+
+    runCustomSyntaxCheck();
     editor.focus();
   };
+
+  useEffect(() => {
+    monacoRef.current?.editor.setTheme(monacoThemeName);
+  }, [monacoThemeName]);
 
   const runDebug = async () => {
     if (debugLoading) {
@@ -646,7 +1004,7 @@ export function PracticePage() {
         code,
       });
 
-      setDebugAlert(formatSubmissionAlert(result, { showCaseDetails: !isContestMode }));
+      setDebugAlert(formatSubmissionAlert(result));
       if (result.id) {
         setLastSubmissionId(result.id);
         startSubmissionWatcher(result.id);
@@ -678,13 +1036,13 @@ export function PracticePage() {
   return (
     <div
       ref={splitRootRef}
-      className="fixed inset-0 grid overflow-hidden bg-slate-950"
+      className="fixed inset-0 grid overflow-hidden bg-slate-100"
       style={{
         gridTemplateColumns: `minmax(0, ${leftPanePercent}fr) 6px minmax(0, ${100 - leftPanePercent}fr)`,
       }}
     >
       <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-white">
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-950 px-5 text-white">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 text-slate-800">
           <div className="flex min-w-0 items-center gap-2">
             <Tag color="blue" size="large">
               <span className="inline-flex items-center gap-1 text-base font-semibold text-blue-800">
@@ -694,13 +1052,14 @@ export function PracticePage() {
             </Tag>
             <h1 className="truncate text-base font-semibold leading-7">{problem.title}</h1>
           </div>
-          <Button
-            theme="light"
-            className="bg-white/10 text-white hover:bg-white/15"
-            onClick={() => navigate(isContestMode && contestId ? `/contests/${contestId}` : "/problems")}
-          >
-            {isContestMode ? "返回比赛详情" : "返回题目列表"}
-          </Button>
+          {isContestMode && contestId && (
+            <Button
+              className="!bg-slate-100 !text-slate-700 hover:!bg-slate-200"
+              onClick={() => navigate(`/contests/${contestId}`)}
+            >
+              返回比赛详情
+            </Button>
+          )}
         </div>
 
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
@@ -743,7 +1102,7 @@ export function PracticePage() {
             </fieldset>
 
             {samples.map((sample, index) => (
-              <section key={`${sample.caseNo}-${index}`}>
+              <section key={`${sample.caseNo}-${index}`} className="mt-6">
                 <h2 className="mb-3 text-base font-bold text-slate-700">示例{index + 1}</h2>
                 <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
                   <div className="px-4 py-3 font-semibold text-slate-600">输入</div>
@@ -770,18 +1129,18 @@ export function PracticePage() {
       </section>
 
       <div
-        className="z-20 cursor-col-resize bg-[#111827] hover:bg-primary"
+        className="z-20 cursor-col-resize bg-slate-200 hover:bg-primary"
         onMouseDown={startPaneResize}
         title="拖动调整题面和代码区域比例"
       />
 
-      <section className="relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#20251f]">
-        <div className="flex h-14 min-w-0 shrink-0 items-center justify-between gap-3 overflow-hidden border-b border-slate-900 bg-slate-950 px-4 text-white">
+      <section className={`relative flex min-h-0 min-w-0 flex-col overflow-hidden ${editorTheme === "dark" ? "bg-[#20251f]" : "bg-white"}`}>
+        <div className="flex h-14 min-w-0 shrink-0 items-center justify-between gap-3 overflow-hidden border-b border-slate-200 bg-white px-4 text-slate-800">
           <div className="flex min-w-0 items-center gap-3">
             <label className="sr-only" htmlFor="practice-language">选择提交语言</label>
             <select
               id="practice-language"
-              className="h-10 rounded-md border border-white/10 bg-slate-900 px-3 text-sm text-white outline-none focus:border-success"
+              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none focus:border-success"
               value={language}
               onChange={(event) => changeLanguage(event.target.value as PracticeLanguage)}
             >
@@ -789,13 +1148,12 @@ export function PracticePage() {
                 <option key={item.label} value={item.label}>{item.label}</option>
               ))}
             </select>
-            <div className="flex items-center gap-2 text-sm text-slate-200">
+            <div className="flex items-center gap-2 text-sm text-slate-700">
               <Button
                 aria-label="减小文字大小"
                 icon={<IconMinus />}
                 size="small"
-                theme="light"
-                className="bg-white/10 text-white"
+                className="!bg-slate-100 !text-slate-700 hover:!bg-slate-200"
                 onClick={() => changeFontSize(-1)}
               />
               <span className="min-w-[56px] text-center">{fontSize}px</span>
@@ -803,25 +1161,21 @@ export function PracticePage() {
                 aria-label="增大文字大小"
                 icon={<IconPlus />}
                 size="small"
-                theme="light"
-                className="bg-white/10 text-white"
+                className="!bg-slate-100 !text-slate-700 hover:!bg-slate-200"
                 onClick={() => changeFontSize(1)}
               />
+              <Button
+                className={editorTheme === "dark" ? "!bg-slate-800 !text-white hover:!bg-slate-700" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"}
+                onClick={() => setEditorTheme((theme) => (theme === "dark" ? "light" : "dark"))}
+              >
+                {editorTheme === "dark" ? "白色背景" : "黑色背景"}
+              </Button>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-3">
-            <Button
-              theme="light"
-              className="bg-white/10 text-white hover:bg-white/15"
-              icon={<IconHistory />}
-              onClick={() => navigate(`/problems/${problem.id}/submissions${contestId ? `?contestId=${contestId}` : ""}`)}
-            >
-              查看提交记录
-            </Button>
             {!isContestMode && (
               <Button
-                theme="light"
-                className={`${agentOpen ? "bg-blue-500 text-white hover:bg-blue-600" : "bg-white/10 text-white hover:bg-white/15"} ${agentLoading ? 'opacity-70' : ''}`}
+                className={`${agentOpen ? "!bg-blue-500 !text-white hover:!bg-blue-600" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"} ${agentLoading ? 'opacity-70' : ''}`}
                 icon={<IconBulb />}
                 onClick={() => !agentLoading && setAgentOpen((open) => !open)}
               >
@@ -829,8 +1183,7 @@ export function PracticePage() {
               </Button>
             )}
             <Button
-              theme="light"
-              className={`bg-white/10 text-white hover:bg-white/15 ${debugLoading ? 'opacity-70' : ''}`}
+              className={`!bg-slate-100 !text-slate-700 hover:!bg-slate-200 ${debugLoading ? 'opacity-70' : ''}`}
               icon={<IconCode />}
               onClick={() => !debugLoading && setDebugOpen((open) => !open)}
             >
@@ -838,7 +1191,6 @@ export function PracticePage() {
             </Button>
             <Button
               type="primary"
-              theme="solid"
               className={submitLoading ? 'opacity-70' : ''}
               icon={<IconSend />}
               onClick={() => !submitLoading && submitCodeAction()}
@@ -849,7 +1201,7 @@ export function PracticePage() {
         </div>
 
         <div
-          className="min-h-0 min-w-0 flex-1 overflow-hidden bg-[#1e1e1e]"
+          className={`min-h-0 min-w-0 flex-1 overflow-hidden ${editorTheme === "dark" ? "bg-[#1e1e1e]" : "bg-white"}`}
           style={{ pointerEvents: paneResizing ? "none" : undefined }}
         >
           <div className="flex h-full min-h-0 min-w-0">
@@ -857,11 +1209,15 @@ export function PracticePage() {
               <Editor
                 height="100%"
                 language={monacoLanguages[language]}
-                theme="qoj-vscode-dark"
+                theme={monacoThemeName}
                 value={code}
                 onChange={(value) => updateCode(value ?? "")}
                 onMount={configureEditor}
-                loading={<div className="grid h-full place-items-center bg-[#1e1e1e] text-slate-300">加载编辑器...</div>}
+                loading={(
+                  <div className={`grid h-full place-items-center ${editorTheme === "dark" ? "bg-[#1e1e1e] text-slate-300" : "bg-white text-slate-500"}`}>
+                    加载编辑器...
+                  </div>
+                )}
                 options={{
                   automaticLayout: true,
                   bracketPairColorization: { enabled: true },
@@ -875,6 +1231,7 @@ export function PracticePage() {
                   glyphMargin: false,
                   lineHeight: Math.round(fontSize * 1.65),
                   lineNumbers: "on",
+                  lineNumbersMinChars: 3,
                   minimap: { enabled: true },
                   padding: { top: 16, bottom: 16 },
                   renderLineHighlight: "all",
@@ -888,48 +1245,44 @@ export function PracticePage() {
             </div>
 
             {agentOpen ? (
-              <aside className="flex h-full w-[460px] max-w-[52%] shrink-0 flex-col border-l border-slate-800 bg-slate-950 text-slate-100">
-                <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-800 px-4">
+              <aside className={`flex h-full w-[460px] max-w-[52%] shrink-0 flex-col border-l ${isEditorDark ? "border-slate-800 bg-slate-950 text-slate-100" : "border-slate-200 bg-white text-slate-800"}`}>
+                <div className={`flex h-12 shrink-0 items-center justify-between border-b px-4 ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
                   <h2 className="text-sm font-semibold">AI 助手</h2>
                   <Button
                     aria-label="关闭 AI 助手"
                     icon={<IconClose />}
                     size="small"
-                    theme="borderless"
-                    className="text-slate-200 hover:bg-white/10"
+                    type="text"
+                    className={isEditorDark ? "!text-slate-200 hover:!bg-white/10" : "!text-slate-600 hover:!bg-slate-100"}
                     onClick={() => setAgentOpen(false)}
                   />
                 </div>
 
-                <div className="grid shrink-0 grid-cols-2 gap-2 border-b border-slate-800 p-3">
+                <div className={`grid shrink-0 grid-cols-2 gap-2 border-b p-3 ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
                   <Button
                     size="small"
-                    theme="light"
-                    className="min-w-0 bg-white/10 text-slate-100 hover:bg-white/15"
+                    className={`min-w-0 ${isEditorDark ? "!bg-white/10 !text-slate-100 hover:!bg-white/15" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"}`}
                     onClick={() => sendAgentMessage("请解释这道题的题意和核心思路，不要给完整代码。")}
                   >
                     解释题目
                   </Button>
                   <Button
                     size="small"
-                    theme="light"
-                    className="min-w-0 bg-white/10 text-slate-100 hover:bg-white/15"
+                    className={`min-w-0 ${isEditorDark ? "!bg-white/10 !text-slate-100 hover:!bg-white/15" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"}`}
                     onClick={() => sendAgentMessage("请分析我当前代码中可能的问题，不要直接给完整 AC 代码。")}
                   >
                     分析代码
                   </Button>
                   <Button
                     size="small"
-                    theme="light"
-                    className="min-w-0 bg-white/10 text-slate-100 hover:bg-white/15"
+                    className={`min-w-0 ${isEditorDark ? "!bg-white/10 !text-slate-100 hover:!bg-white/15" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"}`}
                     onClick={() => sendAgentMessage(`请根据下面的调试或提交信息给出排查方向：\n${latestDebugText()}`)}
                   >
                     解释报错
                   </Button>
                   <Button
                     size="small"
-                    theme="light"
-                    className="min-w-0 bg-white/10 text-slate-100 hover:bg-white/15"
+                    className={`min-w-0 ${isEditorDark ? "!bg-white/10 !text-slate-100 hover:!bg-white/15" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"}`}
                     onClick={() => sendAgentMessage("请提醒这道题常见边界情况和自测数据方向。")}
                   >
                     边界提醒
@@ -943,8 +1296,12 @@ export function PracticePage() {
                       className={[
                         "rounded-md border px-3 py-2 text-sm leading-6",
                         message.role === "user"
-                          ? "ml-6 border-blue-400/30 bg-blue-500/15 text-blue-50"
-                          : "mr-6 border-slate-700 bg-slate-900 text-slate-100",
+                          ? isEditorDark
+                            ? "ml-6 border-blue-400/30 bg-blue-500/15 text-blue-50"
+                            : "ml-6 border-blue-200 bg-blue-50 text-blue-900"
+                          : isEditorDark
+                            ? "mr-6 border-slate-700 bg-slate-900 text-slate-100"
+                            : "mr-6 border-slate-200 bg-slate-50 text-slate-800",
                       ].join(" ")}
                     >
                       {message.role === "assistant" ? (
@@ -959,17 +1316,18 @@ export function PracticePage() {
                     </div>
                   ))}
                   {agentLoading ? (
-                    <div className="mr-6 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300">
+                    <div className={`mr-6 rounded-md border px-3 py-2 text-sm ${isEditorDark ? "border-slate-700 bg-slate-900 text-slate-300" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
                       正在思考...
                     </div>
                   ) : null}
                 </div>
 
-                <div className="shrink-0 border-t border-slate-800 p-3">
-                  <textarea
-                    className="h-24 w-full resize-none rounded-md border border-slate-700 bg-slate-900 p-3 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-500 focus:border-blue-400"
+                <div className={`shrink-0 border-t p-3 ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
+                  <Input.TextArea
+                    className={`h-24 w-full resize-none text-sm leading-6 ${isEditorDark ? "!border-slate-700 !bg-slate-900 !text-slate-100 placeholder:!text-slate-500" : "!border-slate-200 !bg-white !text-slate-800 placeholder:!text-slate-400"}`}
                     placeholder="输入你的问题"
                     value={agentInput}
+                    autoSize={false}
                     onChange={(event) => setAgentInput(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
@@ -983,7 +1341,6 @@ export function PracticePage() {
                     loading={agentLoading}
                     disabled={agentLoading || !agentInput.trim()}
                     type="primary"
-                    theme="solid"
                     icon={agentLoading ? undefined : <IconSend />}
                     className="mt-2"
                     onClick={() => sendAgentMessage()}
@@ -997,103 +1354,94 @@ export function PracticePage() {
         </div>
 
         {debugOpen ? (
-          <div
-            className="flex shrink-0 flex-col border-t border-slate-700 bg-white"
-            style={{ height: debugHeight }}
+          <ConfigProvider
+            theme={{
+              algorithm: antTheme.defaultAlgorithm,
+            }}
           >
             <div
-              className="h-2 cursor-row-resize bg-slate-800 hover:bg-primary"
-              onMouseDown={startDebugResize}
-            />
-            <div className="flex min-h-0 w-full flex-1 flex-col">
-              <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4">
-                <h2 className="font-semibold text-slate-800">调试面板</h2>
-                <div className="flex items-center gap-2">
-                  <select
-                    className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary"
-                    value={sampleSelectValue}
-                    onChange={(event) => selectSample(event.target.value)}
-                  >
-                    {samples.length ? (
-                      <>
-                        <option value="custom">自定义输入</option>
-                        {samples.map((_, index) => (
-                          <option key={index} value={index}>样例 {index + 1}</option>
-                        ))}
-                      </>
-                    ) : (
-                      <option value="custom">无样例</option>
-                    )}
-                  </select>
-                  <Button
-                    loading={debugLoading}
-                    disabled={debugLoading}
-                    type="primary"
-                    theme="solid"
-                    size="small"
-                    onClick={runDebug}
-                  >
-                    {debugLoading ? "调试中" : "运行调试"}
-                  </Button>
-                  <Button
-                    aria-label="关闭调试面板"
-                    icon={<IconClose />}
-                    size="small"
-                    theme="light"
-                    onClick={() => setDebugOpen(false)}
-                  />
+              className="flex shrink-0 flex-col border-t border-slate-200 bg-white text-slate-800"
+              style={{ height: debugHeight }}
+            >
+              <div
+                className="h-2 cursor-row-resize bg-slate-200 hover:bg-blue-500"
+                onMouseDown={startDebugResize}
+              />
+              <div className="flex min-h-0 w-full flex-1 flex-col">
+                <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4">
+                  <h2 className="font-semibold">调试面板</h2>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      size="small"
+                      value={sampleSelectValue}
+                      options={sampleSelectOptions}
+                      style={{ width: 144 }}
+                      onChange={selectSample}
+                    />
+                    <Button
+                      loading={debugLoading}
+                      disabled={debugLoading}
+                      type="primary"
+                      size="small"
+                      onClick={runDebug}
+                    >
+                      {debugLoading ? "调试中" : "运行调试"}
+                    </Button>
+                    <Button
+                      aria-label="关闭调试面板"
+                      icon={<IconClose />}
+                      size="small"
+                      type="text"
+                      className="!text-slate-600 hover:!bg-slate-100"
+                      onClick={() => setDebugOpen(false)}
+                    />
+                  </div>
+                </div>
+                <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
+                  {showDebugFields ? (
+                    <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                      <label className="flex min-h-0 flex-col gap-2 text-sm font-medium text-slate-700">
+                        输入
+                        <Input.TextArea
+                          className={debugTextareaClassName}
+                          placeholder="在这里输入自定义数据，支持换行"
+                          value={debugInput}
+                          autoSize={false}
+                          onChange={(event) => {
+                            setDebugInput(event.target.value);
+                            setSampleIndex("custom");
+                            setDebugOutput("");
+                            setDebugAlert(null);
+                          }}
+                        />
+                      </label>
+                      <label className="flex min-h-0 flex-col gap-2 text-sm font-medium text-slate-700">
+                        输出
+                        <Input.TextArea
+                          readOnly
+                          className={debugTextareaClassName}
+                          placeholder="运行结果会显示在这里"
+                          value={debugOutput}
+                          autoSize={false}
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+                  {debugAlert ? (
+                    <Alert
+                      className="shrink-0"
+                      type={toAntAlertType(debugAlert.type)}
+                      message={debugAlert.title}
+                      description={debugAlert.detail ? (
+                        <pre className="m-0 whitespace-pre-wrap font-mono text-xs leading-5">{debugAlert.detail}</pre>
+                      ) : undefined}
+                      showIcon
+                    />
+                  ) : null}
                 </div>
               </div>
-              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
-                {showDebugFields ? (
-                  <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                    <label className="flex min-h-0 flex-col gap-2 text-sm font-medium text-slate-700">
-                      输入
-                      <textarea
-                        className="min-h-0 flex-1 resize-none rounded-md border border-slate-200 bg-white p-3 font-mono text-sm leading-6 outline-none focus:border-success"
-                        placeholder="在这里输入自定义数据，支持换行"
-                        value={debugInput}
-                        onChange={(event) => {
-                          setDebugInput(event.target.value);
-                          setSampleIndex("custom");
-                          setDebugOutput("");
-                          setDebugAlert(null);
-                        }}
-                      />
-                    </label>
-                    <label className="flex min-h-0 flex-col gap-2 text-sm font-medium text-slate-700">
-                      输出
-                      <textarea
-                        readOnly
-                        className="min-h-0 flex-1 resize-none rounded-md border border-slate-200 bg-white p-3 font-mono text-sm leading-6 outline-none focus:border-success"
-                        placeholder="运行结果会显示在这里"
-                        value={debugOutput}
-                      />
-                    </label>
-                  </div>
-                ) : null}
-                {debugAlert ? (
-                  <div
-                    className={[
-                      "shrink-0 rounded-md border px-4 py-3 text-sm",
-                      debugAlert.type === "success"
-                        ? "border-green-200 bg-green-50 text-green-700"
-                        : debugAlert.type === "danger"
-                          ? "border-red-200 bg-red-50 text-red-700"
-                          : debugAlert.type === "info"
-                            ? "border-blue-200 bg-blue-50 text-blue-700"
-                            : "border-slate-200 bg-slate-50 text-slate-700",
-                    ].join(" ")}
-                  >
-                    <p className="font-semibold">{debugAlert.title}</p>
-                    {debugAlert.detail ? (
-                      <pre className="mt-2 whitespace-pre-wrap font-mono text-xs leading-5">{debugAlert.detail}</pre>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
             </div>
-          </div>
+          </ConfigProvider>
         ) : null}
       </section>
     </div>

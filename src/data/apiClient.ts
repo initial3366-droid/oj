@@ -49,6 +49,35 @@ function getFrontendRefreshToken() {
   return window.localStorage.getItem(FRONT_REFRESH_TOKEN_KEY);
 }
 
+function shouldRefreshJwtToken(token: string, skewSeconds = 30) {
+  try {
+    const payloadPart = token.split(".")[1];
+    if (!payloadPart) {
+      return true;
+    }
+    const normalized = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+    const payload = JSON.parse(window.atob(padded)) as { exp?: number };
+    return typeof payload.exp === "number" && payload.exp * 1000 <= Date.now() + skewSeconds * 1000;
+  } catch {
+    // Optional-auth endpoints are permitAll on the backend. If a stale/corrupt token is sent,
+    // the backend may silently treat the request as anonymous and return registered=false.
+    // Try refreshing first so pages that depend on optional identity do not briefly show guest state.
+    return true;
+  }
+}
+
+async function getFrontendAccessTokenForOptionalAuth() {
+  const token = getFrontendAccessToken();
+  if (!token) {
+    return undefined;
+  }
+  if (!shouldRefreshJwtToken(token)) {
+    return token;
+  }
+  return (await refreshFrontendAccessToken()) ?? undefined;
+}
+
 function shouldRefreshFrontendToken(url: string, token?: string, allowRefresh = true) {
   return Boolean(
     allowRefresh
@@ -123,8 +152,7 @@ export interface AuthTokenResponse {
 export interface AdminDashboard {
   onlineUserCount: number;
   userCount: number;
-  clubCount: number;
-  problemCount: number;
+    problemCount: number;
   submissionCount: number;
   todaySubmissionCount: number;
   todayAcceptedCount: number;
@@ -135,7 +163,7 @@ export interface AdminDashboard {
     startTime: string;
     endTime: string;
     type: "ACM" | "OI";
-    audience: "ALL" | "CLUB" | "CLASS";
+    audience: "ALL" | "CLASS";
     status: "NOT_STARTED" | "RUNNING" | "ENDED";
   }>;
 }
@@ -144,6 +172,7 @@ export interface AdminUser {
   id: number;
   username: string;
   displayName: string;
+  avatarUrl?: string;
   studentNo?: string;
   email?: string;
   role: "SUPER_ADMIN" | "TEACHER" | "STUDENT" | "GUEST";
@@ -204,7 +233,7 @@ export interface ProblemDraft {
 export interface PracticePayload {
   title: string;
   description?: string;
-  audience?: "ALL" | "CLUB" | "CLASS";
+  audience?: "ALL" | "CLASS";
   audienceId?: number | null;
   password?: string;
   problemIds: number[];
@@ -214,7 +243,7 @@ export interface Practice {
   id: number;
   title: string;
   description: string;
-  audience: "ALL" | "CLUB" | "CLASS";
+  audience: "ALL" | "CLASS";
   audienceId?: number | null;
   hasPassword: boolean;
   ownerId: number;
@@ -278,9 +307,9 @@ export interface ContestDraftPayload {
   startTime?: string;
   description?: string;
   type?: "ACM" | "OI";
-  audience?: "ALL" | "CLUB" | "CLASS";
-  audienceTypes?: Array<"ALL" | "CLUB" | "CLASS">;
-  clubIds?: number[];
+  audience?: "ALL" | "CLASS";
+  audienceTypes?: Array<"ALL" | "CLASS">;
+  classIds?: number[];
   frozen?: boolean;
   freezeTime?: string | null;
   enableRollingScoreboard?: boolean;
@@ -289,8 +318,11 @@ export interface ContestDraftPayload {
   bronzeRatio?: number;
   allowAfterEndSubmit?: boolean;
   allowAfterEndViewProblem?: boolean;
+  allowAfterEndViewCode?: boolean;
   publicScoreboardEnabled?: boolean;
+  showClassOnScoreboard?: boolean;
   allowStarRegistration?: boolean;
+  allowViewAllSubmissions?: boolean;
   registrationPassword?: string;
   totalScore?: number;
   problems?: ContestProblemPayload[];
@@ -303,9 +335,9 @@ export interface ContestPayload {
   startTime: string;
   endTime: string;
   type: "ACM" | "OI";
-  audience: "ALL" | "CLUB" | "CLASS";
+  audience: "ALL" | "CLASS";
   audienceId?: number | null;
-  audiences?: Array<{ audienceType: "ALL" | "CLUB" | "CLASS"; audienceId?: number | null }>;
+  audiences?: Array<{ audienceType: "ALL" | "CLASS"; audienceId?: number | null }>;
   frozen?: boolean;
   freezeTime?: string | null;
   enableRollingScoreboard?: boolean;
@@ -317,8 +349,11 @@ export interface ContestPayload {
   maxSwitches?: number;
   allowAfterEndSubmit?: boolean;
   allowAfterEndViewProblem?: boolean;
+  allowAfterEndViewCode?: boolean;
   publicScoreboardEnabled?: boolean;
+  showClassOnScoreboard?: boolean;
   allowStarRegistration?: boolean;
+  allowViewAllSubmissions?: boolean;
   registrationType?: string;
   registrationPassword?: string;
   problems: ContestProblemPayload[];
@@ -334,9 +369,9 @@ export interface AdminContest {
   type: "ACM" | "OI";
   ownerId: number;
   ownerName: string;
-  audience: "ALL" | "CLUB" | "CLASS";
+  audience: "ALL" | "CLASS";
   audienceId?: number | null;
-  audiences: Array<{ audienceType: "ALL" | "CLUB" | "CLASS"; audienceId: number; name: string }>;
+  audiences: Array<{ audienceType: "ALL" | "CLASS"; audienceId: number; name: string }>;
   frozen: boolean;
   freezeTime?: string | null;
   enableRollingScoreboard: boolean;
@@ -345,8 +380,11 @@ export interface AdminContest {
   bronzeRatio: number;
   allowAfterEndSubmit: boolean;
   allowAfterEndViewProblem: boolean;
+  allowAfterEndViewCode: boolean;
   publicScoreboardEnabled: boolean;
+  showClassOnScoreboard: boolean;
   allowStarRegistration: boolean;
+  allowViewAllSubmissions: boolean;
   registrationType: string;
   hasPassword: boolean;
   status: "NOT_STARTED" | "RUNNING" | "ENDED";
@@ -360,6 +398,8 @@ export interface AdminContest {
     score?: number;
     displayOrder?: number;
     caseScores: ContestCaseScorePayload[];
+    submissionCount?: number;
+    acceptedCount?: number;
   }>;
 }
 
@@ -371,8 +411,8 @@ export interface PublicContest {
   startTime: string;
   endTime: string;
   type: "ACM" | "OI";
-  audience: "ALL" | "CLUB" | "CLASS";
-  audiences: Array<{ audienceType: "ALL" | "CLUB" | "CLASS"; audienceId: number; name: string }>;
+  audience: "ALL" | "CLASS";
+  audiences: Array<{ audienceType: "ALL" | "CLASS"; audienceId: number; name: string }>;
   frozen: boolean;
   freezeTime?: string | null;
   enableRollingScoreboard: boolean;
@@ -381,8 +421,11 @@ export interface PublicContest {
   bronzeRatio: number;
   allowAfterEndSubmit: boolean;
   allowAfterEndViewProblem: boolean;
+  allowAfterEndViewCode: boolean;
   publicScoreboardEnabled: boolean;
+  showClassOnScoreboard: boolean;
   allowStarRegistration: boolean;
+  allowViewAllSubmissions: boolean;
   registrationType: string;
   hasPassword: boolean;
   status: "NOT_STARTED" | "RUNNING" | "ENDED";
@@ -416,11 +459,13 @@ export interface ContestStandingRecord {
   contestId: number;
   userId: number;
   displayName: string;
+  classId?: number | null;
+  className?: string | null;
   solved: number;
   penalty: number;
   lastAcTime?: string | null;
   score: number;
-  identityType?: "PERSONAL" | "CLUB";
+  identityType?: "PERSONAL";
   identityId?: number | null;
 }
 
@@ -447,12 +492,14 @@ export interface ContestScoreboardRow {
   rank?: number | null;
   userId: number;
   displayName: string;
+  classId?: number | null;
+  className?: string | null;
   solved: number;
   penalty: number;
   score: number;
   lastAcceptedAt?: string | null;
   cells: ContestScoreboardCell[];
-  identityType?: "PERSONAL" | "CLUB";
+  identityType?: "PERSONAL";
   identityId?: number | null;
   starred?: boolean | null;
   medal?: "GOLD" | "SILVER" | "BRONZE" | null;
@@ -468,6 +515,7 @@ export interface ContestScoreboard {
   durationMinutes: number;
   problems: ContestScoreboardProblem[];
   rows: ContestScoreboardRow[];
+  showClassOnScoreboard?: boolean;
 }
 
 export interface ContestXcpcioPublicConfig {
@@ -506,6 +554,8 @@ export interface ContestPublicScoreboardRow {
   userId: number;
   username: string;
   displayName: string;
+  classId?: number | null;
+  className?: string | null;
   solved: number;
   penalty: number;
   totalScore: number;
@@ -529,11 +579,12 @@ export interface ContestPublicScoreboard {
   boardState?: "LIVE" | "FROZEN" | "ROLLING" | "FINAL";
   problems: ContestPublicScoreboardProblem[];
   rows: ContestPublicScoreboardRow[];
+  showClassOnScoreboard?: boolean;
 }
 
 export interface ContestRollingStep {
   step: number;
-  identityType?: "PERSONAL" | "CLUB";
+  identityType?: "PERSONAL";
   identityId?: number | null;
   userId: number;
   displayName: string;
@@ -572,6 +623,8 @@ export interface PublicUserProfile {
 export interface SubmissionRecord {
   id: number;
   userId?: number;
+  username?: string | null;
+  displayName?: string | null;
   problemId: number;
   problemTitle?: string | null;
   language: string;
@@ -695,6 +748,7 @@ interface BackendUserMe {
   id: number;
   username: string;
   displayName: string;
+  avatarUrl?: string;
   studentNo?: string;
   email?: string;
   role: "STUDENT" | "TEACHER" | "SUPER_ADMIN" | "GUEST";
@@ -714,9 +768,9 @@ interface BackendContest {
   type: "ACM" | "OI";
   ownerId?: number;
   ownerName?: string;
-  audience: "ALL" | "CLUB" | "CLASS";
+  audience: "ALL" | "CLASS";
   audienceId?: number | null;
-  audiences?: Array<{ audienceType: "ALL" | "CLUB" | "CLASS"; audienceId: number; name: string }>;
+  audiences?: Array<{ audienceType: "ALL" | "CLASS"; audienceId: number; name: string }>;
   frozen?: boolean;
   freezeTime?: string | null;
   enableRollingScoreboard?: boolean;
@@ -725,8 +779,11 @@ interface BackendContest {
   bronzeRatio?: number;
   allowAfterEndSubmit?: boolean;
   allowAfterEndViewProblem?: boolean;
+  allowAfterEndViewCode?: boolean;
   publicScoreboardEnabled?: boolean;
+  showClassOnScoreboard?: boolean;
   allowStarRegistration?: boolean;
+  allowViewAllSubmissions?: boolean;
   registrationType: string;
   hasPassword?: boolean;
   status: "NOT_STARTED" | "RUNNING" | "ENDED";
@@ -734,7 +791,7 @@ interface BackendContest {
   submissionCount?: number;
   problems?: AdminContest["problems"];
   registered?: boolean;
-  registeredIdentityType?: "PERSONAL" | "CLUB" | null;
+  registeredIdentityType?: "PERSONAL" | null;
   registeredIdentityId?: number | null;
   registeredIdentityName?: string | null;
   registeredStarred?: boolean | null;
@@ -775,22 +832,20 @@ function contestStatusLabel(value: BackendContest["status"]): Contest["status"] 
 
 function audienceLabel(value: BackendContest["audience"]) {
   if (value === "CLASS") return "班级";
-  if (value === "CLUB") return "社团";
   return "全校公开";
 }
 
-function filterClubAudienceTypes<T extends { audienceType: string }>(items: T[] | undefined) {
-  return (items ?? []).filter((item) => item.audienceType === "ALL" || item.audienceType === "CLUB" || item.audienceType === "CLASS") as Array<
-    T & { audienceType: "ALL" | "CLUB" | "CLASS" }
+function filterVisibleAudienceTypes<T extends { audienceType: string }>(items: T[] | undefined) {
+  return (items ?? []).filter((item) => item.audienceType === "ALL" || item.audienceType === "CLASS") as Array<
+    T & { audienceType: "ALL" | "CLASS" }
   >;
 }
 
-function visibleAudience(value: "ALL" | "CLUB" | "CLASS"): "ALL" | "CLUB" | "CLASS" {
-  if (value === "CLASS") return "CLASS";
-  return value === "CLUB" ? "CLUB" : "ALL";
+function visibleAudience(value: "ALL" | "CLASS" | string): "ALL" | "CLASS" {
+  return value === "CLASS" ? "CLASS" : "ALL";
 }
 
-function visibleIdentityType(value?: "PERSONAL" | "CLUB" | null): "PERSONAL" | null {
+function visibleIdentityType(value?: "PERSONAL" | string | null): "PERSONAL" | null {
   if (value === "PERSONAL") return "PERSONAL";
   return null;
 }
@@ -850,7 +905,7 @@ interface BackendPractice {
   id: number;
   title: string;
   description?: string;
-  audience: "ALL" | "CLUB" | "CLASS";
+  audience: "ALL" | "CLASS";
   audienceId?: number | null;
   hasPassword: boolean;
   ownerId: number;
@@ -886,7 +941,7 @@ function mapAdminContest(contest: BackendContest): AdminContest {
     ownerName: contest.ownerName || "",
     audience: visibleAudience(contest.audience),
     audienceId: contest.audienceId,
-    audiences: filterClubAudienceTypes(contest.audiences),
+    audiences: filterVisibleAudienceTypes(contest.audiences),
     frozen: Boolean(contest.frozen),
     freezeTime: contest.freezeTime ?? null,
     enableRollingScoreboard: Boolean(contest.enableRollingScoreboard),
@@ -895,7 +950,10 @@ function mapAdminContest(contest: BackendContest): AdminContest {
     bronzeRatio: Number(contest.bronzeRatio ?? 30),
     allowAfterEndSubmit: Boolean(contest.allowAfterEndSubmit),
     allowAfterEndViewProblem: contest.allowAfterEndViewProblem ?? true,
+    allowAfterEndViewCode: Boolean(contest.allowAfterEndViewCode),
     publicScoreboardEnabled: contest.publicScoreboardEnabled ?? true,
+    showClassOnScoreboard: Boolean(contest.showClassOnScoreboard),
+    allowViewAllSubmissions: contest.allowViewAllSubmissions ?? true,
     allowStarRegistration: Boolean(contest.allowStarRegistration),
     registrationType: contest.registrationType,
     hasPassword: Boolean(contest.hasPassword),
@@ -910,6 +968,8 @@ function mapAdminContest(contest: BackendContest): AdminContest {
       score: item.score,
       displayOrder: item.displayOrder,
       caseScores: item.caseScores ?? [],
+      submissionCount: Number(item.submissionCount ?? 0),
+      acceptedCount: Number(item.acceptedCount ?? 0),
     })),
   };
 }
@@ -924,7 +984,7 @@ function mapPublicContest(contest: BackendContest): PublicContest {
     endTime: contest.endTime,
     type: contest.type,
     audience: visibleAudience(contest.audience),
-    audiences: filterClubAudienceTypes(contest.audiences),
+    audiences: filterVisibleAudienceTypes(contest.audiences),
     frozen: Boolean(contest.frozen),
     freezeTime: contest.freezeTime ?? null,
     enableRollingScoreboard: Boolean(contest.enableRollingScoreboard),
@@ -933,7 +993,10 @@ function mapPublicContest(contest: BackendContest): PublicContest {
     bronzeRatio: Number(contest.bronzeRatio ?? 30),
     allowAfterEndSubmit: Boolean(contest.allowAfterEndSubmit),
     allowAfterEndViewProblem: contest.allowAfterEndViewProblem ?? true,
+    allowAfterEndViewCode: Boolean(contest.allowAfterEndViewCode),
     publicScoreboardEnabled: contest.publicScoreboardEnabled ?? true,
+    showClassOnScoreboard: Boolean(contest.showClassOnScoreboard),
+    allowViewAllSubmissions: contest.allowViewAllSubmissions ?? true,
     allowStarRegistration: Boolean(contest.allowStarRegistration),
     registrationType: contest.registrationType,
     hasPassword: Boolean(contest.hasPassword),
@@ -953,6 +1016,8 @@ function mapPublicContest(contest: BackendContest): PublicContest {
       score: item.score,
       displayOrder: item.displayOrder,
       caseScores: item.caseScores ?? [],
+      submissionCount: Number(item.submissionCount ?? 0),
+      acceptedCount: Number(item.acceptedCount ?? 0),
     })),
   };
 }
@@ -1181,12 +1246,15 @@ export async function register(payload: RegisterPayload) {
   return tokens;
 }
 
-export async function fetchMe(token: string) {
-  const user = await request<BackendUserMe>("/api/v1/auth/me", {}, token);
+let _cachedMeToken: string | null = null;
+let _cachedMeResult: ReturnType<typeof _buildMeResult> | null = null;
+
+function _buildMeResult(user: BackendUserMe) {
   return {
     id: `u${user.id}`,
     username: user.username,
     displayName: user.displayName,
+    avatarUrl: user.avatarUrl || "",
     name: user.displayName || user.username,
     studentNo: user.studentNo || "",
     email: user.email || "",
@@ -1197,6 +1265,22 @@ export async function fetchMe(token: string) {
     classId: user.classId ?? null,
     className: user.className ?? null,
   } as const;
+}
+
+export async function fetchMe(token: string) {
+  if (_cachedMeToken === token && _cachedMeResult) {
+    return _cachedMeResult;
+  }
+  const user = await request<BackendUserMe>("/api/v1/auth/me", {}, token);
+  _cachedMeToken = token;
+  _cachedMeResult = _buildMeResult(user);
+  return _cachedMeResult;
+}
+
+/** Clear the cached /auth/me result (call on logout). */
+export function clearMeCache() {
+  _cachedMeToken = null;
+  _cachedMeResult = null;
 }
 
 export interface UpdateProfilePayload {
@@ -1215,41 +1299,10 @@ export interface UpdatePasswordPayload {
   newPassword: string;
 }
 
-export interface ManagedClub {
-  id: number;
-  name: string;
-  ownerId?: number | null;
-  ownerName?: string | null;
-  memberCount: number;
-  joinEnabled: boolean;
-  createdAt: string;
-  members?: ManagedClubMember[];
-}
-
-export interface ManagedClubMember {
-  userId: number;
-  username?: string | null;
-  displayName?: string | null;
-  memberRole: string;
-  joinedAt: string;
-  acCount: number;
-}
-
-export interface ClubJoinApplicationRecord {
-  id: number;
-  clubId: number;
-  clubName?: string | null;
-  userId: number;
-  username?: string | null;
-  displayName?: string | null;
-  status: "PENDING" | "APPROVED" | "REJECTED";
-  reason?: string | null;
-  createdAt: string;
-  handledAt?: string | null;
-}
-
-export interface ClubJoinApplicationPayload {
-  reason?: string;
+export interface ResetPasswordPayload {
+  email: string;
+  emailVerificationCode: string;
+  newPassword: string;
 }
 
 export interface ClassJoinApplicationRecord {
@@ -1277,6 +1330,17 @@ export async function updateProfile(payload: UpdateProfilePayload, token: string
   }, token);
 }
 
+export async function uploadMyAvatar(file: File, token: string) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const result = await request<{ avatarUrl: string }>("/api/v1/auth/avatar", {
+    method: "POST",
+    body: formData,
+  }, token);
+  clearMeCache();
+  return result;
+}
+
 export async function bindEmail(payload: BindEmailPayload, token: string) {
   return request<void>("/api/v1/auth/email", {
     method: "PUT",
@@ -1291,36 +1355,19 @@ export async function updatePassword(payload: UpdatePasswordPayload, token: stri
   }, token);
 }
 
+export async function resetPassword(payload: ResetPasswordPayload) {
+  return request<void>("/api/v1/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 function requireFrontendToken() {
   const token = getFrontendAccessToken();
   if (!token) {
     throw new Error("请先登录");
   }
   return token;
-}
-
-export async function fetchManagedClubs() {
-  return request<ManagedClub[]>("/api/v1/clubs/manage", {}, requireFrontendToken());
-}
-
-export async function fetchManagedClubDetail(clubId: number) {
-  return request<ManagedClub>(`/api/v1/clubs/manage/${clubId}`, {}, requireFrontendToken());
-}
-
-export async function fetchClubApplications(clubId?: number) {
-  const query = clubId ? `?clubId=${clubId}` : "";
-  return request<ClubJoinApplicationRecord[]>(`/api/v1/clubs/manage/applications${query}`, {}, requireFrontendToken());
-}
-
-export async function applyToClub(clubId: number, payload: ClubJoinApplicationPayload = {}) {
-  return request<ClubJoinApplicationRecord>(
-    `/api/v1/clubs/${clubId}/applications`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
-    requireFrontendToken(),
-  );
 }
 
 export async function applyToClass(classId: number, payload: ClassJoinApplicationPayload = {}) {
@@ -1330,30 +1377,6 @@ export async function applyToClass(classId: number, payload: ClassJoinApplicatio
       method: "POST",
       body: JSON.stringify(payload),
     },
-    requireFrontendToken(),
-  );
-}
-
-export async function approveClubApplication(applicationId: number) {
-  return request<ClubJoinApplicationRecord>(
-    `/api/v1/clubs/manage/applications/${applicationId}/approve`,
-    { method: "POST" },
-    requireFrontendToken(),
-  );
-}
-
-export async function rejectClubApplication(applicationId: number) {
-  return request<ClubJoinApplicationRecord>(
-    `/api/v1/clubs/manage/applications/${applicationId}/reject`,
-    { method: "POST" },
-    requireFrontendToken(),
-  );
-}
-
-export async function removeManagedClubMember(clubId: number, userId: number) {
-  return request<ManagedClub>(
-    `/api/v1/clubs/manage/${clubId}/members/${userId}`,
-    { method: "DELETE" },
     requireFrontendToken(),
   );
 }
@@ -1390,9 +1413,11 @@ export async function fetchProblemDetail(problemId: number) {
 
 export async function fetchMyProblemSubmissions(problemId: number, contestId?: number | null) {
   const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
+  const userId = currentUserIdFromAccessToken(token ?? null);
+  const userQuery = userId ? `&userId=${userId}` : "";
   const contestQuery = contestId ? `&contestId=${contestId}` : "";
   const result = await request<{ total: number; list: SubmissionRecord[] }>(
-    `/api/v1/submissions?page=1&pageSize=100&problemId=${problemId}${contestQuery}`,
+    `/api/v1/submissions?page=1&pageSize=100&problemId=${problemId}${userQuery}${contestQuery}`,
     {},
     token,
   );
@@ -1677,7 +1702,7 @@ export async function commitProblemDraft(token: string, draftId: string) {
   );
 }
 
-export async function fetchPractices(page = 1, pageSize = 10, scope: "all" | "public" | "class" = "all") {
+export async function fetchPractices(page = 1, pageSize = 20, scope: "all" | "public" | "class" = "all") {
   const params = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
@@ -1748,8 +1773,8 @@ export async function fetchAdminContests(token: string, page = 1, pageSize = 20)
   return { total: result.total, list: result.list.map(mapAdminContest) };
 }
 
-export async function fetchContests(page = 1, pageSize = 50) {
-  const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
+export async function fetchContests(page = 1, pageSize = 20) {
+  const token = await getFrontendAccessTokenForOptionalAuth();
   const result = await get<{ total: number; list: BackendContest[] }>(
     `/api/v1/contests?page=${page}&pageSize=${pageSize}`,
     token,
@@ -1758,11 +1783,11 @@ export async function fetchContests(page = 1, pageSize = 50) {
 }
 
 export async function fetchContest(contestId: number) {
-  const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
+  const token = await getFrontendAccessTokenForOptionalAuth();
   return mapPublicContest(await get<BackendContest>(`/api/v1/contests/${contestId}`, token));
 }
 
-export async function fetchContestSubmissions(contestId: number, page = 1, pageSize = 50) {
+export async function fetchContestSubmissions(contestId: number, page = 1, pageSize = 20) {
   const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
   const result = await request<{ total: number; list: SubmissionRecord[] }>(
     `/api/v1/submissions?page=${page}&pageSize=${pageSize}&contestId=${contestId}`,
@@ -1772,7 +1797,7 @@ export async function fetchContestSubmissions(contestId: number, page = 1, pageS
   return { total: result.total, list: result.list };
 }
 
-export async function fetchMyContestSubmissions(contestId: number, page = 1, pageSize = 50) {
+export async function fetchMyContestSubmissions(contestId: number, page = 1, pageSize = 20) {
   const token = window.localStorage.getItem("qoj.accessToken");
   if (!token) {
     throw new Error("请先登录后查看提交记录");
@@ -1927,15 +1952,6 @@ export async function saveContestDraft(token: string, payload: ContestDraftPaylo
 
 export async function clearContestDraft(token: string) {
   return request<void>("/api/admin/v1/contests/draft", { method: "DELETE" }, token);
-}
-
-export async function fetchAdminClubs(token: string) {
-  const result = await request<Array<{ id: number; name: string; description?: string }>>(
-    "/api/admin/v1/organizations/clubs",
-    {},
-    token,
-  );
-  return result.map((item) => ({ id: item.id, name: item.name, description: item.description }));
 }
 
 export async function fetchAdminClasses(token: string) {

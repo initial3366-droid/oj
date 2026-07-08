@@ -16,6 +16,7 @@ backend/.env
 *.sql
 *.sql.bak
 qoj_database_backup.sql
+!backend/src/main/resources/db/migration/*.sql
 
 # IDE
 .DS_Store
@@ -36,6 +37,8 @@ vite.config.d.ts
 
 # 发布产物和大型二进制
 release/
+qoj-deploy/
+qoj-deploy.tar.gz
 
 # AI 工具本地配置
 .claude/

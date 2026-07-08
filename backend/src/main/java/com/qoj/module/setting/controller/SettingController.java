@@ -3,7 +3,7 @@ package com.qoj.module.setting.controller;
 import com.qoj.common.ApiResponse;
 import com.qoj.module.setting.service.SystemSettingService;
 import com.qoj.module.setting.vo.FrontendSettingsVO;
-import com.qoj.module.setting.vo.JudgeSettingsVO;
+import com.qoj.module.setting.vo.PublicJudgeSettingsVO;
 import com.qoj.module.setting.vo.RegisterSettingsVO;
 import org.springframework.web.bind.annotation.*;
 
@@ -55,7 +55,7 @@ public class SettingController {
      * 获取判题配置（公开只读接口，供前端提示判题开关状态）
      */
     @GetMapping("/judge")
-    public ApiResponse<JudgeSettingsVO> getJudgeSettings() {
-        return ApiResponse.ok(settingService.getJudgeSettings());
+    public ApiResponse<PublicJudgeSettingsVO> getJudgeSettings() {
+        return ApiResponse.ok(settingService.getPublicJudgeSettings());
     }
 }

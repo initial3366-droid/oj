@@ -19,6 +19,11 @@ import java.util.List;
 
 @Service
 public class AnnouncementService {
+    private static final int DEFAULT_PAGE_SIZE = 10;
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final int DEFAULT_LATEST_LIMIT = 5;
+    private static final int MAX_LATEST_LIMIT = 20;
+
     private final AnnouncementMapper announcementMapper;
 
     public AnnouncementService(AnnouncementMapper announcementMapper) {
@@ -29,7 +34,7 @@ public class AnnouncementService {
      * 分页查询公告列表（管理员）
      */
     public PageResult<AnnouncementVO> listForAdmin(int page, int pageSize) {
-        Page<Announcement> pageQuery = new Page<>(page, pageSize);
+        Page<Announcement> pageQuery = new Page<>(normalizePage(page), normalizePageSize(pageSize));
         QueryWrapper<Announcement> wrapper = new QueryWrapper<>();
         wrapper.eq("is_deleted", false)
                 .orderByDesc("created_at");
@@ -46,7 +51,7 @@ public class AnnouncementService {
      * 分页查询可见公告列表（用户）
      */
     public PageResult<AnnouncementVO> listForUser(int page, int pageSize) {
-        Page<Announcement> pageQuery = new Page<>(page, pageSize);
+        Page<Announcement> pageQuery = new Page<>(normalizePage(page), normalizePageSize(pageSize));
         QueryWrapper<Announcement> wrapper = new QueryWrapper<>();
         wrapper.eq("is_deleted", false)
                 .eq("is_visible", true)
@@ -68,11 +73,29 @@ public class AnnouncementService {
         wrapper.eq("is_deleted", false)
                 .eq("is_visible", true)
                 .orderByDesc("created_at")
-                .last("LIMIT " + limit);
+                .last("LIMIT " + normalizeLatestLimit(limit));
 
         return announcementMapper.selectList(wrapper).stream()
                 .map(this::toVO)
                 .toList();
+    }
+
+    private int normalizePage(int page) {
+        return Math.max(1, page);
+    }
+
+    private int normalizePageSize(int pageSize) {
+        if (pageSize <= 0) {
+            return DEFAULT_PAGE_SIZE;
+        }
+        return Math.min(pageSize, MAX_PAGE_SIZE);
+    }
+
+    private int normalizeLatestLimit(int limit) {
+        if (limit <= 0) {
+            return DEFAULT_LATEST_LIMIT;
+        }
+        return Math.min(limit, MAX_LATEST_LIMIT);
     }
 
     /**

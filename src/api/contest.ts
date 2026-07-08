@@ -11,9 +11,9 @@ export interface Contest {
   startTime: string;
   endTime: string;
   type: "ACM" | "OI";
-  audience: "ALL" | "CLUB";
+  audience: "ALL" | "CLASS";
   audiences: Array<{
-    audienceType: "ALL" | "CLUB";
+    audienceType: "ALL" | "CLASS";
     audienceId: number;
     name: string;
   }>;
@@ -86,7 +86,7 @@ export interface ContestScoreboard {
       score: number;
       acceptedAt?: string | null;
     }>;
-    identityType?: "PERSONAL" | "CLUB";
+    identityType?: "PERSONAL";
     identityId?: number | null;
   }>;
 }
@@ -96,7 +96,7 @@ export interface ContestScoreboard {
  */
 export async function fetchContests(
   page = 1,
-  pageSize = 50
+  pageSize = 20
 ): Promise<{ total: number; list: Contest[] }> {
   return apiGet<{ total: number; list: Contest[] }>(
     `/api/v1/contests?page=${page}&pageSize=${pageSize}`

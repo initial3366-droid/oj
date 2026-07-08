@@ -22,6 +22,7 @@ import com.qoj.module.auth.dto.BindEmailRequest;
 import com.qoj.module.auth.dto.LoginRequest;
 import com.qoj.module.auth.dto.RefreshTokenRequest;
 import com.qoj.module.auth.dto.RegisterRequest;
+import com.qoj.module.auth.dto.ResetPasswordRequest;
 import com.qoj.module.auth.dto.UpdatePasswordRequest;
 import com.qoj.module.auth.dto.UpdateProfileRequest;
 import com.qoj.module.classroom.entity.ClassMember;
@@ -50,6 +51,8 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 @Service
 public class AuthService {
     private static final Duration ONLINE_USER_TTL = Duration.ofDays(7);
+    private static final Duration LOGIN_LOCK_TTL = Duration.ofMinutes(15);
+    private static final int MAX_LOGIN_FAILURES = 5;
 
     private final UserMapper userMapper;
     private final AdminUserMapper adminUserMapper;
@@ -86,22 +89,28 @@ public class AuthService {
 
     @Transactional
     public AuthTokenResponse loginUser(LoginRequest request) {
+        String username = normalizeLoginName(request.username());
+        assertLoginNotLocked("front", username);
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", request.username()));
         if (user != null && passwordEncoder.matches(request.password(), user.passwordHash)) {
             if (!UserRole.isActiveFrontendRole(user.role)) {
+                recordLoginFailure("front", username);
                 throw new BadCredentialsException("bad credentials");
             }
+            resetLoginFailures("front", username);
             return issueFrontendTokens(user);
         }
 
         AdminUser adminUser = adminUserMapper.selectOne(new QueryWrapper<AdminUser>().eq("username", request.username()));
         if (adminUser != null && passwordEncoder.matches(request.password(), adminUser.passwordHash)) {
-            if ("TEACHER".equals(adminUser.role) || "CLUB_ADMIN".equals(adminUser.role)) {
+            if ("TEACHER".equals(adminUser.role)) {
+                resetLoginFailures("front", username);
                 return issueFrontendTokens(syncFrontendAccount(adminUser));
             }
             throw new BizException(403, "后台账号请从后台入口登录");
         }
 
+        recordLoginFailure("front", username);
         throw new BadCredentialsException("bad credentials");
     }
 
@@ -125,6 +134,45 @@ public class AuthService {
         return Duration.ofSeconds(jwtService.refreshTokenTtlSeconds());
     }
 
+    private String normalizeLoginName(String username) {
+        return username == null ? "" : username.trim().toLowerCase();
+    }
+
+    private String loginFailureKey(String scope, String username) {
+        return "oj:auth:login-fail:" + scope + ":" + username;
+    }
+
+    private void assertLoginNotLocked(String scope, String username) {
+        String key = loginFailureKey(scope, username);
+        String value = redisTemplate.opsForValue().get(key);
+        int failures = parseInt(value, 0);
+        if (failures >= MAX_LOGIN_FAILURES) {
+            Long ttl = redisTemplate.getExpire(key);
+            long seconds = ttl == null || ttl < 0 ? LOGIN_LOCK_TTL.toSeconds() : ttl;
+            throw new BizException(429, "登录失败次数过多，请 " + seconds + " 秒后再试");
+        }
+    }
+
+    private void recordLoginFailure(String scope, String username) {
+        String key = loginFailureKey(scope, username);
+        Long failures = redisTemplate.opsForValue().increment(key);
+        if (failures != null && failures == 1L) {
+            redisTemplate.expire(key, LOGIN_LOCK_TTL);
+        }
+    }
+
+    private void resetLoginFailures(String scope, String username) {
+        redisTemplate.delete(loginFailureKey(scope, username));
+    }
+
+    private int parseInt(String value, int fallback) {
+        try {
+            return value == null ? fallback : Integer.parseInt(value);
+        } catch (NumberFormatException ex) {
+            return fallback;
+        }
+    }
+
     private User syncFrontendAccount(AdminUser adminUser) {
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", adminUser.username));
         if (user == null) {
@@ -134,7 +182,10 @@ public class AuthService {
             user.email = availableUserEmail(adminUser.email);
         }
         user.passwordHash = adminUser.passwordHash;
-        user.role = "TEACHER".equals(adminUser.role) ? UserRole.TEACHER.name() : UserRole.STUDENT.name();
+        user.role = switch (adminUser.role) {
+            case "TEACHER" -> UserRole.TEACHER.name();
+            default -> UserRole.STUDENT.name();
+        };
         user.displayName = adminUser.displayName == null || adminUser.displayName.isBlank()
             ? adminUser.username
             : adminUser.displayName;
@@ -171,8 +222,11 @@ public class AuthService {
     }
     //后台登录验证
     public AuthTokenResponse loginAdmin(LoginRequest request) {
+        String username = normalizeLoginName(request.username());
+        assertLoginNotLocked("admin", username);
         AdminUser adminUser = adminUserMapper.selectOne(new QueryWrapper<AdminUser>().eq("username", request.username()));
         if (adminUser != null && passwordEncoder.matches(request.password(), adminUser.passwordHash)) {
+            resetLoginFailures("admin", username);
             JwtService.TokenPair pair = jwtService.issueTokens(new AuthUser(adminUser));
 
             // 保存 refresh token family 到 Redis
@@ -187,9 +241,11 @@ public class AuthService {
 
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", request.username()));
         if (user != null && passwordEncoder.matches(request.password(), user.passwordHash)) {
+            recordLoginFailure("admin", username);
             throw new BizException(403, "用户名或密码错误");
         }
 
+        recordLoginFailure("admin", username);
         throw new BadCredentialsException("bad credentials");
     }
 
@@ -375,6 +431,7 @@ public class AuthService {
             admin.username,
             admin.displayName,
             null,
+            null,
             admin.email,
             admin.role,
             0,
@@ -411,6 +468,7 @@ public class AuthService {
             user.id,
             user.username,
             user.displayName,
+            user.avatarUrl,
             user.studentNo,
             user.email,
             user.role,
@@ -526,5 +584,30 @@ public class AuthService {
         // 更新密码
         user.passwordHash = passwordEncoder.encode(request.newPassword());
         userMapper.updateById(user);
+    }
+
+    public void resetPassword(ResetPasswordRequest request) {
+        // 验证邮箱验证码
+        String emailCodeKey = RedisKeys.emailVerificationCode(request.email());
+        String storedEmailCode = redisTemplate.opsForValue().get(emailCodeKey);
+        if (storedEmailCode == null) {
+            throw new BizException(400, "邮箱验证码已过期，请重新获取");
+        }
+        if (!storedEmailCode.equals(request.emailVerificationCode())) {
+            throw new BizException(400, "邮箱验证码错误");
+        }
+
+        // 查找用户
+        User user = userMapper.selectOne(new QueryWrapper<User>().eq("email", request.email()));
+        if (user == null) {
+            throw new BizException(400, "该邮箱未注册");
+        }
+
+        // 更新密码
+        user.passwordHash = passwordEncoder.encode(request.newPassword());
+        userMapper.updateById(user);
+
+        // 删除已使用的邮箱验证码
+        redisTemplate.delete(emailCodeKey);
     }
 }

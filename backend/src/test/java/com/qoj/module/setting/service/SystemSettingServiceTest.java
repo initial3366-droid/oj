@@ -15,10 +15,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -34,14 +37,17 @@ class SystemSettingServiceTest {
     private PasswordEncoder passwordEncoder;
 
     private SystemSettingService settingService;
+    private MockEnvironment environment;
 
     @BeforeEach
     void setUp() {
+        environment = new MockEnvironment();
         settingService = new SystemSettingService(
             settingMapper,
             adminUserMapper,
             passwordEncoder,
-            new ObjectMapper()
+            new ObjectMapper(),
+            environment
         );
     }
 
@@ -87,8 +93,10 @@ class SystemSettingServiceTest {
         JudgeSettingsVO settings = settingService.getJudgeSettings();
 
         assertEquals(true, settings.enabled);
-        assertEquals("unsafe-local", settings.mode);
-        assertEquals("unsafe-local", settings.contestMode);
+        assertEquals("docker", settings.mode);
+        assertEquals("docker", settings.contestMode);
+        assertFalse(settings.enableUnsafeLocalJudge);
+        assertFalse(settings.enableSandbox);
         assertEquals(2, settings.maxConcurrent);
         assertEquals(2, settings.threadPoolSize);
         assertEquals(2, settings.queueBatchSize);
@@ -97,6 +105,19 @@ class SystemSettingServiceTest {
         assertEquals("", settings.domjudgeApiKey);
         assertFalse(settings.hasDomjudgeApiKey);
         assertEquals(2000L, settings.domjudgePollIntervalMs);
+    }
+
+    @Test
+    @DisplayName("Judge runtime settings fail closed when unsafe-local is configured in production")
+    void getJudgeRuntimeSettings_UnsafeLocalInProduction_ShouldFailClosed() {
+        environment.setActiveProfiles("prod");
+        when(settingMapper.selectById(anyString())).thenReturn(null);
+        doReturn(setting("judge.mode", "unsafe-local")).when(settingMapper).selectById("judge.mode");
+        doReturn(setting("judge.contest_mode", "unsafe-local")).when(settingMapper).selectById("judge.contest_mode");
+        doReturn(setting("judge.enable_unsafe_local_judge", "true"))
+            .when(settingMapper).selectById("judge.enable_unsafe_local_judge");
+
+        assertThrows(IllegalStateException.class, () -> settingService.getJudgeRuntimeSettings());
     }
 
     @Test

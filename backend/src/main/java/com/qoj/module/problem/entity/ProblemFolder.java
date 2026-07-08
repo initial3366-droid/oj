@@ -12,6 +12,7 @@ public class ProblemFolder {
     public String name;
     public String description;
     public Integer displayOrder;
+    public Long ownerId;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;
 }

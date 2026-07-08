@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Button, Card, Form, Input, Message, Space, Typography } from '@arco-design/web-react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { Avatar, Button, Card, Form, Input, Message, Space, Typography } from '@arco-design/web-react';
 import { IconSave, IconUser } from '@arco-design/web-react/icon';
-import { teacherGet, teacherPut, type TeacherMe } from '../teacherApi';
+import { teacherGet, teacherPost, teacherPut, type TeacherMe } from '../teacherApi';
 
 const FormItem = Form.Item;
 
@@ -11,7 +11,9 @@ export function TeacherProfilePage() {
   const [loading, setLoading] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [me, setMe] = useState<TeacherMe | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     loadProfile();
@@ -68,30 +70,50 @@ export function TeacherProfilePage() {
     }
   }
 
+  async function handleAvatarFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setAvatarUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      await teacherPost<{ avatarUrl: string }>('/api/teacher/v1/me/avatar', formData);
+      Message.success('头像已更新');
+      await loadProfile();
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '头像上传失败');
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
+
   return (
     <div style={{ maxWidth: 640, margin: '0 auto' }} className={loading ? 'arco-loading' : undefined}>
       <Card title="个人信息" style={{ marginBottom: 16 }} loading={loading} bordered={false}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24, gap: 16 }}>
-          <div
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: '50%',
-              backgroundColor: '#165dff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              fontSize: 28,
-            }}
-          >
-            {me?.displayName?.charAt(0) || <IconUser />}
-          </div>
+          <Avatar size={64} style={{ backgroundColor: '#165dff' }}>
+            {me?.avatarUrl
+              ? <img src={me.avatarUrl} alt={me.displayName || me.username} />
+              : (me?.displayName?.charAt(0) || <IconUser />)}
+          </Avatar>
           <div>
             <Typography.Title heading={4} style={{ margin: 0 }}>
               {me?.displayName || '-'}
             </Typography.Title>
             <Typography.Text type="secondary">教师 · @{me?.username}</Typography.Text>
+            <div style={{ marginTop: 8 }}>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
+                style={{ display: 'none' }}
+                onChange={handleAvatarFileChange}
+              />
+              <Button size="small" loading={avatarUploading} onClick={() => avatarInputRef.current?.click()}>
+                修改头像
+              </Button>
+            </div>
           </div>
         </div>
 

@@ -28,6 +28,7 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
     // 频道模式
     private static final Pattern CONTEST_SCOREBOARD_PATTERN = Pattern.compile("^/topic/contests/(\\d+)/scoreboard$");
     private static final Pattern CONTEST_ANNOUNCEMENT_PATTERN = Pattern.compile("^/topic/contests/(\\d+)/announcements$");
+    private static final Pattern CONTEST_STATUS_PATTERN = Pattern.compile("^/topic/contests/(\\d+)/status$");
     private static final Pattern SUBMISSION_PATTERN = Pattern.compile("^/topic/submissions/(\\d+)$");
     private static final Pattern SUBMISSION_QUEUE_PATTERN = Pattern.compile("^/topic/submission-queue$");
 
@@ -85,6 +86,13 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
             return canAccessContest(authUser, contestId);
         }
 
+        // 检查比赛状态订阅权限
+        Matcher statusMatcher = CONTEST_STATUS_PATTERN.matcher(destination);
+        if (statusMatcher.matches()) {
+            long contestId = Long.parseLong(statusMatcher.group(1));
+            return canAccessContest(authUser, contestId);
+        }
+
         // 检查提交状态订阅权限
         Matcher submissionMatcher = SUBMISSION_PATTERN.matcher(destination);
         if (submissionMatcher.matches()) {
@@ -106,8 +114,8 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
             return false;
         }
 
-        // 公开比赛，任何人都可以访问
-        if ("PUBLIC".equals(contest.audience)) {
+        // 公开比赛，任何登录用户都可以订阅实时频道
+        if ("ALL".equals(contest.audience)) {
             return true;
         }
 

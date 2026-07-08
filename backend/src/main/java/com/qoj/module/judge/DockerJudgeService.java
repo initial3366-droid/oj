@@ -40,6 +40,7 @@ public class DockerJudgeService implements JudgeService {
     private static final int MAX_PROCESSES = 32;
     private static final String DOCKER_IMAGE = "qoj-judge:latest";
     private static final String JUDGE_WORK_DIR_ENV = "JUDGE_WORK_DIR";
+    private static final String MEMORY_OUTPUT_PREFIX = "QOJ_MEMORY_KB=";
 
     @Override
     public JudgeResult judge(JudgeTask task) {
@@ -56,7 +57,7 @@ public class DockerJudgeService implements JudgeService {
             // 运行所有测试点
             List<JudgeCaseResult> caseResults = new ArrayList<>();
             int maxTime = 0;
-            int maxMemory = 0;
+            Integer maxMemory = null;
             SubmissionStatus finalStatus = SubmissionStatus.AC;
 
             for (JudgeTask.TestCase testCase : task.testCases()) {
@@ -82,7 +83,9 @@ public class DockerJudgeService implements JudgeService {
                 ));
 
                 maxTime = Math.max(maxTime, result.timeMs());
-                maxMemory = Math.max(maxMemory, result.memoryKb());
+                if (result.memoryKb() > 0) {
+                    maxMemory = maxMemory == null ? result.memoryKb() : Math.max(maxMemory, result.memoryKb());
+                }
 
                 if (caseStatus != SubmissionStatus.AC) {
                     finalStatus = caseStatus;
@@ -163,6 +166,8 @@ public class DockerJudgeService implements JudgeService {
             "--memory", "512m",
             "--cpus", "1",
             "--pids-limit", String.valueOf(MAX_PROCESSES),
+            "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
             "-v", workDir.toString() + ":/workspace:rw",
             "-w", "/workspace",
             DOCKER_IMAGE,
@@ -188,6 +193,8 @@ public class DockerJudgeService implements JudgeService {
             "--memory", "512m",
             "--cpus", "1",
             "--pids-limit", String.valueOf(MAX_PROCESSES),
+            "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
             "-v", workDir.toString() + ":/workspace:rw",
             "-w", "/workspace",
             DOCKER_IMAGE,
@@ -222,6 +229,8 @@ public class DockerJudgeService implements JudgeService {
             "--memory", "512m",
             "--cpus", "1",
             "--pids-limit", String.valueOf(MAX_PROCESSES),
+            "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
             "-v", workDir.toString() + ":/workspace:rw",
             "-w", "/workspace",
             DOCKER_IMAGE,
@@ -237,13 +246,7 @@ public class DockerJudgeService implements JudgeService {
     }
 
     private RunResult runTestCase(Path workDir, List<String> command, String input, int timeLimitMs, int memoryLimitMb) {
-        Path metricsDir = null;
         try {
-            // 创建可写目录用于 /usr/bin/time 输出
-            metricsDir = workDir.resolve("metrics_" + System.nanoTime());
-            Files.createDirectories(metricsDir);
-            makeWorkDirAccessible(metricsDir);
-
             // 构建 Docker 运行命令
             List<String> dockerCmd = new ArrayList<>();
             dockerCmd.add("docker");
@@ -260,21 +263,29 @@ public class DockerJudgeService implements JudgeService {
             dockerCmd.add("1");
             dockerCmd.add("--pids-limit");
             dockerCmd.add(String.valueOf(MAX_PROCESSES));
+            dockerCmd.add("--cap-drop");
+            dockerCmd.add("ALL");
+            dockerCmd.add("--security-opt");
+            dockerCmd.add("no-new-privileges");
+            dockerCmd.add("--read-only");
+            dockerCmd.add("--tmpfs");
+            dockerCmd.add("/tmp:rw,noexec,nosuid,size=64m");
             dockerCmd.add("-v");
             dockerCmd.add(workDir.toString() + ":/workspace:ro");  // 只读挂载
-            dockerCmd.add("-v");
-            dockerCmd.add(metricsDir.toString() + ":/metrics:rw");  // 可写挂载用于 time 输出
             dockerCmd.add("-w");
             dockerCmd.add("/workspace");
             dockerCmd.add(DOCKER_IMAGE);
-            // 使用 /usr/bin/time 包装用户命令以获取内存峰值
+            // 使用 GNU time 输出内存峰值到 stderr，避免依赖额外挂载目录写文件。
             dockerCmd.add("/usr/bin/time");
-            dockerCmd.add("-v");
-            dockerCmd.add("-o");
-            dockerCmd.add("/metrics/time.txt");
+            dockerCmd.add("-f");
+            dockerCmd.add(MEMORY_OUTPUT_PREFIX + "%M");
             dockerCmd.addAll(command);
 
             ProcessResult result = runProcess(dockerCmd, workDir, input == null ? "" : input, timeLimitMs + 1000);
+
+            if (log.isDebugEnabled()) {
+                log.debug("[MEM-DIAG] docker exitCode: {}", result.exitCode());
+            }
 
             SubmissionStatus status = SubmissionStatus.AC;
             String message = "";
@@ -296,13 +307,13 @@ public class DockerJudgeService implements JudgeService {
                 message = "Memory Limit Exceeded";
             }
 
-            // 从 /usr/bin/time 输出文件解析内存峰值
-            int memoryKb = parseMemoryKb(metricsDir.resolve("time.txt"));
+            int memoryKb = parseMemoryKb(result.stderr());
+            String stderr = stripMemoryMetric(result.stderr());
 
             return new RunResult(
                 status,
                 truncateOutput(result.stdout()),
-                truncateOutput(result.stderr()),
+                truncateOutput(stderr),
                 result.timeMs(),
                 memoryKb,
                 message
@@ -311,42 +322,46 @@ public class DockerJudgeService implements JudgeService {
         } catch (Exception ex) {
             log.error("Run test case error", ex);
             return new RunResult(SubmissionStatus.SE, "", ex.getMessage(), 0, 0, "系统错误");
-        } finally {
-            cleanupMetricsDir(metricsDir);
         }
     }
 
     /**
-     * 从 /usr/bin/time -v 的输出文件中解析最大驻留集大小（RSS），单位 KB。
-     * 文件不存在或解析失败时返回 0（如进程被 OOM kill 或超时强杀）。
+     * 从 /usr/bin/time 输出中解析最大驻留集大小（RSS），单位 KB。
+     * 解析失败时返回 0（如进程被 OOM kill 或超时强杀）。
      */
-    private int parseMemoryKb(Path timeFile) {
-        try {
-            if (!Files.exists(timeFile)) return 0;
-            List<String> lines = Files.readAllLines(timeFile, StandardCharsets.UTF_8);
-            for (String line : lines) {
-                if (line.startsWith("Maximum resident set size (kbytes):")) {
-                    String value = line.substring("Maximum resident set size (kbytes):".length()).trim();
-                    return Integer.parseInt(value);
-                }
+    private int parseMemoryKb(String stderr) {
+        if (stderr == null || stderr.isBlank()) {
+            return 0;
+        }
+        for (String line : stderr.split("\\R")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith(MEMORY_OUTPUT_PREFIX)) {
+                return parsePositiveInt(trimmed.substring(MEMORY_OUTPUT_PREFIX.length()).trim());
             }
-        } catch (Exception ex) {
-            log.warn("Failed to parse memory from time output: {}", timeFile, ex);
+            if (trimmed.startsWith("Maximum resident set size (kbytes):")) {
+                return parsePositiveInt(trimmed.substring("Maximum resident set size (kbytes):".length()).trim());
+            }
         }
         return 0;
     }
 
-    private void cleanupMetricsDir(Path metricsDir) {
-        if (metricsDir == null) return;
-        try (var stream = Files.walk(metricsDir)) {
-            stream.sorted(Comparator.reverseOrder()).forEach(item -> {
-                try {
-                    Files.deleteIfExists(item);
-                } catch (IOException ignored) {}
-            });
-        } catch (IOException ex) {
-            log.warn("Failed to cleanup metrics directory: {}", metricsDir, ex);
+    private int parsePositiveInt(String value) {
+        try {
+            int parsed = Integer.parseInt(value);
+            return Math.max(0, parsed);
+        } catch (NumberFormatException ex) {
+            return 0;
         }
+    }
+
+    private String stripMemoryMetric(String stderr) {
+        if (stderr == null || stderr.isBlank()) {
+            return "";
+        }
+        List<String> lines = stderr.lines()
+            .filter(line -> !line.trim().startsWith(MEMORY_OUTPUT_PREFIX))
+            .toList();
+        return String.join("\n", lines).trim();
     }
 
     private ProcessResult runProcess(List<String> command, Path workDir, String input, int timeoutMs) {
@@ -402,45 +417,34 @@ public class DockerJudgeService implements JudgeService {
     }
 
     private byte[] limitedRead(java.io.InputStream stream, int maxBytes) throws IOException {
-        byte[] buffer = new byte[Math.min(8192, maxBytes)];
-        int total = 0;
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
         int read;
-
-        while (total < maxBytes && (read = stream.read(buffer, 0, Math.min(buffer.length, maxBytes - total))) != -1) {
-            total += read;
+        while (baos.size() < maxBytes && (read = stream.read(buffer, 0, Math.min(buffer.length, maxBytes - baos.size()))) != -1) {
+            baos.write(buffer, 0, read);
         }
-
-        byte[] result = new byte[total];
-        System.arraycopy(buffer, 0, result, 0, total);
-        return result;
+        return baos.toByteArray();
     }
 
     private boolean compareOutput(String actual, String expected) {
-        return normalizeOutput(actual).equals(normalizeOutput(expected));
+        String[] actualTokens = tokenize(actual);
+        String[] expectedTokens = tokenize(expected);
+        if (actualTokens.length != expectedTokens.length) return false;
+        for (int i = 0; i < actualTokens.length; i++) {
+            if (!actualTokens[i].equals(expectedTokens[i])) return false;
+        }
+        return true;
     }
 
-    private String normalizeOutput(String value) {
-        if (value == null) return "";
-
-        String normalized = value.replace("\r\n", "\n").replace('\r', '\n');
-        String[] lines = normalized.split("\n", -1);
-        List<String> cleaned = new ArrayList<>();
-
-        for (String line : lines) {
-            cleaned.add(line.replaceAll("[ \\t]+$", ""));
-        }
-
-        while (!cleaned.isEmpty() && cleaned.get(cleaned.size() - 1).isEmpty()) {
-            cleaned.remove(cleaned.size() - 1);
-        }
-
-        return String.join("\n", cleaned);
+    private String[] tokenize(String value) {
+        if (value == null || value.isBlank()) return new String[0];
+        return value.strip().split("\\s+");
     }
 
     private String truncateOutput(String output) {
         if (output == null) return "";
-        if (output.length() <= 10000) return output;
-        return output.substring(0, 10000) + "\n... (truncated)";
+        if (output.length() <= 1000000) return output;
+        return output.substring(0, 1000000) + "\n... (truncated)";
     }
 
     private Path createWorkDir(String prefix) throws IOException {

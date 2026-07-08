@@ -37,6 +37,7 @@ import com.qoj.module.user.entity.UserScore;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.module.user.mapper.UserScoreMapper;
+import com.qoj.module.user.vo.UserVO;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
 import java.time.LocalDateTime;
@@ -272,6 +273,39 @@ public class ClassRoomService {
             .toList();
     }
 
+    public UserVO teacherStudentDetail(long userId) {
+        List<Long> classIds = managedClassIds();
+        if (classIds.isEmpty()) {
+            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无班级管理权限");
+        }
+        ClassMember member = classMemberMapper.selectOne(
+            new QueryWrapper<ClassMember>()
+                .eq("user_id", userId)
+                .in("class_id", classIds)
+                .last("LIMIT 1")
+        );
+        if (member == null) {
+            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "只能查看自己班级的学生");
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ErrorCode.NOT_FOUND.getCode(), "用户不存在");
+        }
+        ClassRoom classRoom = member.classId == null ? null : classRoomMapper.selectById(member.classId);
+        return new UserVO(
+            user.id,
+            user.username,
+            user.displayName,
+            user.avatarUrl,
+            user.studentNo,
+            user.email,
+            user.role,
+            classRoom == null ? null : classRoom.name,
+            user.createdAt,
+            user.updatedAt
+        );
+    }
+
     @Transactional
     public StudentImportResultVO importStudents(StudentImportRequest request) {
         ClassRoom classRoom = requireManagedClass(request.classId());
@@ -425,15 +459,9 @@ public class ClassRoomService {
         return toVO(classRoomMapper.selectById(classId), true);
     }
 
+    @Transactional
     public ClassRoomMemberVO teacherUpdateStudent(long userId, UpdateStudentRequest request) {
-        User user = userMapper.selectById(userId);
-        if (user == null) {
-            throw new BizException(ErrorCode.NOT_FOUND.getCode(), "用户不存在");
-        }
-        if (user.classId == null) {
-            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "该学生不属于任何班级");
-        }
-        requireManagedClass(user.classId);
+        User user = requireManagedStudent(userId);
 
         if (request.displayName() != null && !request.displayName().isBlank()) {
             user.displayName = request.displayName().trim();
@@ -452,6 +480,19 @@ public class ClassRoomService {
         ClassMember member = classMemberMapper.selectOne(
             new QueryWrapper<ClassMember>().eq("class_id", user.classId).eq("user_id", userId));
         return toMemberVO(member);
+    }
+
+
+    public User requireManagedStudent(long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ErrorCode.NOT_FOUND.getCode(), "用户不存在");
+        }
+        if (user.classId == null) {
+            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "该学生不属于任何班级");
+        }
+        requireManagedClass(user.classId);
+        return user;
     }
 
     private void upsertImportedStudent(
@@ -742,6 +783,7 @@ public class ClassRoomService {
             member.userId,
             user == null ? null : user.username,
             user == null ? null : user.displayName,
+            user == null ? null : user.avatarUrl,
             user == null ? null : user.studentNo,
             user == null ? null : user.email,
             member.source,
@@ -760,6 +802,7 @@ public class ClassRoomService {
             application.userId,
             user == null ? null : user.username,
             user == null ? null : user.displayName,
+            user == null ? null : user.avatarUrl,
             user == null ? null : user.studentNo,
             application.status,
             application.reason,

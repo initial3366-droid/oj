@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.common.exception.BizException;
 import com.qoj.module.setting.vo.AgentSettingsVO;
+import com.qoj.security.SafeUrlValidator;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -35,8 +36,9 @@ public class OpenAiCompatibleAgentClient implements AgentClient {
                 }
             ));
 
+            URI baseUri = SafeUrlValidator.requirePublicHttpUrl(agent.baseUrl, "AI 服务地址");
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(agent.baseUrl + "/chat/completions"))
+                .uri(baseUri.resolve(normalizedBasePath(baseUri) + "chat/completions"))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + agent.apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
@@ -66,6 +68,14 @@ public class OpenAiCompatibleAgentClient implements AgentClient {
         } catch (Exception e) {
             throw new BizException(502, "AI 服务请求失败：" + e.getMessage());
         }
+    }
+
+    private String normalizedBasePath(URI baseUri) {
+        String path = baseUri.getPath();
+        if (path == null || path.isBlank() || "/".equals(path)) {
+            return "/";
+        }
+        return path.replaceAll("/+$", "") + "/";
     }
 
     private record ChatRequest(String model, Message[] messages) {}

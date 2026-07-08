@@ -1,11 +1,7 @@
 package com.qoj.module.submission.controller;
 
 import com.qoj.common.ApiResponse;
-import com.qoj.common.ErrorCode;
 import com.qoj.common.PageResult;
-import com.qoj.common.exception.BizException;
-import com.qoj.module.submission.entity.Submission;
-import com.qoj.module.submission.mapper.SubmissionMapper;
 import com.qoj.module.submission.service.SubmissionExportService;
 import com.qoj.module.submission.service.SubmissionService;
 import com.qoj.module.submission.vo.AdminSubmissionVO;
@@ -30,18 +26,15 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/admin/v1/submissions")
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','CLUB_ADMIN')")
+@PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminSubmissionController {
-    private final SubmissionMapper submissionMapper;
     private final SubmissionService submissionService;
     private final SubmissionExportService submissionExportService;
 
     public AdminSubmissionController(
-        SubmissionMapper submissionMapper,
         SubmissionService submissionService,
         SubmissionExportService submissionExportService
     ) {
-        this.submissionMapper = submissionMapper;
         this.submissionService = submissionService;
         this.submissionExportService = submissionExportService;
     }
@@ -145,23 +138,7 @@ public class AdminSubmissionController {
      * 重判提交
      */
     @PostMapping("/{id}/rejudge")
-    public ApiResponse<Void> rejudge(@PathVariable Long id) {
-        Submission submission = submissionMapper.selectById(id);
-        if (submission == null) {
-            throw new BizException(ErrorCode.NOT_FOUND, "提交不存在");
-        }
-
-        AuthUser user = CurrentUser.required();
-
-        // 超级管理员可以重判所有提交
-        if (!"SUPER_ADMIN".equals(user.role())) {
-            // 其他管理员只能重判自己创建的比赛/练习中的提交
-            // TODO: 实现更细粒度的权限检查
-        }
-
-        // TODO: 调用判题服务重新判题
-        // judgeService.rejudge(id);
-
-        throw new BizException(ErrorCode.NOT_IMPLEMENTED, "重判功能尚未实现");
+    public ApiResponse<AdminSubmissionVO> rejudge(@PathVariable Long id) {
+        return ApiResponse.ok(submissionService.adminRejudge(id));
     }
 }

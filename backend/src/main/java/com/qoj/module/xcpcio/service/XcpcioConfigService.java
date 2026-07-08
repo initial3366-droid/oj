@@ -157,19 +157,28 @@ public class XcpcioConfigService {
         }
         String requiredToken = blankToNull(config.clicsAccessToken);
         if (requiredToken == null) {
-            return;
+            throw new BizException(ErrorCode.FORBIDDEN, "CLICS 导出未配置访问 token，已拒绝公开访问");
         }
-        String actual = blankToNull(accessToken);
-        if (actual == null && authorizationHeader != null) {
-            if (authorizationHeader.startsWith("Bearer ")) {
-                actual = authorizationHeader.substring("Bearer ".length()).trim();
-            } else if (authorizationHeader.startsWith("Basic ")) {
-                actual = basicAuthPassword(authorizationHeader);
-            }
-        }
+        String actual = clicsActualToken(accessToken, authorizationHeader);
         if (actual == null || !constantTimeEquals(requiredToken, actual)) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "CLICS 导出访问 token 无效");
         }
+    }
+
+    public List<Long> accessibleClicsContestIds(String accessToken, String authorizationHeader) {
+        String actual = clicsActualToken(accessToken, authorizationHeader);
+        if (actual == null) {
+            return List.of();
+        }
+        return configMapper.selectList(new QueryWrapper<ContestXcpcioConfig>().eq("enabled", true))
+            .stream()
+            .filter(config -> {
+                String required = blankToNull(config.clicsAccessToken);
+                return required != null && constantTimeEquals(required, actual);
+            })
+            .map(config -> config.contestId)
+            .filter(java.util.Objects::nonNull)
+            .toList();
     }
 
     public Contest requireContest(Long contestId) {
@@ -282,6 +291,18 @@ public class XcpcioConfigService {
 
     private String clicsScoreboardUrl(Long contestId) {
         return "/api/v1/clics/contests/" + contestId + "/scoreboard";
+    }
+
+    private String clicsActualToken(String accessToken, String authorizationHeader) {
+        String actual = blankToNull(accessToken);
+        if (actual == null && authorizationHeader != null) {
+            if (authorizationHeader.startsWith("Bearer ")) {
+                actual = blankToNull(authorizationHeader.substring("Bearer ".length()));
+            } else if (authorizationHeader.startsWith("Basic ")) {
+                actual = basicAuthPassword(authorizationHeader);
+            }
+        }
+        return actual;
     }
 
     private String blankToNull(String value) {

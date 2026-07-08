@@ -1,13 +1,14 @@
 import { Button, Card, Typography, Input, Toast, Modal } from '@douyinfe/semi-ui';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { bindEmail, fetchMe, loginWithoutPersist, register, saveFrontendAuthTokens } from '../data/apiClient';
+import { NavLink, useNavigate, useSearchParams } from 'react-router-dom';
+import { bindEmail, fetchMe, loginWithoutPersist, register, resetPassword, saveFrontendAuthTokens } from '../data/apiClient';
 import { useOjData } from '../data/OjDataProvider';
 import type { AuthTokenResponse } from '../data/apiClient';
 import './AuthPage.css';
 
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { state } = useOjData();
   const [message, setMessage] = useState('');
   const [captchaImage, setCaptchaImage] = useState('');
@@ -21,6 +22,19 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const [bindCaptchaId, setBindCaptchaId] = useState('');
   const [pendingToken, setPendingToken] = useState('');
   const [pendingAuth, setPendingAuth] = useState<AuthTokenResponse | null>(null);
+  const [resetModalVisible, setResetModalVisible] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMessage, setResetMessage] = useState('');
+  const [resetEmailCountdown, setResetEmailCountdown] = useState(0);
+  const [resetCaptchaImage, setResetCaptchaImage] = useState('');
+  const [resetCaptchaId, setResetCaptchaId] = useState('');
+  const [resetForm, setResetForm] = useState({
+    email: '',
+    captcha: '',
+    emailVerificationCode: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
   const [form, setForm] = useState({
     username: '',
     studentNo: '',
@@ -38,14 +52,22 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const isRegister = mode === 'register';
 
   const title = useMemo(() => (isRegister ? '注册账号' : '登录账号'), [isRegister]);
+  const redirectPath = useMemo(() => {
+    const redirect = searchParams.get('redirect');
+    if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) {
+      return redirect;
+    }
+    return '/user-center';
+  }, [searchParams]);
+  const redirectQuery = redirectPath === '/user-center' ? '' : `?redirect=${encodeURIComponent(redirectPath)}`;
 
   // 如果已登录，重定向到用户中心
   useEffect(() => {
     if (state.activeUser !== null) {
       Toast.info('您已登录');
-      navigate('/user-center');
+      navigate(redirectPath);
     }
-  }, [state.activeUser, navigate]);
+  }, [state.activeUser, navigate, redirectPath]);
 
   useEffect(() => {
     if (isRegister) {
@@ -70,6 +92,13 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       return () => clearTimeout(timer);
     }
   }, [bindEmailCountdown]);
+
+  useEffect(() => {
+    if (resetEmailCountdown > 0) {
+      const timer = setTimeout(() => setResetEmailCountdown(resetEmailCountdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resetEmailCountdown]);
 
   const checkEmailRemaining = async () => {
     if (!form.email) return;
@@ -145,6 +174,89 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  const fetchResetCaptcha = async () => {
+    try {
+      const response = await fetch('/api/v1/captcha/image');
+      const result = await response.json();
+      if (result.code === 200) {
+        setResetCaptchaImage(result.data.image);
+        setResetCaptchaId(result.data.captchaId);
+      }
+    } catch {
+      setResetMessage('验证码加载失败');
+    }
+  };
+
+  const sendResetEmailCode = async () => {
+    setResetMessage('');
+    if (!resetForm.email) {
+      setResetMessage('请先输入邮箱');
+      return;
+    }
+    if (!resetForm.captcha || !resetCaptchaId) {
+      setResetMessage('请先输入图形验证码');
+      return;
+    }
+    try {
+      const response = await fetch('/api/v1/captcha/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: resetForm.email,
+          captchaId: resetCaptchaId,
+          captcha: resetForm.captcha,
+        }),
+      });
+      const result = await response.json();
+      if (result.code === 200) {
+        setResetMessage('验证码已发送到您的邮箱');
+        setResetEmailCountdown(result.data.remainingSeconds || 60);
+        fetchResetCaptcha();
+      } else {
+        setResetMessage(result.message || '发送失败');
+        fetchResetCaptcha();
+      }
+    } catch {
+      setResetMessage('发送失败，请稍后重试');
+      fetchResetCaptcha();
+    }
+  };
+
+  const submitResetPassword = async () => {
+    setResetMessage('');
+    if (!resetForm.email || !resetForm.emailVerificationCode) {
+      setResetMessage('请输入邮箱和邮箱验证码');
+      return;
+    }
+    if (resetForm.newPassword.length < 6 || resetForm.newPassword.length > 20) {
+      setResetMessage('新密码长度必须在6-20之间');
+      return;
+    }
+    if (resetForm.newPassword !== resetForm.confirmPassword) {
+      setResetMessage('两次密码不一致');
+      return;
+    }
+    try {
+      setResetLoading(true);
+      await resetPassword({
+        email: resetForm.email,
+        emailVerificationCode: resetForm.emailVerificationCode,
+        newPassword: resetForm.newPassword,
+      });
+      setResetMessage('密码重置成功，请使用新密码登录');
+      setResetLoading(false);
+      setTimeout(() => {
+        setResetModalVisible(false);
+        setResetForm({ email: '', captcha: '', emailVerificationCode: '', newPassword: '', confirmPassword: '' });
+        setResetMessage('');
+      }, 3000);
+    } catch (error) {
+      setResetMessage(error instanceof Error ? error.message : '重置失败');
+      setResetLoading(false);
+      fetchResetCaptcha();
+    }
+  };
+
   const submitBindEmail = async () => {
     setBindMessage('');
     if (!pendingToken) return;
@@ -163,7 +275,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       }
       Toast.success('邮箱绑定成功');
       setBindModalVisible(false);
-      window.location.href = '/user-center';
+      window.location.href = redirectPath;
     } catch (error) {
       setBindMessage(error instanceof Error ? error.message : '绑定失败');
       fetchBindCaptcha();
@@ -257,7 +369,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         Toast.success('登录成功');
       }
       // 刷新页面以重新加载用户状态
-      window.location.href = '/user-center';
+      window.location.href = redirectPath;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '操作失败';
       if (errorMessage.includes('后台账号')) {
@@ -272,7 +384,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   };
 
   return (
-    <div className="auth-page">
+    <div className={`auth-page ${isRegister ? 'auth-page--register' : 'auth-page--login'}`}>
       <div className="auth-card">
         {/* Gradient header */}
         <div className="auth-header">
@@ -411,13 +523,33 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
               {title}
             </Button>
 
+            {/* Forgot password link (login mode only) */}
+            {!isRegister && (
+              <div style={{ textAlign: 'center', marginTop: 4 }}>
+                <Button
+                  type="tertiary"
+                  theme="borderless"
+                  size="small"
+                  style={{ color: '#86909c', fontSize: 13 }}
+                  onClick={() => {
+                    setResetForm({ email: '', captcha: '', emailVerificationCode: '', newPassword: '', confirmPassword: '' });
+                    setResetMessage('');
+                    setResetModalVisible(true);
+                    fetchResetCaptcha();
+                  }}
+                >
+                  找回密码
+                </Button>
+              </div>
+            )}
+
             {/* Toggle between login / register */}
             <Button
               type="primary"
               block
               className="auth-btn-toggle"
               onClick={() => {
-                window.location.href = isRegister ? '/login' : '/register';
+                window.location.href = `${isRegister ? '/login' : '/register'}${redirectQuery}`;
               }}
             >
               {isRegister ? '已有账号，去登录' : '没有账号，去注册'}
@@ -475,6 +607,73 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           {bindMessage && (
             <Typography.Text type={bindMessage.includes('已发送') ? 'success' : 'danger'} style={{ fontSize: 14 }}>
               {bindMessage}
+            </Typography.Text>
+          )}
+        </div>
+      </Modal>
+
+      {/* Reset password modal */}
+      <Modal
+        title="找回密码"
+        visible={resetModalVisible}
+        onCancel={() => setResetModalVisible(false)}
+        okText="重置密码"
+        confirmLoading={resetLoading}
+        onOk={submitResetPassword}
+        cancelButtonProps={{ style: { display: 'none' } }}
+        className="auth-bind-modal"
+      >
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+          请输入注册时使用的邮箱，通过邮箱验证码验证身份后重置密码。
+        </Typography.Paragraph>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Input
+            placeholder="请输入注册邮箱"
+            value={resetForm.email}
+            onChange={(email) => setResetForm({ ...resetForm, email })}
+          />
+          <div className="auth-bind-modal-grid-captcha">
+            <Input
+              placeholder="请输入图形验证码"
+              value={resetForm.captcha}
+              onChange={(captcha) => setResetForm({ ...resetForm, captcha })}
+            />
+            {resetCaptchaImage && (
+              <img
+                src={resetCaptchaImage}
+                alt="验证码"
+                className="auth-bind-modal-captcha-img"
+                onClick={fetchResetCaptcha}
+              />
+            )}
+          </div>
+          <div className="auth-bind-modal-grid-code">
+            <Input
+              placeholder="请输入邮箱验证码"
+              value={resetForm.emailVerificationCode}
+              onChange={(emailVerificationCode) => setResetForm({ ...resetForm, emailVerificationCode })}
+            />
+            <Button type="primary" onClick={sendResetEmailCode} disabled={resetEmailCountdown > 0}>
+              {resetEmailCountdown > 0 ? `${resetEmailCountdown}秒后重试` : '发送验证码'}
+            </Button>
+          </div>
+          <Input
+            type="password"
+            mode="password"
+            placeholder="请输入新密码（6-20个字符）"
+            value={resetForm.newPassword}
+            onChange={(newPassword) => setResetForm({ ...resetForm, newPassword })}
+          />
+          <Input
+            type="password"
+            mode="password"
+            placeholder="请确认新密码"
+            value={resetForm.confirmPassword}
+            onChange={(confirmPassword) => setResetForm({ ...resetForm, confirmPassword })}
+          />
+          {resetMessage && (
+            <Typography.Text type={resetMessage.includes('已发送') || resetMessage.includes('成功') ? 'success' : 'danger'} style={{ fontSize: 14 }}>
+              {resetMessage}
             </Typography.Text>
           )}
         </div>

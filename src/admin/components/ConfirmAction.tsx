@@ -1,5 +1,5 @@
-import { Modal } from '@arco-design/web-react';
 import { ReactNode } from 'react';
+import { showConfirm } from '../../utils/confirm';
 
 interface ConfirmActionProps {
   title?: string;
@@ -20,7 +20,7 @@ export function confirmAction({
   cancelText = '取消',
   type = 'warning',
 }: ConfirmActionProps) {
-  return Modal.confirm({
+  return showConfirm({
     title,
     content,
     okText,

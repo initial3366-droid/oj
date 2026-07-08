@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/admin/v1/dashboard")
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','CLUB_ADMIN')")
+@PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminDashboardController {
     private final AdminDashboardService adminDashboardService;
 

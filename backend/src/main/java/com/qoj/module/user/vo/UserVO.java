@@ -6,6 +6,7 @@ public record UserVO(
     Long id,
     String username,
     String displayName,
+    String avatarUrl,
     String studentNo,
     String email,
     String role,

@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/admin/v1/contests/{contestId}/xcpcio")
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','CLUB_ADMIN')")
+@PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminXcpcioController {
     private final XcpcioConfigService configService;
     private final XcpcioSyncService syncService;

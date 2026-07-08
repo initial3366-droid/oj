@@ -62,7 +62,7 @@ public class ProblemAccessPolicy extends AccessPolicy<Problem> {
             return false;
         }
 
-        boolean allowed = isSuperAdmin(user) || isClubAdmin(user) || isTeacher(user);
+        boolean allowed = isSuperAdmin(user) || isContentAdmin(user);
         if (!allowed) {
             auditLogger.logPermissionDenied(user, Permission.CREATE, "Problem", null, "角色不足");
         }

@@ -131,7 +131,7 @@ export async function fetchSubmissionDetail(submissionId: number): Promise<Submi
 export async function fetchContestSubmissions(
   contestId: number,
   page = 1,
-  pageSize = 50
+  pageSize = 20
 ): Promise<{ total: number; list: SubmissionRecord[] }> {
   return apiGet<{ total: number; list: SubmissionRecord[] }>(
     `/api/v1/submissions?page=${page}&pageSize=${pageSize}&contestId=${contestId}`,
@@ -146,7 +146,7 @@ export async function fetchMyContestSubmissions(
   contestId: number,
   userId: number,
   page = 1,
-  pageSize = 50
+  pageSize = 20
 ): Promise<{ total: number; list: SubmissionRecord[] }> {
   return apiGet<{ total: number; list: SubmissionRecord[] }>(
     `/api/v1/submissions?page=${page}&pageSize=${pageSize}&contestId=${contestId}&userId=${userId}`,

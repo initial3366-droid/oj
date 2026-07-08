@@ -5,8 +5,10 @@ import com.qoj.common.ErrorCode;
 import com.qoj.common.exception.BizException;
 import com.qoj.module.contest.entity.Contest;
 import com.qoj.module.contest.entity.ContestProblem;
+import com.qoj.module.contest.entity.ContestRegistration;
 import com.qoj.module.contest.mapper.ContestMapper;
 import com.qoj.module.contest.mapper.ContestProblemMapper;
+import com.qoj.module.contest.mapper.ContestRegistrationMapper;
 import com.qoj.module.contest.vo.ContestScoreboardCellVO;
 import com.qoj.module.contest.vo.ContestScoreboardProblemVO;
 import com.qoj.module.contest.vo.ContestScoreboardRowVO;
@@ -26,9 +28,12 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.springframework.stereotype.Service;
@@ -39,6 +44,7 @@ public class ContestInspectionExportService {
 
     private final ContestMapper contestMapper;
     private final ContestProblemMapper contestProblemMapper;
+    private final ContestRegistrationMapper contestRegistrationMapper;
     private final SubmissionMapper submissionMapper;
     private final UserMapper userMapper;
     private final ContestService contestService;
@@ -48,6 +54,7 @@ public class ContestInspectionExportService {
     public ContestInspectionExportService(
         ContestMapper contestMapper,
         ContestProblemMapper contestProblemMapper,
+        ContestRegistrationMapper contestRegistrationMapper,
         SubmissionMapper submissionMapper,
         UserMapper userMapper,
         ContestService contestService,
@@ -56,6 +63,7 @@ public class ContestInspectionExportService {
     ) {
         this.contestMapper = contestMapper;
         this.contestProblemMapper = contestProblemMapper;
+        this.contestRegistrationMapper = contestRegistrationMapper;
         this.submissionMapper = submissionMapper;
         this.userMapper = userMapper;
         this.contestService = contestService;
@@ -97,6 +105,27 @@ public class ContestInspectionExportService {
         }
     }
 
+    public byte[] registrationUsersCsv(long contestId) {
+        Contest contest = requireManageRegistrationContest(contestId);
+        List<ContestRegistration> registrations = contestRegistrationMapper.selectList(
+            new QueryWrapper<ContestRegistration>()
+                .eq("contest_id", contest.id)
+                .eq("status", "APPROVED")
+                .orderByDesc("registered_at")
+                .orderByDesc("id")
+        );
+        Set<Long> userIds = registrations.stream()
+            .map(registration -> registration.userId)
+            .filter(Objects::nonNull)
+            .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Map<Long, User> usersById = userIds.isEmpty()
+            ? Map.of()
+            : userMapper.selectBatchIds(userIds).stream()
+                .collect(java.util.stream.Collectors.toMap(user -> user.id, user -> user));
+        auditLogger.logPermissionAllowed(CurrentUser.required(), Permission.MANAGE_REGISTRATION, "Contest", contest.id, "导出比赛报名用户");
+        return withBom(registrationUsersCsvText(registrations, usersById));
+    }
+
     public String scoreboardFilename(long contestId) {
         Contest contest = contestMapper.selectById(contestId);
         String title = contest == null ? String.valueOf(contestId) : contest.title;
@@ -109,6 +138,12 @@ public class ContestInspectionExportService {
         return "contest-" + contestId + "-" + safeName(title) + "-submissions.zip";
     }
 
+    public String registrationUsersFilename(long contestId) {
+        Contest contest = contestMapper.selectById(contestId);
+        String title = contest == null ? String.valueOf(contestId) : contest.title;
+        return "contest-" + contestId + "-" + safeName(title) + "-registration-users.csv";
+    }
+
     private Contest requireManageContest(long contestId) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
@@ -117,6 +152,18 @@ public class ContestInspectionExportService {
         AuthUser authUser = CurrentUser.required();
         if (!contestAccessPolicy.can(authUser, Permission.MANAGE_SCOREBOARD, contest)) {
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权导出该比赛数据");
+        }
+        return contest;
+    }
+
+    private Contest requireManageRegistrationContest(long contestId) {
+        Contest contest = contestMapper.selectById(contestId);
+        if (contest == null) {
+            throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
+        }
+        AuthUser authUser = CurrentUser.required();
+        if (!contestAccessPolicy.can(authUser, Permission.MANAGE_REGISTRATION, contest)) {
+            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权导出该比赛报名数据");
         }
         return contest;
     }
@@ -203,6 +250,43 @@ public class ContestInspectionExportService {
                 formatTime(submission.judgeStartTime),
                 formatTime(submission.judgeEndTime),
                 text(submission.codeLength == null && submission.code != null ? submission.code.length() : submission.codeLength)
+            )));
+        }
+        return builder.toString();
+    }
+
+    private String registrationUsersCsvText(List<ContestRegistration> registrations, Map<Long, User> usersById) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(csvLine(List.of(
+            "id",
+            "username",
+            "student_no",
+            "email",
+            "role",
+            "class_id",
+            "display_name",
+            "created_at",
+            "updated_at"
+        )));
+        Set<Long> exportedUserIds = new LinkedHashSet<>();
+        for (ContestRegistration registration : registrations) {
+            if (registration.userId == null || !exportedUserIds.add(registration.userId)) {
+                continue;
+            }
+            User user = usersById.get(registration.userId);
+            if (user == null) {
+                continue;
+            }
+            builder.append(csvLine(List.of(
+                text(user.id),
+                text(user.username),
+                text(user.studentNo),
+                text(user.email),
+                text(user.role),
+                text(user.classId),
+                text(user.displayName),
+                formatTime(user.createdAt),
+                formatTime(user.updatedAt)
             )));
         }
         return builder.toString();

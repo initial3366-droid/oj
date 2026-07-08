@@ -9,6 +9,7 @@ public record ClassJoinApplicationVO(
     Long userId,
     String username,
     String displayName,
+    String avatarUrl,
     String studentNo,
     String status,
     String reason,

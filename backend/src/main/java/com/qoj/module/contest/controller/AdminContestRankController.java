@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/admin/v1/contests")
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','CLUB_ADMIN','TEACHER')")
+@PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminContestRankController {
     private final ContestAcmRankService acmRankService;
     private final ContestOiRankService oiRankService;

@@ -3,10 +3,8 @@ package com.qoj.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.common.ApiResponse;
 import com.qoj.security.JwtAuthenticationFilter;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -27,7 +25,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  *
  * 职责:
  * 1. 定义 URL 白名单（无需认证即可访问的接口/页面）
- * 2. 定义角色权限（SUPER_ADMIN / TEACHER / CLUB_ADMIN 各自可访问的 API）
+ * 2. 定义角色权限（SUPER_ADMIN / TEACHER 各自可访问的 API）
  * 3. 注册 JWT 认证过滤器到过滤器链中
  * 4. 配置 CORS 跨域策略（支持反向代理场景自动识别 origin）
  * 5. 配置无状态会话（JWT 方式）
@@ -63,12 +61,12 @@ public class SecurityConfig {
      *
      * 关键配置:
      * - csrf 禁用（前后端分离，无 Cookie-session）
-     * - CORS 自定义（允许配置的源 + 反向代理头自动识别）
+     * - CORS 自定义（仅允许配置的源，不信任请求头动态放行）
      * - 无状态会话（每次请求独立认证，不创建 session）
      * - URL 权限分层:
-     *   .permitAll()   → 公开资源（登录/注册/首页/榜单/Swagger）
+     *   .permitAll()   → 公开资源（登录/注册/首页/榜单等；Swagger 需超级管理员）
      *   .hasRole()     → 超级管理员独享（用户管理/班级/教师）
-     *   .hasAnyRole()  → 后台通用（管理员+教师+社团管理）
+     *   .hasAnyRole()  → 后台通用（管理员+教师）
      *   .anyRequest().authenticated() → 其余全部需认证
      * - 异常处理: 401 未登录 / 403 无权限，统一返回 JSON 格式
      * - JWT 过滤器插在 UsernamePasswordAuthenticationFilter 之前执行
@@ -81,7 +79,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.GET, "/assets/**").permitAll()
-                .requestMatchers("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh").permitAll()
+                .requestMatchers("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh", "/api/v1/auth/reset-password").permitAll()
                 .requestMatchers("/api/v1/captcha/**").permitAll()
                 .requestMatchers("/api/admin/v1/auth/login").permitAll()
                 .requestMatchers("/ws/**", "/ws-sockjs/**").permitAll()
@@ -108,7 +106,7 @@ public class SecurityConfig {
                     "/profile",
                     "/semi-test"
                 ).permitAll()
-                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").hasRole("SUPER_ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/v1/home/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/problems/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/practices/**").permitAll()
@@ -147,7 +145,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         return request -> {
             CorsConfiguration configuration = new CorsConfiguration();
-            configuration.setAllowedOrigins(allowedOrigins(request));
+            configuration.setAllowedOrigins(configuredAllowedOrigins());
             configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
             configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-CSRF-Token"));
             configuration.setAllowCredentials(true);
@@ -155,42 +153,12 @@ public class SecurityConfig {
         };
     }
 
-    private List<String> allowedOrigins(HttpServletRequest request) {
-        List<String> origins = new ArrayList<>(properties.getCors().getAllowedOrigins());
-        String forwardedProto = firstForwardedValue(request.getHeader("X-Forwarded-Proto"));
-        String forwardedHost = firstForwardedValue(request.getHeader("X-Forwarded-Host"));
-        String forwardedPort = firstForwardedValue(request.getHeader("X-Forwarded-Port"));
-
-        if (forwardedProto != null && forwardedHost != null) {
-            addOrigin(origins, forwardedProto, forwardedHost);
-            if (forwardedPort != null && !forwardedHost.contains(":")) {
-                addOrigin(origins, forwardedProto, forwardedHost + ":" + forwardedPort);
-            }
-        }
-
-        String host = request.getHeader("Host");
-        if (host != null && !host.isBlank()) {
-            addOrigin(origins, request.getScheme(), host);
-        }
-
-        return origins;
-    }
-
-    private void addOrigin(List<String> origins, String scheme, String host) {
-        if (scheme == null || host == null || scheme.isBlank() || host.isBlank()) {
-            return;
-        }
-        String origin = scheme + "://" + host;
-        if (!origins.contains(origin)) {
-            origins.add(origin);
-        }
-    }
-
-    private String firstForwardedValue(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.split(",", 2)[0].trim();
+    private List<String> configuredAllowedOrigins() {
+        return properties.getCors().getAllowedOrigins().stream()
+            .filter(origin -> origin != null && !origin.isBlank())
+            .map(String::trim)
+            .distinct()
+            .toList();
     }
 
     private void writeJson(HttpServletResponse response, int status, ApiResponse<Void> body) throws java.io.IOException {

@@ -1,25 +1,38 @@
-import { Button, Card, Tag, Tabs, TabPane, Spin } from '@douyinfe/semi-ui';
+import { Button, Card, Tag, Tabs, TabPane, Spin, Modal, Typography, Input, Select } from '@douyinfe/semi-ui';
 import {
   IconChevronLeft,
+  IconRefresh,
+  IconSearch,
   IconTreeTriangleDown,
   IconUserGroup,
 } from '@douyinfe/semi-icons';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink, useParams, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   fetchContest,
   fetchContestScoreboard,
   fetchContestXcpcioPublicConfig,
   fetchContestSubmissions,
+  fetchContestRegistrationOptions,
   fetchMyContestSubmissions,
+  fetchSubmissionDetail,
+  registerContest,
   type ContestScoreboard,
+  type ContestRegistrationOption,
   type ContestXcpcioPublicConfig,
   type PublicContest,
   type SubmissionRecord,
 } from '../data/apiClient';
-import { wsClient } from '../utils/websocket';
+import { CodeViewer } from '../components/common';
 import { formatDateTime } from '../lib/format';
 import { encryptId } from '../utils/cipher';
+
+const VALID_TABS = ['problems', 'submissions', 'my-submissions', 'scoreboard'] as const;
+type TabKey = (typeof VALID_TABS)[number];
+
+function isValidTab(tab: string): tab is TabKey {
+  return (VALID_TABS as readonly string[]).includes(tab);
+}
 
 function statusText(status: PublicContest["status"]) {
   if (status === "RUNNING") return "进行中";
@@ -34,8 +47,13 @@ function statusColor(status: PublicContest["status"]): 'green' | 'grey' | 'blue'
 }
 
 function identityBadge(type?: string | null) {
-  if (type === "CLUB") return "社团";
   return "个人";
+}
+
+function registrationTypeText(type?: string | null) {
+  if (type === "PASSWORD") return "密码报名";
+  if (type === "INVITATION") return "邀请码报名";
+  return "公开报名";
 }
 
 function rankText(rank?: number | null, starred?: boolean | null) {
@@ -97,12 +115,33 @@ function scoreboardProblemId(problem: { problemId: number; contestProblemId?: nu
 export function ContestDetailPage() {
   const { contestId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const id = Number(contestId ?? 0);
+
+  // 从 URL ?tab=xxx 读取当前 tab，默认 problems
+  const tabParam = searchParams.get('tab') || 'problems';
+  const activeTab: TabKey = isValidTab(tabParam) ? tabParam : 'problems';
+
+  const setActiveTab = useCallback((key: string) => {
+    if (key === 'problems') {
+      // 默认 tab 不带 ?tab= 参数，保持 URL 干净
+      const next = new URLSearchParams(searchParams);
+      next.delete('tab');
+      setSearchParams(next, { replace: true });
+    } else {
+      setSearchParams({ tab: key }, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   const [contest, setContest] = useState<PublicContest | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [activeTab, setActiveTab] = useState("problems");
   const [countdown, setCountdown] = useState<string>("");
+  const [registrationOptions, setRegistrationOptions] = useState<ContestRegistrationOption[]>([]);
+  const [registrationLoading, setRegistrationLoading] = useState(false);
+  const [registrationMessage, setRegistrationMessage] = useState("");
+  const [registrationPassword, setRegistrationPassword] = useState("");
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
 
   const [scoreboard, setScoreboard] = useState<ContestScoreboard | null>(null);
   const [scoreboardLoading, setScoreboardLoading] = useState(false);
@@ -110,15 +149,19 @@ export function ContestDetailPage() {
 
   const [submissions, setSubmissions] = useState<SubmissionRecord[]>([]);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
+  const [submissionsLoaded, setSubmissionsLoaded] = useState(false);
+  const [submissionProblemFilter, setSubmissionProblemFilter] = useState<string>("ALL");
   const [submissionStatusFilter, setSubmissionStatusFilter] = useState<string>("ALL");
+  const [submissionLanguageFilter, setSubmissionLanguageFilter] = useState<string>("ALL");
+  const [submissionUserKeyword, setSubmissionUserKeyword] = useState("");
 
   const [mySubmissions, setMySubmissions] = useState<SubmissionRecord[]>([]);
   const [mySubmissionsLoading, setMySubmissionsLoading] = useState(false);
+  const [mySubmissionsLoaded, setMySubmissionsLoaded] = useState(false);
+  const [codeModalSubmission, setCodeModalSubmission] = useState<SubmissionRecord | null>(null);
+  const [codeLoadingId, setCodeLoadingId] = useState<number | null>(null);
 
   // 获取我的提交用于判断 AC 状态。
-  // 注意：SubmissionVO.problemId 存的是题目原始 ID（SubmissionService 把 contestProblem.problemId 写入 submission.problemId），
-  // 而题目卡片里的 pid 优先取 contestProblemId，因此这里收集的必须是原始 problemId，
-  // 再通过下方 rawToContestId 映射补全，避免 AC 状态匹配失败。
   const acRawIds = useMemo(() => {
     const ids = new Set<number>();
     for (const sub of mySubmissions) {
@@ -130,7 +173,7 @@ export function ContestDetailPage() {
     return ids;
   }, [mySubmissions]);
 
-  // 题目原始 problemId -> contestProblemId 的映射，用于把 AC 的原始 id 转成卡片用的 pid。
+  // 题目原始 problemId -> contestProblemId 的映射
   const rawToContestId = useMemo(() => {
     const map = new Map<number, number>();
     for (const p of contest?.problems ?? []) {
@@ -141,14 +184,23 @@ export function ContestDetailPage() {
     return map;
   }, [contest]);
 
-  useEffect(() => {
+  const contestReturnPath = `/contests/${id}`;
+  const loginPath = `/login?redirect=${encodeURIComponent(contestReturnPath)}`;
+
+  const isLoggedIn = () => Boolean(window.localStorage.getItem("qoj.accessToken"));
+
+  const redirectToLogin = useCallback(() => {
+    navigate(loginPath, { replace: true });
+  }, [loginPath, navigate]);
+
+  const loadContest = useCallback(() => {
     if (!id) {
       setMessage("比赛不存在");
       setLoading(false);
-      return;
+      return Promise.resolve();
     }
     setLoading(true);
-    fetchContest(id)
+    return fetchContest(id)
       .then((data) => {
         setContest(data);
         setMessage("");
@@ -158,6 +210,32 @@ export function ContestDetailPage() {
       })
       .finally(() => setLoading(false));
   }, [id]);
+
+  // ── 数据加载 ──
+
+  useEffect(() => {
+    if (id && !isLoggedIn()) {
+      redirectToLogin();
+      return;
+    }
+    void loadContest();
+  }, [id, loadContest, redirectToLogin]);
+
+  useEffect(() => {
+    if (!contest || contest.registered || !isLoggedIn()) {
+      setRegistrationOptions([]);
+      return;
+    }
+    fetchContestRegistrationOptions(id)
+      .then((options) => {
+        setRegistrationOptions(options);
+        setRegistrationMessage("");
+      })
+      .catch((error) => {
+        setRegistrationOptions([]);
+        setRegistrationMessage(error instanceof Error ? error.message : "报名选项加载失败");
+      });
+  }, [contest, id]);
 
   useEffect(() => {
     if (!id) return;
@@ -215,77 +293,210 @@ export function ContestDetailPage() {
   }, [contest]);
 
   useEffect(() => {
-    if (activeTab === "scoreboard" && !scoreboard && contest) {
+    if (activeTab === "scoreboard" && !scoreboard && contest?.registered) {
       setScoreboardLoading(true);
       fetchContestScoreboard(id)
         .then(setScoreboard)
         .catch(() => setScoreboard(null))
-        .finally(() => setScoreboardLoading(false));
+      .finally(() => setScoreboardLoading(false));
     }
   }, [activeTab, id, contest, scoreboard]);
 
   useEffect(() => {
-    if (activeTab === "submissions" && contest) {
-      setSubmissionsLoading(true);
-      fetchContestSubmissions(id, 1, 100)
-        .then((data) => setSubmissions(data.list))
-        .catch(() => setSubmissions([]))
-        .finally(() => setSubmissionsLoading(false));
+    setSubmissions([]);
+    setSubmissionsLoaded(false);
+    setMySubmissions([]);
+    setMySubmissionsLoaded(false);
+  }, [id]);
+
+  // ── 手动刷新函数（替代轮询）──
+
+  const refreshSubmissions = useCallback(() => {
+    if (!contest) return;
+    setSubmissionsLoading(true);
+    fetchContestSubmissions(id, 1, 20)
+      .then((data) => setSubmissions(data.list))
+      .catch(() => setSubmissions([]))
+      .finally(() => {
+        setSubmissionsLoaded(true);
+        setSubmissionsLoading(false);
+      });
+  }, [id, contest]);
+
+  const refreshMySubmissions = useCallback(() => {
+    if (!contest) return;
+    setMySubmissionsLoading(true);
+    fetchMyContestSubmissions(id, 1, 20)
+      .then((data) => setMySubmissions(data.list))
+      .catch(() => setMySubmissions([]))
+      .finally(() => {
+        setMySubmissionsLoaded(true);
+        setMySubmissionsLoading(false);
+      });
+  }, [id, contest]);
+
+  // 首次进入 tab 时加载数据
+  useEffect(() => {
+    if (activeTab === "submissions" && contest?.registered && !submissionsLoaded && !submissionsLoading) {
+      refreshSubmissions();
     }
-  }, [activeTab, id, contest]);
+  }, [activeTab, contest, submissionsLoaded, submissionsLoading, refreshSubmissions]);
+
+  useEffect(() => {
+    if ((activeTab === "my-submissions" || activeTab === "problems") && contest?.registered && !mySubmissionsLoaded && !mySubmissionsLoading) {
+      refreshMySubmissions();
+    }
+  }, [activeTab, contest, mySubmissionsLoaded, mySubmissionsLoading, refreshMySubmissions]);
+
+  const submissionProblemOptions = useMemo(() => {
+    return (contest?.problems ?? []).map((problem) => ({
+      value: String(problem.problemId),
+      label: `${problem.label || problem.problemId} ${problem.title}`,
+    }));
+  }, [contest]);
+
+  const submissionStatusOptions = useMemo(() => {
+    return Array.from(new Set(submissions.map((sub) => sub.status).filter(Boolean)))
+      .sort((a, b) => submissionStatusText(a).localeCompare(submissionStatusText(b), 'zh-CN'))
+      .map((status) => ({
+        value: status,
+        label: submissionStatusText(status),
+      }));
+  }, [submissions]);
+
+  const submissionLanguageOptions = useMemo(() => {
+    return Array.from(new Set(submissions.map((sub) => sub.language).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+      .map((language) => ({
+        value: language,
+        label: language,
+      }));
+  }, [submissions]);
 
   const filteredSubmissions = useMemo(() => {
+    const userKeyword = submissionUserKeyword.trim().toLowerCase();
     return submissions.filter((sub) => {
-      if (submissionStatusFilter === "ALL") return true;
-      if (submissionStatusFilter === "ACCEPTED") return sub.status === "ACCEPTED" || sub.status === "AC";
-      if (submissionStatusFilter === "WRONG") return sub.status === "WRONG_ANSWER" || sub.status === "WA";
-      if (submissionStatusFilter === "PENDING") return sub.status === "PENDING" || sub.status === "JUDGING" || sub.status === "WAITING";
+      if (submissionProblemFilter !== "ALL" && String(sub.problemId) !== submissionProblemFilter) return false;
+      if (submissionStatusFilter !== "ALL" && sub.status !== submissionStatusFilter) return false;
+      if (submissionLanguageFilter !== "ALL" && sub.language !== submissionLanguageFilter) return false;
+      if (userKeyword) {
+        const userText = [sub.displayName, sub.username, sub.userId == null ? "" : String(sub.userId)]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!userText.includes(userKeyword)) return false;
+      }
       return true;
     });
-  }, [submissions, submissionStatusFilter]);
+  }, [submissions, submissionProblemFilter, submissionStatusFilter, submissionLanguageFilter, submissionUserKeyword]);
 
-  useEffect(() => {
-    if ((activeTab === "my-submissions" || activeTab === "problems") && contest) {
-      setMySubmissionsLoading(true);
-      fetchMyContestSubmissions(id, 1, 100)
-        .then((data) => setMySubmissions(data.list))
-        .catch(() => setMySubmissions([]))
-        .finally(() => setMySubmissionsLoading(false));
+  const availableRegistrationOption = useMemo(() => {
+    return registrationOptions.find((option) => option.available) ?? registrationOptions[0] ?? null;
+  }, [registrationOptions]);
+
+  const registrationDisabledReason = availableRegistrationOption && !availableRegistrationOption.available
+    ? availableRegistrationOption.disabledReason || "当前账号暂不可报名该比赛"
+    : "";
+
+  const openContestProblem = (contestProblemId: number) => {
+    if (!isLoggedIn()) {
+      redirectToLogin();
+      return;
     }
-  }, [activeTab, id, contest]);
+    if (!contest?.registered) {
+      setRegistrationMessage("请先报名比赛，报名成功后即可查看题目。");
+      return;
+    }
+    window.open(`/practice/problem/cp${encryptId(contestProblemId)}?contestId=${id}`, '_blank');
+  };
 
-  // 实时刷新提交状态：WebSocket + 轮询
-  useEffect(() => {
+  const submitRegistration = async (password?: string) => {
     if (!contest) return;
-    const isSubmissionsTab = activeTab === 'submissions' || activeTab === 'my-submissions';
+    if (!isLoggedIn()) {
+      redirectToLogin();
+      return;
+    }
+    if (contest.registrationType === "PASSWORD" && !password?.trim()) {
+      setPasswordModalVisible(true);
+      return;
+    }
+    if (registrationDisabledReason) {
+      setRegistrationMessage(registrationDisabledReason);
+      return;
+    }
 
-    const refreshSubmissions = () => {
-      if (activeTab === 'submissions') {
-        fetchContestSubmissions(id, 1, 100)
-          .then((data) => setSubmissions(data.list))
-          .catch(() => {});
-      }
-      if (activeTab === 'my-submissions') {
-        fetchMyContestSubmissions(id, 1, 100)
-          .then((data) => setMySubmissions(data.list))
-          .catch(() => {});
+    setRegistrationLoading(true);
+    setRegistrationMessage("");
+    try {
+      await registerContest(id, {
+        identityType: availableRegistrationOption?.identityType ?? "PERSONAL",
+        identityId: availableRegistrationOption?.identityId ?? null,
+        starred: false,
+        ...(password?.trim() ? { password: password.trim() } : {}),
+      });
+      setPasswordModalVisible(false);
+      setRegistrationPassword("");
+      await loadContest();
+      setActiveTab("problems");
+    } catch (error) {
+      setRegistrationMessage(error instanceof Error ? error.message : "报名失败，请稍后重试");
+    } finally {
+      setRegistrationLoading(false);
+    }
+  };
+
+  const formatUsage = (value: number | null | undefined, unit: string) => {
+    return value == null ? '-' : `${value}${unit}`;
+  };
+
+  const canViewAllSubmissionCode = contest?.status === 'ENDED' && Boolean(contest.allowAfterEndViewCode);
+
+  const openCode = async (sub: SubmissionRecord) => {
+    if (codeLoadingId !== null) return;
+    setCodeLoadingId(sub.id);
+    setMessage('');
+    try {
+      const detail = sub.code ? sub : await fetchSubmissionDetail(sub.id);
+      setCodeModalSubmission(detail);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '提交代码加载失败');
+    } finally {
+      setCodeLoadingId(null);
+    }
+  };
+
+  const codeAction = (sub: SubmissionRecord) => {
+    const loadingCode = codeLoadingId === sub.id;
+    const disabled = codeLoadingId !== null;
+    const trigger = () => {
+      if (!disabled) {
+        void openCode(sub);
       }
     };
 
-    // WebSocket 订阅
-    let unsubscribe: (() => void) | null = null;
-    wsClient.subscribeToSubmissionQueue(() => {
-      if (isSubmissionsTab) refreshSubmissions();
-    }).then((fn) => { unsubscribe = fn; }).catch(() => {});
-
-    // 轮询兜底：每 2 秒刷新一次
-    const interval = isSubmissionsTab ? setInterval(refreshSubmissions, 2000) : null;
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-      if (interval) clearInterval(interval);
-    };
-  }, [activeTab, id, contest]);
+    return (
+      <span
+        role="link"
+        tabIndex={disabled ? -1 : 0}
+        aria-disabled={disabled}
+        onClick={trigger}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            trigger();
+          }
+        }}
+        style={{
+          color: loadingCode ? 'var(--semi-color-text-2)' : 'var(--semi-color-primary)',
+          cursor: disabled ? 'default' : 'pointer',
+          userSelect: 'none',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {loadingCode ? '加载中…' : '查看代码'}
+      </span>
+    );
+  };
 
   if (loading) {
     return (
@@ -321,17 +532,10 @@ export function ContestDetailPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <Button
-        icon={<IconChevronLeft />}
-        theme="borderless"
-        onClick={() => navigate('/contests')}
-      >
-        返回比赛列表
-      </Button>
-
       <Card
         style={{
           border: '1px solid var(--semi-color-border)',
+          boxShadow: 'none',
         }}
         bodyStyle={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}
       >
@@ -429,27 +633,41 @@ export function ContestDetailPage() {
             ) : (
               <div
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
                   borderRadius: 6,
                   border: '1px solid var(--semi-color-warning-light-default)',
                   backgroundColor: 'var(--semi-color-warning-light-default)',
-                  padding: '8px 12px',
-                  fontSize: 12,
+                  padding: '12px',
                   color: 'var(--semi-color-warning-dark)',
+                  minWidth: 180,
                 }}
               >
-                <span>未报名</span>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>未报名</div>
+                <div style={{ fontSize: 12, lineHeight: '18px' }}>
+                  {registrationTypeText(contest.registrationType)}，报名后可查看题目。
+                </div>
+                <Button
+                  theme="solid"
+                  type="primary"
+                  loading={registrationLoading}
+                  disabled={Boolean(registrationDisabledReason)}
+                  onClick={() => submitRegistration()}
+                >
+                  {registrationLoading ? "报名中" : "立即报名"}
+                </Button>
               </div>
             )}
           </div>
         </div>
       </Card>
 
+      {contest.registered ? (
       <Card
         style={{
           border: '1px solid var(--semi-color-border)',
+          boxShadow: 'none',
         }}
         bodyStyle={{ padding: 0 }}
       >
@@ -511,16 +729,23 @@ export function ContestDetailPage() {
                         {isAccepted ? '✓' : problem.label}
                       </div>
                       <div>
-                        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--semi-color-text-0)' }}>
+                        <div
+                          style={{ fontWeight: 600, fontSize: 14, color: 'var(--semi-color-text-0)', cursor: 'pointer' }}
+                          onClick={() => openContestProblem(pid)}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.color = 'var(--semi-color-link)'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.color = 'var(--semi-color-text-0)'; }}
+                        >
                           {problem.title}
                         </div>
                         <div style={{ marginTop: 2, fontSize: 12, color: 'var(--semi-color-text-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
                           {contest.type === "OI" && <span>分值: {problem.score ?? 100}</span>}
+                          <span>提交: {problem.submissionCount ?? 0}</span>
+                          <span>通过: {problem.acceptedCount ?? 0}</span>
                           {isAccepted && <Tag color="green" size="small">已通过</Tag>}
                         </div>
                       </div>
                       <span
-                        onClick={() => navigate(`/practice/problem/cp${encryptId(pid)}?contestId=${id}`)}
+                        onClick={() => openContestProblem(pid)}
                         style={{
                           color: 'var(--semi-color-primary)',
                           cursor: 'pointer',
@@ -543,41 +768,65 @@ export function ContestDetailPage() {
             itemKey="submissions"
           >
             <div style={{ padding: 16 }}>
-              <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
-                <Button
-                  size="small"
-                  theme={submissionStatusFilter === "ALL" ? "solid" : "borderless"}
-                  type={submissionStatusFilter === "ALL" ? "primary" : "tertiary"}
-                  onClick={() => setSubmissionStatusFilter("ALL")}
-                >
-                  全部
-                </Button>
-                <Button
-                  size="small"
-                  theme={submissionStatusFilter === "ACCEPTED" ? "solid" : "borderless"}
-                  type={submissionStatusFilter === "ACCEPTED" ? "primary" : "tertiary"}
-                  onClick={() => setSubmissionStatusFilter("ACCEPTED")}
-                >
-                  通过
-                </Button>
-                <Button
-                  size="small"
-                  theme={submissionStatusFilter === "WRONG" ? "solid" : "borderless"}
-                  type={submissionStatusFilter === "WRONG" ? "primary" : "tertiary"}
-                  onClick={() => setSubmissionStatusFilter("WRONG")}
-                >
-                  错误
-                </Button>
-                <Button
-                  size="small"
-                  theme={submissionStatusFilter === "PENDING" ? "solid" : "borderless"}
-                  type={submissionStatusFilter === "PENDING" ? "primary" : "tertiary"}
-                  onClick={() => setSubmissionStatusFilter("PENDING")}
-                >
-                  评测中
-                </Button>
+              <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                  <Select
+                    value={submissionProblemFilter}
+                    onChange={(value) => setSubmissionProblemFilter(typeof value === 'string' ? value : 'ALL')}
+                    style={{ width: 180 }}
+                    size="small"
+                    emptyContent
+                  >
+                    <Select.Option value="ALL">全部题号</Select.Option>
+                    {submissionProblemOptions.map((problem) => (
+                      <Select.Option key={problem.value} value={problem.value}>{problem.label}</Select.Option>
+                    ))}
+                  </Select>
+                  <Select
+                    value={submissionStatusFilter}
+                    onChange={(value) => setSubmissionStatusFilter(typeof value === 'string' ? value : 'ALL')}
+                    style={{ width: 140 }}
+                    size="small"
+                    emptyContent
+                  >
+                    <Select.Option value="ALL">全部状态</Select.Option>
+                    {submissionStatusOptions.map((status) => (
+                      <Select.Option key={status.value} value={status.value}>{status.label}</Select.Option>
+                    ))}
+                  </Select>
+                  <Select
+                    value={submissionLanguageFilter}
+                    onChange={(value) => setSubmissionLanguageFilter(typeof value === 'string' ? value : 'ALL')}
+                    style={{ width: 140 }}
+                    size="small"
+                    emptyContent
+                  >
+                    <Select.Option value="ALL">全部语言</Select.Option>
+                    {submissionLanguageOptions.map((language) => (
+                      <Select.Option key={language.value} value={language.value}>{language.label}</Select.Option>
+                    ))}
+                  </Select>
+                  <Input
+                    prefix={<IconSearch />}
+                    placeholder="搜索用户"
+                    value={submissionUserKeyword}
+                    onChange={setSubmissionUserKeyword}
+                    style={{ width: 180 }}
+                    size="small"
+                    showClear
+                  />
+                  <Button
+                    icon={<IconRefresh />}
+                    size="small"
+                    theme="borderless"
+                    loading={submissionsLoading}
+                    onClick={refreshSubmissions}
+                  >
+                    刷新
+                  </Button>
+                </div>
               </div>
-              {submissionsLoading ? (
+              {submissionsLoading && submissions.length === 0 ? (
                 <div style={{ padding: '48px 0', textAlign: 'center' }}>
                   <Spin tip="加载中" />
                 </div>
@@ -594,6 +843,9 @@ export function ContestDetailPage() {
                           提交ID
                         </th>
                         <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
+                          用户
+                        </th>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
                           题目
                         </th>
                         <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
@@ -611,6 +863,11 @@ export function ContestDetailPage() {
                         <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
                           提交时间
                         </th>
+                        {canViewAllSubmissionCode && (
+                          <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
+                            代码
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -621,6 +878,9 @@ export function ContestDetailPage() {
                         >
                           <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-1)' }}>{sub.id}</td>
                           <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-0)' }}>
+                            {sub.displayName || sub.username || `User ${sub.userId ?? '?'}`}
+                          </td>
+                          <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-0)' }}>
                             {sub.problemTitle || `#${sub.problemId}`}
                           </td>
                           <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-1)' }}>
@@ -629,20 +889,22 @@ export function ContestDetailPage() {
                           <td style={{ padding: '12px 16px' }}>
                             <Tag color={submissionStatusColor(sub.status)} size="small">
                               {submissionStatusText(sub.status)}
-                              {sub.passedCaseCount !== null && sub.totalCaseCount !== null
-                                ? ` (${sub.passedCaseCount}/${sub.totalCaseCount})`
-                                : ""}
                             </Tag>
                           </td>
                           <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-1)' }}>
-                            {sub.timeUsed ? `${sub.timeUsed}ms` : "-"}
+                            {formatUsage(sub.timeUsed, 'ms')}
                           </td>
                           <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-1)' }}>
-                            {sub.memoryUsed ? `${sub.memoryUsed}KB` : "-"}
+                            {formatUsage(sub.memoryUsed, 'KB')}
                           </td>
                           <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-2)' }}>
                             {formatDateTime(submissionTime(sub))}
                           </td>
+                          {canViewAllSubmissionCode && (
+                            <td style={{ padding: '12px 16px' }}>
+                              {codeAction(sub)}
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -657,7 +919,18 @@ export function ContestDetailPage() {
             itemKey="my-submissions"
           >
             <div style={{ padding: 16 }}>
-              {mySubmissionsLoading ? (
+              <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                <Button
+                  icon={<IconRefresh />}
+                  size="small"
+                  theme="borderless"
+                  loading={mySubmissionsLoading}
+                  onClick={refreshMySubmissions}
+                >
+                  刷新
+                </Button>
+              </div>
+              {mySubmissionsLoading && mySubmissions.length === 0 ? (
                 <div style={{ padding: '48px 0', textAlign: 'center' }}>
                   <Spin tip="加载中" />
                 </div>
@@ -674,6 +947,9 @@ export function ContestDetailPage() {
                           提交ID
                         </th>
                         <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
+                          用户
+                        </th>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
                           题目
                         </th>
                         <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
@@ -691,6 +967,9 @@ export function ContestDetailPage() {
                         <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
                           提交时间
                         </th>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
+                          代码
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -701,6 +980,9 @@ export function ContestDetailPage() {
                         >
                           <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-1)' }}>{sub.id}</td>
                           <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-0)' }}>
+                            {sub.displayName || sub.username || `User ${sub.userId ?? '?'}`}
+                          </td>
+                          <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-0)' }}>
                             {sub.problemTitle || `#${sub.problemId}`}
                           </td>
                           <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-1)' }}>
@@ -709,19 +991,19 @@ export function ContestDetailPage() {
                           <td style={{ padding: '12px 16px' }}>
                             <Tag color={submissionStatusColor(sub.status)} size="small">
                               {submissionStatusText(sub.status)}
-                              {sub.passedCaseCount !== null && sub.totalCaseCount !== null
-                                ? ` (${sub.passedCaseCount}/${sub.totalCaseCount})`
-                                : ""}
                             </Tag>
                           </td>
                           <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-1)' }}>
-                            {sub.timeUsed ? `${sub.timeUsed}ms` : "-"}
+                            {formatUsage(sub.timeUsed, 'ms')}
                           </td>
                           <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-1)' }}>
-                            {sub.memoryUsed ? `${sub.memoryUsed}KB` : "-"}
+                            {formatUsage(sub.memoryUsed, 'KB')}
                           </td>
                           <td style={{ padding: '12px 16px', color: 'var(--semi-color-text-2)' }}>
                             {formatDateTime(submissionTime(sub))}
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            {codeAction(sub)}
                           </td>
                         </tr>
                       ))}
@@ -767,6 +1049,11 @@ export function ContestDetailPage() {
                         <th style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
                           用户
                         </th>
+                        {scoreboard.showClassOnScoreboard && (
+                          <th style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
+                            班级
+                          </th>
+                        )}
                         <th style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
                           通过
                         </th>
@@ -820,13 +1107,31 @@ export function ContestDetailPage() {
                           </td>
                           <td style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px 16px', fontWeight: 500 }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                              <span>{row.displayName || row.userId}</span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {row.displayName || row.userId}
+                                {scoreboard.problems.length > 0 && row.solved === scoreboard.problems.length && (
+                                  <span style={{
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: '#fff',
+                                    backgroundColor: 'var(--semi-color-warning)',
+                                    borderRadius: 4,
+                                    padding: '1px 5px',
+                                    lineHeight: '18px',
+                                  }}>AK</span>
+                                )}
+                              </span>
                               <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>
                                 {identityBadge(row.identityType)}
                                 {row.starred ? " · 打星" : ""}
                               </span>
                             </div>
                           </td>
+                          {scoreboard.showClassOnScoreboard && (
+                            <td style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px 16px', color: 'var(--semi-color-text-1)' }}>
+                              {row.className || '-'}
+                            </td>
+                          )}
                           <td style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px', textAlign: 'center' }}>
                             {row.solved}
                           </td>
@@ -876,7 +1181,7 @@ export function ContestDetailPage() {
                       {scoreboard.rows.length === 0 && (
                         <tr>
                           <td
-                            colSpan={4 + scoreboard.problems.length}
+                            colSpan={4 + (scoreboard.showClassOnScoreboard ? 1 : 0) + scoreboard.problems.length}
                             style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--semi-color-text-2)' }}
                           >
                             暂无提交数据
@@ -891,6 +1196,160 @@ export function ContestDetailPage() {
           </TabPane>
         </Tabs>
       </Card>
+      ) : (
+        <Card
+          style={{
+            border: '1px solid var(--semi-color-border)',
+            boxShadow: 'none',
+          }}
+          bodyStyle={{ padding: 32 }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 24,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 260 }}>
+              <Tag color="orange" size="large">需要报名</Tag>
+              <h2 style={{ margin: '16px 0 8px', fontSize: 22, fontWeight: 600, color: 'var(--semi-color-text-0)' }}>
+                报名后查看比赛题目
+              </h2>
+              <p style={{ margin: 0, fontSize: 14, lineHeight: '24px', color: 'var(--semi-color-text-1)' }}>
+                当前比赛未报名，题目列表和答题入口已隐藏。完成报名后即可查看题目、进入在线 IDE 并参与提交。
+              </p>
+              <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <Tag>{registrationTypeText(contest.registrationType)}</Tag>
+                <Tag>{identityBadge(availableRegistrationOption?.identityType)}</Tag>
+                <Tag>{contest.participantCount} 人已报名</Tag>
+              </div>
+              {(registrationMessage || registrationDisabledReason) && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    borderRadius: 6,
+                    border: '1px solid var(--semi-color-warning-light-default)',
+                    backgroundColor: 'var(--semi-color-warning-light-default)',
+                    padding: '10px 12px',
+                    color: 'var(--semi-color-warning-dark)',
+                    fontSize: 13,
+                    lineHeight: '20px',
+                  }}
+                >
+                  {registrationMessage || registrationDisabledReason}
+                </div>
+              )}
+            </div>
+            <div
+              style={{
+                width: 260,
+                borderRadius: 10,
+                border: '1px solid var(--semi-color-primary-light-default)',
+                backgroundColor: 'var(--semi-color-primary-light-default)',
+                padding: 20,
+              }}
+            >
+              <div style={{ fontSize: 13, color: 'var(--semi-color-text-2)' }}>报名方式</div>
+              <div style={{ marginTop: 6, fontSize: 18, fontWeight: 600, color: 'var(--semi-color-primary)' }}>
+                {registrationTypeText(contest.registrationType)}
+              </div>
+              <Button
+                block
+                theme="solid"
+                type="primary"
+                loading={registrationLoading}
+                disabled={Boolean(registrationDisabledReason)}
+                style={{ marginTop: 18 }}
+                onClick={() => submitRegistration()}
+              >
+                {registrationLoading ? "报名中" : "立即报名"}
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <Modal
+        title="报名比赛"
+        visible={passwordModalVisible}
+        onCancel={() => {
+          if (registrationLoading) return;
+          setPasswordModalVisible(false);
+          setRegistrationPassword("");
+        }}
+        footer={(
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button
+              disabled={registrationLoading}
+              onClick={() => {
+                setPasswordModalVisible(false);
+                setRegistrationPassword("");
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              theme="solid"
+              type="primary"
+              loading={registrationLoading}
+              onClick={() => submitRegistration(registrationPassword)}
+            >
+              确认报名
+            </Button>
+          </div>
+        )}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p style={{ margin: 0, fontSize: 14, color: 'var(--semi-color-text-1)' }}>
+            该比赛需要报名密码，请输入密码后继续报名。
+          </p>
+          <input
+            type="password"
+            value={registrationPassword}
+            placeholder="请输入报名密码"
+            onChange={(event) => setRegistrationPassword(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                void submitRegistration(registrationPassword);
+              }
+            }}
+            style={{
+              height: 36,
+              borderRadius: 6,
+              border: '1px solid var(--semi-color-border)',
+              padding: '0 12px',
+              outline: 'none',
+            }}
+          />
+          {registrationMessage && (
+            <div style={{ fontSize: 13, color: 'var(--semi-color-danger)' }}>{registrationMessage}</div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        title="提交代码"
+        visible={!!codeModalSubmission}
+        onCancel={() => setCodeModalSubmission(null)}
+        footer={null}
+        style={{ width: '50%' }}
+      >
+        {codeModalSubmission && (
+          <div>
+            <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 16, fontSize: 12 }}>
+              {formatDateTime(submissionTime(codeModalSubmission))}
+            </Typography.Text>
+            <CodeViewer
+              code={codeModalSubmission.code || '(无代码)'}
+              language={codeModalSubmission.language}
+              height="60vh"
+            />
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

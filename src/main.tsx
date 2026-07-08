@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import "@arco-design/web-react/es/_util/react-19-adapter";
+import "./utils/arcoMessagePatch";
 import { filterReact19RefWarning } from "./utils/filterReact19RefWarning";
 import "./utils/monacoSetup";
 import { App } from "./App";

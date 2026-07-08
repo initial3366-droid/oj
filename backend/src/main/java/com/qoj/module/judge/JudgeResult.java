@@ -14,10 +14,10 @@ public record JudgeResult(
     List<JudgeCaseResult> caseResults
 ) {
     public static JudgeResult compileError(String compileOutput) {
-        return new JudgeResult(SubmissionStatus.CE, compileOutput, 0, 0, List.of());
+        return new JudgeResult(SubmissionStatus.CE, compileOutput, 0, null, List.of());
     }
 
     public static JudgeResult systemError(String message) {
-        return new JudgeResult(SubmissionStatus.SE, message, 0, 0, List.of());
+        return new JudgeResult(SubmissionStatus.SE, message, 0, null, List.of());
     }
 }

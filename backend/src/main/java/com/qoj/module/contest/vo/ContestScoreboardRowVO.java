@@ -15,6 +15,8 @@ public record ContestScoreboardRowVO(
     String identityType,
     Long identityId,
     Boolean starred,
-    String medal
+    String medal,
+    Long classId,
+    String className
 ) {
 }

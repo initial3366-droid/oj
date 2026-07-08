@@ -30,6 +30,7 @@ public class UserPublicService {
             user.id,
             user.username,
             user.displayName,
+            user.avatarUrl,
             user.role,
             score == null ? 0 : score.acCount,
             score == null ? 0 : score.submitCount,

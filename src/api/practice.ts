@@ -8,7 +8,7 @@ export interface Practice {
   id: number;
   title: string;
   description: string;
-  audience: "ALL" | "CLUB";
+  audience: "ALL" | "CLASS";
   audienceId?: number | null;
   hasPassword: boolean;
   ownerId: number;

@@ -1,4 +1,7 @@
-const REACT_19_REF_WARNING = 'Accessing element.ref was removed in React 19';
+const FILTERED_WARNINGS = [
+  'Accessing element.ref was removed in React 19',
+  'Each child in a list should have a unique "key" prop',
+];
 
 export function filterReact19RefWarning() {
   if (typeof console === 'undefined') {
@@ -7,7 +10,7 @@ export function filterReact19RefWarning() {
   const originalError = console.error;
   console.error = (...args: unknown[]) => {
     const first = args[0];
-    if (typeof first === 'string' && first.includes(REACT_19_REF_WARNING)) {
+    if (typeof first === 'string' && FILTERED_WARNINGS.some((w) => first.includes(w))) {
       return;
     }
     originalError(...args);

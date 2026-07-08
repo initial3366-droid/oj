@@ -37,6 +37,7 @@ import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -65,6 +66,7 @@ import org.springframework.transaction.annotation.Transactional;
  * @deprecated 不安全的判题服务，仅供开发测试
  */
 @Service
+@Profile("!prod & !production")
 @Deprecated(since = "0.2.0", forRemoval = true)
 public class LocalJudgeService {
     private final ProblemMapper problemMapper;
@@ -254,14 +256,14 @@ public class LocalJudgeService {
     private JudgeSummary runAll(Submission submission, JudgeProblemSpec spec, List<ProblemTestCase> testCases) {
         Path workDir = null;
         int maxTime = 0;
-        int maxMemory = 0;
+        Integer maxMemory = null;
         SubmissionStatus total = SubmissionStatus.AC;
         try {
             workDir = Files.createTempDirectory("qoj-judge-");
             PreparedProgram program = prepare(workDir, submission.language, submission.code);
             if (program.compileStatus() != SubmissionStatus.AC) {
                 insertCase(submission.id, 0, program.compileStatus(), 0, 0);
-                return new JudgeSummary(program.compileStatus(), 0, 0);
+                return new JudgeSummary(program.compileStatus(), 0, null);
             }
             for (ProblemTestCase testCase : testCases) {
                 RunResult result = execute(
@@ -277,7 +279,9 @@ public class LocalJudgeService {
                 }
                 insertCase(submission.id, testCase.caseNo, status, result.timeMs(), result.memoryKb());
                 maxTime = Math.max(maxTime, result.timeMs());
-                maxMemory = Math.max(maxMemory, result.memoryKb());
+                if (result.memoryKb() != null && result.memoryKb() > 0) {
+                    maxMemory = maxMemory == null ? result.memoryKb() : Math.max(maxMemory, result.memoryKb());
+                }
                 if (status != SubmissionStatus.AC) {
                     total = status;
                     break;

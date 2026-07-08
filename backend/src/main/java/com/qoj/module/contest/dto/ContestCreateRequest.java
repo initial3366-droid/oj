@@ -29,8 +29,11 @@ public record ContestCreateRequest(
     Integer maxSwitches,
     Boolean allowAfterEndSubmit,
     Boolean allowAfterEndViewProblem,
+    Boolean allowAfterEndViewCode,
     Boolean publicScoreboardEnabled,
+    Boolean showClassOnScoreboard,
     Boolean allowStarRegistration,
+    Boolean allowViewAllSubmissions,
     String registrationType,
     String registrationPassword,
     List<ContestProblemRequest> problems

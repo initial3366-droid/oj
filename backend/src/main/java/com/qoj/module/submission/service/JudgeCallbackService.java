@@ -66,11 +66,19 @@ public class JudgeCallbackService {
         }
 
         LocalDateTime now = LocalDateTime.now();
+        Integer timeUsed = positiveOrNull(request.timeUsed);
+        if (timeUsed == null) {
+            timeUsed = maxCaseTimeUsed(request.caseResults);
+        }
+        Integer memoryUsed = positiveOrNull(request.memoryUsed);
+        if (memoryUsed == null) {
+            memoryUsed = maxCaseMemoryUsed(request.caseResults);
+        }
 
         // 更新提交主记录
         submission.status = request.status;
-        submission.timeUsed = request.timeUsed;
-        submission.memoryUsed = request.memoryUsed;
+        submission.timeUsed = timeUsed;
+        submission.memoryUsed = memoryUsed;
         submission.score = request.score;
         if (submission.judgeStartTime == null) {
             submission.judgeStartTime = now;
@@ -140,5 +148,37 @@ public class JudgeCallbackService {
             || status.equals("CE") || status.equals("COMPILE_ERROR")
             || status.equals("SE") || status.equals("SYSTEM_ERROR")
             || status.equals("FAILED");
+    }
+
+    private Integer maxCaseTimeUsed(List<JudgeResultCallbackRequest.CaseResultDTO> caseResults) {
+        if (caseResults == null || caseResults.isEmpty()) {
+            return null;
+        }
+        Integer maxTimeUsed = null;
+        for (JudgeResultCallbackRequest.CaseResultDTO item : caseResults) {
+            Integer timeUsed = positiveOrNull(item.timeUsed);
+            if (timeUsed != null && (maxTimeUsed == null || timeUsed > maxTimeUsed)) {
+                maxTimeUsed = timeUsed;
+            }
+        }
+        return maxTimeUsed;
+    }
+
+    private Integer maxCaseMemoryUsed(List<JudgeResultCallbackRequest.CaseResultDTO> caseResults) {
+        if (caseResults == null || caseResults.isEmpty()) {
+            return null;
+        }
+        Integer maxMemoryUsed = null;
+        for (JudgeResultCallbackRequest.CaseResultDTO item : caseResults) {
+            Integer memoryUsed = positiveOrNull(item.memoryUsed);
+            if (memoryUsed != null && (maxMemoryUsed == null || memoryUsed > maxMemoryUsed)) {
+                maxMemoryUsed = memoryUsed;
+            }
+        }
+        return maxMemoryUsed;
+    }
+
+    private Integer positiveOrNull(Integer value) {
+        return value != null && value > 0 ? value : null;
     }
 }

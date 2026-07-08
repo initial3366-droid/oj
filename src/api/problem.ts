@@ -104,7 +104,7 @@ export function mapContestProblem(problem: BackendProblem & { contestProblemId?:
  */
 export async function fetchProblems(
   page = 1,
-  pageSize = 200,
+  pageSize = 20,
   keyword?: string
 ): Promise<{ total: number; list: BackendProblem[] }> {
   const query = new URLSearchParams({

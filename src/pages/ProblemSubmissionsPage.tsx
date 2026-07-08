@@ -10,7 +10,7 @@ import {
   type SubmissionRecord,
 } from '../data/apiClient';
 import type { Problem } from '../data/types';
-import { PageContainer } from '../components/common';
+import { PageContainer, CodeViewer } from '../components/common';
 import { decryptIdFromUrl } from '../utils/cipher';
 
 function backendProblemId(problemId: string | undefined): number | null {
@@ -255,35 +255,18 @@ export function ProblemSubmissionsPage() {
         visible={!!selectedSubmission}
         onCancel={() => setSelectedSubmission(null)}
         footer={null}
-        style={{ maxWidth: 1200 }}
+        style={{ width: '50%' }}
       >
         {selectedSubmission && (
           <div>
             <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 16, fontSize: 12 }}>
-              {selectedSubmission.language} · {formatTime(submissionTime(selectedSubmission))}
+              {formatTime(submissionTime(selectedSubmission))}
             </Typography.Text>
-            <div
-              style={{
-                maxHeight: '70vh',
-                overflow: 'auto',
-                backgroundColor: '#1e293b',
-                padding: 16,
-                borderRadius: 6,
-              }}
-            >
-              <pre
-                style={{
-                  whiteSpace: 'pre',
-                  fontSize: 14,
-                  lineHeight: 1.6,
-                  color: '#f1f5f9',
-                  margin: 0,
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              >
-                {selectedSubmission.code || '(无代码)'}
-              </pre>
-            </div>
+            <CodeViewer
+              code={selectedSubmission.code || '(无代码)'}
+              language={selectedSubmission.language}
+              height="60vh"
+            />
           </div>
         )}
       </Modal>

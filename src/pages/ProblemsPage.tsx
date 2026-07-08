@@ -127,10 +127,20 @@ export function ProblemsPage() {
       title: '题目',
       dataIndex: 'title',
       width: 300,
-      render: (title: string) => (
-        <Typography.Text strong style={{ fontSize: 14 }}>
+      render: (title: string, record) => (
+        <NavLink
+          to={`/practice/problem/${record.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: 'var(--semi-color-primary)',
+            fontSize: 14,
+            fontWeight: 600,
+            textDecoration: 'none',
+          }}
+        >
           {title}
-        </Typography.Text>
+        </NavLink>
       ),
     },
     {
@@ -176,16 +186,14 @@ export function ProblemsPage() {
       dataIndex: 'action',
       width: 100,
       render: (_text, record) => (
-        <Button
-          size="small"
-          theme="borderless"
-          type="primary"
-          onClick={() => {
-            window.location.href = `/practice/problem/${record.id}`;
-          }}
+        <NavLink
+          to={`/practice/problem/${record.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: 'var(--semi-color-primary)', textDecoration: 'none' }}
         >
-          做题
-        </Button>
+          答题
+        </NavLink>
       ),
     },
   ];
@@ -271,7 +279,7 @@ export function ProblemsPage() {
           columns={columns}
           dataSource={problems}
           rowKey="id"
-          pagination={false}
+          pagination={{ pageSize: 20 }}
           empty={
             <div style={{ padding: '40px 0', textAlign: 'center' }}>
               <Typography.Text type="tertiary">

@@ -87,7 +87,7 @@ public class ContestAccessPolicy extends AccessPolicy<Contest> {
             return false;
         }
 
-        boolean allowed = isSuperAdmin(user) || isClubAdmin(user) || isTeacher(user);
+        boolean allowed = isSuperAdmin(user) || isContentAdmin(user);
         if (!allowed) {
             auditLogger.logPermissionDenied(user, Permission.CREATE, "Contest", null, "角色不足");
         }

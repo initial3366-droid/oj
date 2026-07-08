@@ -43,12 +43,12 @@ class PracticeAccessPolicyTest {
         return new AuthUser(user);
     }
 
-    private AuthUser createClubAdmin() {
+    private AuthUser createContentAdmin() {
         User user = new User();
         user.id = 3L;
-        user.username = "clubadmin";
-        user.role = "CLUB_ADMIN";
-        user.displayName = "Club Admin";
+        user.username = "teacher_content";
+        user.role = "TEACHER";
+        user.displayName = "Teacher Content";
         user.passwordHash = "hash";
         return new AuthUser(user);
     }
@@ -96,9 +96,9 @@ class PracticeAccessPolicyTest {
     private Practice createPublishedPrivatePractice(Long ownerId) {
         Practice practice = new Practice();
         practice.id = 2L;
-        practice.title = "Published Private Practice";
+        practice.title = "Published Class Practice";
         practice.ownerId = ownerId;
-        practice.audience = "CLUB";
+        practice.audience = "CLASS";
         practice.audienceId = 1L;
         practice.published = true;
         return practice;
@@ -211,19 +211,19 @@ class PracticeAccessPolicyTest {
     }
 
     @Test
-    @DisplayName("CREATE: removed teacher role should deny")
-    void testCreate_RemovedTeacherRole_ShouldDeny() {
+    @DisplayName("CREATE: teacher content role should allow")
+    void testCreate_TeacherContentRole_ShouldAllow() {
         Practice practice = createPublishedPublicPractice(1L);
         AuthUser teacher = createTeacher();
-        assertFalse(policy.can(teacher, Permission.CREATE, practice));
+        assertTrue(policy.can(teacher, Permission.CREATE, practice));
     }
 
     @Test
-    @DisplayName("CREATE: club admin should allow")
-    void testCreate_ClubAdmin_ShouldAllow() {
+    @DisplayName("CREATE: another teacher content role should allow")
+    void testCreate_AnotherTeacherContentRole_ShouldAllow() {
         Practice practice = createPublishedPublicPractice(1L);
-        AuthUser clubAdmin = createClubAdmin();
-        assertTrue(policy.can(clubAdmin, Permission.CREATE, practice));
+        AuthUser contentAdmin = createContentAdmin();
+        assertTrue(policy.can(contentAdmin, Permission.CREATE, practice));
     }
 
     @Test

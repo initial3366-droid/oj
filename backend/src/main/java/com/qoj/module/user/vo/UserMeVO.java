@@ -4,6 +4,7 @@ public record UserMeVO(
     Long id,
     String username,
     String displayName,
+    String avatarUrl,
     String studentNo,
     String email,
     String role,

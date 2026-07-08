@@ -11,9 +11,8 @@ import {
   Space,
   Table,
   Tag,
-  Typography,
 } from '@arco-design/web-react';
-import { IconDelete, IconFile, IconLeft, IconPlus, IconSave, IconSearch } from '@arco-design/web-react/icon';
+import { IconDelete, IconLeft, IconPlus, IconSave, IconSearch } from '@arco-design/web-react/icon';
 import { teacherGet, teacherPost, teacherPut, teacherDelete } from '../teacherApi';
 
 const { Row, Col } = Grid;
@@ -70,6 +69,12 @@ const difficultyMap: Record<number, { text: string; color: string }> = {
 function difficultyTag(value?: number) {
   const info = difficultyMap[value ?? 0] ?? { text: '未知', color: 'gray' };
   return <Tag color={info.color}>{info.text}</Tag>;
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
 }
 
 export function TeacherProblemFolderPage() {
@@ -217,7 +222,7 @@ export function TeacherProblemFolderPage() {
     setSelectedProblemIds((prev) => prev.filter((pid) => pid !== id));
   }
 
-  // 卡片列表模式
+  // 列表模式：只展示当前教师自己添加的文件夹，默认每页 10 个
   if (mode === 'list') {
     return (
       <Card
@@ -231,6 +236,7 @@ export function TeacherProblemFolderPage() {
               prefix={<IconSearch />}
               value={keyword}
               onChange={setKeyword}
+              allowClear
             />
             <Button type="primary" icon={<IconPlus />} onClick={() => navigate('/teacher/problem-folders/new')}>
               新建文件夹
@@ -238,38 +244,44 @@ export function TeacherProblemFolderPage() {
           </Space>
         }
       >
-        <Row gutter={[16, 16]}>
-          {filteredFolders.map((folder) => (
-            <Col key={folder.id} span={8}>
-              <Card
-                hoverable
-                onClick={() => navigate(`/teacher/problem-folders/${folder.id}`)}
-                style={{ cursor: 'pointer' }}
-                actions={[
-                  <Button key="edit" type="text" size="small" onClick={(e) => { e.stopPropagation(); navigate(`/teacher/problem-folders/${folder.id}`); }}>
+        <Table
+          rowKey="id"
+          loading={loading}
+          data={filteredFolders}
+          pagination={{ pageSize: 10, showTotal: true }}
+          columns={[
+            { title: 'ID', dataIndex: 'id', width: 90, align: 'center' },
+            { title: '文件夹名称', dataIndex: 'name', width: 180, ellipsis: true },
+            { title: '介绍', dataIndex: 'description', ellipsis: true, render: (value: string) => value || '暂无介绍' },
+            {
+              title: '题目数量',
+              dataIndex: 'problemCount',
+              width: 120,
+              align: 'center',
+              render: (value: number) => <Tag color="blue">{value || 0} 道题目</Tag>,
+            },
+            { title: '创建时间', dataIndex: 'createdAt', width: 180, render: formatDate },
+            { title: '更新时间', dataIndex: 'updatedAt', width: 180, render: formatDate },
+            {
+              title: '操作',
+              width: 150,
+              align: 'center',
+              fixed: 'right',
+              render: (_: unknown, folder: ProblemFolder) => (
+                <Space size={4}>
+                  <Button type="text" size="small" onClick={() => navigate(`/teacher/problem-folders/${folder.id}`)}>
                     编辑
-                  </Button>,
-                  <Popconfirm key="delete" title="确定删除？题目将移至默认文件夹" onOk={(e) => { e?.stopPropagation(); handleDelete(folder.id); }}>
-                    <Button type="text" size="small" status="danger" icon={<IconDelete />} onClick={(e) => e.stopPropagation()}>
+                  </Button>
+                  <Popconfirm title="确定删除？题目将移至默认文件夹" onOk={() => handleDelete(folder.id)}>
+                    <Button type="text" size="small" status="danger" icon={<IconDelete />}>
                       删除
                     </Button>
-                  </Popconfirm>,
-                ]}
-              >
-                <Typography.Title heading={5} style={{ margin: 0 }}>{folder.name}</Typography.Title>
-                <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8, minHeight: 40 }}>
-                  {folder.description || '暂无介绍'}
-                </Typography.Text>
-                <Tag color="blue" style={{ marginTop: 12 }}>{folder.problemCount} 道题目</Tag>
-              </Card>
-            </Col>
-          ))}
-          {filteredFolders.length === 0 && (
-            <Col span={24}>
-              <div style={{ textAlign: 'center', padding: '60px 0', color: '#999' }}>暂无文件夹</div>
-            </Col>
-          )}
-        </Row>
+                  </Popconfirm>
+                </Space>
+              ),
+            },
+          ]}
+        />
       </Card>
     );
   }

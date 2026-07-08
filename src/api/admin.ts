@@ -50,6 +50,7 @@ export interface AdminUser {
   id: number;
   username: string;
   displayName: string;
+  avatarUrl?: string;
   studentNo?: string;
   email?: string;
   role: "SUPER_ADMIN" | "TEACHER" | "STUDENT" | "GUEST";
@@ -129,6 +130,12 @@ export async function updateAdminUser(
  */
 export async function deleteAdminUser(userId: number): Promise<void> {
   return apiDelete<void>(`/api/admin/v1/users/${userId}`, true);
+}
+
+export async function uploadAdminUserAvatar(userId: number, file: File): Promise<{ avatarUrl: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiPost<{ avatarUrl: string }>(`/api/admin/v1/users/${userId}/avatar`, formData, true);
 }
 
 // 更多管理员 API 可以继续添加...

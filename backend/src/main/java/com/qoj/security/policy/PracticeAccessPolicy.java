@@ -72,7 +72,7 @@ public class PracticeAccessPolicy extends AccessPolicy<Practice> {
             return false;
         }
 
-        boolean allowed = isSuperAdmin(user) || isClubAdmin(user) || isTeacher(user);
+        boolean allowed = isSuperAdmin(user) || isContentAdmin(user);
         if (!allowed) {
             auditLogger.logPermissionDenied(user, Permission.CREATE, "Practice", null, "角色不足");
         }

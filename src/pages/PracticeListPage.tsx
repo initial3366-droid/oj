@@ -15,7 +15,7 @@ export function PracticeListPage() {
   const [message, setMessage] = useState('');
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {

@@ -42,12 +42,12 @@ class SubmissionAccessPolicyTest {
         return new AuthUser(user);
     }
 
-    private AuthUser createClubAdmin() {
+    private AuthUser createContentAdmin() {
         User user = new User();
         user.id = 3L;
-        user.username = "clubadmin";
-        user.role = "CLUB_ADMIN";
-        user.displayName = "Club Admin";
+        user.username = "teacher_content";
+        user.role = "TEACHER";
+        user.displayName = "Teacher Content";
         user.passwordHash = "hash";
         return new AuthUser(user);
     }
@@ -190,11 +190,11 @@ class SubmissionAccessPolicyTest {
     }
 
     @Test
-    @DisplayName("REJUDGE: club admin cannot rejudge")
-    void testRejudge_ClubAdmin_ShouldDeny() {
+    @DisplayName("REJUDGE: teacher content role cannot rejudge")
+    void testRejudge_TeacherContentRole_ShouldDeny() {
         Submission submission = createSubmission(4L);
-        AuthUser clubAdmin = createClubAdmin();
-        assertFalse(policy.can(clubAdmin, Permission.REJUDGE, submission));
+        AuthUser contentAdmin = createContentAdmin();
+        assertFalse(policy.can(contentAdmin, Permission.REJUDGE, submission));
     }
 
     @Test
@@ -237,10 +237,10 @@ class SubmissionAccessPolicyTest {
     }
 
     @Test
-    @DisplayName("canViewInList: club admin can view submissions")
-    void testViewInList_ClubAdmin_ShouldAllow() {
-        AuthUser clubAdmin = createClubAdmin();
-        assertTrue(policy.canViewInList(clubAdmin, 4L));
+    @DisplayName("canViewInList: teacher content role cannot view other users' submissions")
+    void testViewInList_TeacherContentRole_ShouldDenyOtherUsers() {
+        AuthUser contentAdmin = createContentAdmin();
+        assertFalse(policy.canViewInList(contentAdmin, 4L));
     }
 
     @Test

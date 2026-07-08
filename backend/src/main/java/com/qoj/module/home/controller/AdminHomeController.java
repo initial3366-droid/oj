@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/admin/v1/home")
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','CLUB_ADMIN')")
+@PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminHomeController {
     private final HomeService homeService;
 

@@ -9,6 +9,8 @@ public record ContestProblemVO(
     String label,
     Integer score,
     Integer displayOrder,
-    List<ContestProblemCaseScoreVO> caseScores
+    List<ContestProblemCaseScoreVO> caseScores,
+    Long submissionCount,
+    Long acceptedCount
 ) {
 }

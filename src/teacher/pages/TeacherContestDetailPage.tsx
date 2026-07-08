@@ -257,24 +257,8 @@ export function TeacherContestDetailPage() {
       render: (type: string) => {
         const typeMap: Record<string, { color: string; text: string }> = {
           PERSONAL: { color: 'blue', text: '个人' },
-          CLUB: { color: 'purple', text: '社团' },
         };
         const info = typeMap[type] || { color: 'gray', text: type };
-        return <Tag color={info.color}>{info.text}</Tag>;
-      },
-    },
-    {
-      title: '报名状态',
-      dataIndex: 'status',
-      width: 120,
-      align: 'center' as const,
-      render: (status: string) => {
-        const statusMap: Record<string, { color: string; text: string }> = {
-          PENDING: { color: 'orange', text: '待审核' },
-          APPROVED: { color: 'green', text: '已通过' },
-          REJECTED: { color: 'red', text: '已拒绝' },
-        };
-        const info = statusMap[status] || { color: 'gray', text: status };
         return <Tag color={info.color}>{info.text}</Tag>;
       },
     },
@@ -287,8 +271,8 @@ export function TeacherContestDetailPage() {
     },
   ];
 
-  const registrationCount = contest.registrationCount ?? registrations.length;
-  const approvedCount = registrations.filter((r) => r.status === 'APPROVED').length;
+  const registeredRegistrations = registrations.filter((registration) => !registration.status || registration.status === 'APPROVED');
+  const registrationCount = registeredRegistrations.length;
   const rollingStatusText: Record<string, string> = {
     NOT_STARTED: '未开始',
     ROLLING: '滚榜中',
@@ -329,7 +313,7 @@ export function TeacherContestDetailPage() {
             <Statistic title="报名人数" value={registrationCount} />
           </Col>
           <Col span={6}>
-            <Statistic title="参赛人数" value={approvedCount} />
+            <Statistic title="参赛人数" value={contest.participantCount ?? registrationCount} />
           </Col>
           <Col span={6}>
             <Statistic title="题目数量" value={problems.length} />
@@ -387,15 +371,11 @@ export function TeacherContestDetailPage() {
 
           <TabPane key="registrations" title={`报名列表 (${registrationCount})`}>
             <div style={{ marginBottom: 16 }}>
-              <Space>
-                <Tag color="green">已通过: {approvedCount}</Tag>
-                <Tag color="orange">待审核: {registrations.filter((r) => r.status === 'PENDING').length}</Tag>
-                <Tag color="red">已拒绝: {registrations.filter((r) => r.status === 'REJECTED').length}</Tag>
-              </Space>
+              <Tag color="blue">报名人数: {registrationCount}</Tag>
             </div>
             <Table
               columns={registrationColumns}
-              data={registrations}
+              data={registeredRegistrations}
               pagination={{ pageSize: 20, showTotal: true }}
               rowKey="id"
             />

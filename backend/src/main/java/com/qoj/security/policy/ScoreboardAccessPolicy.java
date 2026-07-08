@@ -11,20 +11,6 @@ public class ScoreboardAccessPolicy {
         return true;
     }
 
-    public boolean canViewClubScoreboard(AuthUser user, Long clubId) {
-        if (user == null) {
-            return false;
-        }
-
-        // 超级管理员可以查看所有社团榜单
-        if ("SUPER_ADMIN".equals(user.role())) {
-            return true;
-        }
-
-        // 社团成员可以查看（需要在Service层检查成员关系）
-        return false;
-    }
-
     public boolean canViewContestScoreboard(AuthUser user, boolean isPublicContest) {
         // 公开比赛榜单任何人可见
         if (isPublicContest) {

@@ -1,5 +1,5 @@
 import { adminPath } from '../../../utils/adminPath';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   Table,
@@ -13,8 +13,9 @@ import {
   Popconfirm,
   Card,
   Tag,
+  Avatar,
 } from '@arco-design/web-react';
-import { IconPlus, IconSearch, IconEdit, IconDelete, IconRefresh } from '@arco-design/web-react/icon';
+import { IconPlus, IconSearch, IconEdit, IconDelete, IconRefresh, IconEye } from '@arco-design/web-react/icon';
 import { adminGet, adminPost, adminPut, adminDelete } from '../../api/adminClient';
 
 const FormItem = Form.Item;
@@ -28,11 +29,13 @@ interface User {
   email: string;
   role: string;
   className: string | null;
+  avatarUrl?: string | null;
   createdAt: string;
+  updatedAt?: string | null;
 }
 
-interface PageResult {
-  list: User[];
+interface PageResult<T> {
+  list: T[];
   total: number;
 }
 
@@ -45,7 +48,57 @@ interface UserFormData {
   password?: string;
 }
 
+interface AdminSubmission {
+  id: number;
+  userId: number;
+  problemId: number | null;
+  problemTitle: string | null;
+  contestId?: number | null;
+  contestTitle?: string | null;
+  practiceId?: number | null;
+  practiceTitle?: string | null;
+  language: string | null;
+  status: string | null;
+  score: number | null;
+  timeUsed: number | null;
+  memoryUsed: number | null;
+  submitTime: string | null;
+  createdAt: string | null;
+}
+
 const ACTIVE_USER_ROLES = new Set(['STUDENT', 'GUEST']);
+const DETAIL_SUBMISSION_PAGE_SIZE = 10;
+
+function formatDate(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
+}
+
+function dash(value: unknown) {
+  if (value === null || value === undefined || value === '') return '-';
+  return String(value);
+}
+
+function roleText(role?: string | null) {
+  const map: Record<string, string> = {
+    SUPER_ADMIN: '系统管理员',
+    TEACHER: '教师',
+    STUDENT: '学生',
+    GUEST: '访客',
+  };
+  return role ? (map[role] || role) : '-';
+}
+
+function statusColor(status?: string | null) {
+  const normalized = (status || '').toUpperCase();
+  if (normalized === 'AC' || normalized === 'ACCEPTED') return 'green';
+  if (['PENDING', 'WAITING', 'JUDGING', 'COMPILING', 'RUNNING', 'REJUDGE_PENDING'].includes(normalized)) return 'blue';
+  if (normalized === 'TLE' || normalized === 'MLE') return 'orange';
+  if (normalized === 'SE' || normalized === 'FAILED') return 'gray';
+  return 'red';
+}
+
 
 function isActiveUser(user: User) {
   return ACTIVE_USER_ROLES.has(user.role);
@@ -61,6 +114,15 @@ export function AdminUserManagementPage() {
   const [keyword, setKeyword] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('');
   const [searchInput, setSearchInput] = useState('');
+  const [uploadingAvatarId, setUploadingAvatarId] = useState<number | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [viewingUser, setViewingUser] = useState<User | null>(null);
+  const [detailSubmissions, setDetailSubmissions] = useState<AdminSubmission[]>([]);
+  const [detailSubmissionTotal, setDetailSubmissionTotal] = useState(0);
+  const [detailSubmissionPage, setDetailSubmissionPage] = useState(1);
+  const [detailSubmissionLoading, setDetailSubmissionLoading] = useState(false);
 
   // 根据路由设置角色过滤
   useEffect(() => {
@@ -88,7 +150,7 @@ export function AdminUserManagementPage() {
       if (keyword) params.append('keyword', keyword);
       if (roleFilter) params.append('role', roleFilter);
 
-      const result = await adminGet<PageResult>(`/api/admin/v1/users?${params.toString()}`);
+      const result = await adminGet<PageResult<User>>(`/api/admin/v1/users?${params.toString()}`);
       const visibleUsers = (result.list || []).filter(isActiveUser);
       setUsers(visibleUsers);
       setTotal(Math.max(visibleUsers.length, result.total - ((result.list || []).length - visibleUsers.length)));
@@ -123,6 +185,86 @@ export function AdminUserManagementPage() {
     setModalVisible(true);
   }
 
+
+  async function handleAvatarUpload(userId: number, file: File) {
+    if (!file.type.startsWith('image/')) {
+      Message.error('请选择图片文件');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploadingAvatarId(userId);
+    try {
+      const result = await adminPost<{ avatarUrl: string }>(`/api/admin/v1/users/${userId}/avatar`, formData);
+      setUsers((items) => items.map((item) => item.id === userId ? { ...item, avatarUrl: result.avatarUrl } : item));
+      setEditingUser((user) => user && user.id === userId ? { ...user, avatarUrl: result.avatarUrl } : user);
+      setViewingUser((user) => user && user.id === userId ? { ...user, avatarUrl: result.avatarUrl } : user);
+      Message.success('头像已更新');
+      loadUsers();
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '头像上传失败');
+    } finally {
+      setUploadingAvatarId(null);
+    }
+  }
+
+  async function loadUserDetail(userId: number) {
+    setDetailLoading(true);
+    try {
+      setViewingUser(await adminGet<User>(`/api/admin/v1/users/${userId}`));
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '用户详情加载失败');
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  async function loadUserSubmissions(userId: number, nextPage = detailSubmissionPage) {
+    setDetailSubmissionLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(nextPage),
+        pageSize: String(DETAIL_SUBMISSION_PAGE_SIZE),
+        userId: String(userId),
+        sortBy: 'submitTime',
+        sortOrder: 'desc',
+      });
+      const result = await adminGet<PageResult<AdminSubmission>>(`/api/admin/v1/submissions?${params.toString()}`);
+      setDetailSubmissions(result.list || []);
+      setDetailSubmissionTotal(result.total || 0);
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '最近提交记录加载失败');
+    } finally {
+      setDetailSubmissionLoading(false);
+    }
+  }
+
+  function handleView(user: User) {
+    setViewingUser(user);
+    setDetailSubmissions([]);
+    setDetailSubmissionTotal(0);
+    setDetailSubmissionPage(1);
+    setDetailVisible(true);
+    loadUserDetail(user.id);
+    loadUserSubmissions(user.id, 1);
+  }
+
+  function renderUserAvatar(user: Pick<User, 'avatarUrl' | 'displayName' | 'username'>, size = 32) {
+    const name = user.displayName || user.username || '用户';
+    return (
+      <Avatar size={size} style={{ backgroundColor: '#165dff' }}>
+        {user.avatarUrl ? (
+          <img
+            src={user.avatarUrl}
+            alt={name}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+        ) : name.charAt(0)}
+      </Avatar>
+    );
+  }
+
+
   async function handleDelete(id: number) {
     try {
       await adminDelete(`/api/admin/v1/users/${id}`);
@@ -137,6 +279,7 @@ export function AdminUserManagementPage() {
     try {
       await adminPost(`/api/admin/v1/agent/reset/user/${userId}`);
       Message.success('AI 额度已重置');
+      await loadQuotas();
     } catch (error) {
       Message.error(error instanceof Error ? error.message : '重置失败');
     }
@@ -253,11 +396,19 @@ export function AdminUserManagementPage() {
     },
     {
       title: '操作',
-      width: 150,
+      width: 210,
       fixed: 'right' as const,
       align: 'center' as const,
       render: (_: any, record: User) => (
         <Space>
+          <Button
+            type="text"
+            size="small"
+            icon={<IconEye />}
+            onClick={() => handleView(record)}
+          >
+            查看
+          </Button>
           <Button
             type="text"
             size="small"
@@ -266,14 +417,6 @@ export function AdminUserManagementPage() {
           >
             编辑
           </Button>
-          <Popconfirm
-            title="确定重置该用户的 AI 额度吗？"
-            onOk={() => handleResetAiQuota(record.id)}
-          >
-            <Button type="text" size="small" icon={<IconRefresh />}>
-              重置AI
-            </Button>
-          </Popconfirm>
           <Popconfirm
             title="确定要删除该用户吗？"
             onOk={() => handleDelete(record.id)}
@@ -356,6 +499,30 @@ export function AdminUserManagementPage() {
           labelCol={{ span: 6 }}
           wrapperCol={{ span: 18 }}
         >
+          {editingUser && (
+            <FormItem label="头像">
+              <Space>
+                {renderUserAvatar(editingUser, 56)}
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
+                  style={{ display: 'none' }}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.currentTarget.value = '';
+                    if (file) handleAvatarUpload(editingUser.id, file);
+                  }}
+                />
+                <Button
+                  loading={uploadingAvatarId === editingUser.id}
+                  onClick={() => avatarInputRef.current?.click()}
+                >
+                  修改头像
+                </Button>
+              </Space>
+            </FormItem>
+          )}
           <FormItem
             label="用户名"
             field="username"
@@ -408,6 +575,88 @@ export function AdminUserManagementPage() {
             </FormItem>
           )}
         </Form>
+      </Modal>
+
+      <Modal
+        title="查看用户"
+        visible={detailVisible}
+        footer={null}
+        onCancel={() => setDetailVisible(false)}
+        style={{ width: 1000 }}
+      >
+        <Card title="个人信息" loading={detailLoading} style={{ marginBottom: 16 }}>
+          {viewingUser ? (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+                {renderUserAvatar(viewingUser, 72)}
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 600 }}>{viewingUser.displayName || '-'}</div>
+                  <div style={{ color: 'var(--color-text-3)' }}>@{viewingUser.username}</div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px 24px' }}>
+                <div><b>ID：</b>{viewingUser.id}</div>
+                <div><b>用户名：</b>{dash(viewingUser.username)}</div>
+                <div><b>显示名称：</b>{dash(viewingUser.displayName)}</div>
+                <div><b>角色：</b>{roleText(viewingUser.role)}</div>
+                <div><b>学号：</b>{dash(viewingUser.studentNo)}</div>
+                <div><b>邮箱：</b>{dash(viewingUser.email)}</div>
+                <div><b>班级：</b>{dash(viewingUser.className)}</div>
+                <div>
+                  <b>AI 额度：</b>
+                  {quotaMap[viewingUser.id]
+                    ? `${quotaMap[viewingUser.id].remaining}/${quotaMap[viewingUser.id].remaining + quotaMap[viewingUser.id].used}`
+                    : '-'}
+                  <Popconfirm
+                    title="确定重置该用户的 AI 额度吗？"
+                    onOk={() => handleResetAiQuota(viewingUser.id)}
+                  >
+                    <Button type="text" size="small" icon={<IconRefresh />} style={{ marginLeft: 8 }}>
+                      重置AI额度
+                    </Button>
+                  </Popconfirm>
+                </div>
+                <div><b>头像地址：</b>{viewingUser.avatarUrl ? <a href={viewingUser.avatarUrl} target="_blank" rel="noopener noreferrer">查看头像</a> : '-'}</div>
+                <div><b>创建时间：</b>{formatDate(viewingUser.createdAt)}</div>
+                <div><b>更新时间：</b>{formatDate(viewingUser.updatedAt)}</div>
+              </div>
+            </div>
+          ) : null}
+        </Card>
+
+        <Card title="最近提交记录">
+          <Table
+            rowKey="id"
+            loading={detailSubmissionLoading}
+            data={detailSubmissions}
+            pagination={{
+              total: detailSubmissionTotal,
+              current: detailSubmissionPage,
+              pageSize: DETAIL_SUBMISSION_PAGE_SIZE,
+              onChange: (nextPage) => {
+                setDetailSubmissionPage(nextPage);
+                if (viewingUser) loadUserSubmissions(viewingUser.id, nextPage);
+              },
+              showTotal: true,
+            }}
+            columns={[
+              { title: '提交ID', dataIndex: 'id', width: 90, align: 'center' },
+              { title: '题目', dataIndex: 'problemTitle', render: (value) => dash(value) },
+              { title: '语言', dataIndex: 'language', width: 100, align: 'center', render: (value) => dash(value) },
+              {
+                title: '状态',
+                dataIndex: 'status',
+                width: 110,
+                align: 'center',
+                render: (value) => value ? <Tag color={statusColor(value)}>{value}</Tag> : '-',
+              },
+              { title: '分数', dataIndex: 'score', width: 90, align: 'center', render: (value) => dash(value) },
+              { title: '时间', dataIndex: 'timeUsed', width: 100, align: 'center', render: (value) => value == null ? '-' : `${value} ms` },
+              { title: '内存', dataIndex: 'memoryUsed', width: 110, align: 'center', render: (value) => value == null ? '-' : `${value} KB` },
+              { title: '提交时间', dataIndex: 'submitTime', width: 180, render: (value) => formatDate(value) },
+            ]}
+          />
+        </Card>
       </Modal>
     </Card>
   );

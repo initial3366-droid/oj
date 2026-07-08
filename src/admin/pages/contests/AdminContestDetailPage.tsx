@@ -41,7 +41,9 @@ interface ContestDetail {
   silverRatio?: number;
   bronzeRatio?: number;
   allowAfterEndViewProblem?: boolean;
+  allowAfterEndViewCode?: boolean;
   publicScoreboardEnabled?: boolean;
+  showClassOnScoreboard?: boolean;
   allowFullscreen: boolean;
   antiCheatEnabled: boolean;
   maxSwitches: number;
@@ -134,6 +136,7 @@ export function AdminContestDetailPage() {
   const [rollingLoading, setRollingLoading] = useState(false);
   const [scoreboardExporting, setScoreboardExporting] = useState(false);
   const [submissionsExporting, setSubmissionsExporting] = useState(false);
+  const [registrationExporting, setRegistrationExporting] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; content: string } | null>(null);
 
@@ -251,6 +254,22 @@ export function AdminContestDetailPage() {
     }
   }
 
+  async function exportRegistrationUsers() {
+    if (!contestId) return;
+    setRegistrationExporting(true);
+    try {
+      await adminDownload(
+        `/api/admin/v1/contests/${contestId}/registrations/export`,
+        `contest-${contestId}-registration-users.csv`,
+      );
+      setNotice({ type: 'success', content: '报名人信息已开始下载' });
+    } catch (error) {
+      setNotice({ type: 'error', content: error instanceof Error ? error.message : '报名人信息导出失败' });
+    } finally {
+      setRegistrationExporting(false);
+    }
+  }
+
   async function runRollingAction(path: string, successMessage: string) {
     if (!contestId) return;
     setRollingLoading(true);
@@ -365,24 +384,8 @@ export function AdminContestDetailPage() {
       render: (type: string) => {
         const typeMap: Record<string, { color: string; text: string }> = {
           PERSONAL: { color: 'blue', text: '个人' },
-          CLUB: { color: 'purple', text: '社团' },
         };
         const info = typeMap[type] || { color: 'gray', text: type };
-        return <Tag color={info.color}>{info.text}</Tag>;
-      },
-    },
-    {
-      title: '报名状态',
-      dataIndex: 'status',
-      width: 120,
-      align: 'center' as const,
-      render: (status: string) => {
-        const statusMap: Record<string, { color: string; text: string }> = {
-          PENDING: { color: 'orange', text: '待审核' },
-          APPROVED: { color: 'green', text: '已通过' },
-          REJECTED: { color: 'red', text: '已拒绝' },
-        };
-        const info = statusMap[status] || { color: 'gray', text: status };
         return <Tag color={info.color}>{info.text}</Tag>;
       },
     },
@@ -395,8 +398,8 @@ export function AdminContestDetailPage() {
     },
   ];
 
-  const registrationCount = contest.registrationCount ?? registrations.length;
-  const approvedCount = registrations.filter(r => r.status === 'APPROVED').length;
+  const registeredRegistrations = registrations.filter((registration) => !registration.status || registration.status === 'APPROVED');
+  const registrationCount = registeredRegistrations.length;
   const xcpcioStatusColor: Record<string, string> = {
     OK: 'green',
     SYNCING: 'blue',
@@ -452,7 +455,7 @@ export function AdminContestDetailPage() {
             <Statistic title="报名人数" value={registrationCount} />
           </Col>
           <Col span={6}>
-            <Statistic title="参赛人数" value={approvedCount} />
+            <Statistic title="参赛人数" value={contest.participantCount ?? registrationCount} />
           </Col>
           <Col span={6}>
             <Statistic title="题目数量" value={problems.length} />
@@ -480,7 +483,9 @@ export function AdminContestDetailPage() {
             { label: '启用滚榜', value: contest.enableRollingScoreboard ? '是' : '否' },
             { label: '奖牌比例', value: `${contest.goldRatio ?? 10}% / ${contest.silverRatio ?? 20}% / ${contest.bronzeRatio ?? 30}%` },
             { label: '赛后查看题目', value: contest.allowAfterEndViewProblem !== false ? '允许' : '关闭' },
+            { label: '赛后查看他人代码', value: contest.allowAfterEndViewCode ? '允许' : '关闭' },
             { label: '公共榜单', value: contest.publicScoreboardEnabled !== false ? '开启' : '关闭' },
+            { label: '榜单显示班级', value: contest.showClassOnScoreboard ? '显示' : '隐藏' },
             { label: '全屏模式', value: contest.allowFullscreen ? '开启' : '关闭' },
             { label: '反作弊', value: contest.antiCheatEnabled ? '开启' : '关闭' },
             { label: '切屏限制', value: `${contest.maxSwitches} 次` },
@@ -507,16 +512,15 @@ export function AdminContestDetailPage() {
           </TabPane>
 
           <TabPane key="registrations" title={`报名列表 (${registrationCount})`}>
-            <div style={{ marginBottom: 16 }}>
-              <Space>
-                <Tag color="green">已通过: {approvedCount}</Tag>
-                <Tag color="orange">待审核: {registrations.filter(r => r.status === 'PENDING').length}</Tag>
-                <Tag color="red">已拒绝: {registrations.filter(r => r.status === 'REJECTED').length}</Tag>
-              </Space>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+              <Tag color="blue">报名人数: {registrationCount}</Tag>
+              <Button icon={<IconDownload />} loading={registrationExporting} onClick={exportRegistrationUsers}>
+                导出报名人信息
+              </Button>
             </div>
             <Table
               columns={registrationColumns}
-              data={registrations}
+              data={registeredRegistrations}
               pagination={{ pageSize: 20, showTotal: true }}
               rowKey="id"
             />
