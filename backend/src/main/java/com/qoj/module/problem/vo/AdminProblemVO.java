@@ -30,7 +30,6 @@ public record AdminProblemVO(
     // Admin-only fields
     Long ownerId,
     Boolean isPublic,
-    String domjudgeProblemId,
     LocalDateTime updatedAt
 ) {
     /**

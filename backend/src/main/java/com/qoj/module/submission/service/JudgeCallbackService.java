@@ -60,8 +60,8 @@ public class JudgeCallbackService {
             throw new BizException(404, "提交记录不存在");
         }
 
-        // 幂等检查：如果已经是终态且状态未变化，直接返回
-        if (isFinalStatus(submission.status) && submission.status.equals(request.status)) {
+        // 终态结果不可被迟到或重复回调覆盖；重判会先把状态重置为 REJUDGE_PENDING。
+        if (isFinalStatus(submission.status)) {
             return;
         }
 
@@ -116,15 +116,23 @@ public class JudgeCallbackService {
         }
 
         // 如果是比赛提交，更新排名
-        if (submission.contestId != null && submission.participantId != null) {
+        if (submission.contestId != null && submission.participantId != null && isFinalStatus(request.status)) {
             Contest contest = contestMapper.selectById(submission.contestId);
             if (contest != null) {
                 String scoringMode = contest.scoringMode != null ? contest.scoringMode : contest.type;
 
                 if ("ACM".equals(scoringMode)) {
-                    acmRankService.updateRankAfterJudge(submission);
+                    if (Boolean.TRUE.equals(submission.isRejudged)) {
+                        acmRankService.rebuildRank(submission.contestId);
+                    } else {
+                        acmRankService.updateRankAfterJudge(submission);
+                    }
                 } else if ("OI".equals(scoringMode)) {
-                    oiRankService.updateRankAfterJudge(submission);
+                    if (Boolean.TRUE.equals(submission.isRejudged)) {
+                        oiRankService.rebuildRank(submission.contestId);
+                    } else {
+                        oiRankService.updateRankAfterJudge(submission);
+                    }
                 }
             }
         } else if (isFinalStatus(request.status)) {
@@ -146,6 +154,7 @@ public class JudgeCallbackService {
             || status.equals("MLE") || status.equals("MEMORY_LIMIT_EXCEEDED")
             || status.equals("RE") || status.equals("RUNTIME_ERROR")
             || status.equals("CE") || status.equals("COMPILE_ERROR")
+            || status.equals("NOO")
             || status.equals("SE") || status.equals("SYSTEM_ERROR")
             || status.equals("FAILED");
     }

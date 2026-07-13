@@ -25,8 +25,6 @@ import com.qoj.module.contest.entity.ContestParticipant;
 import com.qoj.module.contest.mapper.ContestProblemMapper;
 import com.qoj.module.judge.JudgeService;
 import com.qoj.module.judge.DockerJudgeService;
-import com.qoj.module.judge.dto.DomjudgeSubmissionResponse;
-import com.qoj.module.judge.service.DomjudgeAdapter;
 import com.qoj.module.judge.service.LocalJudgeService;
 import com.qoj.module.practice.entity.Practice;
 import com.qoj.module.problem.entity.Problem;
@@ -74,7 +72,6 @@ public class SubmissionService {
     private final SandboxRunMapper sandboxRunMapper;
     private final ProblemMapper problemMapper;
     private final ProblemTestCaseMapper problemTestCaseMapper;
-    private final DomjudgeAdapter domjudgeAdapter;
     private final DockerJudgeService dockerJudgeService;
     private final LocalJudgeService localJudgeService;
     private final StringRedisTemplate redisTemplate;
@@ -106,7 +103,6 @@ public class SubmissionService {
         SandboxRunMapper sandboxRunMapper,
         ProblemMapper problemMapper,
         ProblemTestCaseMapper problemTestCaseMapper,
-        DomjudgeAdapter domjudgeAdapter,
         @Autowired(required = false) DockerJudgeService dockerJudgeService,
         @Autowired(required = false) LocalJudgeService localJudgeService,
         StringRedisTemplate redisTemplate,
@@ -133,7 +129,6 @@ public class SubmissionService {
         this.sandboxRunMapper = sandboxRunMapper;
         this.problemMapper = problemMapper;
         this.problemTestCaseMapper = problemTestCaseMapper;
-        this.domjudgeAdapter = domjudgeAdapter;
         this.dockerJudgeService = dockerJudgeService;
         this.localJudgeService = localJudgeService;
         this.redisTemplate = redisTemplate;
@@ -309,7 +304,7 @@ public class SubmissionService {
                     vo.problemId(), vo.problemTitle(), vo.contestId(), vo.practiceId(),
                     vo.language(), "PENDING",
                     null, null,
-                    vo.identityType(), vo.identityId(), vo.domjudgeSubmissionId(),
+                    vo.identityType(), vo.identityId(),
                     vo.submitTime(), vo.createdAt(),
                     null, null, null, null
                 );
@@ -532,7 +527,6 @@ public class SubmissionService {
         submission.judgeMessage = null;
         submission.errorMessage = null;
         submission.judgeWorkerId = null;
-        submission.domjudgeSubmissionId = null;
         submission.updatedAt = LocalDateTime.now();
 
         submissionCaseResultMapper.delete(new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id));
@@ -648,7 +642,6 @@ public class SubmissionService {
             "judge_message",
             "identity_type",
             "identity_id",
-            "domjudge_submission_id",
             "judge_server",
             "priority",
             "retry_count",
@@ -806,7 +799,6 @@ public class SubmissionService {
             submission.memoryUsed,
             submission.identityType,
             submission.identityId,
-            submission.domjudgeSubmissionId,
             submission.judgeServer,
             submission.priority,
             submission.retryCount,
@@ -867,7 +859,6 @@ public class SubmissionService {
             memoryUsed,
             submission.identityType,
             submission.identityId,
-            submission.domjudgeSubmissionId,
             submission.submitTime == null ? submission.createdAt : submission.submitTime,
             submission.createdAt,
             Math.toIntExact(passedCaseCount),

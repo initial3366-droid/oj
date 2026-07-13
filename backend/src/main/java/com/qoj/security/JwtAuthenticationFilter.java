@@ -82,6 +82,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private void authenticate(String token) {
         try {
             Claims claims = jwtService.parse(token);
+            if (!"access".equals(claims.get("typ", String.class))) {
+                return;
+            }
             // 检查 Token 是否在 Redis 黑名单中（已登出/被撤销的 Token）
             if (Boolean.TRUE.equals(redisTemplate.hasKey(RedisKeys.tokenBlacklist(claims.getId())))) {
                 return;

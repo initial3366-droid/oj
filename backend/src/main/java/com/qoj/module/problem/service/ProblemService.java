@@ -10,7 +10,6 @@ import com.qoj.common.PageResult;
 import com.qoj.common.enums.SubmissionStatus;
 import com.qoj.common.exception.BizException;
 import com.qoj.common.redis.RedisKeys;
-import com.qoj.module.judge.service.DomjudgeAdapter;
 import com.qoj.module.problem.dto.ProblemTestCaseRequest;
 import com.qoj.module.problem.dto.ProblemSampleCaseRequest;
 import com.qoj.module.problem.dto.ProblemUpdateRequest;
@@ -68,7 +67,6 @@ public class ProblemService {
     private final UserMapper userMapper;
     private final AdminUserMapper adminUserMapper;
     private final ObjectMapper objectMapper;
-    private final DomjudgeAdapter domjudgeAdapter;
     private final StringRedisTemplate redisTemplate;
     private final com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy;
     private final ProblemFolderMapper problemFolderMapper;
@@ -81,7 +79,6 @@ public class ProblemService {
         UserMapper userMapper,
         AdminUserMapper adminUserMapper,
         ObjectMapper objectMapper,
-        DomjudgeAdapter domjudgeAdapter,
         StringRedisTemplate redisTemplate,
         com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy,
         ProblemFolderMapper problemFolderMapper
@@ -93,7 +90,6 @@ public class ProblemService {
         this.userMapper = userMapper;
         this.adminUserMapper = adminUserMapper;
         this.objectMapper = objectMapper;
-        this.domjudgeAdapter = domjudgeAdapter;
         this.redisTemplate = redisTemplate;
         this.problemAccessPolicy = problemAccessPolicy;
         this.problemFolderMapper = problemFolderMapper;
@@ -464,7 +460,6 @@ public class ProblemService {
             readTags(problem.tags),
             problem.ownerId,
             problem.isPublic,
-            problem.domjudgeProblemId,
             computedAcRate(problem.id),
             problem.createdAt,
             problem.updatedAt,
@@ -526,7 +521,6 @@ public class ProblemService {
             null,
             problem.ownerId,
             problem.isPublic,
-            problem.domjudgeProblemId,
             problem.updatedAt
         );
     }
@@ -555,7 +549,6 @@ public class ProblemService {
             null,
             problem.ownerId,
             problem.isPublic,
-            problem.domjudgeProblemId,
             problem.updatedAt
         );
     }
@@ -622,7 +615,6 @@ public class ProblemService {
             attemptStatus,
             vo.ownerId(),
             vo.isPublic(),
-            vo.domjudgeProblemId(),
             vo.updatedAt()
         );
     }
@@ -715,7 +707,6 @@ public class ProblemService {
             vo.tags(),
             vo.ownerId(),
             vo.isPublic(),
-            vo.domjudgeProblemId(),
             vo.acRate(),
             vo.createdAt(),
             vo.updatedAt(),

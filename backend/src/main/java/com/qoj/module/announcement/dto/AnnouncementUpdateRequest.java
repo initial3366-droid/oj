@@ -9,4 +9,6 @@ public class AnnouncementUpdateRequest {
     public String content;
 
     public Boolean isVisible;
+
+    public Boolean isPinned;
 }

@@ -10,9 +10,9 @@ public class JudgeSettingsVO {
     public int threadPoolSize;
     public int queueBatchSize;
     public long pollIntervalMs;
-    public String domjudgeBaseUrl;
-    public String domjudgeApiKey;
-    public boolean hasDomjudgeApiKey;
-    public String domjudgeContestId;
-    public long domjudgePollIntervalMs;
+    public String ccpcojJudgeUsername;
+    public String ccpcojJudgePassword;
+    public boolean hasCcpcojJudgePassword;
+    public int ccpcojSessionTtlMinutes;
+    public int ccpcojStaleTaskMinutes;
 }

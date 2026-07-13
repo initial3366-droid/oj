@@ -94,9 +94,9 @@ export interface JudgeSettings {
   /** 判题总开关；关闭后无法提交记录和调试运行 */
   enabled: boolean;
   /** 判题模式 */
-  mode?: 'domjudge' | 'docker' | 'unsafe-local';
+  mode?: 'ccpcoj' | 'docker' | 'unsafe-local';
   /** 比赛判题模式 */
-  contestMode?: 'domjudge' | 'docker' | 'unsafe-local';
+  contestMode?: 'ccpcoj' | 'docker' | 'unsafe-local';
   /** 是否允许不安全本地判题 */
   enableUnsafeLocalJudge?: boolean;
   /** 是否允许沙箱调试运行 */
@@ -107,10 +107,10 @@ export interface JudgeSettings {
   threadPoolSize: number;
   queueBatchSize?: number;
   pollIntervalMs?: number;
-  domjudgeBaseUrl?: string;
-  hasDomjudgeApiKey?: boolean;
-  domjudgeContestId?: string;
-  domjudgePollIntervalMs?: number;
+  ccpcojJudgeUsername?: string;
+  hasCcpcojJudgePassword?: boolean;
+  ccpcojSessionTtlMinutes?: number;
+  ccpcojStaleTaskMinutes?: number;
 }
 
 export interface OjState {

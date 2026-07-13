@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-QOJ is a campus Online Judge platform with a React frontend and Spring Boot 3 backend. The frontend uses React 19, Vite, Arco Design + Semi UI, and Tailwind CSS v4. The backend uses Spring Boot 3.3.5 with MyBatis-Plus, Spring Security, JWT authentication, Redis caching, and Flyway migrations. The system supports problems, contests (ACM/OI formats), practices, submissions, a WebSocket-based judging system with multiple sandbox backends (DOMjudge / Docker / unsafe-local), and an OpenAI-compatible AI assistant agent.
+QOJ is a campus Online Judge platform with a React frontend and Spring Boot 3 backend. The frontend uses React 19, Vite, Arco Design + Semi UI, and Tailwind CSS v4. The backend uses Spring Boot 3.3.5 with MyBatis-Plus, Spring Security, JWT authentication, Redis caching, and Flyway migrations. The system supports problems, contests (ACM/OI formats), practices, submissions, a WebSocket-based judging system with CCPCOJ, Docker, and unsafe-local backends, and an OpenAI-compatible AI assistant agent.
 
 ## Development Commands
 
@@ -44,8 +44,8 @@ Backend environment variables (see `.env` for development defaults):
 - `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USERNAME`, `MYSQL_PASSWORD`
 - `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
 - `JWT_SECRET` (minimum 64 bytes for HS512), `JWT_ACCESS_EXPIRE`, `JWT_REFRESH_EXPIRE`
-- `JUDGE_MODE` (`domjudge` | `docker` | `unsafe-local`), `ENABLE_UNSAFE_LOCAL_JUDGE` (never enable in production)
-- `DOMJUDGE_BASE_URL`, `DOMJUDGE_API_KEY`, `DOMJUDGE_DEFAULT_CONTEST_ID` (used only when `JUDGE_MODE=domjudge`)
+- Judge modes and CCPCOJ worker credentials are stored in `system_settings` and managed from the admin UI.
+- `ENABLE_UNSAFE_LOCAL_JUDGE` must never be enabled in production. CCPCOJ worker container settings live under `docker/ccpcoj/`.
 
 ### Running a single backend test
 
@@ -80,13 +80,13 @@ Java package: `com.qoj`. Modular monolith with 18 domain modules under `com.qoj.
 Each module follows a consistent layered pattern: `controller/` → `service/` → `mapper/` (MyBatis-Plus) with `dto/`, `entity/`, and `vo/` classes.
 
 Notable modules:
-- **`judge`**: Pluggable judging — `DomjudgeAdapter` (external DOMjudge API), `DockerJudgeService` (Docker sandbox, activated by `qoj.judge.mode=docker`), and an unsafe-local path. See **Judging** under Integration Points.
+- **`judge`**: Pluggable judging — `CcpcojJudgeGatewayService` exposes the pull-based CCPCOJ worker protocol, `DockerJudgeService` provides the embedded Docker sandbox, and an unsafe-local path remains development-only. See **Judging** under Integration Points.
 - **`agent`**: AI assistant (`AgentChatService`, `OpenAiCompatibleAgentClient` implementing `AgentClient`) calling an OpenAI-compatible endpoint via `java.net.http.HttpClient`; exposes chat + usage quota (`AgentQuotaVO`). Gated for users/admins via `AgentController` / `AdminAgentController`.
 - **`ws`**: STOMP WebSocket endpoints bridging judge/submission/contest events to the frontend.
 - **`xcpcio`**: Integration with the xcpcio toolchain (contest data sync / import).
 
 Key architectural components:
-- **`config/`**: Spring configuration — `SecurityConfig` (JWT + CORS), `WebSocketConfig` (STOMP), `MybatisPlusConfig`, `QojProperties` (externalized config from `.env`; env vars like `JUDGE_MODE` are relaxed-bound to `qoj.judge.mode`, etc.).
+- **`config/`**: Spring configuration — `SecurityConfig` (JWT + CORS), `WebSocketConfig` (STOMP), `MybatisPlusConfig`, and `QojProperties` for infrastructure-level externalized configuration. Judge runtime settings are database-backed.
 - **`security/`**: `JwtAuthenticationFilter` validates bearer tokens. `@CurrentUser` annotation injects the authenticated `AuthUser` into controller params. `@AdminApi` annotation + `AdminApiInterceptor` gate admin-only endpoints. `MaintenanceModeInterceptor` can disable the system globally.
 - **`security/policy/`**: Dedicated access policy classes (`ContestAccessPolicy`, `PracticeAccessPolicy`, `ProblemAccessPolicy`, `ScoreboardAccessPolicy`, `SubmissionAccessPolicy`) encapsulate authorization logic — use these rather than inline checks.
 - **`security/audit/`**: `AuditLogger` tracks admin operations.
@@ -118,7 +118,7 @@ JWT-based. Access token valid for 2 hours, refresh token for 7 days. Frontend st
 
 ### Database
 
-- **Migrations**: Flyway scripts in `backend/src/main/resources/db/migration/` (V1–V47, sequential). Schema includes users, problems, test_cases, contests, contest_problems, submissions, practices, organizations (classes/clubs), leaderboards, and more. Add new migrations as `V<next N>.sql`; never edit an already-applied migration.
+- **Migrations**: Flyway scripts in `backend/src/main/resources/db/migration/` (V1–V64, sequential). Schema includes users, problems, test_cases, contests, contest_problems, submissions, practices, organizations, leaderboards, and more. Add new migrations as `V<next N>.sql`; never edit an already-applied migration.
 - **ORM**: MyBatis-Plus with mapper interfaces per entity.
 - **Charset**: UTF-8MB4 collation throughout.
 
@@ -127,15 +127,15 @@ JWT-based. Access token valid for 2 hours, refresh token for 7 days. Frontend st
 - **Monaco Editor**: Code editor for submissions integrated via `@monaco-editor/react`.
 - **KaTeX**: Math rendering for problem statements via `katex` library.
 - **WebSocket**: Real-time submission status updates use STOMP over WebSocket at `/ws`.
-- **Judging**: Three interchangeable judge backends selected by `qoj.judge.mode` (`JUDGE_MODE`):
-  - `domjudge` — delegates to an external DOMjudge API via `DomjudgeAdapter` (the default external judge).
-  - `docker` — `DockerJudgeService` runs user code in an isolated container (`--network none`, memory/cpu limits); enabled with `@ConditionalOnProperty(name="qoj.judge.mode", havingValue="docker")`.
+- **Judging**: Three interchangeable judge backends selected by the database-backed judge settings:
+  - `ccpcoj` — official CCPCOJ judge containers pull work through `/ojtool/judge`; ACM/practice and OI workers use separate account suffixes.
+  - `docker` — `DockerJudgeService` runs user code in an isolated container (`--network none`, memory/cpu limits).
   - `unsafe-local` — executes user code directly on the host. **Never enable in production** (`ENABLE_UNSAFE_LOCAL_JUDGE`); dev-only.
 
 ## Development Notes
 
 - Frontend uses TypeScript strict mode. Type definitions are in `src/data/types.ts` and `src/data/apiClient.ts`.
-- Backend uses Java 17 with Spring Boot 3 conventions. Entity classes use Lombok.
+- Backend uses Java 21 with Spring Boot 3 conventions.
 - API responses follow the format: `{ code: number, message: string, data: T }`.
 - No linter (eslint/prettier) or backend formatter (checkstyle) is configured in the repo.
 - Extensive Chinese-language documentation lives in `docs/` (deployment, security, API docs, database schema, WebSocket guides, refactoring reports).

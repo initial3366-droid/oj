@@ -85,4 +85,8 @@ public final class RedisKeys {
     public static String emailVerificationCode(String email) {
         return "oj:email:verify:" + email;
     }
+
+    public static String ccpcojJudgeSession(String sessionId) {
+        return "oj:ccpcoj:judge:session:" + sessionId;
+    }
 }

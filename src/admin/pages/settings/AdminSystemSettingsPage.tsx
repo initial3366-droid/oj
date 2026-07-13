@@ -44,19 +44,19 @@ interface FrontendSettings {
 
 interface JudgeSettings {
   enabled: boolean;
-  mode: 'domjudge' | 'docker' | 'unsafe-local';
-  contestMode: 'domjudge' | 'docker' | 'unsafe-local';
+  mode: 'ccpcoj' | 'docker' | 'unsafe-local';
+  contestMode: 'ccpcoj' | 'docker' | 'unsafe-local';
   enableUnsafeLocalJudge: boolean;
   enableSandbox: boolean;
   maxConcurrent: number;
   threadPoolSize: number;
   queueBatchSize: number;
   pollIntervalMs: number;
-  domjudgeBaseUrl: string;
-  domjudgeApiKey?: string;
-  hasDomjudgeApiKey?: boolean;
-  domjudgeContestId: string;
-  domjudgePollIntervalMs: number;
+  ccpcojJudgeUsername: string;
+  ccpcojJudgePassword?: string;
+  hasCcpcojJudgePassword?: boolean;
+  ccpcojSessionTtlMinutes: number;
+  ccpcojStaleTaskMinutes: number;
 }
 
 interface AgentSettings {
@@ -150,18 +150,18 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
         judgeForm.setFieldsValue({
           enabled: judgeSettings.enabled ?? true,
           mode: judgeSettings.mode ?? 'docker',
-          contestMode: judgeSettings.contestMode ?? 'domjudge',
+          contestMode: judgeSettings.contestMode ?? 'docker',
           enableUnsafeLocalJudge: judgeSettings.enableUnsafeLocalJudge ?? false,
           enableSandbox: judgeSettings.enableSandbox ?? false,
           maxConcurrent: judgeSettings.maxConcurrent ?? 2,
           threadPoolSize: judgeSettings.threadPoolSize ?? 2,
           queueBatchSize: judgeSettings.queueBatchSize ?? 2,
           pollIntervalMs: judgeSettings.pollIntervalMs ?? 1000,
-          domjudgeBaseUrl: judgeSettings.domjudgeBaseUrl || 'http://127.0.0.1:8081',
-          domjudgeApiKey: '',
-          hasDomjudgeApiKey: judgeSettings.hasDomjudgeApiKey ?? false,
-          domjudgeContestId: judgeSettings.domjudgeContestId || '',
-          domjudgePollIntervalMs: judgeSettings.domjudgePollIntervalMs ?? 2000,
+          ccpcojJudgeUsername: judgeSettings.ccpcojJudgeUsername || 'judger',
+          ccpcojJudgePassword: '',
+          hasCcpcojJudgePassword: judgeSettings.hasCcpcojJudgePassword ?? false,
+          ccpcojSessionTtlMinutes: judgeSettings.ccpcojSessionTtlMinutes ?? 720,
+          ccpcojStaleTaskMinutes: judgeSettings.ccpcojStaleTaskMinutes ?? 15,
         });
         return;
       }
@@ -337,17 +337,17 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
       await adminPut('/api/admin/v1/settings/judge', {
         enabled: values.enabled ?? false,
         mode: values.mode || 'docker',
-        contestMode: values.contestMode || 'domjudge',
+        contestMode: values.contestMode || 'docker',
         enableUnsafeLocalJudge: values.enableUnsafeLocalJudge ?? false,
         enableSandbox: values.enableSandbox ?? false,
         maxConcurrent: values.maxConcurrent ?? 2,
         threadPoolSize: values.threadPoolSize ?? 2,
         queueBatchSize: values.queueBatchSize ?? 2,
         pollIntervalMs: values.pollIntervalMs ?? 1000,
-        domjudgeBaseUrl: values.domjudgeBaseUrl?.trim() || '',
-        domjudgeApiKey: values.domjudgeApiKey?.trim() || '',
-        domjudgeContestId: values.domjudgeContestId?.trim() || '',
-        domjudgePollIntervalMs: values.domjudgePollIntervalMs ?? 2000,
+        ccpcojJudgeUsername: values.ccpcojJudgeUsername?.trim() || '',
+        ccpcojJudgePassword: values.ccpcojJudgePassword?.trim() || '',
+        ccpcojSessionTtlMinutes: values.ccpcojSessionTtlMinutes ?? 720,
+        ccpcojStaleTaskMinutes: values.ccpcojStaleTaskMinutes ?? 15,
       });
       toast.success('判题配置保存成功');
       loadSettings();
@@ -728,7 +728,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
               <Select>
                 <Option value="unsafe-local">本地判题（仅开发）</Option>
                 <Option value="docker">Docker 判题</Option>
-                <Option value="domjudge">DOMjudge</Option>
+                <Option value="ccpcoj">CCPCOJ</Option>
               </Select>
             </FormItem>
 
@@ -739,7 +739,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
               extra="比赛提交使用此模式，普通练习继续使用上面的判题模式"
             >
               <Select>
-                <Option value="domjudge">DOMjudge</Option>
+                <Option value="ccpcoj">CCPCOJ</Option>
                 <Option value="docker">Docker 判题</Option>
                 <Option value="unsafe-local">本地判题（仅开发）</Option>
               </Select>
@@ -795,39 +795,42 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
             <Divider />
 
             <FormItem
-              label="DOMjudge 地址"
-              field="domjudgeBaseUrl"
+              label="评测机账号"
+              field="ccpcojJudgeUsername"
+              rules={[{ required: true, message: '请输入 CCPCOJ 评测机账号' }]}
+              extra="OI 评测机使用相同密码，并在该账号后追加 -oi"
             >
-              <Input placeholder="http://127.0.0.1:8081" />
+              <Input placeholder="judger" />
             </FormItem>
 
             <FormItem
-              label="DOMjudge Key"
-              field="domjudgeApiKey"
-              extra="留空时保留已保存的 API Key"
+              label="评测机密码"
+              field="ccpcojJudgePassword"
+              extra="留空保留原值；新密码至少 12 位，仅使用字母、数字、点、下划线、波浪号和连字符"
             >
               <Input.Password placeholder="留空保留原值" />
             </FormItem>
 
             <FormItem
-              label="默认比赛 ID"
-              field="domjudgeContestId"
+              label="会话有效期"
+              field="ccpcojSessionTtlMinutes"
+              rules={[{ required: true, message: '请输入 CCPCOJ 会话有效期' }]}
             >
-              <Input placeholder="1" />
+              <InputNumber min={10} max={10080} step={10} suffix="分钟" style={{ width: '100%' }} />
             </FormItem>
 
             <FormItem
-              label="结果轮询"
-              field="domjudgePollIntervalMs"
-              rules={[{ required: true, message: '请输入 DOMjudge 结果轮询间隔' }]}
+              label="失联任务重取"
+              field="ccpcojStaleTaskMinutes"
+              rules={[{ required: true, message: '请输入失联任务重取时间' }]}
             >
-              <InputNumber min={500} max={60000} step={100} suffix="ms" style={{ width: '100%' }} />
+              <InputNumber min={2} max={1440} step={1} suffix="分钟" style={{ width: '100%' }} />
             </FormItem>
           </Form>
 
           <Divider />
           <Paragraph style={{ margin: 0, fontSize: 13, color: '#86909c' }}>
-            判题配置保存到数据库，保存后调度器与 DOMjudge 接入配置会按新值生效。
+            判题配置保存到数据库，CCPCOJ 评测机通过 `/ojtool/judge` 网关拉取任务并回传结果。
             线程池大小会在后端重启后按数据库配置重新初始化。
           </Paragraph>
         </Card>

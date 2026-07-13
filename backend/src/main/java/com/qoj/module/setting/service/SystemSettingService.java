@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Service
 public class SystemSettingService {
@@ -38,7 +39,10 @@ public class SystemSettingService {
     private static final int DEFAULT_JUDGE_THREAD_POOL_SIZE = 2;
     private static final int DEFAULT_JUDGE_QUEUE_BATCH_SIZE = 2;
     private static final long DEFAULT_JUDGE_POLL_INTERVAL_MS = 1000L;
-    private static final long DEFAULT_DOMJUDGE_POLL_INTERVAL_MS = 2000L;
+    private static final int DEFAULT_CCPCOJ_SESSION_TTL_MINUTES = 720;
+    private static final int DEFAULT_CCPCOJ_STALE_TASK_MINUTES = 15;
+    private static final Pattern CCPCOJ_USERNAME = Pattern.compile("[A-Za-z0-9._-]{1,60}");
+    private static final Pattern CCPCOJ_PASSWORD = Pattern.compile("[A-Za-z0-9._~-]{12,128}");
     private static final Map<String, Object> DEFAULT_AGENT_CONFIG = Map.of(
         "enabled", false,
         "baseUrl", "",
@@ -154,7 +158,7 @@ public class SystemSettingService {
 
     public JudgeSettingsVO getJudgeSettings() {
         JudgeSettingsVO vo = getJudgeRuntimeSettings();
-        vo.domjudgeApiKey = "";
+        vo.ccpcojJudgePassword = "";
         return vo;
     }
 
@@ -174,11 +178,13 @@ public class SystemSettingService {
         vo.maxConcurrent = positiveIntSetting("judge.max_concurrent", DEFAULT_JUDGE_CONCURRENCY);
         vo.queueBatchSize = positiveIntSetting("judge.queue_batch_size", DEFAULT_JUDGE_QUEUE_BATCH_SIZE);
         vo.pollIntervalMs = positiveLongSetting("judge.poll_interval_ms", DEFAULT_JUDGE_POLL_INTERVAL_MS);
-        vo.domjudgeBaseUrl = textSetting("judge.domjudge_base_url", "http://127.0.0.1:8081");
-        vo.domjudgeApiKey = textSetting("judge.domjudge_api_key", "");
-        vo.hasDomjudgeApiKey = hasText(vo.domjudgeApiKey);
-        vo.domjudgeContestId = textSetting("judge.domjudge_contest_id", "");
-        vo.domjudgePollIntervalMs = positiveLongSetting("judge.domjudge_poll_interval_ms", DEFAULT_DOMJUDGE_POLL_INTERVAL_MS);
+        vo.ccpcojJudgeUsername = textSetting("judge.ccpcoj_username", "judger");
+        vo.ccpcojJudgePassword = textSetting("judge.ccpcoj_password_hash", "");
+        vo.hasCcpcojJudgePassword = hasText(vo.ccpcojJudgePassword);
+        vo.ccpcojSessionTtlMinutes = positiveIntSetting(
+            "judge.ccpcoj_session_ttl_minutes", DEFAULT_CCPCOJ_SESSION_TTL_MINUTES);
+        vo.ccpcojStaleTaskMinutes = positiveIntSetting(
+            "judge.ccpcoj_stale_task_minutes", DEFAULT_CCPCOJ_STALE_TASK_MINUTES);
         ensureUnsafeLocalJudgeNotActiveInProduction(vo);
         return vo;
     }
@@ -277,10 +283,22 @@ public class SystemSettingService {
         next.maxConcurrent = request.maxConcurrent;
         next.queueBatchSize = request.queueBatchSize;
         next.pollIntervalMs = request.pollIntervalMs;
-        next.domjudgeBaseUrl = trimToEmpty(request.domjudgeBaseUrl);
-        next.domjudgeApiKey = hasText(request.domjudgeApiKey) ? request.domjudgeApiKey.trim() : existing.domjudgeApiKey;
-        next.domjudgeContestId = trimToEmpty(request.domjudgeContestId);
-        next.domjudgePollIntervalMs = request.domjudgePollIntervalMs;
+        next.ccpcojJudgeUsername = trimToEmpty(request.ccpcojJudgeUsername);
+        if (hasText(next.ccpcojJudgeUsername) && !CCPCOJ_USERNAME.matcher(next.ccpcojJudgeUsername).matches()) {
+            throw new BizException(ErrorCode.BAD_REQUEST,
+                "CCPCOJ 评测机账号只能包含字母、数字、点、下划线和连字符，且不超过 60 个字符");
+        }
+        if (hasText(request.ccpcojJudgePassword)
+            && !CCPCOJ_PASSWORD.matcher(request.ccpcojJudgePassword.trim()).matches()) {
+            throw new BizException(ErrorCode.BAD_REQUEST,
+                "CCPCOJ 评测机密码需为 12-128 位，且只能包含字母、数字、点、下划线、波浪号和连字符");
+        }
+        next.ccpcojJudgePassword = hasText(request.ccpcojJudgePassword)
+            ? passwordEncoder.encode(request.ccpcojJudgePassword.trim())
+            : existing.ccpcojJudgePassword;
+        next.hasCcpcojJudgePassword = hasText(next.ccpcojJudgePassword);
+        next.ccpcojSessionTtlMinutes = request.ccpcojSessionTtlMinutes;
+        next.ccpcojStaleTaskMinutes = request.ccpcojStaleTaskMinutes;
 
         validateJudgeSettings(next);
 
@@ -294,10 +312,10 @@ public class SystemSettingService {
         updateSetting("judge.thread_pool_size", String.valueOf(next.threadPoolSize), username);
         updateSetting("judge.queue_batch_size", String.valueOf(next.queueBatchSize), username);
         updateSetting("judge.poll_interval_ms", String.valueOf(next.pollIntervalMs), username);
-        updateSetting("judge.domjudge_base_url", next.domjudgeBaseUrl, username);
-        updateSetting("judge.domjudge_api_key", next.domjudgeApiKey == null ? "" : next.domjudgeApiKey, username);
-        updateSetting("judge.domjudge_contest_id", next.domjudgeContestId, username);
-        updateSetting("judge.domjudge_poll_interval_ms", String.valueOf(next.domjudgePollIntervalMs), username);
+        updateSetting("judge.ccpcoj_username", next.ccpcojJudgeUsername, username);
+        updateSetting("judge.ccpcoj_password_hash", next.ccpcojJudgePassword == null ? "" : next.ccpcojJudgePassword, username);
+        updateSetting("judge.ccpcoj_session_ttl_minutes", String.valueOf(next.ccpcojSessionTtlMinutes), username);
+        updateSetting("judge.ccpcoj_stale_task_minutes", String.valueOf(next.ccpcojStaleTaskMinutes), username);
     }
 
     /**
@@ -621,10 +639,10 @@ public class SystemSettingService {
             case "judge.thread_pool_size" -> "判题线程池大小";
             case "judge.queue_batch_size" -> "判题队列批量拉取数";
             case "judge.poll_interval_ms" -> "判题队列轮询间隔";
-            case "judge.domjudge_base_url" -> "DOMjudge 地址";
-            case "judge.domjudge_api_key" -> "DOMjudge API Key";
-            case "judge.domjudge_contest_id" -> "DOMjudge 默认比赛 ID";
-            case "judge.domjudge_poll_interval_ms" -> "DOMjudge 结果轮询间隔";
+            case "judge.ccpcoj_username" -> "CCPCOJ 评测机账号";
+            case "judge.ccpcoj_password_hash" -> "CCPCOJ 评测机密码哈希";
+            case "judge.ccpcoj_session_ttl_minutes" -> "CCPCOJ 评测机会话有效期";
+            case "judge.ccpcoj_stale_task_minutes" -> "CCPCOJ 任务失联重取时间";
             case AGENT_CONFIG_KEY -> "AI助手配置";
             case OSS_CONFIG_KEY -> "OSS配置";
             default -> key;
@@ -645,26 +663,26 @@ public class SystemSettingService {
         if (settings.pollIntervalMs < 200 || settings.pollIntervalMs > 60000) {
             throw new BizException(ErrorCode.BAD_REQUEST, "判题队列轮询间隔必须在 200-60000 毫秒之间");
         }
-        if (settings.domjudgePollIntervalMs < 500 || settings.domjudgePollIntervalMs > 60000) {
-            throw new BizException(ErrorCode.BAD_REQUEST, "DOMjudge 轮询间隔必须在 500-60000 毫秒之间");
+        if (settings.ccpcojSessionTtlMinutes < 10 || settings.ccpcojSessionTtlMinutes > 10080) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "CCPCOJ 会话有效期必须在 10-10080 分钟之间");
+        }
+        if (settings.ccpcojStaleTaskMinutes < 2 || settings.ccpcojStaleTaskMinutes > 1440) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "CCPCOJ 任务失联时间必须在 2-1440 分钟之间");
         }
         if (isProductionProfile() && (usesUnsafeLocalJudge(settings) || settings.enableUnsafeLocalJudge)) {
             throw new BizException(ErrorCode.BAD_REQUEST,
-                "生产环境禁止启用 unsafe-local 本地判题，请使用 docker 或 domjudge");
+                "生产环境禁止启用 unsafe-local 本地判题，请使用 docker 或 ccpcoj");
         }
         if (("unsafe-local".equals(settings.mode) || "unsafe-local".equals(settings.contestMode))
             && !settings.enableUnsafeLocalJudge) {
             throw new BizException(ErrorCode.BAD_REQUEST, "使用不安全本地判题模式时必须开启不安全本地判题");
         }
-        if ("domjudge".equals(settings.mode) || "domjudge".equals(settings.contestMode)) {
-            if (!hasText(settings.domjudgeBaseUrl)) {
-                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 DOMjudge 地址");
+        if ("ccpcoj".equals(settings.mode) || "ccpcoj".equals(settings.contestMode)) {
+            if (!hasText(settings.ccpcojJudgeUsername)) {
+                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 CCPCOJ 评测机账号");
             }
-            if (!hasText(settings.domjudgeApiKey)) {
-                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 DOMjudge API Key");
-            }
-            if (!hasText(settings.domjudgeContestId)) {
-                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 DOMjudge 默认比赛 ID");
+            if (!hasText(settings.ccpcojJudgePassword)) {
+                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 CCPCOJ 评测机密码");
             }
         }
     }
@@ -676,7 +694,7 @@ public class SystemSettingService {
         if (usesUnsafeLocalJudge(settings) || settings.enableUnsafeLocalJudge) {
             throw new IllegalStateException(
                 "【生产环境启动失败】检测到 unsafe-local 本地判题配置。"
-                    + "请将 judge.mode/judge.contest_mode 改为 docker 或 domjudge，"
+                    + "请将 judge.mode/judge.contest_mode 改为 docker 或 ccpcoj，"
                     + "并关闭 judge.enable_unsafe_local_judge。"
             );
         }
@@ -707,7 +725,7 @@ public class SystemSettingService {
     private String normalizeJudgeMode(String value) {
         String mode = hasText(value) ? value.trim().toLowerCase() : "docker";
         return switch (mode) {
-            case "domjudge", "docker", "unsafe-local" -> mode;
+            case "ccpcoj", "docker", "unsafe-local" -> mode;
             default -> "docker";
         };
     }
@@ -715,9 +733,21 @@ public class SystemSettingService {
     private String normalizeJudgeModeForUpdate(String value) {
         String mode = hasText(value) ? value.trim().toLowerCase() : "docker";
         return switch (mode) {
-            case "domjudge", "docker", "unsafe-local" -> mode;
-            default -> throw new BizException(ErrorCode.BAD_REQUEST, "判题模式只能是 domjudge、docker 或 unsafe-local");
+            case "ccpcoj", "docker", "unsafe-local" -> mode;
+            default -> throw new BizException(ErrorCode.BAD_REQUEST, "判题模式只能是 ccpcoj、docker 或 unsafe-local");
         };
+    }
+
+    public boolean verifyCcpcojJudgeCredentials(String username, String password) {
+        JudgeSettingsVO settings = getJudgeRuntimeSettings();
+        boolean knownWorker = username != null
+            && (username.equals(settings.ccpcojJudgeUsername)
+                || username.equals(settings.ccpcojJudgeUsername + "-oi"));
+        return hasText(username)
+            && hasText(password)
+            && knownWorker
+            && hasText(settings.ccpcojJudgePassword)
+            && passwordEncoder.matches(password, settings.ccpcojJudgePassword);
     }
 
     private boolean boolSetting(String key, boolean defaultValue) {

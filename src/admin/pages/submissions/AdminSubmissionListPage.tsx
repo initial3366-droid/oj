@@ -65,7 +65,6 @@ interface AdminSubmission {
   memoryUsed?: number | null;
   identityType?: string | null;
   identityId?: number | null;
-  domjudgeSubmissionId?: string | null;
   judgeServer?: string | null;
   priority?: number | null;
   retryCount?: number | null;
@@ -291,7 +290,6 @@ export function AdminSubmissionListPage() {
     { title: '代码长度', dataIndex: 'codeLength', width: 110, render: dash },
     { title: '身份类型', dataIndex: 'identityType', width: 110, render: dash },
     { title: '身份ID', dataIndex: 'identityId', width: 100, render: dash },
-    { title: 'DOMjudge ID', dataIndex: 'domjudgeSubmissionId', width: 160, render: dash },
     { title: '判题机', dataIndex: 'judgeServer', width: 120, render: dash },
     { title: '优先级', dataIndex: 'priority', width: 90, render: dash },
     { title: '重试次数', dataIndex: 'retryCount', width: 100, render: dash },
@@ -446,7 +444,6 @@ export function AdminSubmissionListPage() {
                 { key: 'codeLength', label: '代码长度', value: dash(detail.codeLength) },
                 { key: 'identityType', label: '身份类型', value: dash(detail.identityType) },
                 { key: 'identityId', label: '身份ID', value: dash(detail.identityId) },
-                { key: 'domjudgeSubmissionId', label: 'DOMjudge ID', value: dash(detail.domjudgeSubmissionId) },
                 { key: 'judgeServer', label: '判题机', value: dash(detail.judgeServer) },
                 { key: 'priority', label: '优先级', value: dash(detail.priority) },
                 { key: 'retryCount', label: '重试次数', value: dash(detail.retryCount) },

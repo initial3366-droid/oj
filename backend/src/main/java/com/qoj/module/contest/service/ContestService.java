@@ -677,7 +677,6 @@ public class ContestService {
             contestProblem.memoryLimit = sourceProblem.memoryLimit;
             contestProblem.difficulty = sourceProblem.difficulty;
             contestProblem.tags = sourceProblem.tags;
-            contestProblem.domjudgeProblemId = sourceProblem.domjudgeProblemId;
             contestProblemMapper.insert(contestProblem);
             sourceToNewId.put(request.problemId(), contestProblem.id);
             copyProblemTestCasesToContestProblem(sourceProblem.id, contestProblem.id);
@@ -1233,7 +1232,6 @@ public class ContestService {
             readTags(item.tags),
             null,
             true,
-            item.domjudgeProblemId,
             java.math.BigDecimal.ZERO,
             item.createdAt,
             item.updatedAt,
@@ -1624,9 +1622,13 @@ public class ContestService {
     }
 
     private int oiSubmissionScore(Long contestId, Submission submission) {
+        ContestProblem problem = resolveContestProblem(contestId, contestProblemKey(submission));
+        int fullScore = problem == null || problem.score == null ? 0 : problem.score;
+        if (submission.score != null) {
+            return Math.max(0, fullScore > 0 ? Math.min(fullScore, submission.score) : submission.score);
+        }
         if ("AC".equals(submission.status)) {
-            ContestProblem problem = resolveContestProblem(contestId, contestProblemKey(submission));
-            return problem == null || problem.score == null ? 0 : problem.score;
+            return fullScore;
         }
         List<SubmissionCaseResult> cases = submissionCaseResultMapper.selectList(
             new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id)

@@ -10,8 +10,6 @@ import com.qoj.module.contest.entity.Contest;
 import com.qoj.module.contest.entity.ContestProblem;
 import com.qoj.module.contest.mapper.ContestMapper;
 import com.qoj.module.contest.mapper.ContestProblemMapper;
-import com.qoj.module.judge.dto.DomjudgeSubmissionResponse;
-import com.qoj.module.judge.service.DomjudgeAdapter;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.setting.service.SystemSettingService;
@@ -42,7 +40,6 @@ public class SubmissionQueueService {
     private final ContestProblemMapper contestProblemMapper;
     private final ProblemMapper problemMapper;
     private final UserMapper userMapper;
-    private final DomjudgeAdapter domjudgeAdapter;
     private final SubmissionService submissionService;
     private final AuditLogger auditLogger;
     private final JudgeMessagePublisher judgeMessagePublisher;
@@ -55,7 +52,6 @@ public class SubmissionQueueService {
         ContestProblemMapper contestProblemMapper,
         ProblemMapper problemMapper,
         UserMapper userMapper,
-        DomjudgeAdapter domjudgeAdapter,
         SubmissionService submissionService,
         AuditLogger auditLogger,
         JudgeMessagePublisher judgeMessagePublisher,
@@ -67,7 +63,6 @@ public class SubmissionQueueService {
         this.contestProblemMapper = contestProblemMapper;
         this.problemMapper = problemMapper;
         this.userMapper = userMapper;
-        this.domjudgeAdapter = domjudgeAdapter;
         this.submissionService = submissionService;
         this.auditLogger = auditLogger;
         this.judgeMessagePublisher = judgeMessagePublisher;
@@ -139,19 +134,8 @@ public class SubmissionQueueService {
         submission.judgeEndTime = null;
         submission.errorMessage = null;
         submission.judgeMessage = null;
-
-        if (domjudgeAdapter.enabled()) {
-            DomjudgeSubmissionResponse response = domjudgeAdapter.submit(
-                submission.contestId == null ? null : String.valueOf(submission.contestId),
-                domjudgeProblemId(submission),
-                submission.language,
-                submission.code
-            );
-            submission.domjudgeSubmissionId = response == null ? null : response.submissionId();
-            submission.status = SubmissionStatus.JUDGING.name();
-            submission.judgeServer = "DOMJUDGE";
-            submission.judgeStartTime = LocalDateTime.now();
-        }
+        submission.judgeServer = null;
+        submission.judgeWorkerId = null;
 
         submissionMapper.updateById(submission);
         auditLogger.logPermissionAllowed(authUser, Permission.QUEUE_REJUDGE, "SubmissionQueue", queueId, "管理员重新判题");
@@ -481,21 +465,6 @@ public class SubmissionQueueService {
             case "FAILED" -> "Failed";
             default -> normalized;
         };
-    }
-
-    private String domjudgeProblemId(Submission submission) {
-        if (submission.contestProblemId != null) {
-            ContestProblem contestProblem = contestProblemMapper.selectById(submission.contestProblemId);
-            if (contestProblem != null && contestProblem.domjudgeProblemId != null && !contestProblem.domjudgeProblemId.isBlank()) {
-                return contestProblem.domjudgeProblemId;
-            }
-            return String.valueOf(submission.contestProblemId);
-        }
-        Problem problem = problemMapper.selectById(submission.problemId);
-        if (problem != null && problem.domjudgeProblemId != null && !problem.domjudgeProblemId.isBlank()) {
-            return problem.domjudgeProblemId;
-        }
-        return String.valueOf(submission.problemId);
     }
 
     private LocalDateTime submitTime(Submission submission) {

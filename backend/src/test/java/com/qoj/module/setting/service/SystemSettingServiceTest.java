@@ -88,7 +88,7 @@ class SystemSettingServiceTest {
     }
 
     @Test
-    @DisplayName("Judge settings fall back to database defaults and hide DOMjudge API key")
+    @DisplayName("Judge settings fall back to database defaults and hide CCPCOJ password")
     void getJudgeSettings_MissingRows_ShouldReturnDefaultsWithoutSecret() {
         JudgeSettingsVO settings = settingService.getJudgeSettings();
 
@@ -101,10 +101,11 @@ class SystemSettingServiceTest {
         assertEquals(2, settings.threadPoolSize);
         assertEquals(2, settings.queueBatchSize);
         assertEquals(1000L, settings.pollIntervalMs);
-        assertEquals("http://127.0.0.1:8081", settings.domjudgeBaseUrl);
-        assertEquals("", settings.domjudgeApiKey);
-        assertFalse(settings.hasDomjudgeApiKey);
-        assertEquals(2000L, settings.domjudgePollIntervalMs);
+        assertEquals("judger", settings.ccpcojJudgeUsername);
+        assertEquals("", settings.ccpcojJudgePassword);
+        assertFalse(settings.hasCcpcojJudgePassword);
+        assertEquals(720, settings.ccpcojSessionTtlMinutes);
+        assertEquals(15, settings.ccpcojStaleTaskMinutes);
     }
 
     @Test
@@ -121,29 +122,30 @@ class SystemSettingServiceTest {
     }
 
     @Test
-    @DisplayName("Judge update preserves DOMjudge API key when request key is blank")
-    void updateJudgeSettings_BlankSecret_ShouldPreserveExistingApiKey() {
+    @DisplayName("Judge update preserves CCPCOJ password hash when request password is blank")
+    void updateJudgeSettings_BlankSecret_ShouldPreserveExistingPasswordHash() {
         when(settingMapper.selectById(anyString())).thenReturn(null);
-        when(settingMapper.selectById("judge.domjudge_api_key")).thenReturn(setting("judge.domjudge_api_key", "old-key"));
+        when(settingMapper.selectById("judge.ccpcoj_password_hash"))
+            .thenReturn(setting("judge.ccpcoj_password_hash", "old-hash"));
         JudgeSettingsVO request = new JudgeSettingsVO();
         request.enabled = true;
         request.mode = "docker";
-        request.contestMode = "domjudge";
+        request.contestMode = "ccpcoj";
         request.enableUnsafeLocalJudge = false;
         request.enableSandbox = true;
         request.maxConcurrent = 2;
         request.threadPoolSize = 2;
         request.queueBatchSize = 2;
         request.pollIntervalMs = 1000L;
-        request.domjudgeBaseUrl = "http://judge.local";
-        request.domjudgeApiKey = "";
-        request.domjudgeContestId = "1";
-        request.domjudgePollIntervalMs = 2000L;
+        request.ccpcojJudgeUsername = "judger";
+        request.ccpcojJudgePassword = "";
+        request.ccpcojSessionTtlMinutes = 720;
+        request.ccpcojStaleTaskMinutes = 15;
 
         settingService.updateJudgeSettings(request, adminAuthUser());
 
         verify(settingMapper).updateById(org.mockito.ArgumentMatchers.<SystemSetting>argThat(setting ->
-            "judge.domjudge_api_key".equals(setting.settingKey) && "old-key".equals(setting.settingValue)
+            "judge.ccpcoj_password_hash".equals(setting.settingKey) && "old-hash".equals(setting.settingValue)
         ));
     }
 

@@ -32,7 +32,6 @@ public class Submission {
     public String judgeMessage;
     public String identityType;
     public Long identityId;
-    public String domjudgeSubmissionId;
     public String judgeServer;
     public String judgeWorkerId;
     public Integer priority;

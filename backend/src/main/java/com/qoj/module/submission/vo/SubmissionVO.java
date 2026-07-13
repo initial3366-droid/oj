@@ -18,7 +18,6 @@ public record SubmissionVO(
     Integer memoryUsed,
     String identityType,
     Long identityId,
-    String domjudgeSubmissionId,
     LocalDateTime submitTime,
     LocalDateTime createdAt,
     Integer passedCaseCount,

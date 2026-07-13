@@ -70,6 +70,99 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
     @Select("SELECT * FROM submissions WHERE status IN ('WAITING', 'PENDING', 'REJUDGE_PENDING') ORDER BY priority DESC, submit_time ASC LIMIT #{limit}")
     List<Submission> selectWaiting(@Param("limit") int limit);
 
+    @Select("""
+        SELECT * FROM submissions
+        WHERE status IN ('WAITING', 'PENDING', 'REJUDGE_PENDING')
+          AND (
+              (#{includePractice} = TRUE AND contest_id IS NULL)
+              OR (#{includeContest} = TRUE AND contest_id IS NOT NULL)
+          )
+        ORDER BY priority DESC, submit_time ASC
+        LIMIT #{limit}
+        """)
+    List<Submission> selectWaitingForEmbeddedJudge(
+        @Param("limit") int limit,
+        @Param("includePractice") boolean includePractice,
+        @Param("includeContest") boolean includeContest
+    );
+
+    @Select("""
+        SELECT s.* FROM submissions s
+        LEFT JOIN contests c ON c.id = s.contest_id
+        WHERE (
+            s.status IN ('WAITING', 'PENDING', 'REJUDGE_PENDING')
+            OR (
+                s.judge_server = 'CCPCOJ'
+                AND s.status IN ('JUDGING', 'COMPILING', 'RUNNING')
+                AND s.judge_start_time < #{staleBefore}
+            )
+        )
+          AND s.id BETWEEN 1 AND 2147483647
+          AND s.user_id BETWEEN 0 AND 2147483647
+          AND s.problem_id BETWEEN 1 AND 1073741823
+          AND (s.contest_problem_id IS NULL OR s.contest_problem_id BETWEEN 1 AND 1073741823)
+          AND (s.contest_id IS NULL OR s.contest_id BETWEEN 1 AND 2147483647)
+          AND (
+            (#{includePractice} = TRUE AND #{oiWorker} = FALSE AND s.contest_id IS NULL)
+            OR (
+                #{includeContest} = TRUE
+                AND s.contest_id IS NOT NULL
+                AND (
+                    (#{oiWorker} = TRUE AND UPPER(COALESCE(c.scoring_mode, c.type, 'ACM')) = 'OI')
+                    OR (#{oiWorker} = FALSE AND UPPER(COALESCE(c.scoring_mode, c.type, 'ACM')) <> 'OI')
+                )
+            )
+          )
+          AND (
+            (#{acceptC} = TRUE AND LOWER(TRIM(s.language)) = 'c')
+            OR (#{acceptCpp} = TRUE AND LOWER(TRIM(s.language)) IN ('cpp', 'c++', 'cxx', 'g++'))
+            OR (#{acceptJava} = TRUE AND LOWER(TRIM(s.language)) = 'java')
+            OR (#{acceptPython} = TRUE AND LOWER(TRIM(s.language)) IN ('python', 'python3', 'py'))
+        )
+        ORDER BY s.priority DESC, s.submit_time ASC
+        LIMIT #{limit}
+        """)
+    List<Submission> selectWaitingForCcpcoj(
+        @Param("limit") int limit,
+        @Param("includePractice") boolean includePractice,
+        @Param("includeContest") boolean includeContest,
+        @Param("oiWorker") boolean oiWorker,
+        @Param("acceptC") boolean acceptC,
+        @Param("acceptCpp") boolean acceptCpp,
+        @Param("acceptJava") boolean acceptJava,
+        @Param("acceptPython") boolean acceptPython,
+        @Param("staleBefore") LocalDateTime staleBefore
+    );
+
+    @Select("SELECT * FROM submissions WHERE id = #{id} FOR UPDATE")
+    Submission selectByIdForUpdate(@Param("id") Long id);
+
+    @Update("""
+        UPDATE submissions
+        SET status = 'COMPILING',
+            judge_worker_id = #{workerId},
+            judge_server = 'CCPCOJ',
+            judge_start_time = #{startTime},
+            judge_end_time = NULL,
+            error_message = NULL,
+            updated_at = #{startTime}
+        WHERE id = #{id}
+          AND (
+              status IN ('WAITING', 'PENDING', 'REJUDGE_PENDING')
+              OR (
+                  judge_server = 'CCPCOJ'
+                  AND status IN ('JUDGING', 'COMPILING', 'RUNNING')
+                  AND judge_start_time < #{staleBefore}
+              )
+          )
+        """)
+    int claimForCcpcoj(
+        @Param("id") Long id,
+        @Param("workerId") String workerId,
+        @Param("startTime") LocalDateTime startTime,
+        @Param("staleBefore") LocalDateTime staleBefore
+    );
+
     /**
      * 原子更新提交状态：从当前状态更新为新状态，并设置 workerId
      * 使用乐观锁防止多实例重复判题：

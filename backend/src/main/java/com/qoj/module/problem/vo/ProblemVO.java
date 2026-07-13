@@ -22,7 +22,6 @@ public record ProblemVO(
     List<String> tags,
     Long ownerId,
     Boolean isPublic,
-    String domjudgeProblemId,
     BigDecimal acRate,
     LocalDateTime createdAt,
     LocalDateTime updatedAt,

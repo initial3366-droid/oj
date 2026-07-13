@@ -9,7 +9,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class QojProperties {
     private Jwt jwt = new Jwt();
     private Cors cors = new Cors();
-    private Domjudge domjudge = new Domjudge();
     private Judge judge = new Judge();
 
     @PostConstruct
@@ -76,14 +75,6 @@ public class QojProperties {
         this.cors = cors;
     }
 
-    public Domjudge getDomjudge() {
-        return domjudge;
-    }
-
-    public void setDomjudge(Domjudge domjudge) {
-        this.domjudge = domjudge;
-    }
-
     public Judge getJudge() {
         return judge;
     }
@@ -134,45 +125,6 @@ public class QojProperties {
         }
     }
 
-    public static class Domjudge {
-        private String baseUrl;
-        private String apiKey;
-        private String contestId;
-        private long pollIntervalMs;
-
-        public String getBaseUrl() {
-            return baseUrl;
-        }
-
-        public void setBaseUrl(String baseUrl) {
-            this.baseUrl = baseUrl;
-        }
-
-        public String getApiKey() {
-            return apiKey;
-        }
-
-        public void setApiKey(String apiKey) {
-            this.apiKey = apiKey;
-        }
-
-        public String getContestId() {
-            return contestId;
-        }
-
-        public void setContestId(String contestId) {
-            this.contestId = contestId;
-        }
-
-        public long getPollIntervalMs() {
-            return pollIntervalMs;
-        }
-
-        public void setPollIntervalMs(long pollIntervalMs) {
-            this.pollIntervalMs = pollIntervalMs;
-        }
-    }
-
     public static class Judge {
         /**
          * ⚠️ 不安全的本地判题开关（仅开发环境）
@@ -193,12 +145,12 @@ public class QojProperties {
          * 判题模式
          *
          * 支持的值：
-         * - domjudge (推荐) - 使用DOMjudge远程判题
+         * - ccpcoj - 使用 CCPCOJ 远程评测机
          * - docker - 使用Docker容器隔离判题
          *
-         * 生产环境必须使用 domjudge 或 docker
+         * 生产环境必须使用 ccpcoj 或 docker
          */
-        private String mode = "domjudge";
+        private String mode = "docker";
 
         /**
          * 沙箱调试开关（代码运行功能）

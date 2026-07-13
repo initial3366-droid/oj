@@ -10,7 +10,7 @@ export interface Announcement {
   authorId: number;
   authorName: string;
   isVisible: boolean;
-  viewCount: number;
+  isPinned?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -19,16 +19,18 @@ export interface AnnouncementCreateRequest {
   title: string;
   content: string;
   isVisible?: boolean;
+  isPinned?: boolean;
 }
 
 export interface AnnouncementUpdateRequest {
   title?: string;
   content?: string;
   isVisible?: boolean;
+  isPinned?: boolean;
 }
 
 /**
- * 获取公告列表
+ * 获取普通公告列表
  */
 export async function fetchAnnouncementList(
   page: number = 1,
@@ -45,6 +47,13 @@ export async function fetchAnnouncementList(
  */
 export async function fetchAnnouncementById(id: number): Promise<Announcement> {
   return adminGet<Announcement>(`/api/admin/v1/announcements/${id}`, true);
+}
+
+/**
+ * 获取置顶公告
+ */
+export async function fetchPinnedAnnouncement(): Promise<Announcement | null> {
+  return adminGet<Announcement | null>('/api/admin/v1/announcements/pinned', true);
 }
 
 /**

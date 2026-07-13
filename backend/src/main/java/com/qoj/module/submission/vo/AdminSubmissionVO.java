@@ -26,7 +26,6 @@ public record AdminSubmissionVO(
     Integer memoryUsed,
     String identityType,
     Long identityId,
-    String domjudgeSubmissionId,
     String judgeServer,
     Integer priority,
     Integer retryCount,

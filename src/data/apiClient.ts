@@ -729,7 +729,6 @@ interface BackendContestProblem {
   tags?: string[];
   ownerId?: number | null;
   isPublic?: boolean;
-  domjudgeProblemId?: string | null;
   acRate?: number;
   createdAt?: string;
   updatedAt?: string;
@@ -2019,7 +2018,7 @@ export interface Announcement {
   authorId: number;
   authorName: string;
   isVisible: boolean;
-  viewCount: number;
+  isPinned?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -2028,12 +2027,14 @@ export interface AnnouncementCreateRequest {
   title: string;
   content: string;
   isVisible?: boolean;
+  isPinned?: boolean;
 }
 
 export interface AnnouncementUpdateRequest {
   title?: string;
   content?: string;
   isVisible?: boolean;
+  isPinned?: boolean;
 }
 
 export async function fetchAnnouncements(page: number = 1, pageSize: number = 10) {
@@ -2046,6 +2047,10 @@ export async function fetchLatestAnnouncements(limit: number = 5) {
   return get<Announcement[]>(
     `/api/v1/announcements/latest?limit=${limit}`
   );
+}
+
+export async function fetchPinnedAnnouncement() {
+  return get<Announcement | null>('/api/v1/announcements/pinned');
 }
 
 export async function fetchAnnouncementById(id: number) {
@@ -2126,18 +2131,18 @@ export interface RegisterSettings {
 
 export interface JudgeSettings {
   enabled: boolean;
-  mode?: 'domjudge' | 'docker' | 'unsafe-local';
-  contestMode?: 'domjudge' | 'docker' | 'unsafe-local';
+  mode?: 'ccpcoj' | 'docker' | 'unsafe-local';
+  contestMode?: 'ccpcoj' | 'docker' | 'unsafe-local';
   enableUnsafeLocalJudge?: boolean;
   enableSandbox?: boolean;
   maxConcurrent: number;
   threadPoolSize: number;
   queueBatchSize?: number;
   pollIntervalMs?: number;
-  domjudgeBaseUrl?: string;
-  hasDomjudgeApiKey?: boolean;
-  domjudgeContestId?: string;
-  domjudgePollIntervalMs?: number;
+  ccpcojJudgeUsername?: string;
+  hasCcpcojJudgePassword?: boolean;
+  ccpcojSessionTtlMinutes?: number;
+  ccpcojStaleTaskMinutes?: number;
 }
 
 export interface PasswordChangeRequest {

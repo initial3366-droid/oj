@@ -5,7 +5,6 @@ import com.qoj.module.judge.DockerJudgeService;
 import com.qoj.module.judge.JudgeCaseResult;
 import com.qoj.module.judge.JudgeResult;
 import com.qoj.module.judge.JudgeTask;
-import com.qoj.module.judge.dto.DomjudgeSubmissionResponse;
 import com.qoj.module.judge.service.LocalJudgeService;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.entity.ProblemTestCase;
@@ -55,7 +54,6 @@ public class JudgeQueueScheduler {
     private final SubmissionMapper submissionMapper;
     private final ProblemMapper problemMapper;
     private final ProblemTestCaseMapper problemTestCaseMapper;
-    private final DomjudgeAdapter domjudgeAdapter;
     private final JudgeMessagePublisher judgeMessagePublisher;
     private final UserProblemStatusService userProblemStatusService;
     private final UserScoreService userScoreService;
@@ -74,7 +72,6 @@ public class JudgeQueueScheduler {
         SubmissionMapper submissionMapper,
         ProblemMapper problemMapper,
         ProblemTestCaseMapper problemTestCaseMapper,
-        DomjudgeAdapter domjudgeAdapter,
         JudgeMessagePublisher judgeMessagePublisher,
         UserProblemStatusService userProblemStatusService,
         UserScoreService userScoreService,
@@ -85,7 +82,6 @@ public class JudgeQueueScheduler {
         this.submissionMapper = submissionMapper;
         this.problemMapper = problemMapper;
         this.problemTestCaseMapper = problemTestCaseMapper;
-        this.domjudgeAdapter = domjudgeAdapter;
         this.judgeMessagePublisher = judgeMessagePublisher;
         this.userProblemStatusService = userProblemStatusService;
         this.userScoreService = userScoreService;
@@ -115,6 +111,11 @@ public class JudgeQueueScheduler {
             }
             int maxConcurrent = judgeCfg.maxConcurrent;
             int queueBatchSize = judgeCfg.queueBatchSize;
+            boolean includePractice = !"ccpcoj".equalsIgnoreCase(judgeCfg.mode);
+            boolean includeContest = !"ccpcoj".equalsIgnoreCase(judgeCfg.contestMode);
+            if (!includePractice && !includeContest) {
+                return;
+            }
 
             // 1. 统计当前正在运行的判题任务数
             long runningCount = submissionMapper.countRunning();
@@ -128,7 +129,8 @@ public class JudgeQueueScheduler {
             int fetchLimit = Math.min(availableSlots, queueBatchSize);
 
             // 3. 查询等待队列中的提交（按 priority DESC, submit_time ASC）
-            List<Submission> waitingSubmissions = submissionMapper.selectWaiting(fetchLimit);
+            List<Submission> waitingSubmissions = submissionMapper.selectWaitingForEmbeddedJudge(
+                fetchLimit, includePractice, includeContest);
 
             if (waitingSubmissions.isEmpty()) {
                 return;
@@ -197,7 +199,6 @@ public class JudgeQueueScheduler {
      * 执行判题
      *
      * 根据 judge.mode 选择判题方式：
-     * - domjudge：提交到 DOMjudge 远程判题
      * - docker：使用 Docker 容器本地判题
      *
      * 无论成功还是失败，都必须释放资源并更新状态。
@@ -216,7 +217,8 @@ public class JudgeQueueScheduler {
                 }
                 executeLocalJudge(submission);
             } else {
-                executeDomjudgeSubmit(submission);
+                releaseAndFinalize(submission, SubmissionStatus.SE,
+                    "不支持的内置判题模式: " + mode, null, null);
             }
         } catch (Exception ex) {
             log.error("Judge execution failed for submission {}", submission.id, ex);
@@ -310,46 +312,6 @@ public class JudgeQueueScheduler {
     }
 
     /**
-     * DOMjudge 判题：提交到远程判题服务器
-     * JudgePollingService 会定期轮询 DOMjudge 获取结果
-     */
-    private void executeDomjudgeSubmit(Submission submission) {
-        if (!domjudgeAdapter.enabled()) {
-            releaseAndFinalize(submission, SubmissionStatus.SE,
-                "DOMjudge 未启用", null, null);
-            return;
-        }
-
-        DomjudgeSubmissionResponse response = domjudgeAdapter.submit(
-            submission.contestId == null ? null : String.valueOf(submission.contestId),
-            getDomjudgeProblemId(submission),
-            submission.language,
-            submission.code
-        );
-
-        if (response == null || response.submissionId() == null) {
-            releaseAndFinalize(submission, SubmissionStatus.SE,
-                "DOMjudge 提交失败", null, null);
-            return;
-        }
-
-        submission.domjudgeSubmissionId = response.submissionId();
-        submission.judgeServer = "DOMJUDGE";
-        if (submission.judgeStartTime == null) {
-            submission.judgeStartTime = LocalDateTime.now();
-        }
-        submission.updatedAt = LocalDateTime.now();
-        submissionMapper.updateById(submission);
-
-        // 推送状态
-        judgeMessagePublisher.submissionChanged(
-            submission.id, submission.status, submission.timeUsed, submission.memoryUsed);
-
-        log.info("DOMjudge submitted: submissionId={}, domjudgeId={}",
-            submission.id, response.submissionId());
-    }
-
-    /**
      * 释放任务并更新最终状态
      */
     private void releaseAndFinalize(Submission submission, SubmissionStatus finalStatus,
@@ -408,14 +370,6 @@ public class JudgeQueueScheduler {
         );
     }
 
-    private String getDomjudgeProblemId(Submission submission) {
-        Problem problem = problemMapper.selectById(submission.problemId);
-        if (problem != null && problem.domjudgeProblemId != null && !problem.domjudgeProblemId.isBlank()) {
-            return problem.domjudgeProblemId;
-        }
-        return String.valueOf(submission.problemId);
-    }
-
     private String generateWorkerId() {
         String host;
         try {
@@ -445,6 +399,6 @@ public class JudgeQueueScheduler {
         if ("unsafe-local".equalsIgnoreCase(mode)) {
             return "LOCAL";
         }
-        return "DOMJUDGE";
+        return "UNKNOWN";
     }
 }

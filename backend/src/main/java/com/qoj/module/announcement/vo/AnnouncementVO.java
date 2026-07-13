@@ -10,7 +10,7 @@ public class AnnouncementVO {
     public Long authorId;
     public String authorName;
     public Boolean isVisible;
-    public Integer viewCount;
+    public Boolean isPinned;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     public LocalDateTime createdAt;

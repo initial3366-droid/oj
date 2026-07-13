@@ -41,11 +41,19 @@ public class AnnouncementController {
     }
 
     /**
+     * 获取首页置顶公告
+     */
+    @GetMapping("/pinned")
+    public ApiResponse<AnnouncementVO> pinned() {
+        return ApiResponse.ok(announcementService.getPinnedForUser());
+    }
+
+    /**
      * 获取公告详情
      */
     @GetMapping("/{id}")
     public ApiResponse<AnnouncementVO> getById(@PathVariable Long id) {
-        AnnouncementVO result = announcementService.getByIdAndIncrementView(id);
+        AnnouncementVO result = announcementService.getByIdForUser(id);
         return ApiResponse.ok(result);
     }
 }

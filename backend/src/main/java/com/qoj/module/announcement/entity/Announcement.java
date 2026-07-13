@@ -14,8 +14,8 @@ public class Announcement {
     public Long authorId;
     public String authorName;
     public Boolean isVisible;
+    public Boolean isPinned;
     public Boolean isDeleted;
-    public Integer viewCount;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;
 }

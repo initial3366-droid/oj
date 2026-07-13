@@ -12,4 +12,6 @@ public class AnnouncementCreateRequest {
     public String content;
 
     public Boolean isVisible = true;
+
+    public Boolean isPinned = false;
 }

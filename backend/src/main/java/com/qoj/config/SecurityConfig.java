@@ -82,6 +82,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh", "/api/v1/auth/reset-password").permitAll()
                 .requestMatchers("/api/v1/captcha/**").permitAll()
                 .requestMatchers("/api/admin/v1/auth/login").permitAll()
+                .requestMatchers("/ojtool/judge/**").permitAll()
                 .requestMatchers("/ws/**", "/ws-sockjs/**").permitAll()
                 .requestMatchers(
                     "/",
@@ -121,6 +122,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/v1/settings/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/submissions").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/submission-queue/**", "/api/submission-queue/**").permitAll()
+                .requestMatchers("/api/admin/v1/announcements", "/api/admin/v1/announcements/**").hasRole("SUPER_ADMIN")
                 .requestMatchers("/api/admin/v1/users/**").hasRole("SUPER_ADMIN")
                 .requestMatchers("/api/admin/v1/classes/**").hasRole("SUPER_ADMIN")
                 .requestMatchers("/api/admin/v1/teachers/**").hasRole("SUPER_ADMIN")

@@ -34,4 +34,4 @@ Pull requests should include a summary, verification commands, linked issues whe
 
 ## Security & Configuration Tips
 
-Do not commit real secrets. Use `.env` locally and rotate production values such as `JWT_SECRET`, MySQL, Redis, and DOMjudge credentials. Never enable `ENABLE_UNSAFE_LOCAL_JUDGE` in production. Add database changes as new Flyway migrations under `backend/src/main/resources/db/migration`.
+Do not commit real secrets. Use `.env` locally and rotate production values such as `JWT_SECRET`, MySQL, Redis, and CCPCOJ credentials. Never enable `ENABLE_UNSAFE_LOCAL_JUDGE` in production. Add database changes as new Flyway migrations under `backend/src/main/resources/db/migration`.

@@ -35,6 +35,14 @@ public class AdminAnnouncementController {
     }
 
     /**
+     * 获取置顶公告（管理员，包含隐藏状态）
+     */
+    @GetMapping("/pinned")
+    public ApiResponse<AnnouncementVO> pinned() {
+        return ApiResponse.ok(announcementService.getPinnedForAdmin());
+    }
+
+    /**
      * 获取公告详情（管理员）
      */
     @GetMapping("/{id}")
@@ -61,7 +69,7 @@ public class AdminAnnouncementController {
             @PathVariable Long id,
             @Valid @RequestBody AnnouncementUpdateRequest request
     ) {
-        announcementService.update(id, request);
+        announcementService.update(id, request, CurrentUser.required());
         return ApiResponse.ok();
     }
 
@@ -70,7 +78,7 @@ public class AdminAnnouncementController {
      */
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable Long id) {
-        announcementService.delete(id);
+        announcementService.delete(id, CurrentUser.required());
         return ApiResponse.ok();
     }
 }

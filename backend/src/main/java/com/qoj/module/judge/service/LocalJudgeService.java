@@ -60,7 +60,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * 生产环境必须使用：
  * 1. DockerJudgeService（推荐）- 基于 Docker 的隔离判题
- * 2. DOMjudge 远程判题
+ * 2. CCPCOJ 远程评测机
  * 3. 独立的 Judge Worker 服务
  *
  * @deprecated 不安全的判题服务，仅供开发测试

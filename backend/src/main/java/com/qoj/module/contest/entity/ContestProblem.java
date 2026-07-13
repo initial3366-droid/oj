@@ -24,7 +24,6 @@ public class ContestProblem {
     public Integer memoryLimit;
     public Integer difficulty;
     public String tags;
-    public String domjudgeProblemId;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;
 

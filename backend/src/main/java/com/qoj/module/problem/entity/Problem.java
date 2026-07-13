@@ -22,7 +22,6 @@ public class Problem {
     public Long folderId;
     public Long ownerId;
     public Boolean isPublic;
-    public String domjudgeProblemId;
     public BigDecimal acRate;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;

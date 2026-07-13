@@ -57,14 +57,14 @@ public class LocalJudgeService {
 - ✅ 类注释包含醒目的安全警告
 
 **生产环境必须使用**:
-- **DOMjudge 远程判题**（推荐）
+- **CCPCOJ 独立评测机**（推荐）
 - **Docker 隔离判题**
 
 ---
 
 ## 2. Docker Judge 的限制
 
-生产环境必须将用户代码放入隔离的沙箱中执行。QOJ 推荐使用 DOMjudge（其底层基于 Linux cgroup + chroot/容器隔离），或自建 Docker 判题 Worker。
+生产环境必须将用户代码放入隔离的沙箱中执行。QOJ 推荐使用独立部署的 CCPCOJ 评测容器，或自建 Docker 判题 Worker。
 
 ### 2.1 隔离原则
 
@@ -428,7 +428,7 @@ private boolean canRejudge(AuthUser user, Submission submission) {
 
 - [ ] `JWT_SECRET` 为至少 64 字节的随机值
 - [ ] `qoj.judge.enable-unsafe-local-judge` 未启用（生产环境）
-- [ ] 判题使用 DOMjudge 或隔离的 Docker Worker
+- [ ] 判题使用独立 CCPCOJ 评测机或隔离的 Docker Worker
 - [ ] 判题容器配置了网络隔离、资源限制、只读文件系统
 - [ ] 生产环境启用 HTTPS
 - [ ] CORS `allowedOrigins` 配置为可信域名，非通配符

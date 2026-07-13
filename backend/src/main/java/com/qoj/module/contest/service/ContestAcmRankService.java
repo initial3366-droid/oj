@@ -1,6 +1,7 @@
 package com.qoj.module.contest.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.qoj.common.exception.BizException;
 import com.qoj.module.contest.entity.*;
 import com.qoj.module.contest.mapper.*;
@@ -56,7 +57,7 @@ public class ContestAcmRankService {
         }
 
         Contest contest = contestMapper.selectById(submission.contestId);
-        if (contest == null || !"ACM".equals(contest.type)) {
+        if (contest == null || !"ACM".equals(scoringMode(contest))) {
             return;
         }
         if (!isRankedSubmission(contest, submission)) {
@@ -224,7 +225,7 @@ public class ContestAcmRankService {
         if (contest == null) {
             throw new BizException(404, "比赛不存在");
         }
-        if (!"ACM".equals(contest.type)) {
+        if (!"ACM".equals(scoringMode(contest))) {
             throw new BizException(400, "该比赛不是 ACM 赛制");
         }
 
@@ -236,10 +237,11 @@ public class ContestAcmRankService {
 
         // 获取所有比赛提交（按时间排序）
         List<Submission> submissions = submissionMapper.selectList(
-            new LambdaQueryWrapper<Submission>()
-                .eq(Submission::getContestId, contestId)
-                .isNotNull(Submission::getParticipantId)
-                .orderByAsc(Submission::getSubmitTime)
+            new QueryWrapper<Submission>()
+                .eq("contest_id", contestId)
+                .isNotNull("participant_id")
+                .in("status", finalStatuses())
+                .orderByAsc("submit_time")
         );
 
         // 逐个处理提交
@@ -254,6 +256,18 @@ public class ContestAcmRankService {
             return false;
         }
         return !submittedAt.isBefore(contest.startTime) && !submittedAt.isAfter(contest.endTime);
+    }
+
+    private String scoringMode(Contest contest) {
+        return contest.scoringMode == null ? contest.type : contest.scoringMode;
+    }
+
+    private List<String> finalStatuses() {
+        return List.of(
+            "AC", "ACCEPTED", "WA", "WRONG_ANSWER", "TLE", "TIME_LIMIT_EXCEEDED",
+            "MLE", "MEMORY_LIMIT_EXCEEDED", "RE", "RUNTIME_ERROR", "CE", "COMPILE_ERROR",
+            "NOO", "SE", "SYSTEM_ERROR", "FAILED"
+        );
     }
 
     /**

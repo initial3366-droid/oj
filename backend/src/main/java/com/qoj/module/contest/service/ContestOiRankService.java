@@ -1,6 +1,7 @@
 package com.qoj.module.contest.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.qoj.common.exception.BizException;
 import com.qoj.module.contest.entity.*;
 import com.qoj.module.contest.mapper.*;
@@ -55,7 +56,7 @@ public class ContestOiRankService {
         }
 
         Contest contest = contestMapper.selectById(submission.contestId);
-        if (contest == null || !"OI".equals(contest.type)) {
+        if (contest == null || !"OI".equals(scoringMode(contest))) {
             return;
         }
         if (!isRankedSubmission(contest, submission)) {
@@ -68,7 +69,9 @@ public class ContestOiRankService {
             return;
         }
 
-        int fullScore = contestProblem.fullScore != null ? contestProblem.fullScore : 100;
+        int fullScore = contestProblem.score != null && contestProblem.score > 0
+            ? contestProblem.score
+            : (contestProblem.fullScore != null ? contestProblem.fullScore : 100);
         int currentScore = submission.score != null ? submission.score : 0;
 
         // 获取或创建单题状态
@@ -209,7 +212,7 @@ public class ContestOiRankService {
         if (contest == null) {
             throw new BizException(404, "比赛不存在");
         }
-        if (!"OI".equals(contest.type)) {
+        if (!"OI".equals(scoringMode(contest))) {
             throw new BizException(400, "该比赛不是 OI 赛制");
         }
 
@@ -221,10 +224,11 @@ public class ContestOiRankService {
 
         // 获取所有比赛提交（按时间排序）
         List<Submission> submissions = submissionMapper.selectList(
-            new LambdaQueryWrapper<Submission>()
-                .eq(Submission::getContestId, contestId)
-                .isNotNull(Submission::getParticipantId)
-                .orderByAsc(Submission::getSubmitTime)
+            new QueryWrapper<Submission>()
+                .eq("contest_id", contestId)
+                .isNotNull("participant_id")
+                .in("status", finalStatuses())
+                .orderByAsc("submit_time")
         );
 
         // 逐个处理提交
@@ -239,6 +243,18 @@ public class ContestOiRankService {
             return false;
         }
         return !submittedAt.isBefore(contest.startTime) && !submittedAt.isAfter(contest.endTime);
+    }
+
+    private String scoringMode(Contest contest) {
+        return contest.scoringMode == null ? contest.type : contest.scoringMode;
+    }
+
+    private List<String> finalStatuses() {
+        return List.of(
+            "AC", "ACCEPTED", "WA", "WRONG_ANSWER", "TLE", "TIME_LIMIT_EXCEEDED",
+            "MLE", "MEMORY_LIMIT_EXCEEDED", "RE", "RUNTIME_ERROR", "CE", "COMPILE_ERROR",
+            "NOO", "SE", "SYSTEM_ERROR", "FAILED"
+        );
     }
 
     /**
