@@ -7,11 +7,17 @@ import com.qoj.module.setting.vo.PublicJudgeSettingsVO;
 import com.qoj.module.setting.vo.RegisterSettingsVO;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 设置接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
+ */
 @RestController
 @RequestMapping("/api/v1/settings")
 public class SettingController {
     private final SystemSettingService settingService;
 
+    /**
+     * 构造 设置Controller 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     public SettingController(SystemSettingService settingService) {
         this.settingService = settingService;
     }

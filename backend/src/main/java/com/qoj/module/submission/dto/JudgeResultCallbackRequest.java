@@ -2,6 +2,10 @@ package com.qoj.module.submission.dto;
 
 import java.util.List;
 
+/**
+ * Backend-internal normalized judge result. External judge protocols must map
+ * their values into QOJ statuses before calling the callback service.
+ */
 public class JudgeResultCallbackRequest {
     public Long submissionId;
     public String status;
@@ -10,6 +14,7 @@ public class JudgeResultCallbackRequest {
     public Integer score;
     public List<CaseResultDTO> caseResults;
 
+    /** Per-case metrics used by submission detail and OI score calculation. */
     public static class CaseResultDTO {
         public Integer caseNo;
         public Integer subtaskNo;

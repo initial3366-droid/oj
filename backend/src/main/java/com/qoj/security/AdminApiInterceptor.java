@@ -30,6 +30,9 @@ public class AdminApiInterceptor implements HandlerInterceptor {
     // 从路径中提取资源 ID
     private static final Pattern RESOURCE_ID_PATTERN = Pattern.compile("/(\\d+)(?:/|$)");
 
+    /**
+     * 构造 管理员ApiInterceptor 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public AdminApiInterceptor(
         ProblemMapper problemMapper,
         ContestMapper contestMapper,
@@ -59,11 +62,17 @@ public class AdminApiInterceptor implements HandlerInterceptor {
         // 1. 检查用户是否登录
         AuthUser user = CurrentUser.get();
         if (user == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.UNAUTHORIZED, "未登录");
         }
 
         // 2. 检查用户是否有管理员角色
         if (!user.isAdmin()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "需要管理员权限");
         }
 
@@ -108,6 +117,9 @@ public class AdminApiInterceptor implements HandlerInterceptor {
         };
 
         if (!isOwner) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权操作该资源");
         }
     }
@@ -115,6 +127,9 @@ public class AdminApiInterceptor implements HandlerInterceptor {
     private boolean checkProblemOwnership(AuthUser user, Long problemId) {
         Problem problem = problemMapper.selectById(problemId);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "题目不存在");
         }
 
@@ -125,6 +140,9 @@ public class AdminApiInterceptor implements HandlerInterceptor {
     private boolean checkContestOwnership(AuthUser user, Long contestId) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
 
@@ -139,6 +157,9 @@ public class AdminApiInterceptor implements HandlerInterceptor {
     private boolean checkPracticeOwnership(AuthUser user, Long practiceId) {
         Practice practice = practiceMapper.selectById(practiceId);
         if (practice == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "练习不存在");
         }
 

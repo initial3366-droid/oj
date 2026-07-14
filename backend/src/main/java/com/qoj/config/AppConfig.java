@@ -26,6 +26,9 @@ public class AppConfig {
      */
     @Bean
     public PasswordEncoder passwordEncoder() {
+        /**
+         * 封装BCryptPasswordEncoder相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new BCryptPasswordEncoder(12);
     }
 

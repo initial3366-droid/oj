@@ -1,3 +1,6 @@
+/**
+ * 仪表盘Charts页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -13,6 +16,9 @@ const VERDICT_COLORS: Record<string, string> = {
 const DIFFICULTY_NAMES: Record<number, string> = { 1: '入门', 2: '简单', 3: '中等', 4: '困难', 5: '地狱' };
 const DIFFICULTY_COLORS: Record<number, string> = { 1: '#10b981', 2: '#3b82f6', 3: '#f59e0b', 4: '#ef4444', 5: '#7c3aed' };
 
+/**
+ * 渲染ChartTooltip组件，并协调其数据加载、状态和交互。
+ */
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (

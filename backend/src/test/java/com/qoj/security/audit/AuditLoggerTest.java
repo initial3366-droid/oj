@@ -17,6 +17,9 @@ class AuditLoggerTest {
     @InjectMocks
     private AuditLogger auditLogger;
 
+    /**
+     * 封装testLog权限Denied相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     void testLogPermissionDenied() {
         // 创建测试用户
@@ -39,6 +42,9 @@ class AuditLoggerTest {
         // 实际验证需要查看日志文件
     }
 
+    /**
+     * 封装testLog权限DeniedAnonymous相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     void testLogPermissionDeniedAnonymous() {
         // 测试匿名用户的权限拒绝
@@ -51,6 +57,9 @@ class AuditLoggerTest {
         );
     }
 
+    /**
+     * 封装testLog权限Allowed相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     void testLogPermissionAllowed() {
         User user = new User();
@@ -69,6 +78,9 @@ class AuditLoggerTest {
         );
     }
 
+    /**
+     * 封装testLog权限Check相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     void testLogPermissionCheck() {
         User user = new User();

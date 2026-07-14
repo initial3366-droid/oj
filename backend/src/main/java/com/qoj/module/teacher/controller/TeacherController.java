@@ -51,6 +51,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 教师接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
+ */
 @RestController
 @RequestMapping("/api/teacher/v1")
 @PreAuthorize("hasRole('TEACHER')")
@@ -65,6 +68,9 @@ public class TeacherController {
     private final AdminDashboardService adminDashboardService;
     private final UserAvatarService userAvatarService;
 
+    /**
+     * 构造 教师Controller 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public TeacherController(
         AuthService authService,
         ClassRoomService classRoomService,
@@ -105,6 +111,9 @@ public class TeacherController {
         AuthUser authUser = CurrentUser.required();
         User user = authUser.user();
         if (request.displayName() == null || request.displayName().trim().isEmpty()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "姓名不能为空");
         }
         user.displayName = request.displayName().trim();
@@ -153,6 +162,9 @@ public class TeacherController {
     public ApiResponse<Void> deleteClass(@PathVariable long classId, @RequestBody Map<String, String> body) {
         String password = body.get("password");
         if (password == null || password.isBlank()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "请输入密码");
         }
         classRoomService.teacherDelete(classId, password);

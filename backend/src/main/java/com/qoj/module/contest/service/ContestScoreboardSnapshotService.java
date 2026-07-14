@@ -15,6 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
+/**
+ * 比赛榜单Snapshot业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class ContestScoreboardSnapshotService {
     private final ContestScoreboardSnapshotMapper snapshotMapper;
@@ -22,6 +25,9 @@ public class ContestScoreboardSnapshotService {
     private final ContestService contestService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 构造 比赛榜单SnapshotService 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public ContestScoreboardSnapshotService(
         ContestScoreboardSnapshotMapper snapshotMapper,
         ContestMapper contestMapper,
@@ -39,17 +45,26 @@ public class ContestScoreboardSnapshotService {
      */
     @Transactional(rollbackFor = Exception.class)
     public ContestScoreboardSnapshot createSnapshot(Long contestId, String snapshotType) {
+        /**
+         * 更新Snapshot。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return saveSnapshot(contestId, snapshotType, false);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public ContestScoreboardSnapshot upsertSnapshot(Long contestId, String snapshotType) {
+        /**
+         * 更新Snapshot。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return saveSnapshot(contestId, snapshotType, true);
     }
 
     private ContestScoreboardSnapshot saveSnapshot(Long contestId, String snapshotType, boolean overwrite) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "比赛不存在");
         }
         String normalizedType = normalizeSnapshotType(snapshotType);
@@ -62,6 +77,9 @@ public class ContestScoreboardSnapshotService {
         );
 
         if (existing != null && !overwrite) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "该类型的快照已存在，请先删除旧快照");
         }
 
@@ -115,6 +133,9 @@ public class ContestScoreboardSnapshotService {
         try {
             return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(scoreboard);
         } catch (Exception e) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(500, "序列化榜单失败: " + e.getMessage());
         }
     }
@@ -122,6 +143,9 @@ public class ContestScoreboardSnapshotService {
     private String normalizeSnapshotType(String snapshotType) {
         String normalized = snapshotType == null ? "" : snapshotType.trim().toLowerCase();
         if (!("freeze".equals(normalized) || "final".equals(normalized))) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "快照类型必须是 freeze 或 final");
         }
         return normalized;

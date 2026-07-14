@@ -1,5 +1,8 @@
+/**
+ * 管理员题目列表页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { adminPath } from '../../../utils/adminPath';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Table,
@@ -16,6 +19,9 @@ import { IconPlus, IconSearch, IconEdit, IconDelete, IconFile } from '@arco-desi
 import { adminGet, adminDelete } from '../../api/adminClient';
 import { encryptId } from '../../../utils/cipher';
 
+/**
+ * 题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Problem {
   id: number;
   title: string;
@@ -30,11 +36,17 @@ interface Problem {
   testCaseCount: number;
 }
 
+/**
+ * 文件夹Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface FolderOption {
   id: number;
   name: string;
 }
 
+/**
+ * 页面结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PageResult {
   list: Problem[];
   total: number;
@@ -52,7 +64,11 @@ const difficultyMap: Record<number, { text: string; color: string }> = Object.fr
   difficultyOptions.map((d) => [d.value, { text: d.label, color: d.color }])
 );
 
+/**
+ * 渲染管理员题目列表页面，并协调其数据加载、状态和交互。
+ */
 export function AdminProblemListPage() {
+  const requestSequence = useRef(0);
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -66,6 +82,9 @@ export function AdminProblemListPage() {
   const [filterOwnerName, setFilterOwnerName] = useState('');
   const [folders, setFolders] = useState<FolderOption[]>([]);
 
+  /**
+   * 读取Folders并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const loadFolders = useCallback(async () => {
     try {
       const result = await adminGet<FolderOption[]>('/api/admin/v1/problem-folders');
@@ -79,7 +98,11 @@ export function AdminProblemListPage() {
     loadProblems();
   }, [page, keyword, filterDifficulty, filterTag, filterFolderId, filterOwnerName]);
 
+  /**
+   * 读取Problems并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadProblems() {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -93,33 +116,50 @@ export function AdminProblemListPage() {
       if (filterOwnerName) params.append('ownerName', filterOwnerName);
 
       const result = await adminGet<PageResult>(`/api/admin/v1/problems?${params.toString()}`);
+      if (sequence !== requestSequence.current) return;
       setProblems(result.list);
       setTotal(result.total);
     } catch (error) {
+      if (sequence !== requestSequence.current) return;
       Message.error('加载题目列表失败');
       console.error(error);
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }
 
+  /**
+   * 处理Search。会更新 React 状态并触发重新渲染。
+   */
   function handleSearch(value: string) {
     setKeyword(value);
     setPage(1);
   }
 
+  /**
+   * 处理Create。可能改变当前路由或查询参数。
+   */
   function handleCreate() {
     navigate(adminPath('/problems/new'));
   }
 
+  /**
+   * 处理Edit。可能改变当前路由或查询参数。
+   */
   function handleEdit(id: number) {
     navigate(`/admin/problems/${encryptId(id)}/edit`);
   }
 
+  /**
+   * 处理TestCases。可能改变当前路由或查询参数。
+   */
   function handleTestCases(id: number) {
     navigate(`/admin/problems/${encryptId(id)}/test-cases`);
   }
 
+  /**
+   * 处理Delete。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function handleDelete(id: number) {
     try {
       await adminDelete(`/api/admin/v1/problems/${id}`);

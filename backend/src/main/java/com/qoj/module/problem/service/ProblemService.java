@@ -10,7 +10,6 @@ import com.qoj.common.PageResult;
 import com.qoj.common.enums.SubmissionStatus;
 import com.qoj.common.exception.BizException;
 import com.qoj.common.redis.RedisKeys;
-import com.qoj.module.judge.service.DomjudgeAdapter;
 import com.qoj.module.problem.dto.ProblemTestCaseRequest;
 import com.qoj.module.problem.dto.ProblemSampleCaseRequest;
 import com.qoj.module.problem.dto.ProblemUpdateRequest;
@@ -54,6 +53,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 题目业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class ProblemService {
     private static final int MAX_ZIP_TEST_CASES = 200;
@@ -68,11 +70,13 @@ public class ProblemService {
     private final UserMapper userMapper;
     private final AdminUserMapper adminUserMapper;
     private final ObjectMapper objectMapper;
-    private final DomjudgeAdapter domjudgeAdapter;
     private final StringRedisTemplate redisTemplate;
     private final com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy;
     private final ProblemFolderMapper problemFolderMapper;
 
+    /**
+     * 构造 题目Service 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断；从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
+     */
     public ProblemService(
         ProblemMapper problemMapper,
         ProblemTestCaseMapper problemTestCaseMapper,
@@ -81,7 +85,6 @@ public class ProblemService {
         UserMapper userMapper,
         AdminUserMapper adminUserMapper,
         ObjectMapper objectMapper,
-        DomjudgeAdapter domjudgeAdapter,
         StringRedisTemplate redisTemplate,
         com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy,
         ProblemFolderMapper problemFolderMapper
@@ -93,7 +96,6 @@ public class ProblemService {
         this.userMapper = userMapper;
         this.adminUserMapper = adminUserMapper;
         this.objectMapper = objectMapper;
-        this.domjudgeAdapter = domjudgeAdapter;
         this.redisTemplate = redisTemplate;
         this.problemAccessPolicy = problemAccessPolicy;
         this.problemFolderMapper = problemFolderMapper;
@@ -154,6 +156,9 @@ public class ProblemService {
     public Object detail(long id) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
@@ -162,12 +167,18 @@ public class ProblemService {
         if (Boolean.TRUE.equals(problem.isDeleted)) {
             // 只有SUPER_ADMIN和创建者可以查看已删除的题目
             if (user == null || (!"SUPER_ADMIN".equals(user.role()) && !problem.ownerId.equals(user.id()))) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
             }
         }
 
         // 使用Policy检查查看权限
         if (!problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
@@ -175,8 +186,14 @@ public class ProblemService {
         boolean isAdmin = user != null && problemAccessPolicy.can(user, com.qoj.security.policy.Permission.UPDATE, problem);
 
         if (isAdmin) {
+            /**
+             * 封装with管理员Attempt状态相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return withAdminAttemptStatus(toAdminVO(problem), attemptStatus(currentUserId(), problem.id));
         } else {
+            /**
+             * 封装withPublicAttempt状态相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return withPublicAttemptStatus(toPublicVO(problem), attemptStatus(currentUserId(), problem.id));
         }
     }
@@ -184,20 +201,32 @@ public class ProblemService {
     public PublicProblemVO publicDetail(long id) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
         // 检查软删除状态
         if (Boolean.TRUE.equals(problem.isDeleted)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
         // 只返回公开题目或用户有权限的题目
         AuthUser user = CurrentUser.get();
         if (!problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
+        /**
+         * 封装withPublicAttempt状态相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return withPublicAttemptStatus(toPublicVO(problem), attemptStatus(currentUserId(), problem.id));
     }
 
@@ -208,6 +237,9 @@ public class ProblemService {
     public ProblemVO detailAsVO(long id) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
@@ -216,23 +248,38 @@ public class ProblemService {
         if (Boolean.TRUE.equals(problem.isDeleted)) {
             // 只有SUPER_ADMIN和创建者可以查看已删除的题目
             if (user == null || (!"SUPER_ADMIN".equals(user.role()) && !problem.ownerId.equals(user.id()))) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
             }
         }
 
         // 使用Policy检查查看权限
         if (!problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
+        /**
+         * 封装withAttempt状态相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return withAttemptStatus(toVO(problem), attemptStatus(currentUserId(), problem.id));
     }
 
     public ProblemVO detailAsVOUnchecked(long id) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null || Boolean.TRUE.equals(problem.isDeleted)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
+        /**
+         * 封装withAttempt状态相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return withAttemptStatus(toVO(problem), attemptStatus(currentUserId(), problem.id));
     }
 
@@ -259,6 +306,9 @@ public class ProblemService {
         replaceTestCases(problem.id, sampleEntities(samples), true);
         redisTemplate.delete(RedisKeys.problem(problem.id));
         Problem updated = problemMapper.selectById(problem.id);
+        /**
+         * 构造或转换管理员VOForUpdate。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toAdminVOForUpdate(updated == null ? problem : updated);
     }
 
@@ -298,17 +348,29 @@ public class ProblemService {
             int caseNo = item.caseNo == null ? nextCaseNo : item.caseNo;
             while (usedCaseNos.contains(caseNo)) {
                 if (item.caseNo != null) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(400, "测试点编号 " + item.caseNo + " 重复");
                 }
                 caseNo++;
             }
             if (caseNo <= 0) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "测试点编号必须大于 0");
             }
             if (item.inputData == null || item.inputData.isBlank()) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, (sample ? "样例" : "测试点") + " " + caseNo + " 的输入数据不能为空");
             }
             if (item.outputData == null || item.outputData.isBlank()) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, (sample ? "样例" : "测试点") + " " + caseNo + " 的输出数据不能为空");
             }
             usedCaseNos.add(caseNo);
@@ -330,10 +392,16 @@ public class ProblemService {
     public List<ProblemTestCaseVO> testCases(long problemId) {
         Problem problem = problemMapper.selectById(problemId);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "题目不存在");
         }
         AuthUser user = CurrentUser.required();
         if (!problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW_HIDDEN_CASE, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权查看该题目测试点");
         }
         return problemTestCaseMapper
@@ -364,6 +432,9 @@ public class ProblemService {
             index++;
         }
         replaceTestCases(problem.id, entities, false);
+        /**
+         * 封装testCases相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return testCases(problem.id);
     }
 
@@ -378,6 +449,9 @@ public class ProblemService {
         testCase.sample = false;
         problemTestCaseMapper.insert(testCase);
         redisTemplate.delete(RedisKeys.problem(problemId));
+        /**
+         * 构造或转换Test测试点VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toTestCaseVO(testCase);
     }
 
@@ -386,6 +460,9 @@ public class ProblemService {
         requireOwnerOrSuperAdmin(problemId);
         ProblemTestCase testCase = problemTestCaseMapper.selectById(testCaseId);
         if (testCase == null || !Long.valueOf(problemId).equals(testCase.problemId) || Boolean.TRUE.equals(testCase.sample)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "测试点不存在");
         }
         testCase.caseNo = request.caseNo();
@@ -393,6 +470,9 @@ public class ProblemService {
         testCase.outputData = request.output();
         problemTestCaseMapper.updateById(testCase);
         redisTemplate.delete(RedisKeys.problem(problemId));
+        /**
+         * 构造或转换Test测试点VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toTestCaseVO(testCase);
     }
 
@@ -401,6 +481,9 @@ public class ProblemService {
         requireOwnerOrSuperAdmin(problemId);
         ProblemTestCase testCase = problemTestCaseMapper.selectById(testCaseId);
         if (testCase == null || !Long.valueOf(problemId).equals(testCase.problemId) || Boolean.TRUE.equals(testCase.sample)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "测试点不存在");
         }
         problemTestCaseMapper.deleteById(testCaseId);
@@ -432,10 +515,16 @@ public class ProblemService {
     private Problem requireOwnerOrSuperAdmin(long id) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
         var authUser = CurrentUser.required();
         if (!problemAccessPolicy.can(authUser, com.qoj.security.policy.Permission.UPDATE, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无访问权限");
         }
         return problem;
@@ -445,6 +534,9 @@ public class ProblemService {
         Problem problem = requireOwnerOrSuperAdmin(id);
         String role = CurrentUser.required().role();
         if (!"SUPER_ADMIN".equals(role) && !"TEACHER".equals(role)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无公开题目权限");
         }
         return problem;
@@ -464,7 +556,6 @@ public class ProblemService {
             readTags(problem.tags),
             problem.ownerId,
             problem.isPublic,
-            problem.domjudgeProblemId,
             computedAcRate(problem.id),
             problem.createdAt,
             problem.updatedAt,
@@ -526,7 +617,6 @@ public class ProblemService {
             null,
             problem.ownerId,
             problem.isPublic,
-            problem.domjudgeProblemId,
             problem.updatedAt
         );
     }
@@ -555,7 +645,6 @@ public class ProblemService {
             null,
             problem.ownerId,
             problem.isPublic,
-            problem.domjudgeProblemId,
             problem.updatedAt
         );
     }
@@ -622,7 +711,6 @@ public class ProblemService {
             attemptStatus,
             vo.ownerId(),
             vo.isPublic(),
-            vo.domjudgeProblemId(),
             vo.updatedAt()
         );
     }
@@ -656,6 +744,9 @@ public class ProblemService {
         if (status != null && status.bestStatus != null && !status.bestStatus.isBlank()) {
             return status.bestStatus;
         }
+        /**
+         * 封装attempt状态FromSubmissions相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return attemptStatusFromSubmissions(userId, problemId);
     }
 
@@ -715,7 +806,6 @@ public class ProblemService {
             vo.tags(),
             vo.ownerId(),
             vo.isPublic(),
-            vo.domjudgeProblemId(),
             vo.acRate(),
             vo.createdAt(),
             vo.updatedAt(),
@@ -751,6 +841,9 @@ public class ProblemService {
         try {
             return objectMapper.writeValueAsString(tags == null ? List.of() : tags);
         } catch (JsonProcessingException ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "标签格式错误");
         }
     }
@@ -787,6 +880,9 @@ public class ProblemService {
         try {
             samples = objectMapper.readValue(sampleCases, new TypeReference<List<ProblemSampleCaseRequest>>() {});
         } catch (Exception ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "样例格式错误");
         }
         List<ProblemTestCase> result = new java.util.ArrayList<>();
@@ -798,6 +894,9 @@ public class ProblemService {
                 continue;
             }
             if (!hasInput || !hasOutput) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "样例输入输出必须同时填写");
             }
             ProblemTestCase testCase = new ProblemTestCase();
@@ -820,6 +919,9 @@ public class ProblemService {
         try {
             return objectMapper.readValue(request.sampleCases(), new TypeReference<List<ProblemSampleCaseRequest>>() {});
         } catch (Exception ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "样例格式错误");
         }
     }
@@ -828,6 +930,9 @@ public class ProblemService {
         try {
             return objectMapper.writeValueAsString(samples == null ? List.of() : samples);
         } catch (JsonProcessingException ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "样例格式错误");
         }
     }
@@ -848,6 +953,9 @@ public class ProblemService {
                 continue;
             }
             if (!hasInput || !hasOutput) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "样例输入输出必须同时填写");
             }
             ProblemTestCase testCase = new ProblemTestCase();
@@ -861,6 +969,9 @@ public class ProblemService {
     }
 
     private ProblemTestCaseVO toTestCaseVO(ProblemTestCase item) {
+        /**
+         * 封装题目Test测试点VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new ProblemTestCaseVO(
             item.id,
             item.caseNo,
@@ -914,6 +1025,9 @@ public class ProblemService {
                     continue;
                 }
                 if (++counters[0] > MAX_ZIP_ENTRIES) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(400, "测试点 ZIP 文件数量过多");
                 }
                 String name = safeZipEntryName(entry.getName());
@@ -922,6 +1036,9 @@ public class ProblemService {
                     continue;
                 }
                 if (inputs.size() + outputs.size() >= MAX_ZIP_TEST_CASES * 2) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(400, "测试点数量过多");
                 }
                 String content = readZipEntryText(zip, counters);
@@ -934,10 +1051,16 @@ public class ProblemService {
         } catch (BizException ex) {
             throw ex;
         } catch (Exception ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "测试点 ZIP 解析失败");
         }
         TreeSet<Integer> caseNos = new TreeSet<>(inputs.keySet());
         if (caseNos.isEmpty()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "ZIP 中未找到测试点");
         }
         List<ProblemTestCase> testCases = new java.util.ArrayList<>();
@@ -945,6 +1068,9 @@ public class ProblemService {
             String input = inputs.get(caseNo);
             String output = outputs.get(caseNo);
             if (output == null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, caseNo + ".out 缺失");
             }
             ProblemTestCase testCase = new ProblemTestCase();
@@ -959,6 +1085,9 @@ public class ProblemService {
     private String safeZipEntryName(String rawName) {
         String name = rawName == null ? "" : rawName.replace('\\', '/');
         if (name.contains("../") || name.startsWith("/")) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "测试点 ZIP 包含非法路径");
         }
         int slash = name.lastIndexOf('/');
@@ -977,9 +1106,15 @@ public class ProblemService {
             entryBytes += read;
             counters[1] += read;
             if (entryBytes > MAX_ZIP_ENTRY_BYTES) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "单个测试点文件过大");
             }
             if (counters[1] > MAX_ZIP_TOTAL_BYTES) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "测试点 ZIP 解压后过大");
             }
             out.write(buffer, 0, read);

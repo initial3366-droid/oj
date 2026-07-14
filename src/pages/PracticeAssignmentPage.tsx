@@ -1,3 +1,6 @@
+/**
+ * 练习Assignment页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Button, Card, Divider, Input, Table, Tag, Typography } from "@douyinfe/semi-ui";
 import { IconLock } from "@douyinfe/semi-icons";
 import { FormEvent, useEffect, useState } from "react";
@@ -5,6 +8,9 @@ import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { fetchPracticeDetail, type Practice } from "../data/apiClient";
 import { difficultyColor } from "../lib/format";
 
+/**
+ * 渲染练习Assignment页面，并协调其数据加载、状态和交互。
+ */
 export function PracticeAssignmentPage() {
   const { practiceId } = useParams();
   const navigate = useNavigate();
@@ -39,6 +45,9 @@ export function PracticeAssignmentPage() {
     return <Navigate to={`/practice/problem/${practiceId}`} replace />;
   }
 
+  /**
+   * 封装unlock相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const unlock = async (event: FormEvent) => {
     event.preventDefault();
     if (!numericPracticeId) {

@@ -1,9 +1,16 @@
+/**
+ * 编码Viewer组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Typography, Select } from '@douyinfe/semi-ui';
 import { IconCopy } from '@douyinfe/semi-icons';
 import { Toast } from '@douyinfe/semi-ui';
 import Editor from '@monaco-editor/react';
 import { useState } from 'react';
+import '../../utils/monacoSetup';
 
+/**
+ * 编码ViewerProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface CodeViewerProps {
   code: string;
   language: string;
@@ -39,6 +46,9 @@ export function CodeViewer({
 }: CodeViewerProps) {
   const [selectedLanguage, setSelectedLanguage] = useState(language);
 
+  /**
+   * 处理Copy。包含异步流程并由调用方处理完成或失败状态。
+   */
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(code);

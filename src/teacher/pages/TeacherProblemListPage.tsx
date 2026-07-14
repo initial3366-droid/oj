@@ -1,4 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+/**
+ * 教师题目列表页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button,
@@ -15,6 +18,9 @@ import { IconDelete, IconEdit, IconFile, IconPlus, IconSearch } from '@arco-desi
 import { teacherGet, teacherDelete } from '../teacherApi';
 import { encryptId } from '../../utils/cipher';
 
+/**
+ * 题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Problem {
   id: number;
   title: string;
@@ -29,11 +35,17 @@ interface Problem {
   testCaseCount: number;
 }
 
+/**
+ * 文件夹Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface FolderOption {
   id: number;
   name: string;
 }
 
+/**
+ * 页面结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PageResult {
   list: Problem[];
   total: number;
@@ -55,7 +67,11 @@ const difficultyMap: Record<number, { text: string; color: string }> = {
   5: { text: '地狱', color: 'purple' },
 };
 
+/**
+ * 渲染教师题目列表页面，并协调其数据加载、状态和交互。
+ */
 export function TeacherProblemListPage() {
+  const requestSequence = useRef(0);
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -69,6 +85,9 @@ export function TeacherProblemListPage() {
   const [filterOwnerName, setFilterOwnerName] = useState('');
   const [folders, setFolders] = useState<FolderOption[]>([]);
 
+  /**
+   * 读取Folders并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const loadFolders = useCallback(async () => {
     try {
       const result = await teacherGet<FolderOption[]>('/api/admin/v1/problem-folders');
@@ -82,7 +101,11 @@ export function TeacherProblemListPage() {
     loadProblems();
   }, [page, keyword, filterDifficulty, filterTag, filterFolderId, filterOwnerName]);
 
+  /**
+   * 读取Problems并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadProblems() {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -95,28 +118,42 @@ export function TeacherProblemListPage() {
       if (filterFolderId != null) params.append('folderId', String(filterFolderId));
       if (filterOwnerName) params.append('ownerName', filterOwnerName);
       const result = await teacherGet<PageResult>(`/api/admin/v1/problems?${params.toString()}`);
+      if (sequence !== requestSequence.current) return;
       setProblems(result.list);
       setTotal(result.total);
     } catch (error) {
+      if (sequence !== requestSequence.current) return;
       Message.error(error instanceof Error ? error.message : '题目列表加载失败');
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }
 
+  /**
+   * 处理Search。会更新 React 状态并触发重新渲染。
+   */
   function handleSearch(value: string) {
     setKeyword(value);
     setPage(1);
   }
 
+  /**
+   * 处理Edit。可能改变当前路由或查询参数。
+   */
   function handleEdit(id: number) {
     navigate(`/teacher/problems/${encryptId(id)}/edit`);
   }
 
+  /**
+   * 处理TestCases。可能改变当前路由或查询参数。
+   */
   function handleTestCases(id: number) {
     navigate(`/teacher/problems/${encryptId(id)}/test-cases`);
   }
 
+  /**
+   * 处理Delete。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function handleDelete(id: number) {
     try {
       await teacherDelete(`/api/admin/v1/problems/${id}`);

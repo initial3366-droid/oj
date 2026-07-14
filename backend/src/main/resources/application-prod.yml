@@ -1,5 +1,4 @@
-# Production profile overrides
-# Disable API documentation in production
+# 生产环境覆盖项：关闭 OpenAPI 元数据和 Swagger UI，减少不必要的接口信息暴露。
 springdoc:
   api-docs:
     enabled: false

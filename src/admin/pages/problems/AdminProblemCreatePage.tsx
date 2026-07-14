@@ -1,3 +1,6 @@
+/**
+ * 管理员题目Create页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { adminPath } from '../../../utils/adminPath';
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
@@ -27,12 +30,18 @@ const FormItem = Form.Item;
 const Step = Steps.Step;
 const Textarea = Input.TextArea;
 
+/**
+ * Sample测试点接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface SampleCase {
   input: string;
   output: string;
   explanation?: string;
 }
 
+/**
+ * BasicFormData接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface BasicFormData {
   title: string;
   timeLimit: number;
@@ -55,6 +64,9 @@ const DIFFICULTY_OPTIONS = [
   { value: 5, label: '地狱' },
 ];
 
+/**
+ * Test测试点接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TestCase {
   id?: number;
   caseNo: number;
@@ -62,17 +74,26 @@ interface TestCase {
   output: string;
 }
 
+/**
+ * RawTest测试点类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type RawTestCase = Partial<TestCase> & {
   inputData?: string;
   outputData?: string;
 };
 
+/**
+ * DraftData接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface DraftData {
   draftId: string;
   basic: BasicFormData | null;
   testCases: TestCase[];
 }
 
+/**
+ * 解析并规范化Samples。失败时向调用方传播异常。
+ */
 function normalizeSamples(samples?: SampleCase[]) {
   return (samples || [])
     .filter((sample) => {
@@ -95,6 +116,9 @@ function normalizeSamples(samples?: SampleCase[]) {
     });
 }
 
+/**
+ * 解析并规范化Basic请求参数。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeBasicPayload(values: Partial<BasicFormData>, tags: string[]) {
   return {
     title: values.title?.trim() || '',
@@ -111,6 +135,9 @@ function normalizeBasicPayload(values: Partial<BasicFormData>, tags: string[]) {
   };
 }
 
+/**
+ * 解析并规范化TestCases。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeTestCases(testCases: TestCase[]) {
   return testCases
     .map((tc, index) => ({
@@ -121,6 +148,9 @@ function normalizeTestCases(testCases: TestCase[]) {
     .sort((left, right) => left.caseNo - right.caseNo);
 }
 
+/**
+ * 解析并规范化LoadedTestCases。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeLoadedTestCases(testCases: RawTestCase[]) {
   return (testCases || [])
     .map((tc, index) => ({
@@ -132,6 +162,9 @@ function normalizeLoadedTestCases(testCases: RawTestCase[]) {
     .sort((left, right) => left.caseNo - right.caseNo);
 }
 
+/**
+ * 渲染管理员题目Create页面，并协调其数据加载、状态和交互。
+ */
 export function AdminProblemCreatePage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -190,6 +223,9 @@ export function AdminProblemCreatePage() {
     return () => clearTimeout(timer);
   }, [isEditMode, draftId, testCases]);
 
+  /**
+   * 读取题目并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function loadProblem(id: number) {
     try {
       setLoading(true);
@@ -216,6 +252,9 @@ export function AdminProblemCreatePage() {
     }
   }
 
+  /**
+   * 读取题目TestCases并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadProblemTestCases(id: number) {
     try {
       const result = await adminGet<TestCase[]>(`/api/admin/v1/problems/${id}/test-cases`);
@@ -225,6 +264,9 @@ export function AdminProblemCreatePage() {
     }
   }
 
+  /**
+   * 创建或提交Draft。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function createDraft() {
     try {
       const result = await adminPost<DraftData>('/api/admin/v1/problem-drafts', {});
@@ -256,6 +298,9 @@ export function AdminProblemCreatePage() {
     return `${base}\n\n${content.replace(/^\s+/, '')}`;
   }
 
+  /**
+   * 封装autoSaveBasicInfo相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function autoSaveBasicInfo() {
     if (autoSaving) return;
 
@@ -277,6 +322,9 @@ export function AdminProblemCreatePage() {
     }
   }
 
+  /**
+   * 封装autoSaveTestCases相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function autoSaveTestCases() {
     if (autoSaving || testCases.length === 0) return;
 
@@ -301,10 +349,16 @@ export function AdminProblemCreatePage() {
     }
   }
 
+  /**
+   * 更新BasicInfo。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function saveBasicInfo() {
     await saveProblemInfo();
   }
 
+  /**
+   * 更新题目Info。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function saveProblemInfo(stayOnStep = false) {
     try {
       await basicForm.validate();
@@ -335,6 +389,9 @@ export function AdminProblemCreatePage() {
     }
   }
 
+  /**
+   * 处理Insert编码。会更新 React 状态并触发重新渲染。
+   */
   function handleInsertCode(code: string) {
     // CodeInsertModal 传过来的 code 已经是完整的 ```lang\n...\n``` 代码块，
     // 这里不再二次包裹围栏，直接作为 Markdown 段落拼到末尾。
@@ -342,32 +399,50 @@ export function AdminProblemCreatePage() {
     setCodeModalVisible(false);
   }
 
+  /**
+   * 处理InsertStatement。会更新 React 状态并触发重新渲染。
+   */
   function handleInsertStatement(markdown: string) {
     basicForm.setFieldValue('statement', appendWithBlankLine(basicForm.getFieldValue('statement') as string | undefined, markdown));
     setStatementModalVisible(false);
   }
 
+  /**
+   * 处理InsertInputFormat。会更新 React 状态并触发重新渲染。
+   */
   function handleInsertInputFormat(markdown: string) {
     basicForm.setFieldValue('inputFormat', appendWithBlankLine(basicForm.getFieldValue('inputFormat') as string | undefined, markdown));
     setInputFormatModalVisible(false);
   }
 
+  /**
+   * 处理InsertOutputFormat。会更新 React 状态并触发重新渲染。
+   */
   function handleInsertOutputFormat(markdown: string) {
     basicForm.setFieldValue('outputFormat', appendWithBlankLine(basicForm.getFieldValue('outputFormat') as string | undefined, markdown));
     setOutputFormatModalVisible(false);
   }
 
+  /**
+   * 创建或提交Test测试点。会更新 React 状态并触发重新渲染。
+   */
   function addTestCase() {
     const maxCaseNo = testCases.length > 0 ? Math.max(...testCases.map(tc => tc.caseNo)) : 0;
     setTestCases([...testCases, { caseNo: maxCaseNo + 1, input: '', output: '' }]);
   }
 
+  /**
+   * 删除Test测试点。会更新 React 状态并触发重新渲染。
+   */
   function removeTestCase(index: number) {
     const newTestCases = [...testCases];
     newTestCases.splice(index, 1);
     setTestCases(newTestCases);
   }
 
+  /**
+   * 更新Test测试点。会更新 React 状态并触发重新渲染。
+   */
   function updateTestCase(index: number, field: keyof TestCase, value: string) {
     const newTestCases = [...testCases];
     if (field === 'caseNo') {
@@ -378,6 +453,9 @@ export function AdminProblemCreatePage() {
     setTestCases(newTestCases);
   }
 
+  /**
+   * 处理ImportZip。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function handleImportZip(file: File, overwrite: boolean) {
     const formData = new FormData();
     formData.append('file', file);
@@ -405,6 +483,9 @@ export function AdminProblemCreatePage() {
     }
   }
 
+  /**
+   * 更新TestCases。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；对原始数据进行派生或聚合。
+   */
   async function saveTestCases(showSuccess = true) {
     try {
       const normalized = normalizeTestCases(testCases);
@@ -456,6 +537,9 @@ export function AdminProblemCreatePage() {
     }
   }
 
+  /**
+   * 处理Submit。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function handleSubmit() {
     try {
       if (isEditMode) {

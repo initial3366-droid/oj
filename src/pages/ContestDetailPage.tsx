@@ -1,3 +1,6 @@
+/**
+ * 比赛详情页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Button, Card, Tag, Tabs, TabPane, Spin, Modal, Typography, Input, Select } from '@douyinfe/semi-ui';
 import {
   IconChevronLeft,
@@ -28,42 +31,69 @@ import { formatDateTime } from '../lib/format';
 import { encryptId } from '../utils/cipher';
 
 const VALID_TABS = ['problems', 'submissions', 'my-submissions', 'scoreboard'] as const;
+/**
+ * TabKey类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type TabKey = (typeof VALID_TABS)[number];
 
+/**
+ * 判断ValidTab是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function isValidTab(tab: string): tab is TabKey {
   return (VALID_TABS as readonly string[]).includes(tab);
 }
 
+/**
+ * 封装状态Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusText(status: PublicContest["status"]) {
   if (status === "RUNNING") return "进行中";
   if (status === "ENDED") return "已结束";
   return "未开始";
 }
 
+/**
+ * 封装状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusColor(status: PublicContest["status"]): 'green' | 'grey' | 'blue' {
   if (status === "RUNNING") return "green";
   if (status === "ENDED") return "grey";
   return "blue";
 }
 
+/**
+ * 封装identityBadge相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function identityBadge(type?: string | null) {
   return "个人";
 }
 
+/**
+ * 封装报名类型Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function registrationTypeText(type?: string | null) {
   if (type === "PASSWORD") return "密码报名";
   if (type === "INVITATION") return "邀请码报名";
   return "公开报名";
 }
 
+/**
+ * 封装排名Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function rankText(rank?: number | null, starred?: boolean | null) {
   return starred ? "打星" : rank ?? "-";
 }
 
+/**
+ * 封装提交Time相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function submissionTime(submission: SubmissionRecord) {
   return submission.submitTime || submission.createdAt;
 }
 
+/**
+ * 封装提交状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function submissionStatusColor(status: string): 'green' | 'red' | 'orange' | 'amber' | 'purple' | 'blue' | 'grey' {
   const normalized = status.toUpperCase();
   if (normalized === "AC" || normalized === "ACCEPTED") return "green";
@@ -76,6 +106,9 @@ function submissionStatusColor(status: string): 'green' | 'red' | 'orange' | 'am
   return "grey";
 }
 
+/**
+ * 封装提交状态Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function submissionStatusText(status: string) {
   const map: Record<string, string> = {
     AC: "通过",
@@ -101,6 +134,9 @@ function submissionStatusText(status: string) {
   return map[status.toUpperCase()] || status;
 }
 
+/**
+ * 封装cellStyle相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function cellStyle(accepted: boolean, attempts: number, score: number, type: ContestScoreboard["type"]) {
   if (accepted) return { backgroundColor: 'var(--semi-color-success-light-default)', color: 'var(--semi-color-success-dark)' };
   if (type === "OI" && score > 0) return { backgroundColor: 'var(--semi-color-warning-light-default)', color: 'var(--semi-color-warning-dark)' };
@@ -108,10 +144,16 @@ function cellStyle(accepted: boolean, attempts: number, score: number, type: Con
   return { backgroundColor: 'var(--semi-color-fill-0)', color: 'var(--semi-color-text-2)' };
 }
 
+/**
+ * 封装榜单题目标识相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function scoreboardProblemId(problem: { problemId: number; contestProblemId?: number }) {
   return problem.contestProblemId ?? problem.problemId;
 }
 
+/**
+ * 渲染比赛详情页面，并协调其数据加载、状态和交互。
+ */
 export function ContestDetailPage() {
   const { contestId } = useParams();
   const navigate = useNavigate();
@@ -122,6 +164,9 @@ export function ContestDetailPage() {
   const tabParam = searchParams.get('tab') || 'problems';
   const activeTab: TabKey = isValidTab(tabParam) ? tabParam : 'problems';
 
+  /**
+   * 封装set有效Tab相关逻辑。会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   const setActiveTab = useCallback((key: string) => {
     if (key === 'problems') {
       // 默认 tab 不带 ?tab= 参数，保持 URL 干净
@@ -187,12 +232,21 @@ export function ContestDetailPage() {
   const contestReturnPath = `/contests/${id}`;
   const loginPath = `/login?redirect=${encodeURIComponent(contestReturnPath)}`;
 
+  /**
+   * 判断LoggedIn是否成立。会读写浏览器本地会话信息。
+   */
   const isLoggedIn = () => Boolean(window.localStorage.getItem("qoj.accessToken"));
 
+  /**
+   * 封装redirectTo登录相关逻辑。可能改变当前路由或查询参数。
+   */
   const redirectToLogin = useCallback(() => {
     navigate(loginPath, { replace: true });
   }, [loginPath, navigate]);
 
+  /**
+   * 读取比赛并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const loadContest = useCallback(() => {
     if (!id) {
       setMessage("比赛不存在");
@@ -247,6 +301,9 @@ export function ContestDetailPage() {
   useEffect(() => {
     if (!contest) return;
 
+    /**
+     * 更新Countdown。会更新 React 状态并触发重新渲染。
+     */
     const updateCountdown = () => {
       const now = new Date().getTime();
       const endTime = new Date(contest.endTime).getTime();
@@ -323,6 +380,9 @@ export function ContestDetailPage() {
       });
   }, [id, contest]);
 
+  /**
+   * 封装refreshMySubmissions相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const refreshMySubmissions = useCallback(() => {
     if (!contest) return;
     setMySubmissionsLoading(true);
@@ -348,6 +408,9 @@ export function ContestDetailPage() {
     }
   }, [activeTab, contest, mySubmissionsLoaded, mySubmissionsLoading, refreshMySubmissions]);
 
+  /**
+   * 封装提交题目Options相关逻辑。对原始数据进行派生或聚合。
+   */
   const submissionProblemOptions = useMemo(() => {
     return (contest?.problems ?? []).map((problem) => ({
       value: String(problem.problemId),
@@ -355,6 +418,9 @@ export function ContestDetailPage() {
     }));
   }, [contest]);
 
+  /**
+   * 封装提交状态Options相关逻辑。对原始数据进行派生或聚合。
+   */
   const submissionStatusOptions = useMemo(() => {
     return Array.from(new Set(submissions.map((sub) => sub.status).filter(Boolean)))
       .sort((a, b) => submissionStatusText(a).localeCompare(submissionStatusText(b), 'zh-CN'))
@@ -364,6 +430,9 @@ export function ContestDetailPage() {
       }));
   }, [submissions]);
 
+  /**
+   * 封装提交LanguageOptions相关逻辑。对原始数据进行派生或聚合。
+   */
   const submissionLanguageOptions = useMemo(() => {
     return Array.from(new Set(submissions.map((sub) => sub.language).filter(Boolean)))
       .sort((a, b) => a.localeCompare(b, 'zh-CN'))
@@ -373,6 +442,9 @@ export function ContestDetailPage() {
       }));
   }, [submissions]);
 
+  /**
+   * 封装filteredSubmissions相关逻辑。对原始数据进行派生或聚合。
+   */
   const filteredSubmissions = useMemo(() => {
     const userKeyword = submissionUserKeyword.trim().toLowerCase();
     return submissions.filter((sub) => {
@@ -390,6 +462,9 @@ export function ContestDetailPage() {
     });
   }, [submissions, submissionProblemFilter, submissionStatusFilter, submissionLanguageFilter, submissionUserKeyword]);
 
+  /**
+   * 封装available报名Option相关逻辑。对原始数据进行派生或聚合。
+   */
   const availableRegistrationOption = useMemo(() => {
     return registrationOptions.find((option) => option.available) ?? registrationOptions[0] ?? null;
   }, [registrationOptions]);
@@ -398,6 +473,9 @@ export function ContestDetailPage() {
     ? availableRegistrationOption.disabledReason || "当前账号暂不可报名该比赛"
     : "";
 
+  /**
+   * 封装open比赛题目相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const openContestProblem = (contestProblemId: number) => {
     if (!isLoggedIn()) {
       redirectToLogin();
@@ -410,6 +488,9 @@ export function ContestDetailPage() {
     window.open(`/practice/problem/cp${encryptId(contestProblemId)}?contestId=${id}`, '_blank');
   };
 
+  /**
+   * 创建或提交报名。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const submitRegistration = async (password?: string) => {
     if (!contest) return;
     if (!isLoggedIn()) {
@@ -445,12 +526,18 @@ export function ContestDetailPage() {
     }
   };
 
+  /**
+   * 格式化Usage。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const formatUsage = (value: number | null | undefined, unit: string) => {
     return value == null ? '-' : `${value}${unit}`;
   };
 
   const canViewAllSubmissionCode = contest?.status === 'ENDED' && Boolean(contest.allowAfterEndViewCode);
 
+  /**
+   * 封装open编码相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const openCode = async (sub: SubmissionRecord) => {
     if (codeLoadingId !== null) return;
     setCodeLoadingId(sub.id);
@@ -465,9 +552,15 @@ export function ContestDetailPage() {
     }
   };
 
+  /**
+   * 封装编码Action相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const codeAction = (sub: SubmissionRecord) => {
     const loadingCode = codeLoadingId === sub.id;
     const disabled = codeLoadingId !== null;
+    /**
+     * 封装trigger相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+     */
     const trigger = () => {
       if (!disabled) {
         void openCode(sub);

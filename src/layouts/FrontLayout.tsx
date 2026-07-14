@@ -1,12 +1,22 @@
-import { Outlet } from 'react-router-dom';
+/**
+ * FrontLayout组件。封装可复用的界面结构、展示规则及交互行为。
+ */
+import { Outlet, useLocation } from 'react-router-dom';
 import { Layout, BackTop } from '@douyinfe/semi-ui';
 import { IconArrowUp } from '@douyinfe/semi-icons';
 import { FrontHeader } from './FrontHeader';
 import { FrontFooter } from './FrontFooter';
+import { PinnedAnnouncementCard } from '../components/PinnedAnnouncementCard';
 
 const { Content } = Layout;
 
+/**
+ * 渲染FrontLayout组件，并协调其数据加载、状态和交互。
+ */
 export function FrontLayout() {
+  const location = useLocation();
+  const isHome = location.pathname === '/';
+
   return (
     <div className="front-layout">
       <style>{`
@@ -51,6 +61,8 @@ export function FrontLayout() {
       <Layout>
         {/* 顶部导航 */}
         <FrontHeader />
+
+        {isHome ? <PinnedAnnouncementCard /> : null}
 
         {/* 主内容区 */}
         <Content className="front-layout-content">

@@ -1,3 +1,6 @@
+/**
+ * 管理员练习Management页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { adminPath } from '../../../utils/adminPath';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -34,8 +37,14 @@ const TextArea = Input.TextArea;
 const RadioGroup = Radio.Group;
 const Option = Select.Option;
 
+/**
+ * Audience类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type Audience = 'ALL' | 'CLASS';
 
+/**
+ * 题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Problem {
   id: number;
   title: string;
@@ -46,6 +55,9 @@ interface Problem {
   testCaseCount?: number;
 }
 
+/**
+ * 练习题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PracticeProblem {
   id: number | string;
   title: string;
@@ -55,6 +67,9 @@ interface PracticeProblem {
   memoryLimit?: number;
 }
 
+/**
+ * 练习接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Practice {
   id: number;
   title: string;
@@ -68,16 +83,25 @@ interface Practice {
   updatedAt: string;
 }
 
+/**
+ * 页面结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PageResult<T> {
   total: number;
   list: T[];
 }
 
+/**
+ * 班级Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ClassOption {
   id: number;
   name: string;
 }
 
+/**
+ * 练习FormValues接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PracticeFormValues {
   title: string;
   description?: string;
@@ -94,23 +118,35 @@ const difficultyMap: Record<number, { text: string; color: string }> = {
   5: { text: '地狱', color: 'purple' },
 };
 
+/**
+ * 封装模式FromPath相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function modeFromPath(pathname: string) {
   if (pathname.endsWith('/new')) return 'create';
   if (pathname.endsWith('/edit')) return 'edit';
   return 'list';
 }
 
+/**
+ * 解析并规范化题目标识。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeProblemId(id: number | string) {
   if (typeof id === 'number') return id;
   const match = id.match(/\d+/);
   return match ? Number(match[0]) : 0;
 }
 
+/**
+ * 封装difficultyTag相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function difficultyTag(value?: number) {
   const info = difficultyMap[value ?? 0] ?? { text: '未知', color: 'gray' };
   return <Tag color={info.color}>{info.text}</Tag>;
 }
 
+/**
+ * 封装audienceText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function audienceText(practice: Practice) {
   if (practice.audience === 'CLASS') {
     return practice.audienceId ? `班级 #${practice.audienceId}` : '班级';
@@ -118,6 +154,9 @@ function audienceText(practice: Practice) {
   return '所有人';
 }
 
+/**
+ * 渲染管理员练习Management页面，并协调其数据加载、状态和交互。
+ */
 export function AdminPracticeManagementPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -134,12 +173,18 @@ export function AdminPracticeManagementPage() {
   const [selectedProblemIds, setSelectedProblemIds] = useState<number[]>([]);
   const [audience, setAudience] = useState<Audience>('ALL');
 
+  /**
+   * 封装filteredPractices相关逻辑。对原始数据进行派生或聚合。
+   */
   const filteredPractices = useMemo(() => {
     const normalized = keyword.trim().toLowerCase();
     if (!normalized) return practices;
     return practices.filter((item) => item.title.toLowerCase().includes(normalized));
   }, [keyword, practices]);
 
+  /**
+   * 封装filteredProblems相关逻辑。对原始数据进行派生或聚合。
+   */
   const filteredProblems = useMemo(() => {
     const normalized = problemKeyword.trim().toLowerCase();
     if (!normalized) return problems;
@@ -152,6 +197,9 @@ export function AdminPracticeManagementPage() {
     });
   }, [problemKeyword, problems]);
 
+  /**
+   * 封装selected题目Map相关逻辑。对原始数据进行派生或聚合。
+   */
   const selectedProblemMap = useMemo(
     () => new Map(problems.map((problem) => [problem.id, problem])),
     [problems],
@@ -173,6 +221,9 @@ export function AdminPracticeManagementPage() {
     loadPractices();
   }, [mode, practiceId]);
 
+  /**
+   * 读取Practices并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadPractices() {
     setLoading(true);
     try {
@@ -185,6 +236,9 @@ export function AdminPracticeManagementPage() {
     }
   }
 
+  /**
+   * 读取CreateData并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadCreateData() {
     setLoading(true);
     try {
@@ -204,6 +258,9 @@ export function AdminPracticeManagementPage() {
     }
   }
 
+  /**
+   * 读取EditData并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function loadEditData(id: number) {
     setLoading(true);
     try {
@@ -239,6 +296,9 @@ export function AdminPracticeManagementPage() {
     }
   }
 
+  /**
+   * 处理Delete。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function handleDelete(id: number) {
     try {
       await adminDelete<void>(`/api/admin/v1/practices/${id}`);
@@ -249,6 +309,9 @@ export function AdminPracticeManagementPage() {
     }
   }
 
+  /**
+   * 处理Create。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function handleCreate() {
     try {
       const values = await form.validate();
@@ -281,6 +344,9 @@ export function AdminPracticeManagementPage() {
     }
   }
 
+  /**
+   * 处理Update。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function handleUpdate() {
     if (!practiceId) return;
     try {
@@ -314,6 +380,9 @@ export function AdminPracticeManagementPage() {
     }
   }
 
+  /**
+   * 构造或转换ggle题目。会更新 React 状态并触发重新渲染。
+   */
   function toggleProblem(problemId: number) {
     setSelectedProblemIds((current) => {
       if (current.includes(problemId)) {
@@ -323,10 +392,16 @@ export function AdminPracticeManagementPage() {
     });
   }
 
+  /**
+   * 删除Selected题目。会更新 React 状态并触发重新渲染。
+   */
   function removeSelectedProblem(problemId: number) {
     setSelectedProblemIds((current) => current.filter((id) => id !== problemId));
   }
 
+  /**
+   * 重置SelectedProblems。会更新 React 状态并触发重新渲染。
+   */
   function clearSelectedProblems() {
     setSelectedProblemIds([]);
   }

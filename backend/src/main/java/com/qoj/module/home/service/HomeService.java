@@ -25,12 +25,18 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 首页业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class HomeService {
     private final HomeCarouselSlideMapper carouselSlideMapper;
     private final ContestMapper contestMapper;
     private final ContestService contestService;
 
+    /**
+     * 构造 首页Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public HomeService(
         HomeCarouselSlideMapper carouselSlideMapper,
         ContestMapper contestMapper,
@@ -67,6 +73,9 @@ public class HomeService {
             })
             .filter(java.util.Objects::nonNull)
             .toList();
+        /**
+         * 封装首页配置VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new HomeConfigVO(
             slides,
             recentContests
@@ -86,6 +95,9 @@ public class HomeService {
         HomeCarouselSlide slide = new HomeCarouselSlide();
         apply(slide, request);
         carouselSlideMapper.insert(slide);
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(slide);
     }
 
@@ -93,10 +105,16 @@ public class HomeService {
     public CarouselSlideVO updateSlide(long id, CarouselSlideRequest request) {
         HomeCarouselSlide slide = carouselSlideMapper.selectById(id);
         if (slide == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "轮播图不存在");
         }
         apply(slide, request);
         carouselSlideMapper.updateById(slide);
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(slide);
     }
 
@@ -115,6 +133,9 @@ public class HomeService {
     }
 
     private CarouselSlideVO toVO(HomeCarouselSlide slide) {
+        /**
+         * 封装CarouselSlideVO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new CarouselSlideVO(
             slide.id,
             slide.title,

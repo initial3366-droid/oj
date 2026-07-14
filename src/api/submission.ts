@@ -3,6 +3,9 @@
  */
 import { apiGet, apiPost } from "./client";
 
+/**
+ * 提交Record接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface SubmissionRecord {
   id: number;
   problemId: number;
@@ -30,6 +33,9 @@ export interface SubmissionRecord {
   }> | null;
 }
 
+/**
+ * Submit编码请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface SubmitCodePayload {
   problemId: number;
   practiceId?: number;
@@ -38,6 +44,9 @@ export interface SubmitCodePayload {
   code: string;
 }
 
+/**
+ * 沙箱Run请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface SandboxRunPayload {
   language: string;
   code: string;
@@ -46,6 +55,9 @@ export interface SandboxRunPayload {
   memoryLimit?: number;
 }
 
+/**
+ * 沙箱Run结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface SandboxRunResult {
   status: string;
   output: string;
@@ -54,6 +66,9 @@ export interface SandboxRunResult {
   exitCode?: number;
 }
 
+/**
+ * 封装current用户标识From访问令牌相关逻辑。会读写浏览器本地会话信息。
+ */
 function currentUserIdFromAccessToken() {
   const token = window.localStorage.getItem("qoj.accessToken");
   if (!token) return null;
@@ -80,7 +95,8 @@ export async function submitCode(payload: SubmitCodePayload): Promise<Submission
  * 沙箱运行代码（调试）
  */
 export async function runCodeInSandbox(payload: SandboxRunPayload): Promise<SandboxRunResult> {
-  return apiPost<SandboxRunResult>("/api/v1/sandbox/run", payload, true);
+  // Compilation plus isolated execution can legitimately exceed the global 15-second API timeout.
+  return apiPost<SandboxRunResult>("/api/v1/sandbox/run", payload, true, { timeoutMs: 120_000 });
 }
 
 /**

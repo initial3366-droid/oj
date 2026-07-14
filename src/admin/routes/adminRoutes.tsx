@@ -1,4 +1,8 @@
+/**
+ * 管理员Routes模块。集中声明该文件对外提供的前端能力与初始化逻辑。
+ */
 import { Routes, Route, Navigate } from 'react-router-dom';
+import '../../utils/arcoSetup';
 import { AdminLayout } from '../layout/AdminLayout';
 import { PermissionGuard } from '../components/PermissionGuard';
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
@@ -22,6 +26,9 @@ import { AdminProfilePage } from '../pages/profile/AdminProfilePage';
 import { adminPath } from '../../utils/adminPath';
 import { Result } from '@arco-design/web-react';
 
+/**
+ * 渲染管理员Routes组件，并协调其数据加载、状态和交互。
+ */
 export function AdminRoutes() {
   return (
     <Routes>

@@ -30,6 +30,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 题目Draft业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class ProblemDraftService {
     private static final Duration DRAFT_TTL = Duration.ofHours(6);
@@ -43,6 +46,9 @@ public class ProblemDraftService {
     private final ProblemMapper problemMapper;
     private final ProblemService problemService;
 
+    /**
+     * 构造 题目DraftService 实例并保存其必要依赖或初始状态。从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
+     */
     public ProblemDraftService(
         StringRedisTemplate redisTemplate,
         ObjectMapper objectMapper,
@@ -57,21 +63,39 @@ public class ProblemDraftService {
 
     public ProblemDraftVO createDraft() {
         String draftId = UUID.randomUUID().toString();
+        /**
+         * 更新目标数据。执行持久化写入。
+         */
         save(new DraftData(null, List.of()), draftId);
+        /**
+         * 封装题目DraftVO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new ProblemDraftVO(draftId, null, List.of());
     }
 
     public ProblemDraftVO saveBasic(String draftId, ProblemDraftBasicRequest request) {
         DraftData draft = loadOrNew(draftId);
         draft = new DraftData(request, draft.testCases());
+        /**
+         * 更新目标数据。执行持久化写入。
+         */
         save(draft, draftId);
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(draftId, draft);
     }
 
     public ProblemDraftVO saveTestCases(String draftId, ProblemDraftTestCasesRequest request) {
         DraftData draft = requireDraft(draftId);
         draft = new DraftData(draft.basic(), normalizeCases(request.testCases()));
+        /**
+         * 更新目标数据。执行持久化写入。
+         */
         save(draft, draftId);
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(draftId, draft);
     }
 
@@ -82,11 +106,20 @@ public class ProblemDraftService {
             parsed = appendCases(draft.testCases(), parsed);
         }
         draft = new DraftData(draft.basic(), parsed);
+        /**
+         * 更新目标数据。执行持久化写入。
+         */
         save(draft, draftId);
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(draftId, draft);
     }
 
     public ProblemDraftVO detail(String draftId) {
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(draftId, requireDraft(draftId));
     }
 
@@ -94,9 +127,15 @@ public class ProblemDraftService {
     public ProblemVO commit(String draftId) {
         DraftData draft = requireDraft(draftId);
         if (draft.basic() == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "请先完成题面信息");
         }
         if (draft.testCases() == null || draft.testCases().isEmpty()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "请先添加测试点");
         }
         Problem problem = new Problem();
@@ -125,16 +164,28 @@ public class ProblemDraftService {
     private DraftData loadOrNew(String draftId) {
         String value = redisTemplate.opsForValue().get(key(draftId));
         if (value == null) {
+            /**
+             * 构造 DraftData 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return new DraftData(null, List.of());
         }
+        /**
+         * 读取read并返回给调用方。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return read(value);
     }
 
     private DraftData requireDraft(String draftId) {
         String value = redisTemplate.opsForValue().get(key(draftId));
         if (value == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "题目草稿不存在或已过期");
         }
+        /**
+         * 读取read并返回给调用方。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return read(value);
     }
 
@@ -150,6 +201,9 @@ public class ProblemDraftService {
         try {
             return objectMapper.readValue(value, DraftData.class);
         } catch (Exception ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "题目草稿格式错误");
         }
     }
@@ -158,11 +212,17 @@ public class ProblemDraftService {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (Exception ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "题目数据格式错误");
         }
     }
 
     private ProblemDraftVO toVO(String draftId, DraftData draft) {
+        /**
+         * 封装题目DraftVO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new ProblemDraftVO(draftId, draft.basic(), draft.testCases() == null ? List.of() : draft.testCases());
     }
 
@@ -194,10 +254,16 @@ public class ProblemDraftService {
 
     private List<ProblemTestCaseRequest> parseZip(MultipartFile file) {
         if (file == null || file.isEmpty()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "测试点 ZIP 不能为空");
         }
         String filename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
         if (!filename.endsWith(".zip")) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "测试点必须为 ZIP");
         }
         Map<Integer, String> inputs = new HashMap<>();
@@ -210,6 +276,9 @@ public class ProblemDraftService {
                     continue;
                 }
                 if (++counters[0] > MAX_ZIP_ENTRIES) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(400, "测试点 ZIP 文件数量过多");
                 }
                 String name = safeZipEntryName(entry.getName());
@@ -218,6 +287,9 @@ public class ProblemDraftService {
                     continue;
                 }
                 if (inputs.size() + outputs.size() >= MAX_ZIP_TEST_CASES * 2) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(400, "测试点数量过多");
                 }
                 String content = readZipEntryText(zip, counters);
@@ -230,15 +302,24 @@ public class ProblemDraftService {
         } catch (BizException ex) {
             throw ex;
         } catch (Exception ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "测试点 ZIP 解析失败");
         }
         TreeSet<Integer> caseNos = new TreeSet<>(inputs.keySet());
         if (caseNos.isEmpty()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "ZIP 中未找到 1.in/1.out 格式测试点");
         }
         List<ProblemTestCaseRequest> result = new ArrayList<>();
         for (Integer caseNo : caseNos) {
             if (!outputs.containsKey(caseNo)) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, caseNo + ".out 缺失");
             }
             result.add(new ProblemTestCaseRequest(caseNo, inputs.get(caseNo), outputs.get(caseNo)));
@@ -249,6 +330,9 @@ public class ProblemDraftService {
     private String safeZipEntryName(String rawName) {
         String name = rawName == null ? "" : rawName.replace('\\', '/');
         if (name.contains("../") || name.startsWith("/")) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "测试点 ZIP 包含非法路径");
         }
         int slash = name.lastIndexOf('/');
@@ -267,9 +351,15 @@ public class ProblemDraftService {
             entryBytes += read;
             counters[1] += read;
             if (entryBytes > MAX_ZIP_ENTRY_BYTES) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "单个测试点文件过大");
             }
             if (counters[1] > MAX_ZIP_TOTAL_BYTES) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "测试点 ZIP 解压后过大");
             }
             out.write(buffer, 0, read);
@@ -317,6 +407,9 @@ public class ProblemDraftService {
         return result;
     }
 
+    /**
+     * DraftData不可变数据载体。通过 record 语义表达一组只读字段及其结构约束。
+     */
     private record DraftData(ProblemDraftBasicRequest basic, List<ProblemTestCaseRequest> testCases) {
     }
 }

@@ -1,9 +1,17 @@
+# HTTP 入口限制：端口可由环境变量覆盖，表单与被中止请求均设置明确上限以控制内存占用。
 server:
   port: ${SERVER_PORT:18080}
+  max-http-request-header-size: 16KB
+  tomcat:
+    # CCPCOJ uses URL-encoded forms; bound parsing prevents oversized public requests.
+    max-http-form-post-size: 64KB
+    max-swallow-size: 2MB
 
+# 后台路径前缀与前端 VITE_ADMIN_PREFIX 必须保持一致，避免管理路由暴露在意外地址。
 admin:
   path-prefix: ${ADMIN_PATH_PREFIX:admin}
 
+# Spring 基础设施：数据库、Redis、邮件、迁移与上传限制均从环境变量读取生产值。
 spring:
   application:
     name: qoj-backend
@@ -42,12 +50,14 @@ spring:
       max-file-size: 50MB
       max-request-size: 50MB
 
+# MyBatis-Plus 只负责字段命名映射；业务查询条件仍由各 Mapper/Service 显式声明。
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
   global-config:
     banner: false
 
+# QOJ 自有安全与判题参数。生产环境启动校验会拒绝默认 JWT 密钥和空判题令牌。
 qoj:
   jwt:
     secret: ${JWT_SECRET:change-this-secret-to-at-least-32-bytes}
@@ -55,14 +65,17 @@ qoj:
     refresh-token-ttl-seconds: ${JWT_REFRESH_EXPIRE:604800}  # 7 天
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://127.0.0.1:5173,http://localhost:5173}
-  judge:
-    # Docker 判题配置
-    docker:
-      image: ${JUDGE_DOCKER_IMAGE:qoj-judge:latest}
-      max-output-bytes: 10485760  # 10MB
-      max-processes: 32
-      cleanup-temp-files: true
-      cleanup-interval-hours: 1
+  go-judge:
+    # Only the backend may access this fixed internal endpoint; browsers never receive it.
+    base-url: ${GO_JUDGE_BASE_URL:http://127.0.0.1:15050}
+    auth-token: ${GO_JUDGE_AUTH_TOKEN:}
+    connect-timeout-ms: ${GO_JUDGE_CONNECT_TIMEOUT_MS:2000}
+    request-timeout-ms: ${GO_JUDGE_REQUEST_TIMEOUT_MS:200000}
+    compile-timeout-ms: ${GO_JUDGE_COMPILE_TIMEOUT_MS:20000}
+    max-source-bytes: ${GO_JUDGE_MAX_SOURCE_BYTES:65536}
+    max-input-bytes: ${GO_JUDGE_MAX_INPUT_BYTES:2097152}
+    max-output-bytes: ${GO_JUDGE_MAX_OUTPUT_BYTES:2097152}
+    max-processes: ${GO_JUDGE_MAX_PROCESSES:32}
 springdoc:
   api-docs:
     enabled: true

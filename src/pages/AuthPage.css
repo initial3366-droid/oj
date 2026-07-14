@@ -237,6 +237,7 @@
 .auth-btn-primary.semi-button-primary {
   background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%) !important;
   border-color: transparent !important;
+  color: #fff !important;
   height: 44px;
   font-size: 15px;
   font-weight: 600;
@@ -292,6 +293,13 @@
   font-weight: 500;
   background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%) !important;
   border-color: transparent !important;
+  color: #fff !important;
+}
+
+.auth-btn-primary.semi-button-primary .semi-button-content,
+.auth-btn-send-code.semi-button-primary .semi-button-content,
+.auth-bind-modal .semi-button-primary:not(.semi-button-primary-disabled) .semi-button-content {
+  color: #fff !important;
 }
 
 .auth-btn-send-code.semi-button-primary:hover {
@@ -305,6 +313,10 @@
   border-color: #e5e7eb !important;
   box-shadow: none;
   cursor: not-allowed;
+}
+
+.auth-btn-send-code.semi-button-primary:disabled .semi-button-content {
+  color: #9ca3af !important;
 }
 
 /* ── Divider between sections ── */

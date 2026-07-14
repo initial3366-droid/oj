@@ -1,7 +1,13 @@
+/**
+ * confirm工具模块。提供无页面依赖的通用处理能力。
+ */
 import { Modal } from '@arco-design/web-react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+/**
+ * ConfirmOptions接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ConfirmOptions {
   title?: string;
   content?: ReactNode;
@@ -24,6 +30,9 @@ export function showConfirm(options: ConfirmOptions) {
   const root = createRoot(div);
 
   let closed = false;
+  /**
+   * 封装cleanup相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const cleanup = () => {
     if (closed) return;
     closed = true;
@@ -36,6 +45,9 @@ export function showConfirm(options: ConfirmOptions) {
     }, 300);
   };
 
+  /**
+   * 处理Ok。包含异步流程并由调用方处理完成或失败状态。
+   */
   const handleOk = async () => {
     try {
       await options.onOk?.();
@@ -45,6 +57,9 @@ export function showConfirm(options: ConfirmOptions) {
     }
   };
 
+  /**
+   * 处理Cancel。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const handleCancel = () => {
     options.onCancel?.();
     cleanup();

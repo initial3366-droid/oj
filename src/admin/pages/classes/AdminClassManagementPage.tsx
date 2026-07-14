@@ -1,3 +1,6 @@
+/**
+ * 管理员班级Management页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { adminPath } from '../../../utils/adminPath';
 import {
   Alert,
@@ -24,6 +27,9 @@ const FormItem = Form.Item;
 const Option = Select.Option;
 const { Row, Col } = Grid;
 
+/**
+ * 班级Room接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ClassRoom {
   id: number;
   name: string;
@@ -38,6 +44,9 @@ interface ClassRoom {
   members?: ClassMember[];
 }
 
+/**
+ * 班级Member接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ClassMember {
   userId: number;
   username?: string | null;
@@ -49,12 +58,18 @@ interface ClassMember {
   joinedAt: string;
 }
 
+/**
+ * 教师Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TeacherOption {
   id: number;
   username: string;
   displayName: string;
 }
 
+/**
+ * 班级FormData接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ClassFormData {
   name: string;
   description?: string;
@@ -63,24 +78,36 @@ interface ClassFormData {
   approvalRequired: boolean;
 }
 
+/**
+ * Import结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ImportResult {
   successCount: number;
   failureCount: number;
   errors: Array<{ rowNumber: number; studentNo?: string | null; reason: string }>;
 }
 
+/**
+ * ImportFormData接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ImportFormData {
   classId: number;
   studentNoField: string;
   nameField: string;
 }
 
+/**
+ * 格式化Date。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatDate(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN');
 }
 
+/**
+ * 渲染管理员班级Management页面，并协调其数据加载、状态和交互。
+ */
 export function AdminClassManagementPage() {
   const navigate = useNavigate();
   const [classes, setClasses] = useState<ClassRoom[]>([]);
@@ -100,6 +127,9 @@ export function AdminClassManagementPage() {
   const [form] = Form.useForm<ClassFormData>();
   const [importForm] = Form.useForm<ImportFormData>();
 
+  /**
+   * 读取Classes并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const loadClasses = useCallback(async () => {
     setLoading(true);
     try {
@@ -113,6 +143,9 @@ export function AdminClassManagementPage() {
     }
   }, [keyword]);
 
+  /**
+   * 读取Teachers并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const loadTeachers = useCallback(async (nextKeyword = '', required?: TeacherOption) => {
     setTeacherLoading(true);
     try {
@@ -135,6 +168,9 @@ export function AdminClassManagementPage() {
     loadTeachers();
   }, [loadTeachers]);
 
+  /**
+   * 封装openCreate相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openCreate() {
     setEditingClass(null);
     form.resetFields();
@@ -142,6 +178,9 @@ export function AdminClassManagementPage() {
     setModalVisible(true);
   }
 
+  /**
+   * 封装openImport相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openImport(item?: ClassRoom) {
     setSelectedImportFile(null);
     setImportResult(null);
@@ -153,6 +192,9 @@ export function AdminClassManagementPage() {
     setImportModalVisible(true);
   }
 
+  /**
+   * 处理ImportFileChange。会更新 React 状态并触发重新渲染。
+   */
   function handleImportFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -167,6 +209,9 @@ export function AdminClassManagementPage() {
     event.target.value = '';
   }
 
+  /**
+   * 创建或提交Import。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function submitImport(values: ImportFormData) {
     if (!selectedImportFile) {
       setNotice({ type: 'warning', content: '请选择 csv、xls 或 xlsx 文件' });
@@ -190,6 +235,9 @@ export function AdminClassManagementPage() {
     }
   }
 
+  /**
+   * 封装openEdit相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openEdit(item: ClassRoom) {
     setEditingClass(item);
     if (item.teacherId && item.teacherName) {
@@ -205,6 +253,9 @@ export function AdminClassManagementPage() {
     setModalVisible(true);
   }
 
+  /**
+   * 创建或提交目标数据。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function submit(values: ClassFormData) {
     const payload = {
       name: values.name?.trim(),
@@ -228,6 +279,9 @@ export function AdminClassManagementPage() {
     }
   }
 
+  /**
+   * 封装confirmDelete相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function confirmDelete() {
     if (!deleteClass) return;
     try {
@@ -433,6 +487,9 @@ export function AdminClassManagementPage() {
   );
 }
 
+/**
+ * 渲染管理员班级详情页面，并协调其数据加载、状态和交互。
+ */
 export function AdminClassDetailPage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -441,6 +498,9 @@ export function AdminClassDetailPage() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<{ type: 'error'; content: string } | null>(null);
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const load = useCallback(async () => {
     if (!classId) return;
     setLoading(true);

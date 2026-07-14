@@ -25,6 +25,9 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 比赛Rolling业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class ContestRollingService {
     private static final String STATUS_NOT_STARTED = "NOT_STARTED";
@@ -39,6 +42,9 @@ public class ContestRollingService {
     private final ContestAccessPolicy contestAccessPolicy;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 构造 比赛RollingService 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断；从持久化层读取数据。
+     */
     public ContestRollingService(
         ContestMapper contestMapper,
         ContestRollingStateMapper rollingStateMapper,
@@ -59,8 +65,14 @@ public class ContestRollingService {
         requireManageContest(contestId);
         ContestRollingState state = rollingStateMapper.selectById(contestId);
         if (state == null) {
+            /**
+             * 封装比赛RollingStateVO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return new ContestRollingStateVO(contestId, STATUS_NOT_STARTED, 0, 0, false, List.of(), null, null, null);
         }
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(state);
     }
 
@@ -94,6 +106,9 @@ public class ContestRollingService {
             rollingStateMapper.updateById(state);
         }
         snapshotService.upsertSnapshot(contestId, "freeze");
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(state);
     }
 
@@ -102,6 +117,9 @@ public class ContestRollingService {
         requireManageContest(contestId);
         ContestRollingState state = requireState(contestId);
         if (STATUS_PUBLISHED.equals(state.status)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "最终榜已发布，不能继续调整滚榜步骤");
         }
         int current = state.currentStep == null ? 0 : state.currentStep;
@@ -117,6 +135,9 @@ public class ContestRollingService {
         state.updatedBy = CurrentUser.required().id();
         state.updatedAt = LocalDateTime.now();
         rollingStateMapper.updateById(state);
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(state);
     }
 
@@ -125,6 +146,9 @@ public class ContestRollingService {
         requireManageContest(contestId);
         ContestRollingState state = requireState(contestId);
         if (STATUS_PUBLISHED.equals(state.status)) {
+            /**
+             * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return toVO(state);
         }
         state.currentStep = state.totalSteps == null ? 0 : state.totalSteps;
@@ -132,6 +156,9 @@ public class ContestRollingService {
         state.updatedBy = CurrentUser.required().id();
         state.updatedAt = LocalDateTime.now();
         rollingStateMapper.updateById(state);
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(state);
     }
 
@@ -161,16 +188,25 @@ public class ContestRollingService {
             rollingStateMapper.updateById(state);
         }
         snapshotService.upsertSnapshot(contestId, "final");
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(state);
     }
 
     private Contest requireManageContest(Long contestId) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
         AuthUser user = CurrentUser.required();
         if (!contestAccessPolicy.can(user, Permission.MANAGE_SCOREBOARD, contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权管理该比赛榜单");
         }
         return contest;
@@ -178,12 +214,21 @@ public class ContestRollingService {
 
     private void validateRollingContest(Contest contest) {
         if (!Boolean.TRUE.equals(contest.enableRollingScoreboard)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "该比赛未启用滚榜");
         }
         if (!Boolean.TRUE.equals(contest.frozen) || contest.freezeTime == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "滚榜需要先开启封榜并设置封榜时间");
         }
         if (contest.endTime == null || !LocalDateTime.now().isAfter(contest.endTime)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "比赛结束后才能开始滚榜");
         }
     }
@@ -191,6 +236,9 @@ public class ContestRollingService {
     private ContestRollingState requireState(Long contestId) {
         ContestRollingState state = rollingStateMapper.selectById(contestId);
         if (state == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "请先开始滚榜");
         }
         return state;
@@ -248,6 +296,9 @@ public class ContestRollingService {
 
     private ContestRollingStateVO toVO(ContestRollingState state) {
         List<ContestRollingStepVO> steps = readSteps(state.stepsJson);
+        /**
+         * 封装比赛RollingStateVO相关逻辑。执行持久化写入；在状态变化后发布异步消息。
+         */
         return new ContestRollingStateVO(
             state.contestId,
             state.status == null ? STATUS_NOT_STARTED : state.status,
@@ -276,6 +327,9 @@ public class ContestRollingService {
         try {
             return objectMapper.writeValueAsString(steps);
         } catch (JsonProcessingException ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.INTERNAL_ERROR.getCode(), "生成滚榜步骤失败");
         }
     }

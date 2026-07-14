@@ -1,3 +1,6 @@
+/**
+ * 仪表盘页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Card, Grid, Statistic, Table, Result, Button } from '@arco-design/web-react';
 import { IconCalendar, IconCode, IconRefresh, IconCheck, IconFire } from '@arco-design/web-react/icon';
 import { AdminPageContainer } from '../../layout/AdminPageContainer';
@@ -12,10 +15,16 @@ const Col = Grid.Col;
 
 const DIFFICULTY_NAMES: Record<number, string> = { 1: '入门', 2: '简单', 3: '中等', 4: '困难', 5: '地狱' };
 
+/**
+ * 格式化Number。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatNumber(n: number): string {
   return n >= 10000 ? `${(n / 10000).toFixed(1)}万` : n.toLocaleString();
 }
 
+/**
+ * 渲染GradientStatCard组件，并协调其数据加载、状态和交互。
+ */
 function GradientStatCard({ title, value, icon, gradient, change }: {
   title: string; value: number; icon: React.ReactNode; gradient: string; change?: string;
 }) {
@@ -37,6 +46,9 @@ function GradientStatCard({ title, value, icon, gradient, change }: {
   );
 }
 
+/**
+ * 渲染ChartCard组件，并协调其数据加载、状态和交互。
+ */
 function ChartCard({ title, children, span }: { title: string; children: React.ReactNode; span?: number }) {
   return (
     <Col span={span || 24}>
@@ -47,6 +59,9 @@ function ChartCard({ title, children, span }: { title: string; children: React.R
   );
 }
 
+/**
+ * 渲染仪表盘页面，并协调其数据加载、状态和交互。
+ */
 export function DashboardPage() {
   const { loading, data, error, reload } = useDashboardData();
 

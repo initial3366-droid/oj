@@ -1,3 +1,6 @@
+/**
+ * 教师练习Create页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -21,8 +24,14 @@ const { Row, Col } = Grid;
 const FormItem = Form.Item;
 const TextArea = Input.TextArea;
 
+/**
+ * Audience类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type Audience = 'ALL' | 'CLASS';
 
+/**
+ * 题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Problem {
   id: number;
   title: string;
@@ -35,6 +44,9 @@ interface Problem {
   testCaseCount?: number;
 }
 
+/**
+ * 文件夹接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Folder {
   id: number;
   name: string;
@@ -43,6 +55,9 @@ interface Folder {
   problems: Problem[];
 }
 
+/**
+ * 班级Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ClassOption {
   id: number;
   name: string;
@@ -56,6 +71,9 @@ const difficultyMap: Record<number, { text: string; color: string }> = {
   5: { text: '地狱', color: 'purple' },
 };
 
+/**
+ * 渲染教师练习Create页面，并协调其数据加载、状态和交互。
+ */
 export function TeacherPracticeCreatePage() {
   const navigate = useNavigate();
   const { practiceId } = useParams();
@@ -72,6 +90,9 @@ export function TeacherPracticeCreatePage() {
   const [selectedProblemIds, setSelectedProblemIds] = useState<number[]>([]);
   const [problemKeyword, setProblemKeyword] = useState('');
 
+  /**
+   * 封装selectedProblems相关逻辑。对原始数据进行派生或聚合。
+   */
   const selectedProblems = useMemo(() => {
     const allProblems = folders.flatMap((f) => f.problems);
     const map = new Map(allProblems.map((p) => [p.id, p]));
@@ -82,6 +103,9 @@ export function TeacherPracticeCreatePage() {
     loadData();
   }, []);
 
+  /**
+   * 读取Data并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadData() {
     setLoading(true);
     try {
@@ -115,12 +139,18 @@ export function TeacherPracticeCreatePage() {
     }
   }
 
+  /**
+   * 构造或转换ggle题目。会更新 React 状态并触发重新渲染。
+   */
   function toggleProblem(problemId: number) {
     setSelectedProblemIds((prev) =>
       prev.includes(problemId) ? prev.filter((id) => id !== problemId) : [...prev, problemId]
     );
   }
 
+  /**
+   * 处理Submit。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function handleSubmit() {
     try {
       const values = await form.validate();

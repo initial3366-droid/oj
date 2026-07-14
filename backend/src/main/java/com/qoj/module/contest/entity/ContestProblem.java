@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 
+/**
+ * 比赛题目持久化实体。字段与数据库记录对应，用于在数据访问层和业务层之间传递状态。
+ */
 @TableName("contest_problems")
 public class ContestProblem {
     @TableId(type = IdType.AUTO)
@@ -24,7 +27,6 @@ public class ContestProblem {
     public Integer memoryLimit;
     public Integer difficulty;
     public String tags;
-    public String domjudgeProblemId;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;
 

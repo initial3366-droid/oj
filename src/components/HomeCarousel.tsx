@@ -1,8 +1,14 @@
+/**
+ * 首页Carousel组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Button } from '@douyinfe/semi-ui';
 import { IconChevronLeft, IconChevronRight } from '@douyinfe/semi-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useOjData } from '../data/OjDataProvider';
 
+/**
+ * 渲染首页Carousel组件，并协调其数据加载、状态和交互。
+ */
 export function HomeCarousel() {
   const { state } = useOjData();
   const slides = state.carouselSlides;
@@ -24,13 +30,22 @@ export function HomeCarousel() {
     return () => window.clearInterval(timer);
   }, [slides.length]);
 
+  /**
+   * 封装有效Slide相关逻辑。对原始数据进行派生或聚合。
+   */
   const activeSlide = useMemo(() => slides[index] ?? slides[0], [index, slides]);
 
   if (!activeSlide) {
     return null;
   }
 
+  /**
+   * 封装next相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const next = () => setIndex((current) => (current + 1) % slides.length);
+  /**
+   * 封装previous相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const previous = () =>
     setIndex((current) => (current - 1 + slides.length) % slides.length);
   const hasMultipleSlides = slides.length > 1;

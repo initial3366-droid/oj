@@ -46,6 +46,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final UserMapper userMapper;
     private final AdminUserMapper adminUserMapper;
 
+    /**
+     * 构造 JwtAuthenticationFilter 实例并保存其必要依赖或初始状态。从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
+     */
     public JwtAuthenticationFilter(
         JwtService jwtService,
         StringRedisTemplate redisTemplate,
@@ -76,12 +79,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     /**
+     * The CCPCOJ gateway has an isolated worker-cookie authentication protocol.
+     * Skipping JWT parsing avoids mixing user credentials into that trust boundary.
+     */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path != null && path.startsWith("/ojtool/judge/");
+    }
+
+    /**
      * 核心认证逻辑。
      * 所有 RuntimeException 被静默捕获：即使 Token 无效也不应中断请求处理。
      */
     private void authenticate(String token) {
         try {
             Claims claims = jwtService.parse(token);
+            if (!"access".equals(claims.get("typ", String.class))) {
+                return;
+            }
             // 检查 Token 是否在 Redis 黑名单中（已登出/被撤销的 Token）
             if (Boolean.TRUE.equals(redisTemplate.hasKey(RedisKeys.tokenBlacklist(claims.getId())))) {
                 return;
@@ -92,6 +108,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             }
             UsernamePasswordAuthenticationToken authentication =
+                /**
+                 * 封装rnamePasswordAuthentication令牌相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                 */
                 new UsernamePasswordAuthenticationToken(authUser, token, authUser.getAuthorities());
             SecurityContextHolder.getContext().setAuthentication(authentication);
             // 后台管理员不记录在线状态，避免混入前台在线用户统计

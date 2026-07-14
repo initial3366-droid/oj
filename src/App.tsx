@@ -7,35 +7,48 @@
  * - ContestPublicScoreboardPage：公开榜单独立页面（无 FrontLayout）
  * - NotFoundPage：404 兜底
  */
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { AuthPage } from "./pages/AuthPage";
-import { ContestsPage } from "./pages/ContestsPage";
-import { ContestDetailPage } from "./pages/ContestDetailPage";
-import { ContestScoreboardPage } from "./pages/ContestScoreboardPage";
-import { ContestPublicScoreboardPage } from "./pages/ContestPublicScoreboardPage";
-import { HomePage } from "./pages/HomePage";
-import { LeaderboardPage } from "./pages/LeaderboardPage";
-import { NotFoundPage } from "./pages/NotFoundPage";
-import { PracticeAssignmentPage } from "./pages/PracticeAssignmentPage";
-import { PracticeListPage } from "./pages/PracticeListPage";
-import { PracticePage } from "./pages/PracticePage";
-import { ProblemSubmissionsPage } from "./pages/ProblemSubmissionsPage";
-import { SubmissionQueuePage } from "./pages/SubmissionQueuePage";
-import { ProblemsPage } from "./pages/ProblemsPage";
-import { UserCenterPage } from "./pages/UserCenterPage";
-import { UserProfilePage } from "./pages/UserProfilePage";
-import { SemiTestPage } from "./pages/SemiTestPage";
 import { FrontLayout } from "./layouts/FrontLayout";
-import { AdminRoutes } from "./admin/routes/adminRoutes";
 import { ADMIN_PREFIX } from "./config";
-import { TeacherRoutes } from "./teacher/TeacherRoutes";
 import { DocumentTitle } from "./components/DocumentTitle";
 
+const AuthPage = lazy(() => import("./pages/AuthPage").then((module) => ({ default: module.AuthPage })));
+const ContestsPage = lazy(() => import("./pages/ContestsPage").then((module) => ({ default: module.ContestsPage })));
+const ContestDetailPage = lazy(() => import("./pages/ContestDetailPage").then((module) => ({ default: module.ContestDetailPage })));
+const ContestScoreboardPage = lazy(() => import("./pages/ContestScoreboardPage").then((module) => ({ default: module.ContestScoreboardPage })));
+const ContestPublicScoreboardPage = lazy(() => import("./pages/ContestPublicScoreboardPage").then((module) => ({ default: module.ContestPublicScoreboardPage })));
+const HomePage = lazy(() => import("./pages/HomePage").then((module) => ({ default: module.HomePage })));
+const LeaderboardPage = lazy(() => import("./pages/LeaderboardPage").then((module) => ({ default: module.LeaderboardPage })));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage").then((module) => ({ default: module.NotFoundPage })));
+const PracticeAssignmentPage = lazy(() => import("./pages/PracticeAssignmentPage").then((module) => ({ default: module.PracticeAssignmentPage })));
+const PracticeListPage = lazy(() => import("./pages/PracticeListPage").then((module) => ({ default: module.PracticeListPage })));
+const PracticePage = lazy(() => import("./pages/PracticePage").then((module) => ({ default: module.PracticePage })));
+const ProblemSubmissionsPage = lazy(() => import("./pages/ProblemSubmissionsPage").then((module) => ({ default: module.ProblemSubmissionsPage })));
+const SubmissionQueuePage = lazy(() => import("./pages/SubmissionQueuePage").then((module) => ({ default: module.SubmissionQueuePage })));
+const ProblemsPage = lazy(() => import("./pages/ProblemsPage").then((module) => ({ default: module.ProblemsPage })));
+const UserCenterPage = lazy(() => import("./pages/UserCenterPage").then((module) => ({ default: module.UserCenterPage })));
+const UserProfilePage = lazy(() => import("./pages/UserProfilePage").then((module) => ({ default: module.UserProfilePage })));
+const SemiTestPage = lazy(() => import("./pages/SemiTestPage").then((module) => ({ default: module.SemiTestPage })));
+const AdminRoutes = lazy(() => import("./admin/routes/adminRoutes").then((module) => ({ default: module.AdminRoutes })));
+const TeacherRoutes = lazy(() => import("./teacher/TeacherRoutes").then((module) => ({ default: module.TeacherRoutes })));
+
+/**
+ * 渲染路由兜底界面组件，并协调其数据加载、状态和交互。
+ */
+function RouteFallback() {
+  return <div style={{ minHeight: 320, display: "grid", placeItems: "center" }}>加载中...</div>;
+}
+
+/**
+ * 渲染应用组件，并协调其数据加载、状态和交互。
+ */
 export function App() {
   return (
     <>
       <DocumentTitle />
-      <Routes>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
         {/* 外榜路由 - 独立页面，不使用 FrontLayout */}
         <Route path="/contests/:contestId/public-scoreboard" element={<ContestPublicScoreboardPage />} />
         <Route path="/practice/problem/:problemId" element={<PracticePage />} />
@@ -64,7 +77,8 @@ export function App() {
         <Route path="/teacher/*" element={<TeacherRoutes />} />
 
         <Route path="*" element={<NotFoundPage />} />
-      </Routes>
+        </Routes>
+      </Suspense>
     </>
   );
 }

@@ -24,6 +24,9 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private final UserMapper userMapper;
     private final AdminUserMapper adminUserMapper;
 
+    /**
+     * 构造 WebSocket认证Interceptor 实例并保存其必要依赖或初始状态。从持久化层读取数据；在状态变化后发布异步消息。
+     */
     public WebSocketAuthInterceptor(
         JwtService jwtService,
         UserMapper userMapper,

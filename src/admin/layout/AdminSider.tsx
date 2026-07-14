@@ -1,3 +1,6 @@
+/**
+ * 管理员Sider组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Menu } from '@arco-design/web-react';
 import {
   IconDashboard,
@@ -18,6 +21,9 @@ import { adminPath } from '../../utils/adminPath';
 const MenuItem = Menu.Item;
 const SubMenu = Menu.SubMenu;
 
+/**
+ * 管理员SiderProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface AdminSiderProps {
   userRole: 'SUPER_ADMIN';
 }
@@ -47,6 +53,9 @@ const PATHS = {
   settingsAnnouncements: adminPath('/settings/announcements'),
 };
 
+/**
+ * 渲染管理员Sider组件，并协调其数据加载、状态和交互。
+ */
 export function AdminSider({ userRole }: AdminSiderProps) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -88,10 +97,16 @@ export function AdminSider({ userRole }: AdminSiderProps) {
     }
   }, []);
 
+  /**
+   * 处理MenuClick。可能改变当前路由或查询参数。
+   */
   const handleMenuClick = (key: string) => {
     navigate(key);
   };
 
+  /**
+   * 判断MenuVisible是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const isMenuVisible = (menuKey: string): boolean => {
     if (userRole === 'SUPER_ADMIN') return true;
     return false;

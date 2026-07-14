@@ -19,11 +19,17 @@ public class MaintenanceModeInterceptor implements HandlerInterceptor {
     private final SystemSettingService settingService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 构造 Maintenance模式Interceptor 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public MaintenanceModeInterceptor(SystemSettingService settingService, ObjectMapper objectMapper) {
         this.settingService = settingService;
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 封装preHandle相关逻辑。从持久化层读取数据。
+     */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         // 允许管理员 API 和设置 API 通过

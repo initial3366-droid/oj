@@ -55,6 +55,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 班级Room业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class ClassRoomService {
     private static final int RANDOM_ID_RETRY = 30;
@@ -74,6 +77,9 @@ public class ClassRoomService {
     private final PasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 构造 班级RoomService 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public ClassRoomService(
         ClassRoomMapper classRoomMapper,
         ClassMemberMapper classMemberMapper,
@@ -110,17 +116,26 @@ public class ClassRoomService {
     }
 
     public ClassRoomVO adminDetail(long classId) {
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(requireClass(classId), true);
     }
 
     @Transactional
     public ClassRoomVO adminCreate(ClassRoomCreateRequest request) {
         if (request.teacherId() == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "请选择教师");
         }
         User teacher = requireTeacher(request.teacherId());
         ClassRoom classRoom = newClassRoom(request, teacher.id);
         classRoomMapper.insert(classRoom);
+        /**
+         * 构造或转换VO。从持久化层读取数据。
+         */
         return toVO(classRoomMapper.selectById(classRoom.id), true);
     }
 
@@ -129,6 +144,9 @@ public class ClassRoomService {
         ClassRoom classRoom = requireClass(classId);
         applyClassUpdate(classRoom, request, true);
         classRoomMapper.updateById(classRoom);
+        /**
+         * 构造或转换VO。从持久化层读取数据。
+         */
         return toVO(classRoomMapper.selectById(classRoom.id), true);
     }
 
@@ -174,6 +192,9 @@ public class ClassRoomService {
         user.role = UserRole.TEACHER.name();
         userMapper.insert(user);
         ensureScore(user.id);
+        /**
+         * 构造或转换教师VO。从持久化层读取数据。
+         */
         return toTeacherVO(userMapper.selectById(user.id));
     }
 
@@ -199,6 +220,9 @@ public class ClassRoomService {
             user.email = blankToNull(request.email());
         }
         userMapper.updateById(user);
+        /**
+         * 构造或转换教师VO。从持久化层读取数据。
+         */
         return toTeacherVO(userMapper.selectById(user.id));
     }
 
@@ -207,6 +231,9 @@ public class ClassRoomService {
         User user = requireTeacher(teacherId);
         Long classCount = classRoomMapper.selectCount(new QueryWrapper<ClassRoom>().eq("teacher_id", user.id));
         if (classCount != null && classCount > 0) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "该教师仍有关联班级，请先转移或删除班级");
         }
         userScoreMapper.deleteById(user.id);
@@ -223,6 +250,9 @@ public class ClassRoomService {
     }
 
     public ClassRoomVO teacherClassDetail(long classId) {
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(requireManagedClass(classId), true);
     }
 
@@ -231,6 +261,9 @@ public class ClassRoomService {
         AuthUser teacher = requireTeacherAccount();
         ClassRoom classRoom = newClassRoom(request, teacher.id());
         classRoomMapper.insert(classRoom);
+        /**
+         * 构造或转换VO。从持久化层读取数据。
+         */
         return toVO(classRoomMapper.selectById(classRoom.id), true);
     }
 
@@ -239,6 +272,9 @@ public class ClassRoomService {
         ClassRoom classRoom = requireManagedClass(classId);
         applyClassUpdate(classRoom, request, false);
         classRoomMapper.updateById(classRoom);
+        /**
+         * 构造或转换VO。从持久化层读取数据。
+         */
         return toVO(classRoomMapper.selectById(classRoom.id), true);
     }
 
@@ -247,6 +283,9 @@ public class ClassRoomService {
         AuthUser teacher = requireTeacherAccount();
         User currentUser = userMapper.selectById(teacher.id());
         if (currentUser == null || !passwordEncoder.matches(password, currentUser.passwordHash)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "密码错误");
         }
         requireManagedClass(classId);
@@ -276,6 +315,9 @@ public class ClassRoomService {
     public UserVO teacherStudentDetail(long userId) {
         List<Long> classIds = managedClassIds();
         if (classIds.isEmpty()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无班级管理权限");
         }
         ClassMember member = classMemberMapper.selectOne(
@@ -285,13 +327,22 @@ public class ClassRoomService {
                 .last("LIMIT 1")
         );
         if (member == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "只能查看自己班级的学生");
         }
         User user = userMapper.selectById(userId);
         if (user == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "用户不存在");
         }
         ClassRoom classRoom = member.classId == null ? null : classRoomMapper.selectById(member.classId);
+        /**
+         * 封装rVO相关逻辑。执行持久化写入。
+         */
         return new UserVO(
             user.id,
             user.username,
@@ -339,18 +390,30 @@ public class ClassRoomService {
                 errors.add(new StudentImportResultVO.RowError(rowNumber, studentNo, "导入失败"));
             }
         }
+        /**
+         * 封装StudentImport结果VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new StudentImportResultVO(success, errors.size(), successes, errors);
     }
 
     private void validateImportFields(StudentImportRequest request) {
         if (request.rows() == null || request.rows().isEmpty()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "导入文件没有学生数据");
         }
         Map<String, String> firstRow = request.rows().get(0);
         if (firstRow == null || !firstRow.containsKey(request.studentNoField())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "导入文件缺少学号字段：" + request.studentNoField());
         }
         if (!firstRow.containsKey(request.nameField())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "导入文件缺少姓名字段：" + request.nameField());
         }
     }
@@ -375,17 +438,29 @@ public class ClassRoomService {
     public ClassJoinApplicationVO apply(long classId, ClassJoinApplicationRequest request) {
         AuthUser authUser = CurrentUser.required();
         if (authUser.adminAccount() || UserRole.TEACHER.name().equals(authUser.role())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "该入口仅学生可申请加入班级");
         }
         ClassRoom classRoom = requireClass(classId);
         if (Boolean.FALSE.equals(classRoom.joinEnabled)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "该班级暂不允许加入");
         }
         User user = requireActiveUser(authUser.id());
         if (user.classId != null && !Objects.equals(user.classId, classRoom.id)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "你已加入其他班级");
         }
         if (isMember(classRoom.id, user.id)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "你已加入该班级");
         }
         Long pending = applicationMapper.selectCount(
@@ -395,6 +470,9 @@ public class ClassRoomService {
                 .eq("status", "PENDING")
         );
         if (pending != null && pending > 0) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "已有待处理申请");
         }
 
@@ -408,6 +486,9 @@ public class ClassRoomService {
             upsertMember(classRoom.id, user, "APPLICATION", null, null);
         }
         applicationMapper.insert(application);
+        /**
+         * 构造或转换ApplicationVO。从持久化层读取数据。
+         */
         return toApplicationVO(applicationMapper.selectById(application.id));
     }
 
@@ -416,10 +497,16 @@ public class ClassRoomService {
         ClassJoinApplication application = requireApplication(applicationId);
         ClassRoom classRoom = requireManagedClass(application.classId);
         if (!"PENDING".equals(application.status)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "申请已处理");
         }
         User user = requireActiveUser(application.userId);
         if (user.classId != null && !Objects.equals(user.classId, classRoom.id)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "该学生已加入其他班级");
         }
         upsertMember(classRoom.id, user, "APPLICATION", null, null);
@@ -427,6 +514,9 @@ public class ClassRoomService {
         application.handledAt = LocalDateTime.now();
         application.handledBy = CurrentUser.required().id();
         applicationMapper.updateById(application);
+        /**
+         * 构造或转换ApplicationVO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toApplicationVO(application);
     }
 
@@ -435,12 +525,18 @@ public class ClassRoomService {
         ClassJoinApplication application = requireApplication(applicationId);
         requireManagedClass(application.classId);
         if (!"PENDING".equals(application.status)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "申请已处理");
         }
         application.status = "REJECTED";
         application.handledAt = LocalDateTime.now();
         application.handledBy = CurrentUser.required().id();
         applicationMapper.updateById(application);
+        /**
+         * 构造或转换ApplicationVO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toApplicationVO(application);
     }
 
@@ -448,6 +544,9 @@ public class ClassRoomService {
     public ClassRoomVO removeMember(long classId, long userId) {
         ClassRoom classRoom = requireManagedClass(classId);
         if (classRoom.teacherId != null && classRoom.teacherId.equals(userId)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "不能移除班级教师");
         }
         classMemberMapper.delete(new QueryWrapper<ClassMember>().eq("class_id", classId).eq("user_id", userId));
@@ -456,6 +555,9 @@ public class ClassRoomService {
             user.classId = null;
             userMapper.updateById(user);
         }
+        /**
+         * 构造或转换VO。从持久化层读取数据。
+         */
         return toVO(classRoomMapper.selectById(classId), true);
     }
 
@@ -479,6 +581,9 @@ public class ClassRoomService {
 
         ClassMember member = classMemberMapper.selectOne(
             new QueryWrapper<ClassMember>().eq("class_id", user.classId).eq("user_id", userId));
+        /**
+         * 构造或转换MemberVO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toMemberVO(member);
     }
 
@@ -486,9 +591,15 @@ public class ClassRoomService {
     public User requireManagedStudent(long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "用户不存在");
         }
         if (user.classId == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "该学生不属于任何班级");
         }
         requireManagedClass(user.classId);
@@ -508,6 +619,9 @@ public class ClassRoomService {
             user = userMapper.selectOne(new QueryWrapper<User>().eq("username", studentNo));
         }
         if (user != null && user.classId != null && !Objects.equals(user.classId, classRoom.id)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "学生已属于其他班级");
         }
         if (user == null) {
@@ -524,6 +638,9 @@ public class ClassRoomService {
             ensureScore(user.id);
         } else {
             if (!UserRole.STUDENT.name().equals(user.role) && !UserRole.GUEST.name().equals(user.role)) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "该账号不是学生账号");
             }
             user.displayName = displayName;
@@ -631,6 +748,9 @@ public class ClassRoomService {
     private ClassRoom requireClass(Long classId) {
         ClassRoom classRoom = classRoomMapper.selectById(classId);
         if (classRoom == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "班级不存在");
         }
         return classRoom;
@@ -643,6 +763,9 @@ public class ClassRoomService {
             return classRoom;
         }
         if (authUser.adminAccount() || !UserRole.TEACHER.name().equals(authUser.role()) || !Objects.equals(classRoom.teacherId, authUser.id())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无班级管理权限");
         }
         return classRoom;
@@ -651,6 +774,9 @@ public class ClassRoomService {
     private AuthUser requireTeacherAccount() {
         AuthUser authUser = CurrentUser.required();
         if (authUser.adminAccount() || !UserRole.TEACHER.name().equals(authUser.role())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "仅教师可访问");
         }
         return authUser;
@@ -668,6 +794,9 @@ public class ClassRoomService {
     private ClassJoinApplication requireApplication(Long applicationId) {
         ClassJoinApplication application = applicationMapper.selectById(applicationId);
         if (application == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "入班申请不存在");
         }
         return application;
@@ -676,6 +805,9 @@ public class ClassRoomService {
     private User requireTeacher(Long userId) {
         User user = userMapper.selectById(userId);
         if (user == null || !UserRole.TEACHER.name().equals(user.role)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "教师不存在");
         }
         return user;
@@ -684,6 +816,9 @@ public class ClassRoomService {
     private User requireActiveUser(Long userId) {
         User user = userMapper.selectById(userId);
         if (user == null || !UserRole.isActiveFrontendRole(user.role)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "用户不存在");
         }
         return user;
@@ -702,6 +837,9 @@ public class ClassRoomService {
                 return id;
             }
         }
+        /**
+         * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+         */
         throw new BizException(ErrorCode.INTERNAL_ERROR.getCode(), "班级 ID 生成失败");
     }
 
@@ -717,6 +855,9 @@ public class ClassRoomService {
         boolean existsInAdmins = ("username".equals(column) || "email".equals(column))
             && adminUserMapper.selectCount(new QueryWrapper<AdminUser>().eq(column, value.trim())) > 0;
         if (existsInUsers || existsInAdmins) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), message);
         }
     }
@@ -737,6 +878,9 @@ public class ClassRoomService {
 
     private TeacherVO toTeacherVO(User user) {
         Long classCount = classRoomMapper.selectCount(new QueryWrapper<ClassRoom>().eq("teacher_id", user.id));
+        /**
+         * 封装教师VO相关逻辑。执行持久化写入。
+         */
         return new TeacherVO(
             user.id,
             user.username,
@@ -759,6 +903,9 @@ public class ClassRoomService {
                 .map(this::toMemberVO)
                 .toList()
             : List.of();
+        /**
+         * 封装班级RoomVO相关逻辑。执行持久化写入。
+         */
         return new ClassRoomVO(
             classRoom.id,
             classRoom.name,
@@ -777,6 +924,9 @@ public class ClassRoomService {
     private ClassRoomMemberVO toMemberVO(ClassMember member) {
         User user = userMapper.selectById(member.userId);
         ClassRoom classRoom = member.classId == null ? null : classRoomMapper.selectById(member.classId);
+        /**
+         * 封装班级RoomMemberVO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new ClassRoomMemberVO(
             member.classId,
             classRoom == null ? null : classRoom.name,
@@ -833,6 +983,9 @@ public class ClassRoomService {
         try {
             return objectMapper.writeValueAsString(profile);
         } catch (Exception ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "自定义字段格式错误");
         }
     }
@@ -891,6 +1044,9 @@ public class ClassRoomService {
             return null;
         }
         String value = row.get(field);
+        /**
+         * 封装cleanText相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return cleanText(value);
     }
 

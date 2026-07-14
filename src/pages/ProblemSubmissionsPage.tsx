@@ -1,3 +1,6 @@
+/**
+ * 题目Submissions页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Button, Card, Table, Tag, Typography, Banner, Modal } from '@douyinfe/semi-ui';
 import { IconChevronLeft } from '@douyinfe/semi-icons';
 import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -13,6 +16,9 @@ import type { Problem } from '../data/types';
 import { PageContainer, CodeViewer } from '../components/common';
 import { decryptIdFromUrl } from '../utils/cipher';
 
+/**
+ * 封装backend题目标识相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function backendProblemId(problemId: string | undefined): number | null {
   if (!problemId) return null;
   const prefix = problemId.startsWith("cp") ? "cp" : problemId.startsWith("p") ? "p" : "";
@@ -21,6 +27,9 @@ function backendProblemId(problemId: string | undefined): number | null {
   return decryptIdFromUrl(encoded);
 }
 
+/**
+ * 封装练习题目Path相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function practiceProblemPath(problemId: string | undefined, contestId: number | null) {
   if (!problemId) return '/problems';
   return `/practice/problem/${problemId}${contestId ? `?contestId=${contestId}` : ''}`;
@@ -52,6 +61,9 @@ const statusLabels: Record<string, string> = {
   FAILED: '测评失败',
 };
 
+/**
+ * 读取状态Color并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function getStatusColor(status: string): 'green' | 'grey' | 'red' | 'blue' {
   const normalized = status.toUpperCase();
   if (normalized === 'AC' || normalized === 'ACCEPTED') return 'green';
@@ -62,6 +74,9 @@ function getStatusColor(status: string): 'green' | 'grey' | 'red' | 'blue' {
   return 'red';
 }
 
+/**
+ * 格式化Time。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatTime(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
@@ -71,13 +86,22 @@ function formatTime(value?: string | null) {
   return date.toLocaleString('zh-CN', { hour12: false });
 }
 
+/**
+ * 封装提交Time相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function submissionTime(record: SubmissionRecord) {
   return record.submitTime || record.createdAt;
 }
 
+/**
+ * 渲染题目Submissions页面，并协调其数据加载、状态和交互。
+ */
 export function ProblemSubmissionsPage() {
   const { problemId } = useParams();
   const [searchParams] = useSearchParams();
+  /**
+   * 封装numeric题目标识相关逻辑。对原始数据进行派生或聚合。
+   */
   const numericProblemId = useMemo(() => backendProblemId(problemId), [problemId]);
   const contestId = Number(searchParams.get('contestId') ?? 0) || null;
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -115,12 +139,18 @@ export function ProblemSubmissionsPage() {
     };
   }, [numericProblemId, contestId]);
 
+  /**
+   * 封装测试点CountText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const caseCountText = (submission: SubmissionRecord) => {
     const passed = submission.passedCaseCount ?? 0;
     const total = submission.totalCaseCount ?? 0;
     return total > 0 ? `${passed} / ${total}` : String(passed);
   };
 
+  /**
+   * 封装open编码相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const openCode = async (submission: SubmissionRecord) => {
     if (!hasAccessToken) {
       setMessage('请先登录后查看提交代码');

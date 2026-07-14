@@ -1,0 +1,1 @@
+function r(e){const t=new Date(e);return Number.isNaN(t.getTime())?e:new Intl.DateTimeFormat("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}).format(t)}function i(e){switch(e){case"入门":case"简单":return"green";case"中等":return"orange";case"困难":return"red";default:return"grey"}}export{i as d,r as f};

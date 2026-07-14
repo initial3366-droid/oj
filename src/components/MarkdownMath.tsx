@@ -1,17 +1,29 @@
+/**
+ * MarkdownMath组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import katex from "katex";
 import type { ReactNode } from "react";
 
+/**
+ * MarkdownMathProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface MarkdownMathProps {
   value?: string;
   className?: string;
   convertInlineCodeToMath?: boolean;
 }
 
+/**
+ * Block类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type Block =
   | { type: "code"; content: string; language: string }
   | { type: "math"; content: string }
   | { type: "text"; lines: string[] };
 
+/**
+ * 渲染Latex。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function renderLatex(content: string, displayMode: boolean) {
   const html = katex.renderToString(normalizeLatexContent(content), {
     displayMode,
@@ -26,6 +38,9 @@ function renderLatex(content: string, displayMode: boolean) {
   );
 }
 
+/**
+ * 解析并规范化LatexContent。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeLatexContent(content: string) {
   return content
     .replace(/\\abs\s*\{([^{}]+)\}/g, "\\left|$1\\right|")
@@ -81,6 +96,9 @@ const OPERATOR_FUNCTION_NAMES = new Set(["deg", "lcm", "lg", "pow"]);
 
 const CODE_KEYWORDS = /\b(?:int|long|short|float|double|char|bool|string|void|return|main|namespace|using|class|struct|template|include|for|while|if|else|switch|case|break|continue|const|auto|public|private|protected|static|new|delete|cin|cout|printf|scanf|vector|map|set|unordered_map|unordered_set|pair|size_t|nullptr|std::)\b/;
 
+/**
+ * 解析并规范化Inline编码Math。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeInlineCodeMath(content: string): string | null {
   const trimmed = content.trim();
   if (!trimmed || trimmed.length > 80 || trimmed.includes("\n")) {
@@ -144,6 +162,9 @@ const AUTO_MATH_TEXT_PATTERN =
 const MATH_CONTEXT_WORDS =
   /[变量公式约束复杂度范围区间整数正数负数倍数小于大于等于不等于至少至多取令设为和或满足选择不同相同当前当时其中共有]/;
 
+/**
+ * 判断shouldConvertPlainMath是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function shouldConvertPlainMath(text: string, start: number, end: number, candidate: string) {
   const trimmed = candidate.trim();
   if (!trimmed || CODE_KEYWORDS.test(trimmed)) {
@@ -162,6 +183,9 @@ function shouldConvertPlainMath(text: string, start: number, end: number, candid
   return true;
 }
 
+/**
+ * 渲染PlainTextWithMath。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function renderPlainTextWithMath(text: string, keyPrefix: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
@@ -201,12 +225,18 @@ function renderPlainTextWithMath(text: string, keyPrefix: string): ReactNode[] {
   return nodes.length ? nodes : [text];
 }
 
+/**
+ * 封装splitBlocks相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function splitBlocks(value: string): Block[] {
   const lines = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
   const blocks: Block[] = [];
   let textLines: string[] = [];
   let index = 0;
 
+  /**
+   * 封装flushText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const flushText = () => {
     if (textLines.length) {
       blocks.push({ type: "text", lines: textLines });
@@ -280,11 +310,17 @@ function splitBlocks(value: string): Block[] {
   return blocks;
 }
 
+/**
+ * 渲染Inline。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function renderInline(text: string, keyPrefix: string, convertInlineCodeToMath = false): ReactNode[] {
   const nodes: ReactNode[] = [];
   let index = 0;
   let textBuffer = "";
 
+  /**
+   * 封装flushText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const flushText = () => {
     if (textBuffer) {
       if (convertInlineCodeToMath) {
@@ -381,6 +417,9 @@ function renderInline(text: string, keyPrefix: string, convertInlineCodeToMath =
   return nodes;
 }
 
+/**
+ * 封装paragraphGroups相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function paragraphGroups(lines: string[]) {
   const groups: string[][] = [];
   let current: string[] = [];
@@ -400,6 +439,9 @@ function paragraphGroups(lines: string[]) {
   return groups;
 }
 
+/**
+ * 渲染TextBlock。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function renderTextBlock(lines: string[], keyPrefix: string, convertInlineCodeToMath = false) {
   return paragraphGroups(lines).map((group, groupIndex) => {
     const first = group[0].trim();
@@ -469,6 +511,9 @@ function renderTextBlock(lines: string[], keyPrefix: string, convertInlineCodeTo
   });
 }
 
+/**
+ * 渲染MarkdownMath组件，并协调其数据加载、状态和交互。
+ */
 export function MarkdownMath({ value = "", className, convertInlineCodeToMath = false }: MarkdownMathProps) {
   const blocks = splitBlocks(value);
 

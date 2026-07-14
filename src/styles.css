@@ -1,266 +1,39 @@
-@import "tailwindcss";
-@import "katex/dist/katex.min.css";
-
-@theme {
-  --font-sans: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
-  --color-primary: #2563eb;
-  --color-secondary: #0ea5e9;
-  --color-success: #10b981;
-}
-
-:root {
-  color-scheme: light;
-  background: #f8fafc;
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-}
-
+/* 全局样式 */
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  min-width: 320px;
-  margin: 0;
-  background:
-    linear-gradient(180deg, rgba(37, 99, 235, 0.05), rgba(248, 250, 252, 0) 280px),
-    #f8fafc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--semi-color-bg-1);
+  color: var(--semi-color-text-0);
 }
 
-button,
-a {
-  -webkit-tap-highlight-color: transparent;
+#root {
+  min-height: 100vh;
 }
 
-pre {
-  white-space: pre-wrap;
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+::-webkit-scrollbar-track {
+  background: var(--semi-color-fill-0);
 }
 
-.layui-elem-field {
-  margin: 0;
-  border: 1px solid #e5e7eb;
+::-webkit-scrollbar-thumb {
+  background: var(--semi-color-fill-2);
   border-radius: 4px;
-  padding: 16px 18px 18px;
 }
 
-.layui-elem-field legend {
-  margin-left: 14px;
-  padding: 0 8px;
-  color: #334155;
-  font-weight: 700;
-}
-
-.markdown-math {
-  color: inherit;
-}
-
-.markdown-math > * + * {
-  margin-top: 0.85rem;
-}
-
-.markdown-math h1,
-.markdown-math h2,
-.markdown-math h3,
-.markdown-math h4 {
-  color: #1e293b;
-  font-weight: 700;
-  line-height: 1.45;
-}
-
-.markdown-math h1 {
-  font-size: 1.35rem;
-}
-
-.markdown-math h2 {
-  font-size: 1.2rem;
-}
-
-.markdown-math h3,
-.markdown-math h4 {
-  font-size: 1.05rem;
-}
-
-.markdown-math p {
-  white-space: pre-wrap;
-}
-
-.markdown-math ul,
-.markdown-math ol {
-  padding-left: 1.4rem;
-}
-
-.markdown-math ul {
-  list-style: disc;
-}
-
-.markdown-math ol {
-  list-style: decimal;
-}
-
-.markdown-math blockquote {
-  border-left: 4px solid #10b981;
-  background: #f8fafc;
-  padding: 0.75rem 1rem;
-  color: #475569;
-}
-
-.markdown-math code {
-  border-radius: 4px;
-  background: #e2e8f0;
-  padding: 0.1rem 0.35rem;
-  font-family: var(--font-mono);
-  font-size: 0.92em;
-}
-
-.markdown-math__code {
-  position: relative;
-  overflow-x: auto;
-  border: 1px solid #1f2937;
-  border-radius: 6px;
-  background: #111827;
-  padding: 1rem;
-  color: #e5e7eb;
-}
-
-.markdown-math pre {
-  overflow-x: auto;
-  border: 1px solid #1f2937;
-  border-radius: 6px;
-  background: #111827;
-  padding: 1rem;
-  color: #e5e7eb;
-}
-
-.markdown-math table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 0.5rem 0;
-}
-
-.markdown-math th,
-.markdown-math td {
-  border: 1px solid #e2e8f0;
-  padding: 8px 12px;
-  text-align: left;
-}
-
-.markdown-math th {
-  background: #f8fafc;
-  font-weight: 600;
-}
-
-.agent-markdown {
-  font-size: 0.94rem;
-  line-height: 1.7;
-}
-
-.agent-markdown > * + * {
-  margin-top: 0.6rem;
-}
-
-.markdown-math.agent-markdown {
-  color: #e5e7eb;
-}
-
-.markdown-math.agent-markdown > * + * {
-  margin-top: 0.6rem;
-}
-
-.markdown-math.agent-markdown h1,
-.markdown-math.agent-markdown h2,
-.markdown-math.agent-markdown h3,
-.markdown-math.agent-markdown h4 {
-  color: #f8fafc;
-}
-
-.markdown-math.agent-markdown p {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.markdown-math.agent-markdown ul,
-.markdown-math.agent-markdown ol {
-  padding-left: 1.25rem;
-}
-
-.markdown-math.agent-markdown blockquote {
-  border-left-color: #60a5fa;
-  background: rgba(255, 255, 255, 0.05);
-  color: #cbd5e1;
-}
-
-.markdown-math.agent-markdown code {
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(15, 23, 42, 0.92);
-  color: #e2e8f0;
-}
-
-.markdown-math.agent-markdown .katex {
-  color: inherit;
-}
-
-.markdown-math.agent-markdown .katex-display {
-  margin: 0.35rem 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-.markdown-math.agent-markdown pre,
-.markdown-math.agent-markdown .markdown-math__code {
-  border-color: #334155;
-  background: #0f172a;
-  color: #e2e8f0;
-}
-
-.markdown-math.agent-markdown table th,
-.markdown-math.agent-markdown table td {
-  border-color: #334155;
-}
-
-.markdown-math.agent-markdown table th {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-/* ===== Form alignment & required-symbol cleanup (applies to all panels) ===== */
-
-/* Hide all required asterisks across user / admin / teacher forms */
-.arco-form-item-required-symbol {
-  display: none !important;
-}
-
-/* Normalize label alignment so label text and inputs line up horizontally.
-   - Horizontal forms: right-align labels to sit flush against the input column.
-   - Vertical forms: keep labels left-aligned above inputs. */
-.arco-form-item-label {
-  display: flex;
-  align-items: center;
-}
-
-.arco-form-layout-horizontal .arco-form-item-label > label {
-  justify-content: flex-end;
-  text-align: right;
-}
-
-.arco-form-layout-vertical .arco-form-item-label > label {
-  justify-content: flex-start;
-  text-align: left;
-}
-
-/* Ensure the control wrapper aligns to the same baseline as the label */
-.arco-form-item-wrapper-col {
-  display: flex;
-  align-items: center;
-}
-
-/* Keep label and control on the same row for horizontal layouts */
-.arco-form-layout-horizontal .arco-form-item-content {
-  display: flex;
-  align-items: center;
+::-webkit-scrollbar-thumb:hover {
+  background: var(--semi-color-text-3);
 }

@@ -1,3 +1,6 @@
+/**
+ * 管理员资料页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useEffect, useState } from 'react';
 import { Button, Card, Form, Input, Message, Space, Typography } from '@arco-design/web-react';
 import { IconSave, IconUser } from '@arco-design/web-react/icon';
@@ -6,6 +9,9 @@ import { AdminPageContainer } from '../../layout/AdminPageContainer';
 
 const FormItem = Form.Item;
 
+/**
+ * 用户资料接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface UserProfile {
   id: number;
   username: string;
@@ -21,6 +27,9 @@ const roleNames: Record<string, string> = {
   GUEST: '访客',
 };
 
+/**
+ * 渲染管理员资料页面，并协调其数据加载、状态和交互。
+ */
 export function AdminProfilePage() {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
@@ -31,6 +40,9 @@ export function AdminProfilePage() {
     loadProfile();
   }, []);
 
+  /**
+   * 读取资料并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadProfile() {
     setLoading(true);
     try {
@@ -47,6 +59,9 @@ export function AdminProfilePage() {
     }
   }
 
+  /**
+   * 处理Save。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function handleSave() {
     try {
       const values = await form.validate();

@@ -31,6 +31,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+/**
+ * 管理员仪表盘业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class AdminDashboardService {
     private final UserMapper userMapper;
@@ -40,6 +43,9 @@ public class AdminDashboardService {
     private final JdbcTemplate jdbcTemplate;
     private final StringRedisTemplate redisTemplate;
 
+    /**
+     * 构造 管理员仪表盘Service 实例并保存其必要依赖或初始状态。从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
+     */
     public AdminDashboardService(
         UserMapper userMapper,
         SubmissionMapper submissionMapper,
@@ -221,6 +227,9 @@ public class AdminDashboardService {
                     else if (now.isAfter(contest.endTime)) status = "ENDED";
                     else status = "RUNNING";
                 }
+                /**
+                 * 封装管理员仪表盘比赛VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                 */
                 return new AdminDashboardContestVO(
                     contest.id, contest.title, contest.startTime, contest.endTime,
                     contest.type, contest.audience, status
@@ -253,6 +262,9 @@ public class AdminDashboardService {
             "SELECT id FROM classes WHERE teacher_id = ?", Long.class, teacherId);
 
         if (classIds.isEmpty()) {
+            /**
+             * 封装empty教师仪表盘相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return emptyTeacherDashboard();
         }
 
@@ -415,11 +427,17 @@ public class AdminDashboardService {
                 else if (now.isAfter(contest.endTime)) status = "ENDED";
                 else status = "RUNNING";
             }
+            /**
+             * 封装管理员仪表盘比赛VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return new AdminDashboardContestVO(
                 contest.id, contest.title, contest.startTime, contest.endTime,
                 contest.type, contest.audience, status);
         }).toList();
 
+        /**
+         * 封装管理员仪表盘VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new AdminDashboardVO(
             0, studentCount, problemCount, submissionCount,
             todaySubmissions, todayAccepted, todayActiveUsers, activeContestCount,
@@ -438,6 +456,9 @@ public class AdminDashboardService {
             emptyTrend.add(new DashboardChartsVO.DailySubmission(weekAgo.plusDays(i).toLocalDate().format(fmt), 0, 0));
         }
 
+        /**
+         * 封装管理员仪表盘VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new AdminDashboardVO(0, 0, 0, 0, 0, 0, 0, 0,
             List.of(),
             new DashboardChartsVO.TotalStats(0, Map.of(), 0, Map.of(), 0, 0, 0, Map.of()),

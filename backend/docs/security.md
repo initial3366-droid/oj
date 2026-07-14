@@ -7,7 +7,7 @@
 ## 目录
 
 1. [为什么不能裸跑用户代码](#1-为什么不能裸跑用户代码)
-2. [Docker Judge 的限制](#2-docker-judge-的限制)
+2. [go-judge 隔离边界](#2-go-judge-隔离边界)
 3. [JWT 安全](#3-jwt-安全)
 4. [权限模型](#4-权限模型)
 5. [私有题目防泄露](#5-私有题目防泄露)
@@ -40,62 +40,28 @@
 
 ### 1.3 QOJ 的处理策略
 
-QOJ 中存在 `LocalJudgeService`，它在主服务器直接执行用户代码，**仅用于本地开发测试**：
-
-```java
-@Service
-@ConditionalOnProperty(name = "qoj.judge.enable-unsafe-local-judge", havingValue = "true")
-@Deprecated(since = "0.2.0", forRemoval = true)
-public class LocalJudgeService {
-    // ⚠️ 严重安全警告：在主服务器直接执行用户代码，无任何沙箱隔离
-}
-```
-
-**安全保障**:
-- ✅ 默认禁用（`@ConditionalOnProperty` 要求显式配置 `enable-unsafe-local-judge=true`）
-- ✅ 标记 `@Deprecated(forRemoval = true)`，明确不应在生产使用
-- ✅ 类注释包含醒目的安全警告
-
-**生产环境必须使用**:
-- **DOMjudge 远程判题**（推荐）
-- **Docker 隔离判题**
+QOJ 已删除所有宿主机执行和旧 Docker 执行器。普通提交只能由后端调用 go-judge，比赛提交只能由 CCPCOJ worker 领取；任一服务不可用时均失败关闭，不会回退到宿主机执行。
 
 ---
 
-## 2. Docker Judge 的限制
+## 2. go-judge 隔离边界
 
-生产环境必须将用户代码放入隔离的沙箱中执行。QOJ 推荐使用 DOMjudge（其底层基于 Linux cgroup + chroot/容器隔离），或自建 Docker 判题 Worker。
+go-judge 使用 Linux cgroup、namespace、临时文件系统和进程限制执行不可信代码。运行与缓存端点带 Bearer Token，只允许 Spring 后端通过回环或私网访问；上游公开的 `/version` 端点不能替代鉴权探针。
 
 ### 2.1 隔离原则
 
 判题容器必须遵循"最小权限 + 完全隔离"原则：
 
 ```yaml
-judge-worker:
-  image: qoj/judge-worker
-  # 1. 网络隔离：禁止任何网络访问
-  network_mode: none
-
-  # 2. 只读根文件系统
-  read_only: true
-
-  # 3. 删除所有 Linux capabilities
-  cap_drop:
-    - ALL
-
-  # 4. 禁止提权
-  security_opt:
-    - no-new-privileges:true
-
-  # 5. 资源限制
-  mem_limit: 256m          # 内存上限
-  memswap_limit: 256m      # 禁止使用 swap
-  cpus: 1.0                # CPU 限制
-  pids_limit: 64           # 防止 fork 炸弹
-
-  # 6. 临时可写目录（执行结束即销毁）
-  tmpfs:
-    - /workspace:size=64m,mode=1777
+go-judge:
+  ports:
+    - "127.0.0.1:15050:5050"
+  command:
+    - "-auth-token=${GO_JUDGE_AUTH_TOKEN}"
+    - "-no-fallback"
+    - "-parallelism=2"
+    - "-output-limit=4m"
+    - "-copy-out-limit=4m"
 ```
 
 ### 2.2 必须强制的限制项
@@ -112,15 +78,16 @@ judge-worker:
 | **系统调用** | seccomp 白名单 | 危险 syscall（如 `ptrace`、`mount`） |
 | **运行用户** | 非 root 低权限用户（如 `nobody`） | 提权 |
 
-### 2.3 一次性容器
+### 2.3 请求和命令约束
 
-- 每次判题使用**全新容器**或**全新临时目录**，判题结束立即销毁
-- 防止上一次提交的残留文件影响下一次判题
-- 防止用户代码在容器间留下持久化痕迹
+- 后端只允许 C、C++17、Java 17 和 Python 3。
+- 可执行路径、参数、环境变量和文件名固定，用户输入只进入源码内容或标准输入。
+- 每个测试点单独请求，避免 go-judge 多命令并发组放大 CPU/内存占用。
+- 编译产物使用短期缓存并在成功或异常后删除。
 
-### 2.4 Docker 并非绝对安全
+### 2.4 容器并非绝对安全
 
-Docker 共享宿主机内核，存在内核漏洞逃逸的可能。更高安全要求场景应考虑：
+go-judge 容器共享宿主机内核且需要较高权限，存在内核漏洞逃逸风险。生产环境必须使用独立评测主机或 VM；更高安全要求场景应考虑：
 - **gVisor**（用户态内核，syscall 拦截）
 - **Kata Containers / Firecracker**（轻量级虚拟机隔离）
 - 物理隔离的独立判题机
@@ -427,9 +394,9 @@ private boolean canRejudge(AuthUser user, Submission submission) {
 部署前请确认：
 
 - [ ] `JWT_SECRET` 为至少 64 字节的随机值
-- [ ] `qoj.judge.enable-unsafe-local-judge` 未启用（生产环境）
-- [ ] 判题使用 DOMjudge 或隔离的 Docker Worker
-- [ ] 判题容器配置了网络隔离、资源限制、只读文件系统
+- [ ] go-judge 使用至少 32 位随机 Token，并且只绑定回环或私网
+- [ ] go-judge/CCPCOJ 位于独立评测主机，不保存业务系统凭据
+- [ ] 判题容器启用 cgroup、进程、输出、CPU、墙钟和内存限制
 - [ ] 生产环境启用 HTTPS
 - [ ] CORS `allowedOrigins` 配置为可信域名，非通配符
 - [ ] 数据库、Redis 配置了强密码且不对公网开放
@@ -438,4 +405,4 @@ private boolean canRejudge(AuthUser user, Submission submission) {
 ---
 
 **文档版本**: 1.0
-**最后更新**: 2026-06-13
+**最后更新**: 2026-07-13

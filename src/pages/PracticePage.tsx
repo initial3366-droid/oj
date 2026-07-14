@@ -1,4 +1,8 @@
+/**
+ * 练习页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import Editor, { type OnMount } from "@monaco-editor/react";
+import "../utils/monacoSetup";
 import { Alert, Button, ConfigProvider, Input, Select, theme as antTheme } from "antd";
 import { Tag } from "@douyinfe/semi-ui";
 import { IconBulb, IconClose, IconCode, IconFile, IconMinus, IconPlus, IconSend } from "@douyinfe/semi-icons";
@@ -13,8 +17,14 @@ import type { Problem } from "../data/types";
 import { wsClient } from "../utils/websocket";
 import { decryptIdFromUrl } from "../utils/cipher";
 
+/**
+ * 练习Language类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type PracticeLanguage = "C" | "C++" | "Python" | "Java";
 
+/**
+ * DebugAlert类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type DebugAlert = {
   type: "success" | "danger" | "neutral" | "info";
   title: string;
@@ -22,6 +32,9 @@ type DebugAlert = {
   source?: "debug" | "submit";
 };
 
+/**
+ * EditorMarker类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type EditorMarker = {
   message: string;
   severity: number;
@@ -31,11 +44,17 @@ type EditorMarker = {
   endColumn: number;
 };
 
+/**
+ * 提交结果类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type SubmissionResult = Partial<Pick<
   SubmissionRecord,
   "id" | "language" | "status" | "timeUsed" | "memoryUsed" | "passedCaseCount" | "totalCaseCount" | "cases"
 >>;
 
+/**
+ * Agent消息类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type AgentMessage = {
   id: string;
   role: "user" | "assistant";
@@ -88,6 +107,9 @@ public class Main {
 }`,
 };
 
+/**
+ * 封装backend题目标识相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function backendProblemId(problemId: string): number | null {
   const prefix = problemId.startsWith("cp") ? "cp" : problemId.startsWith("p") ? "p" : "";
   const encoded = problemId.slice(prefix.length);
@@ -95,6 +117,9 @@ function backendProblemId(problemId: string): number | null {
   return decryptIdFromUrl(encoded);
 }
 
+/**
+ * 封装current编码OwnerKey相关逻辑。会读写浏览器本地会话信息。
+ */
 function currentCodeOwnerKey() {
   const token = window.localStorage.getItem("qoj.accessToken");
   if (!token) {
@@ -111,14 +136,23 @@ function currentCodeOwnerKey() {
   }
 }
 
+/**
+ * 封装编码StorageKey相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function codeStorageKey(problemId: string, language: PracticeLanguage) {
   return `qoj.code.user.${currentCodeOwnerKey()}.${problemId}.${language}`;
 }
 
+/**
+ * 封装clampHeight相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function clampHeight(value: number) {
   return Math.min(Math.max(value, 180), Math.floor(window.innerHeight * 0.68));
 }
 
+/**
+ * 构造或转换AntAlert类型。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function toAntAlertType(type: DebugAlert["type"]): "success" | "info" | "warning" | "error" {
   if (type === "danger") {
     return "error";
@@ -129,14 +163,23 @@ function toAntAlertType(type: DebugAlert["type"]): "success" | "info" | "warning
   return type;
 }
 
+/**
+ * 封装clampSplit相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function clampSplit(value: number) {
   return Math.min(Math.max(value, 18), 82);
 }
 
+/**
+ * 封装clampFontSize相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function clampFontSize(value: number) {
   return Math.min(Math.max(value, 12), 28);
 }
 
+/**
+ * 解析并规范化Output。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeOutput(value: string) {
   return value.replace(/\r\n/g, "\n").trim();
 }
@@ -167,16 +210,25 @@ const submissionStatusLabels: Record<string, string> = {
   FAILED: "测评失败",
 };
 
+/**
+ * 判断Running提交状态是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function isRunningSubmissionStatus(status?: string | null) {
   const normalized = String(status ?? "").toUpperCase();
   return ["WAITING", "PENDING", "QUEUED", "REJUDGE_PENDING", "JUDGING", "COMPILING", "RUNNING"].includes(normalized);
 }
 
+/**
+ * 判断Final提交状态是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function isFinalSubmissionStatus(status?: string | null) {
   const normalized = String(status ?? "").toUpperCase();
   return Boolean(normalized) && !isRunningSubmissionStatus(normalized);
 }
 
+/**
+ * 封装max提交测试点Metric相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function maxSubmissionCaseMetric(
   cases: SubmissionResult["cases"],
   field: "timeMs" | "memoryKb",
@@ -187,15 +239,24 @@ function maxSubmissionCaseMetric(
   return values.length > 0 ? Math.max(...values) : null;
 }
 
+/**
+ * 封装positiveMetric相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function positiveMetric(value: number | null | undefined) {
   return typeof value === "number" && value > 0 ? value : null;
 }
 
+/**
+ * 格式化Metric。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatMetric(value: number | null | undefined, unit: string) {
   const metric = positiveMetric(value);
   return metric == null ? "-" : `${metric} ${unit}`;
 }
 
+/**
+ * 格式化提交Alert。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatSubmissionAlert(data: SubmissionResult): DebugAlert {
   const status = String(data.status ?? "PENDING").toUpperCase();
   const statusLabel = submissionStatusLabels[status] ?? status;
@@ -214,6 +275,9 @@ function formatSubmissionAlert(data: SubmissionResult): DebugAlert {
   };
 }
 
+/**
+ * 渲染练习页面，并协调其数据加载、状态和交互。
+ */
 export function PracticePage() {
   const splitRootRef = useRef<HTMLDivElement | null>(null);
   const submissionWatcherCleanupRef = useRef<(() => void) | null>(null);
@@ -224,11 +288,20 @@ export function PracticePage() {
   const [searchParams] = useSearchParams();
   const { state } = useOjData();
   const [remoteProblem, setRemoteProblem] = useState<Problem | null>(null);
+  /**
+   * 封装numeric题目标识相关逻辑。对原始数据进行派生或聚合。
+   */
   const numericProblemId = useMemo(() => (problemId ? backendProblemId(problemId) : null), [problemId]);
+  /**
+   * 判断Local题目是否成立。对原始数据进行派生或聚合。
+   */
   const hasLocalProblem = useMemo(
     () => Boolean(problemId && state.problems.some((item) => item.id === problemId)),
     [problemId, state.problems],
   );
+  /**
+   * 封装题目相关逻辑。对原始数据进行派生或聚合。
+   */
   const problem = useMemo(() => {
     if (!problemId) {
       return null;
@@ -335,6 +408,9 @@ export function PracticePage() {
     return () => clearTimeout(timer);
   }, [language]);
 
+  /**
+   * 封装changeLanguage相关逻辑。会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+   */
   const changeLanguage = (next: PracticeLanguage) => {
     if (problem?.id) {
       window.localStorage.setItem(codeStorageKey(problem.id, language), code);
@@ -342,6 +418,9 @@ export function PracticePage() {
     setLanguage(next);
   };
 
+  /**
+   * 更新编码。会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+   */
   const updateCode = (next: string) => {
     setCode(next);
     if (problem?.id) {
@@ -349,10 +428,16 @@ export function PracticePage() {
     }
   };
 
+  /**
+   * 封装nextAgent消息标识相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const nextAgentMessageId = (role: AgentMessage["role"]) => {
     return `${role}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   };
 
+  /**
+   * 封装appendAgent消息相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const appendAgentMessage = (role: AgentMessage["role"], content: string) => {
     setAgentMessages((current) => [
       ...current,
@@ -360,6 +445,9 @@ export function PracticePage() {
     ]);
   };
 
+  /**
+   * 封装latestDebugText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const latestDebugText = () => {
     if (!debugAlert) {
       return "暂无最新调试或提交结果。";
@@ -367,6 +455,9 @@ export function PracticePage() {
     return [debugAlert.title, debugAlert.detail].filter(Boolean).join("\n");
   };
 
+  /**
+   * 发送Agent消息。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+   */
   const sendAgentMessage = async (message?: string) => {
     const content = (message ?? agentInput).trim();
     if (!content || agentLoading) {
@@ -419,6 +510,9 @@ export function PracticePage() {
     }
   };
 
+  /**
+   * 封装start提交Watcher相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const startSubmissionWatcher = (submissionId: number) => {
     submissionWatcherCleanupRef.current?.();
 
@@ -426,6 +520,9 @@ export function PracticePage() {
     let unsubscribe: (() => void) | null = null;
     let pollTimer: number | null = null;
 
+    /**
+     * 封装stop相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+     */
     const stop = () => {
       stopped = true;
       if (unsubscribe) {
@@ -441,6 +538,9 @@ export function PracticePage() {
       }
     };
 
+    /**
+     * 封装refresh提交相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+     */
     const refreshSubmission = async () => {
       if (stopped) {
         return;
@@ -493,13 +593,22 @@ export function PracticePage() {
     refreshSubmission();
   };
 
+  /**
+   * 封装startDebugResize相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const startDebugResize = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const startY = event.clientY;
     const startHeight = debugHeight;
+    /**
+     * 处理onMove。会更新 React 状态并触发重新渲染。
+     */
     const onMove = (moveEvent: MouseEvent) => {
       setDebugHeight(clampHeight(startHeight + startY - moveEvent.clientY));
     };
+    /**
+     * 处理onUp。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+     */
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
@@ -508,9 +617,15 @@ export function PracticePage() {
     document.addEventListener("mouseup", onUp);
   };
 
+  /**
+   * 封装startPaneResize相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const startPaneResize = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     setPaneResizing(true);
+    /**
+     * 处理onMove。会更新 React 状态并触发重新渲染。
+     */
     const onMove = (moveEvent: MouseEvent) => {
       const rect = splitRootRef.current?.getBoundingClientRect();
       if (!rect?.width) {
@@ -518,6 +633,9 @@ export function PracticePage() {
       }
       setLeftPanePercent(clampSplit(((moveEvent.clientX - rect.left) / rect.width) * 100));
     };
+    /**
+     * 处理onUp。会更新 React 状态并触发重新渲染。
+     */
     const onUp = () => {
       setPaneResizing(false);
       document.body.style.cursor = "";
@@ -531,10 +649,16 @@ export function PracticePage() {
     document.addEventListener("mouseup", onUp);
   };
 
+  /**
+   * 封装changeFontSize相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const changeFontSize = (delta: number) => {
     setFontSize((current) => clampFontSize(current + delta));
   };
 
+  /**
+   * 封装runCustomSyntaxCheck相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const runCustomSyntaxCheck = () => {
     const monaco = monacoRef.current;
     const editor = editorRef.current;
@@ -814,6 +938,9 @@ export function PracticePage() {
     monaco.editor.setModelMarkers(model, "custom-syntax", monacoMarkers);
   };
 
+  /**
+   * 封装configureEditor相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const configureEditor: OnMount = (editor, monaco) => {
     monacoRef.current = monaco;
     editorRef.current = editor;
@@ -879,6 +1006,9 @@ export function PracticePage() {
     monacoRef.current?.editor.setTheme(monacoThemeName);
   }, [monacoThemeName]);
 
+  /**
+   * 封装runDebug相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const runDebug = async () => {
     if (debugLoading) {
       return;
@@ -889,6 +1019,16 @@ export function PracticePage() {
         type: "danger",
         title: "判题服务已关闭",
         detail: "管理员已暂时关闭判题功能，无法调试运行。",
+        source: "debug",
+      });
+      return;
+    }
+    if (state.judgeSettings && !state.judgeSettings.enableSandbox) {
+      setDebugOpen(true);
+      setDebugAlert({
+        type: "danger",
+        title: "调试功能已关闭",
+        detail: "管理员已暂时关闭代码调试功能。",
         source: "debug",
       });
       return;
@@ -939,6 +1079,9 @@ export function PracticePage() {
     }
   };
 
+  /**
+   * 封装selectSample相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const selectSample = (value: string) => {
     if (value === "custom") {
       setSampleIndex("custom");
@@ -964,6 +1107,9 @@ export function PracticePage() {
     setDebugOpen(true);
   };
 
+  /**
+   * 创建或提交编码Action。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const submitCodeAction = async () => {
     if (submitLoading) {
       return;

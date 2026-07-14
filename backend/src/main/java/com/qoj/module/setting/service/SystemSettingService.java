@@ -24,10 +24,14 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
 import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.Map;
+import java.util.regex.Pattern;
 
+/**
+ * System设置业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class SystemSettingService {
     private static final String DEFAULT_EMAIL_SUBJECT = "QOJ 注册验证码";
@@ -38,7 +42,13 @@ public class SystemSettingService {
     private static final int DEFAULT_JUDGE_THREAD_POOL_SIZE = 2;
     private static final int DEFAULT_JUDGE_QUEUE_BATCH_SIZE = 2;
     private static final long DEFAULT_JUDGE_POLL_INTERVAL_MS = 1000L;
-    private static final long DEFAULT_DOMJUDGE_POLL_INTERVAL_MS = 2000L;
+    private static final int DEFAULT_CCPCOJ_SESSION_TTL_MINUTES = 720;
+    private static final int DEFAULT_CCPCOJ_STALE_TASK_MINUTES = 15;
+    private static final Pattern CCPCOJ_USERNAME = Pattern.compile("[A-Za-z0-9._-]{1,60}");
+    private static final Pattern CCPCOJ_PASSWORD = Pattern.compile("[A-Za-z0-9._~-]{12,128}");
+    private static final Pattern COS_BUCKET = Pattern.compile("[a-z0-9][a-z0-9-]{0,49}-[0-9]{5,20}");
+    private static final Pattern COS_REGION = Pattern.compile("[a-z]{2,8}-[a-z0-9-]{2,32}");
+    private static final Pattern COS_SECRET_ID = Pattern.compile("AKID[A-Za-z0-9]{16,64}");
     private static final Map<String, Object> DEFAULT_AGENT_CONFIG = Map.of(
         "enabled", false,
         "baseUrl", "",
@@ -65,6 +75,9 @@ public class SystemSettingService {
     private final ObjectMapper objectMapper;
     private final Environment environment;
 
+    /**
+     * 构造 System设置Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public SystemSettingService(
         SystemSettingMapper settingMapper,
         AdminUserMapper adminUserMapper,
@@ -154,32 +167,37 @@ public class SystemSettingService {
 
     public JudgeSettingsVO getJudgeSettings() {
         JudgeSettingsVO vo = getJudgeRuntimeSettings();
-        vo.domjudgeApiKey = "";
+        vo.ccpcojJudgePassword = "";
         return vo;
     }
 
     public PublicJudgeSettingsVO getPublicJudgeSettings() {
         JudgeSettingsVO runtime = getJudgeRuntimeSettings();
+        /**
+         * 封装Public判题SettingsVO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new PublicJudgeSettingsVO(runtime.enabled, runtime.enableSandbox);
     }
 
     public JudgeSettingsVO getJudgeRuntimeSettings() {
         JudgeSettingsVO vo = new JudgeSettingsVO();
         vo.enabled = boolSetting("judge.enabled", true);
-        vo.mode = normalizeJudgeMode(textSetting("judge.mode", "docker"));
-        vo.contestMode = normalizeJudgeMode(textSetting("judge.contest_mode", vo.mode));
-        vo.enableUnsafeLocalJudge = boolSetting("judge.enable_unsafe_local_judge", false);
+        // Ordinary work is fixed to go-judge; contest ownership is snapshotted
+        // from each contest instead of being switched globally at runtime.
+        vo.mode = "go-judge";
+        vo.contestMode = "per-contest";
         vo.enableSandbox = boolSetting("judge.enable_sandbox", false);
         vo.threadPoolSize = positiveIntSetting("judge.thread_pool_size", DEFAULT_JUDGE_THREAD_POOL_SIZE);
         vo.maxConcurrent = positiveIntSetting("judge.max_concurrent", DEFAULT_JUDGE_CONCURRENCY);
         vo.queueBatchSize = positiveIntSetting("judge.queue_batch_size", DEFAULT_JUDGE_QUEUE_BATCH_SIZE);
         vo.pollIntervalMs = positiveLongSetting("judge.poll_interval_ms", DEFAULT_JUDGE_POLL_INTERVAL_MS);
-        vo.domjudgeBaseUrl = textSetting("judge.domjudge_base_url", "http://127.0.0.1:8081");
-        vo.domjudgeApiKey = textSetting("judge.domjudge_api_key", "");
-        vo.hasDomjudgeApiKey = hasText(vo.domjudgeApiKey);
-        vo.domjudgeContestId = textSetting("judge.domjudge_contest_id", "");
-        vo.domjudgePollIntervalMs = positiveLongSetting("judge.domjudge_poll_interval_ms", DEFAULT_DOMJUDGE_POLL_INTERVAL_MS);
-        ensureUnsafeLocalJudgeNotActiveInProduction(vo);
+        vo.ccpcojJudgeUsername = textSetting("judge.ccpcoj_username", "judger");
+        vo.ccpcojJudgePassword = textSetting("judge.ccpcoj_password_hash", "");
+        vo.hasCcpcojJudgePassword = hasText(vo.ccpcojJudgePassword);
+        vo.ccpcojSessionTtlMinutes = positiveIntSetting(
+            "judge.ccpcoj_session_ttl_minutes", DEFAULT_CCPCOJ_SESSION_TTL_MINUTES);
+        vo.ccpcojStaleTaskMinutes = positiveIntSetting(
+            "judge.ccpcoj_stale_task_minutes", DEFAULT_CCPCOJ_STALE_TASK_MINUTES);
         return vo;
     }
 
@@ -238,6 +256,9 @@ public class SystemSettingService {
      * 判题开关是否已关闭（判题入口与调度器共用此判断）
      */
     public boolean isJudgeEnabled() {
+        /**
+         * 读取判题Settings并返回给调用方。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return getJudgeSettings().enabled;
     }
 
@@ -258,6 +279,9 @@ public class SystemSettingService {
     public void updateJudgeMaxConcurrent(Integer maxConcurrent, AuthUser authUser) {
         int threadPoolSize = positiveIntSetting("judge.thread_pool_size", DEFAULT_JUDGE_THREAD_POOL_SIZE);
         if (maxConcurrent == null || maxConcurrent <= 0 || maxConcurrent > threadPoolSize) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST,
                 "判题最大并发数必须为正整数且不超过线程池大小 " + threadPoolSize);
         }
@@ -269,18 +293,36 @@ public class SystemSettingService {
         JudgeSettingsVO existing = getJudgeRuntimeSettings();
         JudgeSettingsVO next = new JudgeSettingsVO();
         next.enabled = request.enabled;
-        next.mode = normalizeJudgeModeForUpdate(request.mode);
-        next.contestMode = normalizeJudgeModeForUpdate(request.contestMode);
-        next.enableUnsafeLocalJudge = request.enableUnsafeLocalJudge;
+        next.mode = "go-judge";
+        next.contestMode = "per-contest";
         next.enableSandbox = request.enableSandbox;
         next.threadPoolSize = request.threadPoolSize;
         next.maxConcurrent = request.maxConcurrent;
         next.queueBatchSize = request.queueBatchSize;
         next.pollIntervalMs = request.pollIntervalMs;
-        next.domjudgeBaseUrl = trimToEmpty(request.domjudgeBaseUrl);
-        next.domjudgeApiKey = hasText(request.domjudgeApiKey) ? request.domjudgeApiKey.trim() : existing.domjudgeApiKey;
-        next.domjudgeContestId = trimToEmpty(request.domjudgeContestId);
-        next.domjudgePollIntervalMs = request.domjudgePollIntervalMs;
+        next.ccpcojJudgeUsername = trimToEmpty(request.ccpcojJudgeUsername);
+        if (hasText(next.ccpcojJudgeUsername)
+            && !CCPCOJ_USERNAME.matcher(next.ccpcojJudgeUsername).matches()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常；可能调用外部判题或网关服务。
+             */
+            throw new BizException(ErrorCode.BAD_REQUEST,
+                "CCPCOJ 评测机账号只能包含字母、数字、点、下划线和连字符，且不超过 60 个字符");
+        }
+        if (hasText(request.ccpcojJudgePassword)
+            && !CCPCOJ_PASSWORD.matcher(request.ccpcojJudgePassword.trim()).matches()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常；可能调用外部判题或网关服务。
+             */
+            throw new BizException(ErrorCode.BAD_REQUEST,
+                "CCPCOJ 评测机密码需为 12-128 位，且只能包含字母、数字、点、下划线、波浪号和连字符");
+        }
+        next.ccpcojJudgePassword = hasText(request.ccpcojJudgePassword)
+            ? passwordEncoder.encode(request.ccpcojJudgePassword.trim())
+            : existing.ccpcojJudgePassword;
+        next.hasCcpcojJudgePassword = hasText(next.ccpcojJudgePassword);
+        next.ccpcojSessionTtlMinutes = request.ccpcojSessionTtlMinutes;
+        next.ccpcojStaleTaskMinutes = request.ccpcojStaleTaskMinutes;
 
         validateJudgeSettings(next);
 
@@ -288,16 +330,30 @@ public class SystemSettingService {
         updateSetting("judge.enabled", String.valueOf(next.enabled), username);
         updateSetting("judge.mode", next.mode, username);
         updateSetting("judge.contest_mode", next.contestMode, username);
-        updateSetting("judge.enable_unsafe_local_judge", String.valueOf(next.enableUnsafeLocalJudge), username);
         updateSetting("judge.enable_sandbox", String.valueOf(next.enableSandbox), username);
         updateSetting("judge.max_concurrent", String.valueOf(next.maxConcurrent), username);
         updateSetting("judge.thread_pool_size", String.valueOf(next.threadPoolSize), username);
         updateSetting("judge.queue_batch_size", String.valueOf(next.queueBatchSize), username);
         updateSetting("judge.poll_interval_ms", String.valueOf(next.pollIntervalMs), username);
-        updateSetting("judge.domjudge_base_url", next.domjudgeBaseUrl, username);
-        updateSetting("judge.domjudge_api_key", next.domjudgeApiKey == null ? "" : next.domjudgeApiKey, username);
-        updateSetting("judge.domjudge_contest_id", next.domjudgeContestId, username);
-        updateSetting("judge.domjudge_poll_interval_ms", String.valueOf(next.domjudgePollIntervalMs), username);
+        /**
+         * 更新设置。可能调用外部判题或网关服务。
+         */
+        updateSetting("judge.ccpcoj_username", next.ccpcojJudgeUsername, username);
+        /**
+         * 更新设置。可能调用外部判题或网关服务。
+         */
+        updateSetting("judge.ccpcoj_password_hash",
+            next.ccpcojJudgePassword == null ? "" : next.ccpcojJudgePassword, username);
+        /**
+         * 更新设置。可能调用外部判题或网关服务。
+         */
+        updateSetting("judge.ccpcoj_session_ttl_minutes",
+            String.valueOf(next.ccpcojSessionTtlMinutes), username);
+        /**
+         * 更新设置。可能调用外部判题或网关服务。
+         */
+        updateSetting("judge.ccpcoj_stale_task_minutes",
+            String.valueOf(next.ccpcojStaleTaskMinutes), username);
     }
 
     /**
@@ -317,19 +373,34 @@ public class SystemSettingService {
         if (Boolean.TRUE.equals(next.enabled)) {
             SafeUrlValidator.requirePublicHttpUrl(next.baseUrl, "AI 服务地址");
             if (!hasText(next.baseUrl)) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.BAD_REQUEST, "请填写 AI 服务地址");
             }
             if (!hasText(next.apiKey)) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.BAD_REQUEST, "请填写 AI API Key");
             }
             if (!hasText(next.model)) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.BAD_REQUEST, "请填写 AI 模型名称");
             }
         }
         if (next.timeoutMs < 1000 || next.timeoutMs > 120000) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST, "AI 请求超时时间必须在 1000-120000 毫秒之间");
         }
         if (next.maxCodeChars < 1000 || next.maxCodeChars > 50000) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST, "代码上下文长度必须在 1000-50000 之间");
         }
 
@@ -365,23 +436,48 @@ public class SystemSettingService {
             next.dir = next.dir + "/";
         }
         if (Boolean.TRUE.equals(next.enabled)) {
-            if (!hasText(next.endpoint)) {
-                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 OSS Endpoint");
-            }
             if (!hasText(next.bucket)) {
-                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 OSS Bucket");
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
+                throw new BizException(ErrorCode.BAD_REQUEST, "请填写腾讯云 COS Bucket");
+            }
+            if (!COS_BUCKET.matcher(next.bucket).matches()) {
+                throw new BizException(ErrorCode.BAD_REQUEST, "COS Bucket 必须包含 APPID，例如 qoj-1250000000");
+            }
+            if (!hasText(next.region) || !COS_REGION.matcher(next.region).matches()) {
+                throw new BizException(ErrorCode.BAD_REQUEST, "请填写正确的 COS Region，例如 ap-beijing");
             }
             if (!hasText(next.accessKeyId)) {
-                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 OSS AccessKey ID");
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
+                throw new BizException(ErrorCode.BAD_REQUEST, "请填写腾讯云 SecretId");
+            }
+            if (!COS_SECRET_ID.matcher(next.accessKeyId).matches()) {
+                throw new BizException(ErrorCode.BAD_REQUEST, "腾讯云 SecretId 应以 AKID 开头，不能填写 APPID");
             }
             if (!hasText(next.accessKeySecret)) {
-                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 OSS AccessKey Secret");
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
+                throw new BizException(ErrorCode.BAD_REQUEST, "请填写腾讯云 SecretKey");
             }
             if (!hasText(next.publicBaseUrl)) {
-                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 OSS 公开访问地址");
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
+                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 COS 公开访问地址");
+            }
+            validateHttpsBaseUrl(next.publicBaseUrl, "COS 公开访问地址");
+            if (hasText(next.endpoint)) {
+                validateHttpsBaseUrl(next.endpoint, "COS Endpoint");
             }
         }
         if (next.maxSizeMb < 1 || next.maxSizeMb > 20) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST, "头像最大体积必须在 1-20 MB 之间");
         }
 
@@ -397,6 +493,22 @@ public class SystemSettingService {
             "maxSizeMb", next.maxSizeMb
         );
         updateSetting(OSS_CONFIG_KEY, toJson(config), authUser.getUsername());
+    }
+
+    private void validateHttpsBaseUrl(String value, String label) {
+        try {
+            URI uri = URI.create(value.trim());
+            boolean valid = "https".equalsIgnoreCase(uri.getScheme())
+                && uri.getHost() != null
+                && uri.getUserInfo() == null
+                && uri.getQuery() == null
+                && uri.getFragment() == null;
+            if (!valid) {
+                throw new IllegalArgumentException();
+            }
+        } catch (IllegalArgumentException ex) {
+            throw new BizException(ErrorCode.BAD_REQUEST, label + "必须是完整的 HTTPS 地址");
+        }
     }
 
     /**
@@ -494,10 +606,16 @@ public class SystemSettingService {
     public void changeAdminPassword(PasswordChangeRequest request, AuthUser authUser) {
         AdminUser adminUser = adminUserMapper.selectById(authUser.id());
         if (adminUser == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "管理员不存在");
         }
 
         if (!passwordEncoder.matches(request.oldPassword, adminUser.passwordHash)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "旧密码错误");
         }
 
@@ -548,6 +666,9 @@ public class SystemSettingService {
 
         // 如果没有原密码且新密码也为空，则报错
         if (passwordToSave == null || passwordToSave.isEmpty()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST, "邮箱密码不能为空");
         }
 
@@ -615,16 +736,15 @@ public class SystemSettingService {
             case "judge.enabled" -> "判题开关";
             case "judge.mode" -> "判题模式";
             case "judge.contest_mode" -> "比赛判题模式";
-            case "judge.enable_unsafe_local_judge" -> "不安全本地判题开关";
             case "judge.enable_sandbox" -> "沙箱调试开关";
             case "judge.max_concurrent" -> "判题最大并发数";
             case "judge.thread_pool_size" -> "判题线程池大小";
             case "judge.queue_batch_size" -> "判题队列批量拉取数";
             case "judge.poll_interval_ms" -> "判题队列轮询间隔";
-            case "judge.domjudge_base_url" -> "DOMjudge 地址";
-            case "judge.domjudge_api_key" -> "DOMjudge API Key";
-            case "judge.domjudge_contest_id" -> "DOMjudge 默认比赛 ID";
-            case "judge.domjudge_poll_interval_ms" -> "DOMjudge 结果轮询间隔";
+            case "judge.ccpcoj_username" -> "CCPCOJ 评测机账号";
+            case "judge.ccpcoj_password_hash" -> "CCPCOJ 评测机密码哈希";
+            case "judge.ccpcoj_session_ttl_minutes" -> "CCPCOJ 评测机会话有效期";
+            case "judge.ccpcoj_stale_task_minutes" -> "CCPCOJ 任务失联重取时间";
             case AGENT_CONFIG_KEY -> "AI助手配置";
             case OSS_CONFIG_KEY -> "OSS配置";
             default -> key;
@@ -633,91 +753,54 @@ public class SystemSettingService {
 
     private void validateJudgeSettings(JudgeSettingsVO settings) {
         if (settings.threadPoolSize <= 0 || settings.threadPoolSize > 64) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST, "判题线程池大小必须在 1-64 之间");
         }
         if (settings.maxConcurrent <= 0 || settings.maxConcurrent > settings.threadPoolSize) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST,
                 "判题最大并发数必须为正整数且不超过线程池大小 " + settings.threadPoolSize);
         }
         if (settings.queueBatchSize <= 0 || settings.queueBatchSize > 100) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST, "队列批量拉取数必须在 1-100 之间");
         }
         if (settings.pollIntervalMs < 200 || settings.pollIntervalMs > 60000) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST, "判题队列轮询间隔必须在 200-60000 毫秒之间");
         }
-        if (settings.domjudgePollIntervalMs < 500 || settings.domjudgePollIntervalMs > 60000) {
-            throw new BizException(ErrorCode.BAD_REQUEST, "DOMjudge 轮询间隔必须在 500-60000 毫秒之间");
+        if (settings.ccpcojSessionTtlMinutes < 10 || settings.ccpcojSessionTtlMinutes > 10080) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常；可能调用外部判题或网关服务。
+             */
+            throw new BizException(ErrorCode.BAD_REQUEST, "CCPCOJ 会话有效期必须在 10-10080 分钟之间");
         }
-        if (isProductionProfile() && (usesUnsafeLocalJudge(settings) || settings.enableUnsafeLocalJudge)) {
-            throw new BizException(ErrorCode.BAD_REQUEST,
-                "生产环境禁止启用 unsafe-local 本地判题，请使用 docker 或 domjudge");
+        if (settings.ccpcojStaleTaskMinutes < 2 || settings.ccpcojStaleTaskMinutes > 1440) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常；可能调用外部判题或网关服务。
+             */
+            throw new BizException(ErrorCode.BAD_REQUEST, "CCPCOJ 任务失联时间必须在 2-1440 分钟之间");
         }
-        if (("unsafe-local".equals(settings.mode) || "unsafe-local".equals(settings.contestMode))
-            && !settings.enableUnsafeLocalJudge) {
-            throw new BizException(ErrorCode.BAD_REQUEST, "使用不安全本地判题模式时必须开启不安全本地判题");
+        if (!"go-judge".equals(settings.mode) || !"per-contest".equals(settings.contestMode)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(ErrorCode.BAD_REQUEST, "普通判题必须使用 go-judge，比赛判题必须按比赛配置");
         }
-        if ("domjudge".equals(settings.mode) || "domjudge".equals(settings.contestMode)) {
-            if (!hasText(settings.domjudgeBaseUrl)) {
-                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 DOMjudge 地址");
-            }
-            if (!hasText(settings.domjudgeApiKey)) {
-                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 DOMjudge API Key");
-            }
-            if (!hasText(settings.domjudgeContestId)) {
-                throw new BizException(ErrorCode.BAD_REQUEST, "请填写 DOMjudge 默认比赛 ID");
-            }
+        if (!hasText(settings.ccpcojJudgeUsername)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常；可能调用外部判题或网关服务。
+             */
+            throw new BizException(ErrorCode.BAD_REQUEST, "请填写 CCPCOJ 评测机账号");
         }
-    }
-
-    private void ensureUnsafeLocalJudgeNotActiveInProduction(JudgeSettingsVO settings) {
-        if (!isProductionProfile()) {
-            return;
-        }
-        if (usesUnsafeLocalJudge(settings) || settings.enableUnsafeLocalJudge) {
-            throw new IllegalStateException(
-                "【生产环境启动失败】检测到 unsafe-local 本地判题配置。"
-                    + "请将 judge.mode/judge.contest_mode 改为 docker 或 domjudge，"
-                    + "并关闭 judge.enable_unsafe_local_judge。"
-            );
-        }
-    }
-
-    private boolean usesUnsafeLocalJudge(JudgeSettingsVO settings) {
-        return "unsafe-local".equalsIgnoreCase(settings.mode)
-            || "unsafe-local".equalsIgnoreCase(settings.contestMode);
-    }
-
-    private boolean isProductionProfile() {
-        if (environment == null) {
-            return false;
-        }
-        if (Arrays.stream(environment.getActiveProfiles()).anyMatch(this::isProductionProfileName)) {
-            return true;
-        }
-        String configuredProfiles = environment.getProperty("spring.profiles.active", "");
-        return Arrays.stream(configuredProfiles.split(","))
-            .map(String::trim)
-            .anyMatch(this::isProductionProfileName);
-    }
-
-    private boolean isProductionProfileName(String profile) {
-        return "prod".equalsIgnoreCase(profile) || "production".equalsIgnoreCase(profile);
-    }
-
-    private String normalizeJudgeMode(String value) {
-        String mode = hasText(value) ? value.trim().toLowerCase() : "docker";
-        return switch (mode) {
-            case "domjudge", "docker", "unsafe-local" -> mode;
-            default -> "docker";
-        };
-    }
-
-    private String normalizeJudgeModeForUpdate(String value) {
-        String mode = hasText(value) ? value.trim().toLowerCase() : "docker";
-        return switch (mode) {
-            case "domjudge", "docker", "unsafe-local" -> mode;
-            default -> throw new BizException(ErrorCode.BAD_REQUEST, "判题模式只能是 domjudge、docker 或 unsafe-local");
-        };
     }
 
     private boolean boolSetting(String key, boolean defaultValue) {
@@ -761,6 +844,9 @@ public class SystemSettingService {
 
     private String defaultText(Object value, String defaultValue) {
         String text = stringValue(value);
+        /**
+         * 判断Text是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return hasText(text) ? text : defaultValue;
     }
 
@@ -779,6 +865,9 @@ public class SystemSettingService {
             return number.intValue();
         }
         if (value instanceof String text) {
+            /**
+             * 解析并规范化IntOr默认值。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return parseIntOrDefault(text, defaultValue);
         }
         return defaultValue;
@@ -816,6 +905,9 @@ public class SystemSettingService {
         try {
             return objectMapper.readValue(json, clazz);
         } catch (JsonProcessingException e) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.INTERNAL_ERROR, "JSON解析失败: " + e.getMessage());
         }
     }
@@ -824,6 +916,9 @@ public class SystemSettingService {
         try {
             return objectMapper.readValue(json, typeRef);
         } catch (JsonProcessingException e) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.INTERNAL_ERROR, "JSON解析失败: " + e.getMessage());
         }
     }
@@ -835,6 +930,9 @@ public class SystemSettingService {
         try {
             return objectMapper.writeValueAsString(obj);
         } catch (JsonProcessingException e) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.INTERNAL_ERROR, "JSON序列化失败: " + e.getMessage());
         }
     }

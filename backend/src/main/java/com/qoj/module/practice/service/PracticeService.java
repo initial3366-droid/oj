@@ -46,6 +46,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 练习业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class PracticeService {
     private final PracticeMapper practiceMapper;
@@ -60,6 +63,9 @@ public class PracticeService {
     private final StringRedisTemplate redisTemplate;
     private final com.qoj.security.policy.PracticeAccessPolicy practiceAccessPolicy;
 
+    /**
+     * 构造 练习Service 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断；从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
+     */
     public PracticeService(
         PracticeMapper practiceMapper,
         PracticeProblemMapper practiceProblemMapper,
@@ -87,6 +93,9 @@ public class PracticeService {
     }
 
     public PageResult<PracticeVO> list(int page, int pageSize) {
+        /**
+         * 查询目标数据列表。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return list(page, pageSize, "all");
     }
 
@@ -165,6 +174,9 @@ public class PracticeService {
         if (Boolean.TRUE.equals(practice.isDeleted)) {
             AuthUser user = CurrentUser.get();
             if (user == null || (!"SUPER_ADMIN".equals(user.role()) && !practice.ownerId.equals(user.id()))) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.NOT_FOUND, "练习不存在");
             }
         }
@@ -173,6 +185,9 @@ public class PracticeService {
 
         if (practice.passwordHash != null && !practice.passwordHash.isBlank()) {
             if (password == null || password.isBlank()) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(401, "需要练习密码");
             }
 
@@ -184,10 +199,16 @@ public class PracticeService {
                 redisTemplate.expire(rateKey, java.time.Duration.ofMinutes(5));
             }
             if (attempts > 5) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(429, "密码尝试次数过多，请5分钟后再试");
             }
 
             if (!passwordEncoder.matches(password, practice.passwordHash)) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(401, "练习密码错误");
             }
 
@@ -195,6 +216,9 @@ public class PracticeService {
             redisTemplate.delete(rateKey);
         }
 
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(practice);
     }
 
@@ -203,17 +227,29 @@ public class PracticeService {
         AuthUser user = CurrentUser.required();
         AudienceType audience = request.audience() == null ? AudienceType.ALL : request.audience();
         if (audience != AudienceType.ALL && audience != AudienceType.CLASS) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "题单开放范围仅支持所有人或班级");
         }
         if (audience != AudienceType.ALL && request.audienceId() == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "受众 ID 不能为空");
         }
         ensureCanUseAudience(user, audience, request.audienceId());
         if (request.problemIds() == null || request.problemIds().isEmpty()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "练习题目不能为空");
         }
         List<Problem> problems = problemMapper.selectBatchIds(request.problemIds());
         if (problems.size() != request.problemIds().stream().distinct().count()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "练习题目不存在");
         }
 
@@ -238,6 +274,9 @@ public class PracticeService {
             practiceProblem.score = 100;
             practiceProblemMapper.insert(practiceProblem);
         }
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(practice);
     }
 
@@ -247,9 +286,15 @@ public class PracticeService {
 
         AudienceType audience = request.audience() == null ? AudienceType.ALL : request.audience();
         if (audience != AudienceType.ALL && audience != AudienceType.CLASS) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "题单开放范围仅支持所有人或班级");
         }
         if (audience != AudienceType.ALL && request.audienceId() == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "受众 ID 不能为空");
         }
 
@@ -268,6 +313,9 @@ public class PracticeService {
         if (request.problemIds() != null && !request.problemIds().isEmpty()) {
             List<Problem> problems = problemMapper.selectBatchIds(request.problemIds());
             if (problems.size() != request.problemIds().stream().distinct().count()) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(404, "练习题目不存在");
             }
             practiceProblemMapper.delete(new QueryWrapper<PracticeProblem>()
@@ -284,6 +332,9 @@ public class PracticeService {
         }
 
         practiceMapper.updateById(practice);
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(practice);
     }
 
@@ -345,6 +396,9 @@ public class PracticeService {
             .map(submission -> {
                 User user = users.get(submission.userId);
                 Problem problem = problems.get(submission.problemId);
+                /**
+                 * 封装练习提交VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                 */
                 return new PracticeSubmissionVO(
                     submission.id,
                     submission.userId,
@@ -360,6 +414,9 @@ public class PracticeService {
             })
             .toList();
 
+        /**
+         * 封装练习ReportVO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new PracticeReportVO(practice.id, rankings.size(), submissions.size(), rankings, submissionVOs);
     }
 
@@ -376,6 +433,9 @@ public class PracticeService {
     private Practice requirePublished(long id) {
         Practice practice = practiceMapper.selectById(id);
         if (practice == null || !Boolean.TRUE.equals(practice.published)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "练习不存在");
         }
         return practice;
@@ -384,10 +444,16 @@ public class PracticeService {
     private Practice requireOwner(long id) {
         Practice practice = practiceMapper.selectById(id);
         if (practice == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "练习不存在");
         }
         AuthUser user = CurrentUser.required();
         if (!practiceAccessPolicy.can(user, com.qoj.security.policy.Permission.UPDATE, practice)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无访问权限");
         }
         return practice;
@@ -402,6 +468,9 @@ public class PracticeService {
             if (!AudienceType.ALL.name().equals(practice.audience)) {
                 // 必须登录才能检查班级成员
                 if (user == null) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(ErrorCode.UNAUTHORIZED.getCode(), "请先登录");
                 }
 
@@ -414,9 +483,15 @@ public class PracticeService {
                     if (memberCount != null && memberCount > 0) {
                         return;
                     }
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(ErrorCode.FORBIDDEN.getCode(), "该题单仅限指定班级成员");
                 }
             }
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权访问该练习");
         }
     }
@@ -431,9 +506,15 @@ public class PracticeService {
         if (audience == AudienceType.CLASS) {
             ClassRoom classRoom = classRoomMapper.selectById(audienceId);
             if (classRoom == null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.NOT_FOUND.getCode(), "班级不存在");
             }
             if (!"TEACHER".equals(user.role()) || !user.id().equals(classRoom.teacherId)) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.FORBIDDEN.getCode(), "只能选择自己管理的班级");
             }
             return;
@@ -441,6 +522,9 @@ public class PracticeService {
     }
 
     private PracticeVO toVO(Practice practice) {
+        /**
+         * 封装练习VO相关逻辑。执行持久化写入。
+         */
         return new PracticeVO(
             practice.id,
             practice.title,
@@ -461,6 +545,9 @@ public class PracticeService {
         );
     }
 
+    /**
+     * 排名Accumulator领域类型。封装 practice.service 模块内的相关职责。
+     */
     private static class RankAccumulator {
         int score;
         int solved;

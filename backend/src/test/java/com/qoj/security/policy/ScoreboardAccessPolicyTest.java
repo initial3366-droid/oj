@@ -8,11 +8,17 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * 榜单访问Policy访问策略。根据当前身份、资源归属和操作类型统一作出权限判断。
+ */
 @DisplayName("ScoreboardAccessPolicy Tests")
 class ScoreboardAccessPolicyTest {
 
     private ScoreboardAccessPolicy policy;
 
+    /**
+     * 封装setUp相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @BeforeEach
     void setUp() {
         policy = new ScoreboardAccessPolicy();
@@ -26,9 +32,15 @@ class ScoreboardAccessPolicyTest {
         user.role = "SUPER_ADMIN";
         user.displayName = "Super Admin";
         user.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 
+    /**
+     * 创建或提交教师。调用前会结合当前登录身份执行权限判断。
+     */
     private AuthUser createTeacher(Long userId) {
         User user = new User();
         user.id = userId;
@@ -36,9 +48,15 @@ class ScoreboardAccessPolicyTest {
         user.role = "TEACHER";
         user.displayName = "Teacher " + userId;
         user.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 
+    /**
+     * 创建或提交Student。调用前会结合当前登录身份执行权限判断。
+     */
     private AuthUser createStudent() {
         User user = new User();
         user.id = 4L;
@@ -46,6 +64,9 @@ class ScoreboardAccessPolicyTest {
         user.role = "STUDENT";
         user.displayName = "Student";
         user.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 
@@ -57,6 +78,9 @@ class ScoreboardAccessPolicyTest {
         assertTrue(policy.canViewGlobalScoreboard(null));
     }
 
+    /**
+     * 封装testViewGlobal榜单Any用户ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("canViewGlobalScoreboard: any authenticated user should allow")
     void testViewGlobalScoreboard_AnyUser_ShouldAllow() {
@@ -70,6 +94,9 @@ class ScoreboardAccessPolicyTest {
         assertTrue(policy.canViewGlobalScoreboard(student));
     }
 
+    /**
+     * 封装testViewGlobal榜单EveryoneShouldAllow相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @Test
     @DisplayName("canViewGlobalScoreboard: everyone can view")
     void testViewGlobalScoreboard_Everyone_ShouldAllow() {
@@ -87,6 +114,9 @@ class ScoreboardAccessPolicyTest {
         assertTrue(policy.canViewContestScoreboard(null, true));
     }
 
+    /**
+     * 封装testView比赛榜单Public比赛Any用户ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("canViewContestScoreboard: public contest allows any user")
     void testViewContestScoreboard_PublicContest_AnyUser_ShouldAllow() {
@@ -100,12 +130,18 @@ class ScoreboardAccessPolicyTest {
         assertTrue(policy.canViewContestScoreboard(student, true));
     }
 
+    /**
+     * 封装testView比赛榜单Private比赛Null用户ShouldDeny相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @Test
     @DisplayName("canViewContestScoreboard: private contest denies null user")
     void testViewContestScoreboard_PrivateContest_NullUser_ShouldDeny() {
         assertFalse(policy.canViewContestScoreboard(null, false));
     }
 
+    /**
+     * 封装testView比赛榜单Private比赛Authenticated用户ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("canViewContestScoreboard: private contest allows authenticated user")
     void testViewContestScoreboard_PrivateContest_AuthenticatedUser_ShouldAllow() {

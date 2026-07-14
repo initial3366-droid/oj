@@ -4,6 +4,9 @@ import com.qoj.common.enums.AudienceType;
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 
+/**
+ * 练习Update请求数据模型。用于承接接口输入并通过声明式约束完成基础参数校验。
+ */
 public record PracticeUpdateRequest(
     @NotBlank String title,
     String description,

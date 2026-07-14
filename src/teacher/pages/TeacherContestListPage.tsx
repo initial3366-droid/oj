@@ -1,3 +1,6 @@
+/**
+ * 教师比赛列表页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -13,10 +16,14 @@ import {
 import { IconDelete, IconEdit, IconEye, IconPlus, IconRefresh } from '@arco-design/web-react/icon';
 import { teacherGet, teacherDelete } from '../teacherApi';
 
+/**
+ * 比赛接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Contest {
   id: number;
   title: string;
   type: 'ACM' | 'OI';
+  judgeMode?: 'GO_JUDGE' | 'CCPCOJ';
   status: string;
   audience: string;
   audiences?: Array<{ audienceType: string; audienceId: number; name: string }>;
@@ -27,23 +34,35 @@ interface Contest {
   submissionCount: number;
 }
 
+/**
+ * 页面结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PageResult {
   total: number;
   list: Contest[];
 }
 
+/**
+ * 封装状态Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusText(status: string) {
   if (status === 'RUNNING') return '进行中';
   if (status === 'ENDED') return '已结束';
   return '未开始';
 }
 
+/**
+ * 封装状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusColor(status: string) {
   if (status === 'RUNNING') return 'green';
   if (status === 'ENDED') return 'gray';
   return 'blue';
 }
 
+/**
+ * 封装audienceText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function audienceText(contest: Contest) {
   if (contest.audiences?.length) {
     const names = contest.audiences.map((a) => a.name).filter(Boolean);
@@ -53,6 +72,9 @@ function audienceText(contest: Contest) {
   return '所有人';
 }
 
+/**
+ * 渲染教师比赛列表页面，并协调其数据加载、状态和交互。
+ */
 export function TeacherContestListPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -62,6 +84,9 @@ export function TeacherContestListPage() {
     loadContests();
   }, []);
 
+  /**
+   * 读取Contests并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadContests() {
     setLoading(true);
     try {
@@ -74,6 +99,9 @@ export function TeacherContestListPage() {
     }
   }
 
+  /**
+   * 处理Delete。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function handleDelete(id: number) {
     try {
       await teacherDelete(`/api/admin/v1/contests/${id}`);
@@ -102,6 +130,15 @@ export function TeacherContestListPage() {
       width: 80,
       align: 'center' as const,
       render: (type: string) => <Tag color={type === 'ACM' ? 'blue' : 'purple'}>{type}</Tag>,
+    },
+    {
+      title: '判题服务',
+      dataIndex: 'judgeMode',
+      width: 120,
+      align: 'center' as const,
+      render: (mode?: Contest['judgeMode']) => mode === 'CCPCOJ'
+        ? <Tag color="purple">CCPCOJ</Tag>
+        : <Tag color="green">go-judge</Tag>,
     },
     {
       title: '状态',

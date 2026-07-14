@@ -1,13 +1,20 @@
 /**
  * 认证相关 API
  */
-import { apiPost, apiGet, setToken, clearToken } from "./client";
+import { apiPost, apiGet, setToken } from "./client";
+import { logoutFrontendSession } from "./authSession";
 
+/**
+ * 认证令牌响应接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface AuthTokenResponse {
   accessToken: string;
   refreshToken: string;
 }
 
+/**
+ * 注册请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface RegisterPayload {
   username: string;
   displayName: string;
@@ -16,6 +23,9 @@ export interface RegisterPayload {
   password: string;
 }
 
+/**
+ * 用户当前用户接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface UserMe {
   id: number;
   username: string;
@@ -78,9 +88,5 @@ export async function refreshToken(refreshToken: string): Promise<AuthTokenRespo
  * 登出
  */
 export async function logout(): Promise<void> {
-  try {
-    await apiPost<void>("/api/v1/auth/logout", undefined, true);
-  } finally {
-    clearToken();
-  }
+  await logoutFrontendSession();
 }

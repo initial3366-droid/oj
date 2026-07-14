@@ -12,12 +12,18 @@ import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 管理员公告接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
+ */
 @RestController
 @RequestMapping("/api/admin/v1/announcements")
 @PreAuthorize("hasRole('SUPER_ADMIN')")
 public class AdminAnnouncementController {
     private final AnnouncementService announcementService;
 
+    /**
+     * 构造 管理员公告Controller 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     public AdminAnnouncementController(AnnouncementService announcementService) {
         this.announcementService = announcementService;
     }
@@ -32,6 +38,14 @@ public class AdminAnnouncementController {
     ) {
         PageResult<AnnouncementVO> result = announcementService.listForAdmin(page, pageSize);
         return ApiResponse.ok(result);
+    }
+
+    /**
+     * 获取独立的置顶公告编辑项。
+     */
+    @GetMapping("/pinned")
+    public ApiResponse<AnnouncementVO> pinned() {
+        return ApiResponse.ok(announcementService.getPinnedForAdmin());
     }
 
     /**

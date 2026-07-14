@@ -1,3 +1,6 @@
+/**
+ * 管理员登录页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Form, Input, Button } from '@arco-design/web-react';
 import { IconLock, IconUser, IconSafe } from '@arco-design/web-react/icon';
 import { useEffect, useState } from 'react';
@@ -9,17 +12,26 @@ import './AdminLoginPage.css';
 
 const FormItem = Form.Item;
 
+/**
+ * 登录Form接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface LoginForm {
   username: string;
   password: string;
   captcha: string;
 }
 
+/**
+ * 登录响应接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface LoginResponse {
   accessToken: string;
   refreshToken: string;
 }
 
+/**
+ * 读取Captcha并返回给调用方。包含异步流程并由调用方处理完成或失败状态；失败时向调用方传播异常。
+ */
 async function fetchCaptcha(): Promise<{ captchaId: string; image: string }> {
   const response = await fetch('/api/v1/captcha/image');
   const body = await response.json();
@@ -27,6 +39,9 @@ async function fetchCaptcha(): Promise<{ captchaId: string; image: string }> {
   return body.data;
 }
 
+/**
+ * 渲染管理员登录页面，并协调其数据加载、状态和交互。
+ */
 export function AdminLoginPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -34,6 +49,9 @@ export function AdminLoginPage() {
   const [captchaId, setCaptchaId] = useState('');
   const [captchaImage, setCaptchaImage] = useState('');
 
+  /**
+   * 读取Captcha并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadCaptcha() {
     try {
       const data = await fetchCaptcha();
@@ -49,6 +67,9 @@ export function AdminLoginPage() {
     loadCaptcha();
   }, []);
 
+  /**
+   * 处理Submit。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function handleSubmit(values: LoginForm) {
     if (!captchaId) {
       toast.error('验证码未加载，请点击刷新');

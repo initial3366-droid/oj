@@ -11,11 +11,17 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * 练习访问Policy访问策略。根据当前身份、资源归属和操作类型统一作出权限判断。
+ */
 @DisplayName("PracticeAccessPolicy Tests")
 class PracticeAccessPolicyTest {
 
     private PracticeAccessPolicy policy;
 
+    /**
+     * 封装setUp相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @BeforeEach
     void setUp() {
         AuditLogger auditLogger = new AuditLogger();
@@ -30,9 +36,15 @@ class PracticeAccessPolicyTest {
         user.role = "SUPER_ADMIN";
         user.displayName = "Super Admin";
         user.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 
+    /**
+     * 创建或提交教师。调用前会结合当前登录身份执行权限判断。
+     */
     private AuthUser createTeacher() {
         User user = new User();
         user.id = 2L;
@@ -40,9 +52,15 @@ class PracticeAccessPolicyTest {
         user.role = "TEACHER";
         user.displayName = "Teacher";
         user.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 
+    /**
+     * 创建或提交Content管理员。调用前会结合当前登录身份执行权限判断。
+     */
     private AuthUser createContentAdmin() {
         User user = new User();
         user.id = 3L;
@@ -50,9 +68,15 @@ class PracticeAccessPolicyTest {
         user.role = "TEACHER";
         user.displayName = "Teacher Content";
         user.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 
+    /**
+     * 创建或提交Student。调用前会结合当前登录身份执行权限判断。
+     */
     private AuthUser createStudent() {
         User user = new User();
         user.id = 4L;
@@ -60,9 +84,15 @@ class PracticeAccessPolicyTest {
         user.role = "STUDENT";
         user.displayName = "Student";
         user.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 
+    /**
+     * 创建或提交管理员Account。调用前会结合当前登录身份执行权限判断。
+     */
     private AuthUser createAdminAccount() {
         AdminUser adminUser = new AdminUser();
         adminUser.id = 100L;
@@ -70,9 +100,15 @@ class PracticeAccessPolicyTest {
         adminUser.role = "SUPER_ADMIN";
         adminUser.displayName = "Backend Admin";
         adminUser.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(adminUser);
     }
 
+    /**
+     * 创建或提交用户。调用前会结合当前登录身份执行权限判断。
+     */
     private AuthUser createUser(Long userId, String role) {
         User user = new User();
         user.id = userId;
@@ -80,9 +116,15 @@ class PracticeAccessPolicyTest {
         user.role = role;
         user.displayName = "User " + userId;
         user.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 
+    /**
+     * 创建或提交PublishedPublic练习。直接返回当前实例保存的练习，不产生额外的数据写入。
+     */
     private Practice createPublishedPublicPractice(Long ownerId) {
         Practice practice = new Practice();
         practice.id = 1L;
@@ -93,6 +135,9 @@ class PracticeAccessPolicyTest {
         return practice;
     }
 
+    /**
+     * 创建或提交PublishedPrivate练习。直接返回当前实例保存的练习，不产生额外的数据写入。
+     */
     private Practice createPublishedPrivatePractice(Long ownerId) {
         Practice practice = new Practice();
         practice.id = 2L;
@@ -104,6 +149,9 @@ class PracticeAccessPolicyTest {
         return practice;
     }
 
+    /**
+     * 创建或提交Unpublished练习。直接返回当前实例保存的练习，不产生额外的数据写入。
+     */
     private Practice createUnpublishedPractice(Long ownerId) {
         Practice practice = new Practice();
         practice.id = 3L;
@@ -123,6 +171,9 @@ class PracticeAccessPolicyTest {
         assertFalse(policy.can(user, Permission.VIEW, null));
     }
 
+    /**
+     * 封装testViewUnpublished练习Null用户ShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断；在状态变化后发布异步消息。
+     */
     @Test
     @DisplayName("VIEW: unpublished practice with null user should deny")
     void testView_UnpublishedPractice_NullUser_ShouldDeny() {
@@ -130,6 +181,9 @@ class PracticeAccessPolicyTest {
         assertFalse(policy.can(null, Permission.VIEW, practice));
     }
 
+    /**
+     * 封装testViewUnpublished练习OwnerShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断；在状态变化后发布异步消息。
+     */
     @Test
     @DisplayName("VIEW: unpublished practice with owner should allow")
     void testView_UnpublishedPractice_Owner_ShouldAllow() {
@@ -138,6 +192,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(owner, Permission.VIEW, practice));
     }
 
+    /**
+     * 封装testViewUnpublished练习Super管理员ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断；在状态变化后发布异步消息。
+     */
     @Test
     @DisplayName("VIEW: unpublished practice with super admin should allow")
     void testView_UnpublishedPractice_SuperAdmin_ShouldAllow() {
@@ -146,6 +203,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(admin, Permission.VIEW, practice));
     }
 
+    /**
+     * 封装testViewUnpublished练习Other用户ShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断；在状态变化后发布异步消息。
+     */
     @Test
     @DisplayName("VIEW: unpublished practice with other user should deny")
     void testView_UnpublishedPractice_OtherUser_ShouldDeny() {
@@ -154,6 +214,9 @@ class PracticeAccessPolicyTest {
         assertFalse(policy.can(student, Permission.VIEW, practice));
     }
 
+    /**
+     * 封装testViewPublishedPublic练习Null用户ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("VIEW: published public practice with null user should allow")
     void testView_PublishedPublicPractice_NullUser_ShouldAllow() {
@@ -161,6 +224,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(null, Permission.VIEW, practice));
     }
 
+    /**
+     * 封装testViewPublishedPublic练习Any用户ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("VIEW: published public practice with any user should allow")
     void testView_PublishedPublicPractice_AnyUser_ShouldAllow() {
@@ -169,6 +235,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(student, Permission.VIEW, practice));
     }
 
+    /**
+     * 封装testViewPublishedPrivate练习OwnerShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("VIEW: published private practice with owner should allow")
     void testView_PublishedPrivatePractice_Owner_ShouldAllow() {
@@ -177,6 +246,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(owner, Permission.VIEW, practice));
     }
 
+    /**
+     * 封装testViewPublishedPrivate练习Super管理员ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("VIEW: published private practice with super admin should allow")
     void testView_PublishedPrivatePractice_SuperAdmin_ShouldAllow() {
@@ -185,6 +257,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(admin, Permission.VIEW, practice));
     }
 
+    /**
+     * 封装testViewPublishedPrivate练习NonMemberShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("VIEW: published private practice with non-member should deny")
     void testView_PublishedPrivatePractice_NonMember_ShouldDeny() {
@@ -202,6 +277,9 @@ class PracticeAccessPolicyTest {
         assertFalse(policy.can(null, Permission.CREATE, practice));
     }
 
+    /**
+     * 封装testCreateSuper管理员ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("CREATE: super admin should allow")
     void testCreate_SuperAdmin_ShouldAllow() {
@@ -210,6 +288,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(admin, Permission.CREATE, practice));
     }
 
+    /**
+     * 封装testCreate教师Content角色ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("CREATE: teacher content role should allow")
     void testCreate_TeacherContentRole_ShouldAllow() {
@@ -218,6 +299,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(teacher, Permission.CREATE, practice));
     }
 
+    /**
+     * 封装testCreateAnother教师Content角色ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("CREATE: another teacher content role should allow")
     void testCreate_AnotherTeacherContentRole_ShouldAllow() {
@@ -226,6 +310,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(contentAdmin, Permission.CREATE, practice));
     }
 
+    /**
+     * 封装testCreateStudentShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("CREATE: student should deny")
     void testCreate_Student_ShouldDeny() {
@@ -243,6 +330,9 @@ class PracticeAccessPolicyTest {
         assertFalse(policy.can(null, Permission.UPDATE, practice));
     }
 
+    /**
+     * 封装testUpdateSuper管理员ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("UPDATE: super admin should allow")
     void testUpdate_SuperAdmin_ShouldAllow() {
@@ -251,6 +341,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(admin, Permission.UPDATE, practice));
     }
 
+    /**
+     * 封装testUpdateOwnerShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("UPDATE: owner should allow")
     void testUpdate_Owner_ShouldAllow() {
@@ -259,6 +352,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(owner, Permission.UPDATE, practice));
     }
 
+    /**
+     * 封装testUpdateOther用户ShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("UPDATE: other user should deny")
     void testUpdate_OtherUser_ShouldDeny() {
@@ -276,6 +372,9 @@ class PracticeAccessPolicyTest {
         assertFalse(policy.can(null, Permission.DELETE, practice));
     }
 
+    /**
+     * 封装testDeleteSuper管理员ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("DELETE: super admin should allow")
     void testDelete_SuperAdmin_ShouldAllow() {
@@ -284,6 +383,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(admin, Permission.DELETE, practice));
     }
 
+    /**
+     * 封装testDeleteOwnerShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("DELETE: owner should allow")
     void testDelete_Owner_ShouldAllow() {
@@ -292,6 +394,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(owner, Permission.DELETE, practice));
     }
 
+    /**
+     * 封装testDeleteOther用户ShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("DELETE: other user should deny")
     void testDelete_OtherUser_ShouldDeny() {
@@ -309,6 +414,9 @@ class PracticeAccessPolicyTest {
         assertFalse(policy.can(null, Permission.SUBMIT, practice));
     }
 
+    /**
+     * 封装testSubmit管理员AccountShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("SUBMIT: admin account should deny")
     void testSubmit_AdminAccount_ShouldDeny() {
@@ -317,6 +425,9 @@ class PracticeAccessPolicyTest {
         assertFalse(policy.can(adminAccount, Permission.SUBMIT, practice));
     }
 
+    /**
+     * 封装testSubmitUnpublished练习ShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断；在状态变化后发布异步消息。
+     */
     @Test
     @DisplayName("SUBMIT: unpublished practice should deny")
     void testSubmit_UnpublishedPractice_ShouldDeny() {
@@ -325,6 +436,9 @@ class PracticeAccessPolicyTest {
         assertFalse(policy.can(student, Permission.SUBMIT, practice));
     }
 
+    /**
+     * 封装testSubmitPublishedPublic练习Regular用户ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("SUBMIT: published public practice with regular user should allow")
     void testSubmit_PublishedPublicPractice_RegularUser_ShouldAllow() {
@@ -333,6 +447,9 @@ class PracticeAccessPolicyTest {
         assertTrue(policy.can(student, Permission.SUBMIT, practice));
     }
 
+    /**
+     * 封装testSubmitPublishedPrivate练习NonMemberShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("SUBMIT: published private practice with non-member should deny")
     void testSubmit_PublishedPrivatePractice_NonMember_ShouldDeny() {
@@ -341,6 +458,9 @@ class PracticeAccessPolicyTest {
         assertFalse(policy.can(student, Permission.SUBMIT, practice));
     }
 
+    /**
+     * 封装testSubmitPublishedPublic练习OwnerShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("SUBMIT: published public practice with owner should allow")
     void testSubmit_PublishedPublicPractice_Owner_ShouldAllow() {

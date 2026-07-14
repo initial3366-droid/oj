@@ -1,432 +1,388 @@
 package com.qoj.module.judge.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.qoj.common.enums.SubmissionStatus;
-import com.qoj.module.judge.DockerJudgeService;
+import com.qoj.common.redis.RedisKeys;
+import com.qoj.common.util.Utf8TextLimiter;
+import com.qoj.module.contest.entity.ContestProblem;
+import com.qoj.module.contest.entity.ContestProblemCaseScore;
+import com.qoj.module.contest.entity.ContestProblemTestCase;
+import com.qoj.module.contest.mapper.ContestProblemCaseScoreMapper;
+import com.qoj.module.contest.mapper.ContestProblemMapper;
+import com.qoj.module.contest.mapper.ContestProblemTestCaseMapper;
 import com.qoj.module.judge.JudgeCaseResult;
 import com.qoj.module.judge.JudgeResult;
 import com.qoj.module.judge.JudgeTask;
-import com.qoj.module.judge.dto.DomjudgeSubmissionResponse;
-import com.qoj.module.judge.service.LocalJudgeService;
+import com.qoj.module.judge.gojudge.GoJudgeService;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.mapper.ProblemTestCaseMapper;
 import com.qoj.module.setting.service.SystemSettingService;
 import com.qoj.module.setting.vo.JudgeSettingsVO;
+import com.qoj.module.submission.dto.JudgeResultCallbackRequest;
 import com.qoj.module.submission.entity.Submission;
-import com.qoj.module.submission.entity.SubmissionCaseResult;
-import com.qoj.module.submission.mapper.SubmissionCaseResultMapper;
 import com.qoj.module.submission.mapper.SubmissionMapper;
-import com.qoj.module.submission.service.UserProblemStatusService;
-import com.qoj.module.user.service.UserScoreService;
+import com.qoj.module.submission.service.JudgeCallbackService;
 import com.qoj.module.ws.JudgeMessagePublisher;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import java.math.BigDecimal;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.task.TaskRejectedException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
 /**
- * 判题队列调度器
+ * Claims queue entries for the embedded go-judge execution path.
  *
- * 核心调度逻辑：
- * 1. 每 poll-interval-ms 扫描一次 WAITING/PENDING/REJUDGE_PENDING 提交
- * 2. 统计当前 RUNNING/JUDGING/COMPILING 数量
- * 3. 可取任务数 = maxConcurrent - 当前运行数
- * 4. 每次最多取 queueBatchSize 条提交
- * 5. 原子更新状态为 JUDGING（乐观锁防止重复判题）
- * 6. 提交到固定大小线程池执行
- * 7. 任务结束后释放并发名额
- * 8. 异常时更新为 SYSTEM_ERROR
+ * <p>CCPCOJ-owned scopes are excluded before claiming, so the pull-based contest
+ * worker and go-judge can never race for the same submission. Database status
+ * transitions remain the single source of truth for both paths.
  */
 @Service
 public class JudgeQueueScheduler {
     private static final Logger log = LoggerFactory.getLogger(JudgeQueueScheduler.class);
 
-    // DO NOT autowire JudgeService — we need specific implementations by mode
     private final SubmissionMapper submissionMapper;
     private final ProblemMapper problemMapper;
     private final ProblemTestCaseMapper problemTestCaseMapper;
-    private final DomjudgeAdapter domjudgeAdapter;
-    private final JudgeMessagePublisher judgeMessagePublisher;
-    private final UserProblemStatusService userProblemStatusService;
-    private final UserScoreService userScoreService;
+    private final ContestProblemMapper contestProblemMapper;
+    private final ContestProblemTestCaseMapper contestProblemTestCaseMapper;
+    private final ContestProblemCaseScoreMapper contestProblemCaseScoreMapper;
+    private final GoJudgeService goJudgeService;
+    private final JudgeCallbackService callbackService;
+    private final JudgeMessagePublisher messagePublisher;
     private final ThreadPoolTaskExecutor judgeTaskExecutor;
     private final SystemSettingService settingService;
-    private final SubmissionCaseResultMapper submissionCaseResultMapper;
+    private final StringRedisTemplate redisTemplate;
     private final String workerId;
-
-    @Autowired(required = false)
-    private DockerJudgeService dockerJudgeService;
-
-    @Autowired(required = false)
-    private LocalJudgeService localJudgeService;
+    private long lastPollAt;
 
     public JudgeQueueScheduler(
         SubmissionMapper submissionMapper,
         ProblemMapper problemMapper,
         ProblemTestCaseMapper problemTestCaseMapper,
-        DomjudgeAdapter domjudgeAdapter,
-        JudgeMessagePublisher judgeMessagePublisher,
-        UserProblemStatusService userProblemStatusService,
-        UserScoreService userScoreService,
+        ContestProblemMapper contestProblemMapper,
+        ContestProblemTestCaseMapper contestProblemTestCaseMapper,
+        ContestProblemCaseScoreMapper contestProblemCaseScoreMapper,
+        GoJudgeService goJudgeService,
+        JudgeCallbackService callbackService,
+        JudgeMessagePublisher messagePublisher,
         ThreadPoolTaskExecutor judgeTaskExecutor,
         SystemSettingService settingService,
-        SubmissionCaseResultMapper submissionCaseResultMapper
+        StringRedisTemplate redisTemplate
     ) {
         this.submissionMapper = submissionMapper;
         this.problemMapper = problemMapper;
         this.problemTestCaseMapper = problemTestCaseMapper;
-        this.domjudgeAdapter = domjudgeAdapter;
-        this.judgeMessagePublisher = judgeMessagePublisher;
-        this.userProblemStatusService = userProblemStatusService;
-        this.userScoreService = userScoreService;
+        this.contestProblemMapper = contestProblemMapper;
+        this.contestProblemTestCaseMapper = contestProblemTestCaseMapper;
+        this.contestProblemCaseScoreMapper = contestProblemCaseScoreMapper;
+        this.goJudgeService = goJudgeService;
+        this.callbackService = callbackService;
+        this.messagePublisher = messagePublisher;
         this.judgeTaskExecutor = judgeTaskExecutor;
         this.settingService = settingService;
-        this.submissionCaseResultMapper = submissionCaseResultMapper;
+        this.redisTemplate = redisTemplate;
         this.workerId = generateWorkerId();
-        JudgeSettingsVO judgeCfg = settingService.getJudgeSettings();
-        log.info("JudgeQueueScheduler initialized: workerId={}, maxConcurrent={}, pollIntervalMs={}, threadPoolSize={}",
-            workerId, judgeCfg.maxConcurrent, judgeCfg.pollIntervalMs, judgeCfg.threadPoolSize);
     }
 
     /**
-     * 定时轮询待评测提交队列
-     * 调度频率保持为短间隔，实际轮询间隔由数据库中的 judge.poll_interval_ms 控制。
+     * 封装pollAndDispatch相关逻辑。从持久化层读取数据。
      */
     @Scheduled(fixedDelay = 200)
     public void pollAndDispatch() {
         try {
-            // 读取动态判题配置（存于 system_settings，运行时可变）
-            JudgeSettingsVO judgeCfg = settingService.getJudgeSettings();
-            if (!shouldPoll(judgeCfg.pollIntervalMs)) {
+            JudgeSettingsVO settings = settingService.getJudgeRuntimeSettings();
+            if (!settings.enabled || !shouldPoll(settings.pollIntervalMs)) {
                 return;
             }
-            if (!judgeCfg.enabled) {
-                return; // 判题开关关闭：停止派发新任务（已派发的任务仍在线程池内跑完）
-            }
-            int maxConcurrent = judgeCfg.maxConcurrent;
-            int queueBatchSize = judgeCfg.queueBatchSize;
-
-            // 1. 统计当前正在运行的判题任务数
-            long runningCount = submissionMapper.countRunning();
-            int availableSlots = maxConcurrent - (int) runningCount;
-
-            if (availableSlots <= 0) {
-                return; // 没有可用槽位
-            }
-
-            // 2. 可取任务数 = min(可用槽位, queueBatchSize)
-            int fetchLimit = Math.min(availableSlots, queueBatchSize);
-
-            // 3. 查询等待队列中的提交（按 priority DESC, submit_time ASC）
-            List<Submission> waitingSubmissions = submissionMapper.selectWaiting(fetchLimit);
-
-            if (waitingSubmissions.isEmpty()) {
+            int slots = settings.maxConcurrent - Math.toIntExact(submissionMapper.countRunning());
+            if (slots <= 0) {
                 return;
             }
-
-            log.debug("Poll phase: runningCount={}, availableSlots={}, fetched={}",
-                runningCount, availableSlots, waitingSubmissions.size());
-
-            // 4. 逐个原子认领任务并提交到线程池
-            for (Submission submission : waitingSubmissions) {
-                boolean claimed = claimAndDispatch(submission);
-                if (!claimed) {
-                    // 认领失败（可能被其他实例抢占），继续下一个
-                    log.debug("Failed to claim submission {} — skipped (already claimed by another worker)",
-                        submission.id);
-                }
+            int limit = Math.min(slots, settings.queueBatchSize);
+            List<Submission> submissions = submissionMapper.selectWaitingForEmbeddedJudge(limit);
+            for (Submission submission : submissions) {
+                claimAndDispatch(submission);
             }
         } catch (Exception ex) {
-            log.error("JudgeQueueScheduler poll error", ex);
+            log.error("go-judge queue poll failed", ex);
         }
     }
 
     /**
-     * 原子认领任务并提交到线程池
-     *
-     * @return true 表示认领并提交成功
+     * 封装claimAndDispatch相关逻辑。从持久化层读取数据；结果依赖当前时间。
      */
-    private boolean claimAndDispatch(Submission submission) {
-        String currentStatus = submission.status;
-        LocalDateTime startTime = LocalDateTime.now();
-        JudgeSettingsVO judgeCfg = settingService.getJudgeSettings();
-        String mode = submission.contestId == null ? judgeCfg.mode : judgeCfg.contestMode;
-        String judgeServer = judgeServerName(mode);
-
-        // 原子更新：从 WAITING/PENDING/REJUDGE_PENDING → JUDGING
+    private void claimAndDispatch(Submission submission) {
+        String originalStatus = submission.status;
+        LocalDateTime now = LocalDateTime.now();
         int updated = submissionMapper.atomicClaim(
             submission.id,
-            currentStatus,
+            originalStatus,
             SubmissionStatus.JUDGING.name(),
-            judgeServer,
+            "GO_JUDGE",
             workerId,
-            startTime
+            now
         );
-
         if (updated == 0) {
-            return false; // 乐观锁失败，可能已被其他 worker 认领
+            return;
         }
-
-        // 更新内存中的状态用于后续处理
         submission.status = SubmissionStatus.JUDGING.name();
+        submission.judgeServer = "GO_JUDGE";
         submission.judgeWorkerId = workerId;
-        submission.judgeStartTime = startTime;
-        submission.judgeServer = judgeServer;
-
-        // 推送状态变更（JUDGING）
-        judgeMessagePublisher.submissionChanged(
-            submission.id, submission.status, submission.timeUsed, submission.memoryUsed);
-
-        // 提交到线程池
-        judgeTaskExecutor.submit(() -> executeJudge(submission));
-
-        return true;
+        submission.judgeStartTime = now;
+        try {
+            judgeTaskExecutor.submit(() -> execute(submission));
+            messagePublisher.submissionChanged(submission.id, submission.status, null, null);
+        } catch (TaskRejectedException ex) {
+            int restored = submissionMapper.restoreRejectedEmbeddedClaim(
+                submission.id, workerId, originalStatus, LocalDateTime.now());
+            if (restored > 0) {
+                messagePublisher.submissionChanged(submission.id, originalStatus, null, null);
+                messagePublisher.submissionQueueUpdated();
+            }
+            log.warn("go-judge dispatch rejected for submission {}; restored={}", submission.id, restored);
+        }
     }
 
     /**
-     * 执行判题
-     *
-     * 根据 judge.mode 选择判题方式：
-     * - domjudge：提交到 DOMjudge 远程判题
-     * - docker：使用 Docker 容器本地判题
-     *
-     * 无论成功还是失败，都必须释放资源并更新状态。
+     * 封装execute相关逻辑。从持久化层读取数据；可能调用外部判题或网关服务；结果依赖当前时间。
      */
-    private void executeJudge(Submission submission) {
+    private void execute(Submission submission) {
         try {
-            JudgeSettingsVO judgeCfg = settingService.getJudgeSettings();
-            String mode = submission.contestId == null ? judgeCfg.mode : judgeCfg.contestMode;
-            if ("docker".equalsIgnoreCase(mode)) {
-                executeDockerJudge(submission);
-            } else if ("unsafe-local".equalsIgnoreCase(mode)) {
-                if (!judgeCfg.enableUnsafeLocalJudge) {
-                    releaseAndFinalize(submission, SubmissionStatus.SE,
-                        "不安全本地判题未启用", null, null);
-                    return;
-                }
-                executeLocalJudge(submission);
-            } else {
-                executeDomjudgeSubmit(submission);
+            // Routing is an immutable submission snapshot. Runtime settings must
+            // never move an already claimed task to another judge service.
+            if (!"GO_JUDGE".equals(submission.judgeBackend)) {
+                failDirectly(submission, "提交的判题路由无效");
+                return;
             }
+            JudgeTask task = buildTask(submission);
+            JudgeResult result = task == null
+                ? JudgeResult.systemError("题目未配置可用的隐藏测试点")
+                : goJudgeService.judge(task);
+            complete(submission, result);
         } catch (Exception ex) {
-            log.error("Judge execution failed for submission {}", submission.id, ex);
-            releaseAndFinalize(submission, SubmissionStatus.SE, "判题异常: " + ex.getMessage(), null, null);
+            log.error("go-judge execution failed for submission {}", submission.id, ex);
+            failDirectly(submission, "go-judge 判题异常");
         } finally {
             submissionMapper.releaseWorker(submission.id, LocalDateTime.now());
         }
     }
 
     /**
-     * 本地判题：使用 LocalJudgeService 直接执行
+     * 封装complete相关逻辑。执行持久化写入；读写 Redis 中的缓存、锁或限流状态；结果依赖当前时间。
      */
-    private void executeLocalJudge(Submission submission) {
-        if (localJudgeService == null) {
-            releaseAndFinalize(submission, SubmissionStatus.SE,
-                "本地判题服务未启用", null, null);
+    private void complete(Submission submission, JudgeResult result) {
+        JudgeResultCallbackRequest request = new JudgeResultCallbackRequest();
+        request.submissionId = submission.id;
+        request.status = result.status().name();
+        request.timeUsed = result.maxTimeMs();
+        request.memoryUsed = result.maxMemoryKb();
+        request.score = score(submission, result);
+        request.caseResults = callbackCases(submission, result.caseResults());
+        callbackService.handleJudgeResult(request);
+
+        Submission completed = submissionMapper.selectById(submission.id);
+        if (completed == null) {
             return;
         }
-
-        try {
-            localJudgeService.judgeSubmission(submission.id);
-        } catch (Exception ex) {
-            log.error("Local judge failed for submission {}", submission.id, ex);
-            releaseAndFinalize(submission, SubmissionStatus.SE,
-                "本地判题异常: " + ex.getMessage(), null, null);
+        completed.judgeServer = "GO_JUDGE";
+        completed.judgeMessage = result.compileOutput() == null || result.compileOutput().isBlank()
+            ? null
+            : Utf8TextLimiter.fitMysqlText(result.compileOutput());
+        if (result.status() == SubmissionStatus.SE || result.status() == SubmissionStatus.FAILED) {
+            completed.errorMessage = Utf8TextLimiter.fitMysqlText(completed.judgeMessage == null
+                ? "go-judge 系统错误"
+                : completed.judgeMessage);
         }
+        completed.updatedAt = LocalDateTime.now();
+        submissionMapper.updateById(completed);
+
+        redisTemplate.delete(RedisKeys.judgePending(
+            completed.userId,
+            completed.contestProblemId == null ? completed.problemId : completed.contestProblemId,
+            completed.contestId
+        ));
+        if (completed.contestId == null) {
+            updateProblemAcRate(completed.problemId);
+        }
+        messagePublisher.submissionChanged(
+            completed.id, completed.status, completed.timeUsed, completed.memoryUsed);
+        messagePublisher.submissionQueueUpdated();
     }
 
     /**
-     * Docker 判题：构建 JudgeTask 并调用 DockerJudgeService
+     * 封装回调Cases相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
-    private void executeDockerJudge(Submission submission) {
-        if (dockerJudgeService == null) {
-            releaseAndFinalize(submission, SubmissionStatus.SE,
-                "Docker judge service not available", null, null);
-            return;
+    private List<JudgeResultCallbackRequest.CaseResultDTO> callbackCases(
+        Submission submission,
+        List<JudgeCaseResult> cases
+    ) {
+        if (cases == null || cases.isEmpty()) {
+            return List.of();
         }
-
-        // 构建判题任务
-        JudgeTask task = buildJudgeTask(submission);
-        if (task == null) {
-            releaseAndFinalize(submission, SubmissionStatus.SE,
-                "无法构建判题任务", null, null);
-            return;
+        Map<Integer, Integer> configuredScores = caseScores(submission);
+        List<JudgeResultCallbackRequest.CaseResultDTO> result = new ArrayList<>(cases.size());
+        for (JudgeCaseResult item : cases) {
+            int maxScore = configuredScores.getOrDefault(item.caseNo(), 1);
+            JudgeResultCallbackRequest.CaseResultDTO dto = new JudgeResultCallbackRequest.CaseResultDTO();
+            dto.caseNo = item.caseNo();
+            dto.status = item.status().name();
+            dto.maxScore = maxScore;
+            dto.score = item.status() == SubmissionStatus.AC ? maxScore : 0;
+            dto.timeUsed = item.timeMs();
+            dto.memoryUsed = item.memoryKb();
+            result.add(dto);
         }
-
-        // 执行判题
-        JudgeResult result = dockerJudgeService.judge(task);
-        saveDockerCaseResults(submission.id, result.caseResults());
-
-        // 更新结果
-        releaseAndFinalize(submission, result.status(), result.compileOutput(),
-            result.maxTimeMs(), result.maxMemoryKb());
-
-        // 更新用户题目状态和分数
-        if (submission.contestId == null) {
-            userProblemStatusService.recordJudged(submission);
-            userScoreService.recompute(submission.userId);
-        }
-
-        // 推送结果
-        judgeMessagePublisher.submissionChanged(
-            submission.id,
-            result.status().name(),
-            result.maxTimeMs(),
-            result.maxMemoryKb()
-        );
+        return result;
     }
 
-    private void saveDockerCaseResults(Long submissionId, List<JudgeCaseResult> caseResults) {
-        submissionCaseResultMapper.delete(
-            new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submissionId)
-        );
-        if (caseResults == null || caseResults.isEmpty()) {
-            return;
+    private Integer score(Submission submission, JudgeResult result) {
+        if (submission.contestId == null || submission.contestProblemId == null) {
+            return null;
         }
-        LocalDateTime now = LocalDateTime.now();
-        for (JudgeCaseResult item : caseResults) {
-            SubmissionCaseResult caseResult = new SubmissionCaseResult();
-            caseResult.submissionId = submissionId;
-            caseResult.caseNo = item.caseNo();
-            caseResult.status = item.status().name();
-            caseResult.timeUsed = item.timeMs();
-            caseResult.memoryUsed = item.memoryKb();
-            caseResult.judgeMessage = item.message();
-            caseResult.score = item.status() == SubmissionStatus.AC ? 1 : 0;
-            caseResult.maxScore = 1;
-            caseResult.createdAt = now;
-            submissionCaseResultMapper.insert(caseResult);
+        ContestProblem problem = contestProblemMapper.selectById(submission.contestProblemId);
+        int fullScore = problem == null
+            ? 100
+            : positive(problem.score, positive(problem.fullScore, 100));
+        Map<Integer, Integer> configuredScores = caseScores(submission);
+        if (!configuredScores.isEmpty()) {
+            int earned = result.caseResults() == null ? 0 : result.caseResults().stream()
+                .filter(item -> item.status() == SubmissionStatus.AC)
+                .mapToInt(item -> configuredScores.getOrDefault(item.caseNo(), 0))
+                .sum();
+            return Math.min(fullScore, earned);
         }
+        long total = result.caseResults() == null ? 0 : result.caseResults().size();
+        long passed = result.caseResults() == null ? 0 : result.caseResults().stream()
+            .filter(item -> item.status() == SubmissionStatus.AC)
+            .count();
+        return total == 0 ? 0 : (int) Math.round(fullScore * passed / (double) total);
     }
 
-    /**
-     * DOMjudge 判题：提交到远程判题服务器
-     * JudgePollingService 会定期轮询 DOMjudge 获取结果
-     */
-    private void executeDomjudgeSubmit(Submission submission) {
-        if (!domjudgeAdapter.enabled()) {
-            releaseAndFinalize(submission, SubmissionStatus.SE,
-                "DOMjudge 未启用", null, null);
-            return;
+    private Map<Integer, Integer> caseScores(Submission submission) {
+        if (submission.contestId == null || submission.contestProblemId == null) {
+            return Map.of();
         }
-
-        DomjudgeSubmissionResponse response = domjudgeAdapter.submit(
-            submission.contestId == null ? null : String.valueOf(submission.contestId),
-            getDomjudgeProblemId(submission),
-            submission.language,
-            submission.code
-        );
-
-        if (response == null || response.submissionId() == null) {
-            releaseAndFinalize(submission, SubmissionStatus.SE,
-                "DOMjudge 提交失败", null, null);
-            return;
-        }
-
-        submission.domjudgeSubmissionId = response.submissionId();
-        submission.judgeServer = "DOMJUDGE";
-        if (submission.judgeStartTime == null) {
-            submission.judgeStartTime = LocalDateTime.now();
-        }
-        submission.updatedAt = LocalDateTime.now();
-        submissionMapper.updateById(submission);
-
-        // 推送状态
-        judgeMessagePublisher.submissionChanged(
-            submission.id, submission.status, submission.timeUsed, submission.memoryUsed);
-
-        log.info("DOMjudge submitted: submissionId={}, domjudgeId={}",
-            submission.id, response.submissionId());
+        Map<Integer, Integer> result = new HashMap<>();
+        contestProblemCaseScoreMapper.selectList(
+            new QueryWrapper<ContestProblemCaseScore>()
+                .eq("contest_id", submission.contestId)
+                .eq("problem_id", submission.contestProblemId)
+        ).forEach(item -> result.put(item.caseNo, Math.max(0, item.score == null ? 0 : item.score)));
+        return result;
     }
 
-    /**
-     * 释放任务并更新最终状态
-     */
-    private void releaseAndFinalize(Submission submission, SubmissionStatus finalStatus,
-                                     String message, Integer timeUsed, Integer memoryUsed) {
-        try {
-            LocalDateTime finishedAt = LocalDateTime.now();
-            submission.status = finalStatus.name();
-            if (submission.judgeStartTime == null) {
-                submission.judgeStartTime = finishedAt;
+    private JudgeTask buildTask(Submission submission) {
+        if (submission.contestProblemId != null) {
+            ContestProblem problem = contestProblemMapper.selectById(submission.contestProblemId);
+            if (problem == null) {
+                return null;
             }
-            submission.judgeEndTime = finishedAt;
-            submission.updatedAt = finishedAt;
-            submission.judgeMessage = message;
-            if (timeUsed != null) {
-                submission.timeUsed = timeUsed;
-            }
-            if (memoryUsed != null) {
-                submission.memoryUsed = memoryUsed;
-            }
-            if (finalStatus == SubmissionStatus.SE || finalStatus == SubmissionStatus.FAILED) {
-                submission.errorMessage = message;
-            }
-            submissionMapper.updateById(submission);
-            log.info("Judge complete: submissionId={}, status={}", submission.id, finalStatus);
-        } catch (Exception ex) {
-            log.error("Failed to update final status for submission {}", submission.id, ex);
+            List<ContestProblemTestCase> cases = contestProblemTestCaseMapper.selectList(
+                new QueryWrapper<ContestProblemTestCase>()
+                    .eq("contest_problem_id", submission.contestProblemId)
+                    .eq("sample", false)
+                    .orderByAsc("case_no")
+            );
+            /**
+             * 封装task相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
+            return task(
+                submission,
+                positive(problem.timeLimit, 1000),
+                positive(problem.memoryLimit, 256),
+                cases.stream().map(item -> new JudgeTask.TestCase(
+                    item.caseNo, item.inputData, item.outputData)).toList()
+            );
         }
-    }
 
-    private JudgeTask buildJudgeTask(Submission submission) {
         Problem problem = problemMapper.selectById(submission.problemId);
         if (problem == null) {
             return null;
         }
+        List<ProblemTestCase> cases = problemTestCaseMapper.selectList(
+            new QueryWrapper<ProblemTestCase>()
+                .eq("problem_id", problem.id)
+                .eq("sample", false)
+                .orderByAsc("case_no")
+        );
+        /**
+         * 封装task相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
+        return task(
+            submission,
+            positive(problem.timeLimit, 1000),
+            positive(problem.memoryLimit, 256),
+            cases.stream().map(item -> new JudgeTask.TestCase(
+                item.caseNo, item.inputData, item.outputData)).toList()
+        );
+    }
 
-        List<ProblemTestCase> testCases = problemTestCaseMapper.selectByProblemId(problem.id);
-        if (testCases == null || testCases.isEmpty()) {
+    private JudgeTask task(
+        Submission submission,
+        int timeLimit,
+        int memoryLimit,
+        List<JudgeTask.TestCase> cases
+    ) {
+        if (cases.isEmpty()) {
             return null;
         }
-
-        int timeLimit = problem.timeLimit != null ? problem.timeLimit : 1000;
-        int memoryLimit = problem.memoryLimit != null ? problem.memoryLimit : 256;
-
-        List<JudgeTask.TestCase> taskCases = new ArrayList<>();
-        for (ProblemTestCase tc : testCases) {
-            taskCases.add(new JudgeTask.TestCase(tc.caseNo, tc.inputData, tc.outputData));
-        }
-
+        /**
+         * 封装判题Task相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new JudgeTask(
             submission.id,
             submission.language,
             submission.code,
             timeLimit,
             memoryLimit,
-            taskCases
+            cases
         );
     }
 
-    private String getDomjudgeProblemId(Submission submission) {
-        Problem problem = problemMapper.selectById(submission.problemId);
-        if (problem != null && problem.domjudgeProblemId != null && !problem.domjudgeProblemId.isBlank()) {
-            return problem.domjudgeProblemId;
+    private void updateProblemAcRate(Long problemId) {
+        Long total = submissionMapper.countByProblemId(problemId);
+        Long accepted = submissionMapper.countAcceptedByProblemId(problemId);
+        Problem problem = problemMapper.selectById(problemId);
+        if (problem == null) {
+            return;
         }
-        return String.valueOf(submission.problemId);
+        int rate = total == null || total == 0
+            ? 0
+            : (int) Math.round((accepted == null ? 0 : accepted) * 100.0 / total);
+        problem.acRate = BigDecimal.valueOf(rate);
+        problemMapper.updateById(problem);
+        redisTemplate.delete(RedisKeys.problem(problemId));
     }
 
-    private String generateWorkerId() {
-        String host;
-        try {
-            host = InetAddress.getLocalHost().getHostName();
-        } catch (UnknownHostException ex) {
-            host = "unknown";
-        }
-        return host + "-" + UUID.randomUUID().toString().substring(0, 8);
+    private void failDirectly(Submission submission, String message) {
+        LocalDateTime now = LocalDateTime.now();
+        submission.status = SubmissionStatus.SE.name();
+        submission.judgeServer = "GO_JUDGE";
+        submission.judgeEndTime = now;
+        submission.judgeMessage = Utf8TextLimiter.fitMysqlText(message);
+        submission.errorMessage = Utf8TextLimiter.fitMysqlText(message);
+        submission.updatedAt = now;
+        submissionMapper.updateById(submission);
+        messagePublisher.submissionChanged(submission.id, submission.status, null, null);
+        messagePublisher.submissionQueueUpdated();
     }
 
-    private long lastPollAt = 0L;
+    private int positive(Integer value, int fallback) {
+        return value != null && value > 0 ? value : fallback;
+    }
 
     private boolean shouldPoll(long intervalMs) {
         long now = System.currentTimeMillis();
@@ -438,13 +394,12 @@ public class JudgeQueueScheduler {
         return true;
     }
 
-    private String judgeServerName(String mode) {
-        if ("docker".equalsIgnoreCase(mode)) {
-            return "DOCKER";
+    private String generateWorkerId() {
+        try {
+            return InetAddress.getLocalHost().getHostName()
+                + "-gojudge-" + UUID.randomUUID().toString().substring(0, 8);
+        } catch (UnknownHostException ex) {
+            return "unknown-gojudge-" + UUID.randomUUID().toString().substring(0, 8);
         }
-        if ("unsafe-local".equalsIgnoreCase(mode)) {
-            return "LOCAL";
-        }
-        return "DOMJUDGE";
     }
 }

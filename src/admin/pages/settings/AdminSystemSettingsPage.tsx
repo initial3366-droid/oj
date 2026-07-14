@@ -1,3 +1,6 @@
+/**
+ * 管理员SystemSettings页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useState, useEffect } from 'react';
 import {
   Card,
@@ -14,7 +17,6 @@ import {
   Popconfirm,
   Tag,
   TableColumnProps,
-  Select,
 } from '@arco-design/web-react';
 import { IconDelete, IconEdit, IconPlus, IconRefresh, IconSave } from '@arco-design/web-react/icon';
 import { adminDelete, adminGet, adminPost, adminPut } from '../../api/adminClient';
@@ -22,14 +24,22 @@ import { toast } from '../../utils/toast';
 
 const FormItem = Form.Item;
 const { Title, Text, Paragraph } = Typography;
-const Option = Select.Option;
 
+/**
+ * SettingsSection类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type SettingsSection = 'frontend' | 'register' | 'judge' | 'system';
 
+/**
+ * 管理员SystemSettings页面Props接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface AdminSystemSettingsPageProps {
   section: SettingsSection;
 }
 
+/**
+ * FrontendSettings接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface FrontendSettings {
   siteTitle: string;
   siteLogo: string;
@@ -42,23 +52,28 @@ interface FrontendSettings {
   footerLink2Url: string;
 }
 
+/**
+ * 判题Settings接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface JudgeSettings {
   enabled: boolean;
-  mode: 'domjudge' | 'docker' | 'unsafe-local';
-  contestMode: 'domjudge' | 'docker' | 'unsafe-local';
-  enableUnsafeLocalJudge: boolean;
+  mode: 'go-judge';
+  contestMode: 'per-contest';
   enableSandbox: boolean;
   maxConcurrent: number;
   threadPoolSize: number;
   queueBatchSize: number;
   pollIntervalMs: number;
-  domjudgeBaseUrl: string;
-  domjudgeApiKey?: string;
-  hasDomjudgeApiKey?: boolean;
-  domjudgeContestId: string;
-  domjudgePollIntervalMs: number;
+  ccpcojJudgeUsername: string;
+  ccpcojJudgePassword?: string;
+  hasCcpcojJudgePassword?: boolean;
+  ccpcojSessionTtlMinutes: number;
+  ccpcojStaleTaskMinutes: number;
 }
 
+/**
+ * AgentSettings接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface AgentSettings {
   enabled: boolean;
   baseUrl: string;
@@ -68,6 +83,9 @@ interface AgentSettings {
   maxCodeChars: number;
 }
 
+/**
+ * OssSettings接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface OssSettings {
   enabled: boolean;
   endpoint: string;
@@ -80,6 +98,9 @@ interface OssSettings {
   maxSizeMb: number;
 }
 
+/**
+ * Email配置接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface EmailConfig {
   host: string;
   port: number;
@@ -90,12 +111,18 @@ interface EmailConfig {
   content?: string;
 }
 
+/**
+ * 注册Settings接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface RegisterSettings {
   enabled: boolean;
   emailVerification?: boolean;
   emailConfig: EmailConfig;
 }
 
+/**
+ * CarouselSlide接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface CarouselSlide {
   id: number;
   title: string;
@@ -104,6 +131,9 @@ interface CarouselSlide {
   enabled: boolean;
 }
 
+/**
+ * CarouselSlideForm类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type CarouselSlideForm = Omit<CarouselSlide, 'id'>;
 
 const emptyCarouselSlide: CarouselSlideForm = {
@@ -113,6 +143,9 @@ const emptyCarouselSlide: CarouselSlideForm = {
   enabled: true,
 };
 
+/**
+ * 渲染管理员SystemSettings页面，并协调其数据加载、状态和交互。
+ */
 export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProps) {
   const [loading, setLoading] = useState(false);
   const [carouselLoading, setCarouselLoading] = useState(false);
@@ -127,6 +160,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
   const [agentForm] = Form.useForm<AgentSettings>();
   const [ossForm] = Form.useForm<OssSettings>();
   const [judgeThreadPoolSize, setJudgeThreadPoolSize] = useState(2);
+  const [hasCcpcojJudgePassword, setHasCcpcojJudgePassword] = useState(false);
   const [passwordForm] = Form.useForm();
   const [carouselForm] = Form.useForm<CarouselSlideForm>();
 
@@ -134,6 +168,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     loadSettings();
   }, [section]);
 
+  /**
+   * 读取Settings并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；失败时向调用方传播异常。
+   */
   async function loadSettings() {
     setLoading(true);
     try {
@@ -147,21 +184,21 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
       if (section === 'judge') {
         const judgeSettings = await adminGet<JudgeSettings>('/api/admin/v1/settings/judge');
         setJudgeThreadPoolSize(judgeSettings.threadPoolSize ?? 2);
+        setHasCcpcojJudgePassword(judgeSettings.hasCcpcojJudgePassword ?? false);
         judgeForm.setFieldsValue({
           enabled: judgeSettings.enabled ?? true,
-          mode: judgeSettings.mode ?? 'docker',
-          contestMode: judgeSettings.contestMode ?? 'domjudge',
-          enableUnsafeLocalJudge: judgeSettings.enableUnsafeLocalJudge ?? false,
+          mode: 'go-judge',
+          contestMode: 'per-contest',
           enableSandbox: judgeSettings.enableSandbox ?? false,
           maxConcurrent: judgeSettings.maxConcurrent ?? 2,
           threadPoolSize: judgeSettings.threadPoolSize ?? 2,
           queueBatchSize: judgeSettings.queueBatchSize ?? 2,
           pollIntervalMs: judgeSettings.pollIntervalMs ?? 1000,
-          domjudgeBaseUrl: judgeSettings.domjudgeBaseUrl || 'http://127.0.0.1:8081',
-          domjudgeApiKey: '',
-          hasDomjudgeApiKey: judgeSettings.hasDomjudgeApiKey ?? false,
-          domjudgeContestId: judgeSettings.domjudgeContestId || '',
-          domjudgePollIntervalMs: judgeSettings.domjudgePollIntervalMs ?? 2000,
+          ccpcojJudgeUsername: judgeSettings.ccpcojJudgeUsername || 'judger',
+          ccpcojJudgePassword: '',
+          hasCcpcojJudgePassword: judgeSettings.hasCcpcojJudgePassword ?? false,
+          ccpcojSessionTtlMinutes: judgeSettings.ccpcojSessionTtlMinutes ?? 720,
+          ccpcojStaleTaskMinutes: judgeSettings.ccpcojStaleTaskMinutes ?? 15,
         });
         return;
       }
@@ -228,6 +265,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     }
   }
 
+  /**
+   * 读取CarouselSlides并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadCarouselSlides() {
     setCarouselLoading(true);
     try {
@@ -241,6 +281,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     }
   }
 
+  /**
+   * 处理SaveFrontend。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function handleSaveFrontend(values: FrontendSettings) {
     try {
       await adminPut('/api/admin/v1/settings/frontend', {
@@ -261,6 +304,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     }
   }
 
+  /**
+   * 判断Email配置Input是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function hasEmailConfigInput(emailConfig?: EmailConfig) {
     if (!emailConfig) {
       return false;
@@ -274,6 +320,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     );
   }
 
+  /**
+   * 校验Email配置。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function validateEmailConfig(emailConfig?: EmailConfig) {
     const host = emailConfig?.host?.trim() || '';
     const username = emailConfig?.username?.trim() || '';
@@ -294,11 +343,17 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     return true;
   }
 
+  /**
+   * 处理注册SaveClick。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function handleRegisterSaveClick() {
     const values = registerForm.getFieldsValue() as RegisterSettings;
     await handleSaveRegister(values);
   }
 
+  /**
+   * 处理Save注册。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function handleSaveRegister(values: RegisterSettings) {
     const emailVerificationEnabled = Boolean(values.emailVerification);
     const shouldSaveEmailConfig = emailVerificationEnabled || hasEmailConfigInput(values.emailConfig);
@@ -332,22 +387,25 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     }
   }
 
+  /**
+   * 处理Save判题。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function handleSaveJudge(values: JudgeSettings) {
     try {
       await adminPut('/api/admin/v1/settings/judge', {
         enabled: values.enabled ?? false,
-        mode: values.mode || 'docker',
-        contestMode: values.contestMode || 'domjudge',
-        enableUnsafeLocalJudge: values.enableUnsafeLocalJudge ?? false,
+        // 判题引擎分工属于安全边界，前端不接受可篡改的执行端类型。
+        mode: 'go-judge',
+        contestMode: 'per-contest',
         enableSandbox: values.enableSandbox ?? false,
         maxConcurrent: values.maxConcurrent ?? 2,
         threadPoolSize: values.threadPoolSize ?? 2,
         queueBatchSize: values.queueBatchSize ?? 2,
         pollIntervalMs: values.pollIntervalMs ?? 1000,
-        domjudgeBaseUrl: values.domjudgeBaseUrl?.trim() || '',
-        domjudgeApiKey: values.domjudgeApiKey?.trim() || '',
-        domjudgeContestId: values.domjudgeContestId?.trim() || '',
-        domjudgePollIntervalMs: values.domjudgePollIntervalMs ?? 2000,
+        ccpcojJudgeUsername: values.ccpcojJudgeUsername?.trim() || '',
+        ccpcojJudgePassword: values.ccpcojJudgePassword?.trim() || '',
+        ccpcojSessionTtlMinutes: values.ccpcojSessionTtlMinutes ?? 720,
+        ccpcojStaleTaskMinutes: values.ccpcojStaleTaskMinutes ?? 15,
       });
       toast.success('判题配置保存成功');
       loadSettings();
@@ -356,6 +414,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     }
   }
 
+  /**
+   * 处理SaveAgent。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function handleSaveAgent(values: AgentSettings) {
     try {
       await adminPut('/api/admin/v1/settings/system/agent', {
@@ -373,6 +434,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     }
   }
 
+  /**
+   * 处理SaveOss。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function handleSaveOss(values: OssSettings) {
     try {
       await adminPut('/api/admin/v1/settings/system/oss', {
@@ -386,13 +450,16 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
         dir: values.dir?.trim() || 'avatars/',
         maxSizeMb: values.maxSizeMb ?? 5,
       });
-      toast.success('OSS 配置保存成功');
+      toast.success('腾讯云 COS 配置保存成功');
       loadSettings();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '保存失败');
     }
   }
 
+  /**
+   * 处理ChangePassword。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function handleChangePassword(values: any) {
     try {
       await adminPut('/api/admin/v1/settings/admin/password', {
@@ -406,6 +473,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     }
   }
 
+  /**
+   * 封装openCreateCarouselModal相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openCreateCarouselModal() {
     setEditingSlide(null);
     carouselForm.setFieldsValue({
@@ -415,6 +485,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     setCarouselModalVisible(true);
   }
 
+  /**
+   * 封装openEditCarouselModal相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openEditCarouselModal(slide: CarouselSlide) {
     setEditingSlide(slide);
     carouselForm.setFieldsValue({
@@ -426,6 +499,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     setCarouselModalVisible(true);
   }
 
+  /**
+   * 处理SaveCarouselSlide。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function handleSaveCarouselSlide() {
     try {
       const values = await carouselForm.validate();
@@ -455,6 +531,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     }
   }
 
+  /**
+   * 处理DeleteCarouselSlide。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function handleDeleteCarouselSlide(id: number) {
     try {
       await adminDelete(`/api/admin/v1/home/carousel/${id}`);
@@ -522,6 +601,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     },
   ];
 
+  /**
+   * 渲染FrontendSettings。会更新 React 状态并触发重新渲染。
+   */
   function renderFrontendSettings() {
     return (
       <div style={{ maxWidth: 1100, margin: '0 auto', overflowX: 'hidden' }}>
@@ -685,6 +767,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     );
   }
 
+  /**
+   * 渲染判题Settings。会更新 React 状态并触发重新渲染。
+   */
   function renderJudgeSettings() {
     return (
       <div style={{ maxWidth: 900, margin: '0 auto', overflowX: 'hidden' }}>
@@ -721,32 +806,15 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
             </FormItem>
 
             <FormItem
-              label="判题模式"
-              field="mode"
-              rules={[{ required: true, message: '请选择判题模式' }]}
+              label="普通判题"
             >
-              <Select>
-                <Option value="unsafe-local">本地判题（仅开发）</Option>
-                <Option value="docker">Docker 判题</Option>
-                <Option value="domjudge">DOMjudge</Option>
-              </Select>
+              <Input value="go-judge" disabled />
             </FormItem>
 
             <FormItem
-              label="比赛模式"
-              field="contestMode"
-              rules={[{ required: true, message: '请选择比赛判题模式' }]}
-              extra="比赛提交使用此模式，普通练习继续使用上面的判题模式"
+              label="比赛判题"
             >
-              <Select>
-                <Option value="domjudge">DOMjudge</Option>
-                <Option value="docker">Docker 判题</Option>
-                <Option value="unsafe-local">本地判题（仅开发）</Option>
-              </Select>
-            </FormItem>
-
-            <FormItem label="本地判题" field="enableUnsafeLocalJudge" triggerPropName="checked">
-              <Switch />
+              <Input value="按比赛配置" disabled />
             </FormItem>
 
             <FormItem label="沙箱调试" field="enableSandbox" triggerPropName="checked">
@@ -795,46 +863,74 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
             <Divider />
 
             <FormItem
-              label="DOMjudge 地址"
-              field="domjudgeBaseUrl"
+              label="评测机账号"
+              field="ccpcojJudgeUsername"
+              rules={[
+                { required: true, message: '请输入 CCPCOJ 评测机账号' },
+                {
+                  match: /^[A-Za-z0-9._-]{1,60}$/,
+                  message: '仅支持字母、数字、点、下划线和连字符，最长 60 位',
+                },
+              ]}
             >
-              <Input placeholder="http://127.0.0.1:8081" />
+              <Input placeholder="judger" maxLength={60} autoComplete="off" />
             </FormItem>
 
             <FormItem
-              label="DOMjudge Key"
-              field="domjudgeApiKey"
-              extra="留空时保留已保存的 API Key"
+              label="评测机密码"
+              field="ccpcojJudgePassword"
+              extra={hasCcpcojJudgePassword ? '留空时保留已保存的密码' : '选择 CCPCOJ 比赛前需要先设置密码'}
+              rules={[
+                {
+                  validator: (value, callback) => {
+                    const password = String(value ?? '').trim();
+                    if (!password) {
+                      return;
+                    }
+                    if (!/^[A-Za-z0-9._~-]{12,128}$/.test(password)) {
+                      callback('密码需为 12-128 位，且只能包含字母、数字、点、下划线、波浪号和连字符');
+                    }
+                  },
+                },
+              ]}
             >
-              <Input.Password placeholder="留空保留原值" />
+              <Input.Password
+                placeholder={hasCcpcojJudgePassword ? '留空保留原值' : '请输入评测机密码'}
+                maxLength={128}
+                autoComplete="new-password"
+              />
             </FormItem>
 
             <FormItem
-              label="默认比赛 ID"
-              field="domjudgeContestId"
+              label="会话有效期"
+              field="ccpcojSessionTtlMinutes"
+              rules={[{ required: true, message: '请输入 CCPCOJ 会话有效期' }]}
             >
-              <Input placeholder="1" />
+              <InputNumber min={10} max={10080} step={10} suffix="分钟" style={{ width: '100%' }} />
             </FormItem>
 
             <FormItem
-              label="结果轮询"
-              field="domjudgePollIntervalMs"
-              rules={[{ required: true, message: '请输入 DOMjudge 结果轮询间隔' }]}
+              label="失联重领时间"
+              field="ccpcojStaleTaskMinutes"
+              rules={[{ required: true, message: '请输入 CCPCOJ 任务失联重领时间' }]}
             >
-              <InputNumber min={500} max={60000} step={100} suffix="ms" style={{ width: '100%' }} />
+              <InputNumber min={2} max={1440} step={1} suffix="分钟" style={{ width: '100%' }} />
             </FormItem>
           </Form>
 
           <Divider />
           <Paragraph style={{ margin: 0, fontSize: 13, color: '#86909c' }}>
-            判题配置保存到数据库，保存后调度器与 DOMjudge 接入配置会按新值生效。
-            线程池大小会在后端重启后按数据库配置重新初始化。
+            普通题和练习固定使用 go-judge；比赛在创建或首个提交前选择 go-judge 或 CCPCOJ。go-judge 地址和鉴权令牌仅从后端部署环境读取。
+            CCPCOJ 密码只保存哈希，留空时保留原值；线程池大小在后端重启后重新初始化。
           </Paragraph>
         </Card>
       </div>
     );
   }
 
+  /**
+   * 渲染注册Settings。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function renderRegisterSettings() {
     return (
       <div style={{ maxWidth: 900, margin: '0 auto', overflowX: 'hidden' }}>
@@ -1012,6 +1108,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
     );
   }
 
+  /**
+   * 渲染SystemSettings。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function renderSystemSettings() {
     return (
       <div style={{ maxWidth: 920, margin: '0 auto', overflowX: 'hidden' }}>
@@ -1055,7 +1154,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
         </Card>
 
         <Card
-          title="OSS 信息配置"
+          title="腾讯云 COS 信息配置"
           bordered={false}
           extra={
             <Button type="primary" icon={<IconSave />} onClick={() => ossForm.submit()} loading={loading}>
@@ -1071,26 +1170,26 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
             labelAlign="right"
             requiredSymbol={{ position: 'end' }}
           >
-            <FormItem label="启用 OSS" field="enabled" triggerPropName="checked">
+            <FormItem label="启用 COS" field="enabled" triggerPropName="checked">
               <Switch />
             </FormItem>
-            <FormItem label="Endpoint" field="endpoint">
-              <Input placeholder="https://oss-cn-hangzhou.aliyuncs.com" />
+            <FormItem label="Endpoint" field="endpoint" extra="可选；留空时根据 Region 自动连接腾讯云 COS">
+              <Input placeholder="https://cos.ap-beijing.myqcloud.com" />
             </FormItem>
-            <FormItem label="Bucket" field="bucket">
-              <Input placeholder="qoj-assets" />
+            <FormItem label="Bucket" field="bucket" extra="必须包含 APPID">
+              <Input placeholder="qoj-1250000000" />
             </FormItem>
             <FormItem label="Region" field="region">
-              <Input placeholder="oss-cn-hangzhou" />
+              <Input placeholder="ap-beijing" />
             </FormItem>
-            <FormItem label="AccessKey ID" field="accessKeyId">
-              <Input placeholder="AccessKey ID" />
+            <FormItem label="SecretId" field="accessKeyId" extra="腾讯云 API 密钥，以 AKID 开头">
+              <Input placeholder="AKID..." />
             </FormItem>
-            <FormItem label="AccessKey Secret" field="accessKeySecret" extra="不修改请留空">
+            <FormItem label="SecretKey" field="accessKeySecret" extra="不修改请留空">
               <Input.Password placeholder="留空则不修改" />
             </FormItem>
-            <FormItem label="公开地址" field="publicBaseUrl" extra="用于拼接头像访问地址，例如 https://cdn.example.com">
-              <Input placeholder="https://cdn.example.com" />
+            <FormItem label="公开地址" field="publicBaseUrl" extra="填写存储桶访问域名或已绑定的 CDN 域名，不含头像目录">
+              <Input placeholder="https://qoj-1250000000.cos.ap-beijing.myqcloud.com" />
             </FormItem>
             <FormItem label="头像目录" field="dir">
               <Input placeholder="avatars/" />

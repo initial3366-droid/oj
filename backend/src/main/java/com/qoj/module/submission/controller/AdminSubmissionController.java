@@ -31,6 +31,9 @@ public class AdminSubmissionController {
     private final SubmissionService submissionService;
     private final SubmissionExportService submissionExportService;
 
+    /**
+     * 构造 管理员提交Controller 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     public AdminSubmissionController(
         SubmissionService submissionService,
         SubmissionExportService submissionExportService

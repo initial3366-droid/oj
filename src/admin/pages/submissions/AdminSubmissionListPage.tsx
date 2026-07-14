@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+/**
+ * 管理员提交列表页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
   Card,
@@ -21,11 +24,17 @@ import { adminDelete, adminGet } from '../../api/adminClient';
 const { Row, Col } = Grid;
 const Option = Select.Option;
 
+/**
+ * 页面结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PageResult<T> {
   total: number;
   list: T[];
 }
 
+/**
+ * 提交测试点接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface SubmissionCase {
   id?: number | null;
   submissionId?: number | null;
@@ -42,6 +51,9 @@ interface SubmissionCase {
   judgeMessage?: string | null;
 }
 
+/**
+ * 管理员提交接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface AdminSubmission {
   id: number;
   userId: number;
@@ -65,7 +77,6 @@ interface AdminSubmission {
   memoryUsed?: number | null;
   identityType?: string | null;
   identityId?: number | null;
-  domjudgeSubmissionId?: string | null;
   judgeServer?: string | null;
   priority?: number | null;
   retryCount?: number | null;
@@ -86,6 +97,9 @@ interface AdminSubmission {
 const statusOptions = ['PENDING', 'JUDGING', 'COMPILING', 'RUNNING', 'AC', 'WA', 'TLE', 'MLE', 'RE', 'CE', 'SE', 'FAILED', 'REJUDGE_PENDING'];
 const languageOptions = ['C', 'C++', 'Python', 'Java'];
 
+/**
+ * 封装scoped比赛标识FromLocation相关逻辑。可能改变当前路由或查询参数。
+ */
 function scopedContestIdFromLocation(routeContestId?: string, queryContestId?: string | null) {
   if (routeContestId) return routeContestId;
   if (queryContestId) return queryContestId;
@@ -93,22 +107,34 @@ function scopedContestIdFromLocation(routeContestId?: string, queryContestId?: s
   return match?.[1] ?? '';
 }
 
+/**
+ * 格式化Date。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatDate(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
 }
 
+/**
+ * 封装dash相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function dash(value: unknown) {
   if (value === null || value === undefined || value === '') return '-';
   return String(value);
 }
 
+/**
+ * 封装boolText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function boolText(value?: boolean | null) {
   if (value === null || value === undefined) return '-';
   return value ? '是' : '否';
 }
 
+/**
+ * 封装状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusColor(status?: string | null) {
   const normalized = (status || '').toUpperCase();
   if (normalized === 'AC' || normalized === 'ACCEPTED') return 'green';
@@ -118,13 +144,20 @@ function statusColor(status?: string | null) {
   return 'red';
 }
 
+/**
+ * 封装测试点Count相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function caseCount(record: AdminSubmission) {
   const passed = record.passedCaseCount ?? 0;
   const total = record.totalCaseCount ?? 0;
   return `${passed}/${total}`;
 }
 
+/**
+ * 渲染管理员提交列表页面，并协调其数据加载、状态和交互。
+ */
 export function AdminSubmissionListPage() {
+  const requestSequence = useRef(0);
   const [searchParams] = useSearchParams();
   const routeParams = useParams();
   const scopedContestId = scopedContestIdFromLocation(routeParams.contestId, searchParams.get('contestId'));
@@ -161,6 +194,9 @@ export function AdminSubmissionListPage() {
     setPage(1);
   }, [scopedContestId]);
 
+  /**
+   * 构造或转换Query。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const buildQuery = useCallback(() => {
     const params = new URLSearchParams({
       page: String(page),
@@ -176,16 +212,22 @@ export function AdminSubmissionListPage() {
     return params.toString();
   }, [filters, page, pageSize]);
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const load = useCallback(async () => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     try {
       const result = await adminGet<PageResult<AdminSubmission>>(`/api/admin/v1/submissions?${buildQuery()}`);
+      if (sequence !== requestSequence.current) return;
       setRows(result.list);
       setTotal(result.total);
     } catch (error) {
+      if (sequence !== requestSequence.current) return;
       Message.error(error instanceof Error ? error.message : '提交列表加载失败');
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }, [buildQuery]);
 
@@ -193,11 +235,17 @@ export function AdminSubmissionListPage() {
     load();
   }, [load]);
 
+  /**
+   * 更新Filter。会更新 React 状态并触发重新渲染。
+   */
   function updateFilter(key: keyof typeof filters, value: string) {
     setFilters((current) => ({ ...current, [key]: value }));
     setPage(1);
   }
 
+  /**
+   * 重置Filters。会更新 React 状态并触发重新渲染。
+   */
   function resetFilters() {
     setFilters({
       id: '',
@@ -218,6 +266,9 @@ export function AdminSubmissionListPage() {
     setPage(1);
   }
 
+  /**
+   * 封装open详情相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function openDetail(record: AdminSubmission) {
     try {
       setDetail(await adminGet<AdminSubmission>(`/api/admin/v1/submissions/${record.id}`));
@@ -226,6 +277,9 @@ export function AdminSubmissionListPage() {
     }
   }
 
+  /**
+   * 封装open编码相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function openCode(record: AdminSubmission) {
     try {
       setCode(await adminGet<string>(`/api/admin/v1/submissions/${record.id}/code`));
@@ -235,6 +289,9 @@ export function AdminSubmissionListPage() {
     }
   }
 
+  /**
+   * 删除提交。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function deleteSubmission(record: AdminSubmission) {
     try {
       await adminDelete(`/api/admin/v1/submissions/${record.id}`);
@@ -291,7 +348,6 @@ export function AdminSubmissionListPage() {
     { title: '代码长度', dataIndex: 'codeLength', width: 110, render: dash },
     { title: '身份类型', dataIndex: 'identityType', width: 110, render: dash },
     { title: '身份ID', dataIndex: 'identityId', width: 100, render: dash },
-    { title: 'DOMjudge ID', dataIndex: 'domjudgeSubmissionId', width: 160, render: dash },
     { title: '判题机', dataIndex: 'judgeServer', width: 120, render: dash },
     { title: '优先级', dataIndex: 'priority', width: 90, render: dash },
     { title: '重试次数', dataIndex: 'retryCount', width: 100, render: dash },
@@ -446,7 +502,6 @@ export function AdminSubmissionListPage() {
                 { key: 'codeLength', label: '代码长度', value: dash(detail.codeLength) },
                 { key: 'identityType', label: '身份类型', value: dash(detail.identityType) },
                 { key: 'identityId', label: '身份ID', value: dash(detail.identityId) },
-                { key: 'domjudgeSubmissionId', label: 'DOMjudge ID', value: dash(detail.domjudgeSubmissionId) },
                 { key: 'judgeServer', label: '判题机', value: dash(detail.judgeServer) },
                 { key: 'priority', label: '优先级', value: dash(detail.priority) },
                 { key: 'retryCount', label: '重试次数', value: dash(detail.retryCount) },

@@ -7,6 +7,9 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+/**
+ * 用户分数数据访问接口。声明数据库查询与写入操作，具体实现由 MyBatis 在运行时生成。
+ */
 @Mapper
 public interface UserScoreMapper extends BaseMapper<UserScore> {
 
@@ -14,6 +17,9 @@ public interface UserScoreMapper extends BaseMapper<UserScore> {
         SELECT us.user_id, us.total_score, us.rating, us.ac_count, us.submit_count, us.streak, us.updated_at
         FROM user_scores us
         JOIN users u ON u.id = us.user_id
+        /**
+         * 封装IN相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         WHERE u.role IN ('STUDENT', 'GUEST')
         ORDER BY us.ac_count DESC, us.submit_count ASC, us.user_id ASC
         LIMIT #{limit}
@@ -41,6 +47,9 @@ public interface UserScoreMapper extends BaseMapper<UserScore> {
             SELECT user_id, COUNT(DISTINCT problem_id) AS ac_count
             FROM submissions
             WHERE contest_id IS NULL
+              /**
+               * 封装IN相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+               */
               AND status IN ('AC', 'ACCEPTED')
             GROUP BY user_id
         ) ac ON ac.user_id = u.id
@@ -58,6 +67,9 @@ public interface UserScoreMapper extends BaseMapper<UserScore> {
         SELECT COUNT(*) + 1
         FROM user_scores us
         JOIN users u ON u.id = us.user_id
+        /**
+         * 封装IN相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         WHERE u.role IN ('STUDENT', 'GUEST')
           AND (
               us.ac_count > #{acCount}
@@ -71,6 +83,9 @@ public interface UserScoreMapper extends BaseMapper<UserScore> {
         @Param("userId") long userId
     );
 
+        /**
+         * 计算统计结果。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
     @Select("""
         SELECT COUNT(DISTINCT problem_id)
         FROM submissions

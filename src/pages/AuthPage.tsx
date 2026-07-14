@@ -1,11 +1,18 @@
+/**
+ * 认证页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Button, Card, Typography, Input, Toast, Modal } from '@douyinfe/semi-ui';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { NavLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { bindEmail, fetchMe, loginWithoutPersist, register, resetPassword, saveFrontendAuthTokens } from '../data/apiClient';
 import { useOjData } from '../data/OjDataProvider';
 import type { AuthTokenResponse } from '../data/apiClient';
+import { safeSameOriginPath } from '../utils/safeRedirect';
 import './AuthPage.css';
 
+/**
+ * 渲染认证页面，并协调其数据加载、状态和交互。
+ */
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -51,14 +58,17 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   });
   const isRegister = mode === 'register';
 
+  /**
+   * 封装标题相关逻辑。对原始数据进行派生或聚合。
+   */
   const title = useMemo(() => (isRegister ? '注册账号' : '登录账号'), [isRegister]);
-  const redirectPath = useMemo(() => {
-    const redirect = searchParams.get('redirect');
-    if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) {
-      return redirect;
-    }
-    return '/user-center';
-  }, [searchParams]);
+  /**
+   * 封装redirectPath相关逻辑。对原始数据进行派生或聚合。
+   */
+  const redirectPath = useMemo(
+    () => safeSameOriginPath(searchParams.get('redirect'), '/user-center'),
+    [searchParams],
+  );
   const redirectQuery = redirectPath === '/user-center' ? '' : `?redirect=${encodeURIComponent(redirectPath)}`;
 
   // 如果已登录，重定向到用户中心
@@ -100,6 +110,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   }, [resetEmailCountdown]);
 
+  /**
+   * 校验EmailRemaining。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const checkEmailRemaining = async () => {
     if (!form.email) return;
     try {
@@ -113,6 +126,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 读取Captcha并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const fetchCaptcha = async () => {
     try {
       const response = await fetch('/api/v1/captcha/image');
@@ -126,6 +142,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 读取BindCaptcha并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const fetchBindCaptcha = async () => {
     try {
       const response = await fetch('/api/v1/captcha/image');
@@ -139,6 +158,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 发送BindEmail编码。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const sendBindEmailCode = async () => {
     setBindMessage('');
     if (!bindForm.email) {
@@ -174,6 +196,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 读取ResetCaptcha并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const fetchResetCaptcha = async () => {
     try {
       const response = await fetch('/api/v1/captcha/image');
@@ -187,6 +212,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 发送ResetEmail编码。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const sendResetEmailCode = async () => {
     setResetMessage('');
     if (!resetForm.email) {
@@ -222,6 +250,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 创建或提交ResetPassword。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const submitResetPassword = async () => {
     setResetMessage('');
     if (!resetForm.email || !resetForm.emailVerificationCode) {
@@ -257,6 +288,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 创建或提交BindEmail。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   const submitBindEmail = async () => {
     setBindMessage('');
     if (!pendingToken) return;
@@ -284,6 +318,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 发送Email编码。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const sendEmailCode = async () => {
     if (!form.email) {
       setMessage('请先输入邮箱');
@@ -320,6 +357,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 创建或提交目标数据。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数；会读写浏览器本地会话信息。
+   */
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     try {

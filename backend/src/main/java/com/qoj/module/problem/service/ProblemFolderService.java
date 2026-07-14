@@ -19,18 +19,27 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * 题目文件夹业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class ProblemFolderService {
     private final ProblemFolderMapper folderMapper;
     private final ProblemMapper problemMapper;
     private final ProblemTestCaseMapper testCaseMapper;
 
+    /**
+     * 构造 题目文件夹Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public ProblemFolderService(ProblemFolderMapper folderMapper, ProblemMapper problemMapper, ProblemTestCaseMapper testCaseMapper) {
         this.folderMapper = folderMapper;
         this.problemMapper = problemMapper;
         this.testCaseMapper = testCaseMapper;
     }
 
+    /**
+     * 查询目标数据列表。调用前会结合当前登录身份执行权限判断；从持久化层读取数据。
+     */
     public List<ProblemFolderVO> list() {
         AuthUser user = CurrentUser.required();
         QueryWrapper<ProblemFolder> wrapper = new QueryWrapper<ProblemFolder>()
@@ -43,10 +52,19 @@ public class ProblemFolderService {
         return folders.stream().map(this::toVO).collect(Collectors.toList());
     }
 
+    /**
+     * 封装详情相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     public ProblemFolderVO detail(long id) {
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(requireAccessibleFolder(id));
     }
 
+    /**
+     * 创建或提交目标数据。调用前会结合当前登录身份执行权限判断；执行持久化写入；结果依赖当前时间。
+     */
     public ProblemFolderVO create(ProblemFolderRequest request) {
         AuthUser user = CurrentUser.required();
         ProblemFolder folder = new ProblemFolder();
@@ -57,9 +75,15 @@ public class ProblemFolderService {
         folder.createdAt = LocalDateTime.now();
         folder.updatedAt = LocalDateTime.now();
         folderMapper.insert(folder);
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(folder);
     }
 
+    /**
+     * 更新目标数据。执行持久化写入；结果依赖当前时间。
+     */
     public ProblemFolderVO update(long id, ProblemFolderRequest request) {
         ProblemFolder folder = requireAccessibleFolder(id);
         folder.name = request.name();
@@ -67,14 +91,23 @@ public class ProblemFolderService {
         folder.displayOrder = request.displayOrder() == null ? folder.displayOrder : request.displayOrder();
         folder.updatedAt = LocalDateTime.now();
         folderMapper.updateById(folder);
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(folder);
     }
 
+    /**
+     * 删除目标数据。不满足业务约束时直接抛出明确异常；执行持久化写入；整个过程位于同一数据库事务中。
+     */
     @Transactional
     public void delete(long id) {
         ProblemFolder folder = requireAccessibleFolder(id);
         long defaultFolderId = getDefaultFolderId();
         if (folder.id == defaultFolderId) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "不能删除默认文件夹");
         }
         // 将该文件夹下的题目移到默认文件夹
@@ -85,6 +118,9 @@ public class ProblemFolderService {
         folderMapper.deleteById(id);
     }
 
+    /**
+     * 封装moveProblems相关逻辑。调用前会结合当前登录身份执行权限判断；不满足业务约束时直接抛出明确异常；执行持久化写入；整个过程位于同一数据库事务中。
+     */
     @Transactional
     public void moveProblems(long folderId, List<Long> problemIds) {
         requireAccessibleFolder(folderId);
@@ -93,6 +129,9 @@ public class ProblemFolderService {
             Problem problem = problemMapper.selectById(problemId);
             if (problem != null) {
                 if (!"SUPER_ADMIN".equals(user.role()) && !user.id().equals(problem.ownerId)) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(403, "只能移动自己创建的题目");
                 }
                 problem.folderId = folderId;
@@ -101,6 +140,9 @@ public class ProblemFolderService {
         }
     }
 
+    /**
+     * 读取默认值文件夹标识并返回给调用方。执行持久化写入；结果依赖当前时间。
+     */
     public long getDefaultFolderId() {
         ProblemFolder folder = folderMapper.selectOne(
             new QueryWrapper<ProblemFolder>().eq("name", "未分类").last("LIMIT 1")
@@ -118,18 +160,30 @@ public class ProblemFolderService {
         return newFolder.id;
     }
 
+    /**
+     * 校验Accessible文件夹。调用前会结合当前登录身份执行权限判断；不满足业务约束时直接抛出明确异常；从持久化层读取数据。
+     */
     private ProblemFolder requireAccessibleFolder(long id) {
         ProblemFolder folder = folderMapper.selectById(id);
         if (folder == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "文件夹不存在");
         }
         AuthUser user = CurrentUser.required();
         if (!"SUPER_ADMIN".equals(user.role()) && !user.id().equals(folder.ownerId)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(403, "只能访问自己添加的题目文件夹");
         }
         return folder;
     }
 
+    /**
+     * 构造或转换VO。调用前会结合当前登录身份执行权限判断；执行持久化写入。
+     */
     private ProblemFolderVO toVO(ProblemFolder folder) {
         AuthUser user = CurrentUser.required();
         QueryWrapper<Problem> wrapper = new QueryWrapper<Problem>()
@@ -150,6 +204,9 @@ public class ProblemFolderService {
                 );
             })
             .collect(Collectors.toList());
+        /**
+         * 封装题目文件夹VO相关逻辑。执行持久化写入。
+         */
         return new ProblemFolderVO(
             folder.id, folder.name, folder.description, folder.displayOrder,
             problems.size(), problemVOs, folder.createdAt, folder.updatedAt

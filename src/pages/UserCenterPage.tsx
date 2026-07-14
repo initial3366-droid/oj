@@ -1,3 +1,6 @@
+/**
+ * 用户Center页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Avatar, Button, Card, Progress, Typography, Tabs, TabPane, Table, Tag, Input, Modal, Toast, Space, TextArea, Spin, Select } from '@douyinfe/semi-ui';
 import { IconTreeTriangleDown, IconChecklistStroked, IconCode } from '@douyinfe/semi-icons';
 import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -19,20 +22,31 @@ import {
   type UpdateProfilePayload,
 } from '../data/apiClient';
 import type { UserProfile } from '../data/types';
+import { useOjData } from '../data/OjDataProvider';
 
+/**
+ * 格式化DateTime。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
 }
 
+/**
+ * 封装提交Time相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function submissionTime(record: SubmissionRecord) {
   return record.submitTime || record.createdAt;
 }
 
+/**
+ * 渲染用户Center页面，并协调其数据加载、状态和交互。
+ */
 export function UserCenterPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { updateState } = useOjData();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [submissions, setSubmissions] = useState<SubmissionRecord[]>([]);
   const [message, setMessage] = useState('');
@@ -236,6 +250,9 @@ export function UserCenterPage() {
   };
 
 
+  /**
+   * 处理头像FileChange。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+   */
   const handleAvatarFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -251,6 +268,16 @@ export function UserCenterPage() {
       await uploadMyAvatar(file, token);
       const newUser = await fetchMe(token);
       setUser(newUser);
+      const userId = Number(newUser.id.replace(/^u/, ''));
+      updateState((current) => ({
+        ...current,
+        activeUser: newUser,
+        ratings: current.ratings.map((rating) =>
+          rating.userId === userId
+            ? { ...rating, avatarUrl: newUser.avatarUrl }
+            : rating,
+        ),
+      }));
       Toast.success('头像已更新');
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '头像上传失败');
@@ -320,6 +347,7 @@ export function UserCenterPage() {
       // 重新加载用户信息
       const newUser = await fetchMe(token);
       setUser(newUser);
+      updateState((current) => ({ ...current, activeUser: newUser }));
       setProfileForm({
         username: newUser.username,
         displayName: newUser.displayName,
@@ -394,6 +422,9 @@ export function UserCenterPage() {
     };
   }, [activeTab, user?.classId, classPracticePage, classPracticePageSize]);
 
+  /**
+   * 处理ApplyTo班级。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const handleApplyToClass = async () => {
     const classId = Number(classJoinForm.classId);
     if (!Number.isInteger(classId) || classId <= 0) {
@@ -434,6 +465,9 @@ export function UserCenterPage() {
   }, {});
   const topLanguage = Object.entries(favoriteLanguage).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '暂无';
 
+  /**
+   * 读取状态Color并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const getStatusColor = (status: string): 'green' | 'red' | 'orange' | 'blue' | 'grey' => {
     const normalized = status.toUpperCase();
     if (normalized === 'AC' || normalized === 'ACCEPTED') return 'green';
@@ -443,6 +477,9 @@ export function UserCenterPage() {
     return 'grey';
   };
 
+  /**
+   * 封装open编码Modal相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const openCodeModal = async (submission: SubmissionRecord) => {
     setCodeModalTitle(submission.problemTitle || `题目 ${submission.problemId}`);
     setCodeModalLanguage(submission.language);

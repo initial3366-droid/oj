@@ -1,3 +1,6 @@
+/**
+ * 教师题目Create页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
@@ -26,12 +29,18 @@ const FormItem = Form.Item;
 const TextArea = Input.TextArea;
 const Step = Steps.Step;
 
+/**
+ * Sample测试点接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface SampleCase {
   input: string;
   output: string;
   explanation?: string;
 }
 
+/**
+ * BasicFormData接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface BasicFormData {
   title: string;
   timeLimit: number;
@@ -54,6 +63,9 @@ const DIFFICULTY_OPTIONS = [
   { value: 5, label: '地狱' },
 ];
 
+/**
+ * Test测试点接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TestCase {
   id?: number;
   caseNo: number;
@@ -61,17 +73,26 @@ interface TestCase {
   output: string;
 }
 
+/**
+ * RawTest测试点类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type RawTestCase = Partial<TestCase> & {
   inputData?: string;
   outputData?: string;
 };
 
+/**
+ * DraftData接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface DraftData {
   draftId: string;
   basic: BasicFormData | null;
   testCases: TestCase[];
 }
 
+/**
+ * 解析并规范化Samples。失败时向调用方传播异常。
+ */
 function normalizeSamples(samples?: SampleCase[]) {
   return (samples || [])
     .filter((sample) => {
@@ -94,6 +115,9 @@ function normalizeSamples(samples?: SampleCase[]) {
     });
 }
 
+/**
+ * 解析并规范化Basic请求参数。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeBasicPayload(values: Partial<BasicFormData>, tags: string[]) {
   return {
     title: values.title?.trim() || '',
@@ -110,6 +134,9 @@ function normalizeBasicPayload(values: Partial<BasicFormData>, tags: string[]) {
   };
 }
 
+/**
+ * 解析并规范化TestCases。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeTestCases(testCases: TestCase[]) {
   return testCases
     .map((testCase, index) => ({
@@ -120,6 +147,9 @@ function normalizeTestCases(testCases: TestCase[]) {
     .sort((left, right) => left.caseNo - right.caseNo);
 }
 
+/**
+ * 解析并规范化LoadedTestCases。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeLoadedTestCases(testCases: RawTestCase[]) {
   return (testCases || [])
     .map((tc, index) => ({
@@ -131,6 +161,9 @@ function normalizeLoadedTestCases(testCases: RawTestCase[]) {
     .sort((left, right) => left.caseNo - right.caseNo);
 }
 
+/**
+ * 渲染教师题目Create页面，并协调其数据加载、状态和交互。
+ */
 export function TeacherProblemCreatePage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -166,6 +199,9 @@ export function TeacherProblemCreatePage() {
       .catch(() => {});
   }, [isEditMode, problemId]);
 
+  /**
+   * 读取题目并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function loadProblem(id: number) {
     try {
       setLoading(true);
@@ -192,6 +228,9 @@ export function TeacherProblemCreatePage() {
     }
   }
 
+  /**
+   * 读取TestCases并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadTestCases(id: number) {
     try {
       const cases = await teacherGet<RawTestCase[]>(`/api/admin/v1/problems/${id}/test-cases`);
@@ -201,6 +240,9 @@ export function TeacherProblemCreatePage() {
     }
   }
 
+  /**
+   * 创建或提交Draft。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function createDraft() {
     try {
       const result = await teacherPost<DraftData>('/api/admin/v1/problem-drafts');
@@ -210,6 +252,9 @@ export function TeacherProblemCreatePage() {
     }
   }
 
+  /**
+   * 更新BasicInfo。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function saveBasicInfo() {
     try {
       const values = await form.validate();
@@ -230,6 +275,9 @@ export function TeacherProblemCreatePage() {
     }
   }
 
+  /**
+   * 更新BasicInfoAndNext。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function saveBasicInfoAndNext() {
     try {
       const values = await form.validate();
@@ -251,6 +299,9 @@ export function TeacherProblemCreatePage() {
     }
   }
 
+  /**
+   * 更新TestCases。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；对原始数据进行派生或聚合。
+   */
   async function saveTestCases(showSuccess = true) {
     if (!isEditMode && !draftId) return false;
     try {
@@ -298,6 +349,9 @@ export function TeacherProblemCreatePage() {
     }
   }
 
+  /**
+   * 处理Commit。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function handleCommit() {
     if (!draftId) return;
     try {
@@ -315,6 +369,9 @@ export function TeacherProblemCreatePage() {
     }
   }
 
+  /**
+   * 处理Submit。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function handleSubmit() {
     try {
       if (isEditMode) {
@@ -338,6 +395,9 @@ export function TeacherProblemCreatePage() {
     }
   }
 
+  /**
+   * 处理ImportZip。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function handleImportZip(file: File, overwrite: boolean) {
     const formData = new FormData();
     formData.append('file', file);
@@ -364,41 +424,65 @@ export function TeacherProblemCreatePage() {
     }
   }
 
+  /**
+   * 创建或提交Test测试点。会更新 React 状态并触发重新渲染。
+   */
   function addTestCase() {
     setTestCases([...testCases, { caseNo: testCases.length + 1, input: '', output: '' }]);
   }
 
+  /**
+   * 删除Test测试点。会更新 React 状态并触发重新渲染。
+   */
   function removeTestCase(index: number) {
     setTestCases(testCases.filter((_, i) => i !== index));
   }
 
+  /**
+   * 更新Test测试点。会更新 React 状态并触发重新渲染。
+   */
   function updateTestCase(index: number, field: 'input' | 'output', value: string) {
     const updated = [...testCases];
     updated[index] = { ...updated[index], [field]: value };
     setTestCases(updated);
   }
 
+  /**
+   * 封装appendWithBlankLine相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function appendWithBlankLine(current: string | undefined, content: string): string {
     const base = (current ?? '').replace(/\s+$/g, '');
     if (!base) return content.replace(/^\s+/, '');
     return `${base}\n\n${content.replace(/^\s+/, '')}`;
   }
 
+  /**
+   * 处理Insert编码。会更新 React 状态并触发重新渲染。
+   */
   function handleInsertCode(code: string) {
     form.setFieldValue('statement', appendWithBlankLine(form.getFieldValue('statement') as string | undefined, code));
     setCodeModalVisible(false);
   }
 
+  /**
+   * 处理InsertStatement。会更新 React 状态并触发重新渲染。
+   */
   function handleInsertStatement(markdown: string) {
     form.setFieldValue('statement', appendWithBlankLine(form.getFieldValue('statement') as string | undefined, markdown));
     setStatementModalVisible(false);
   }
 
+  /**
+   * 处理InsertInputFormat。会更新 React 状态并触发重新渲染。
+   */
   function handleInsertInputFormat(markdown: string) {
     form.setFieldValue('inputFormat', appendWithBlankLine(form.getFieldValue('inputFormat') as string | undefined, markdown));
     setInputFormatModalVisible(false);
   }
 
+  /**
+   * 处理InsertOutputFormat。会更新 React 状态并触发重新渲染。
+   */
   function handleInsertOutputFormat(markdown: string) {
     form.setFieldValue('outputFormat', appendWithBlankLine(form.getFieldValue('outputFormat') as string | undefined, markdown));
     setOutputFormatModalVisible(false);

@@ -1,6 +1,8 @@
 package com.qoj.module.submission.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.qoj.common.exception.BizException;
+import com.qoj.common.util.Utf8TextLimiter;
 import com.qoj.module.contest.entity.Contest;
 import com.qoj.module.contest.mapper.ContestMapper;
 import com.qoj.module.contest.service.ContestAcmRankService;
@@ -11,13 +13,19 @@ import com.qoj.module.submission.entity.SubmissionCaseResult;
 import com.qoj.module.submission.mapper.SubmissionCaseResultMapper;
 import com.qoj.module.submission.mapper.SubmissionMapper;
 import com.qoj.module.user.service.UserScoreService;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Applies normalized judge results to QOJ state and ranking caches.
+ *
+ * <p>The submission row is locked before mutation. This prevents a late result
+ * from overwriting a completed or rejudged submission.
+ */
 @Service
 public class JudgeCallbackService {
     private final SubmissionMapper submissionMapper;
@@ -28,6 +36,9 @@ public class JudgeCallbackService {
     private final UserProblemStatusService userProblemStatusService;
     private final UserScoreService userScoreService;
 
+    /**
+     * 构造 判题回调Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public JudgeCallbackService(
         SubmissionMapper submissionMapper,
         SubmissionCaseResultMapper caseResultMapper,
@@ -47,21 +58,33 @@ public class JudgeCallbackService {
     }
 
     /**
-     * 判题结果回调（幂等）
+     * Handles one result idempotently. Terminal submissions are immutable until
+     * an explicit rejudge resets their status to REJUDGE_PENDING.
      */
     @Transactional(rollbackFor = Exception.class)
     public void handleJudgeResult(JudgeResultCallbackRequest request) {
-        if (request.submissionId == null) {
+        if (request == null || request.submissionId == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "submissionId 不能为空");
         }
-
-        Submission submission = submissionMapper.selectById(request.submissionId);
-        if (submission == null) {
-            throw new BizException(404, "提交记录不存在");
+        String normalizedStatus = normalizeStatus(request.status);
+        if (normalizedStatus == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(400, "判题状态无效");
         }
 
-        // 幂等检查：如果已经是终态且状态未变化，直接返回
-        if (isFinalStatus(submission.status) && submission.status.equals(request.status)) {
+        Submission submission = submissionMapper.selectByIdForUpdate(request.submissionId);
+        if (submission == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(404, "提交记录不存在");
+        }
+        if (isFinalStatus(submission.status)) {
             return;
         }
 
@@ -75,110 +98,172 @@ public class JudgeCallbackService {
             memoryUsed = maxCaseMemoryUsed(request.caseResults);
         }
 
-        // 更新提交主记录
-        submission.status = request.status;
+        submission.status = normalizedStatus;
         submission.timeUsed = timeUsed;
         submission.memoryUsed = memoryUsed;
-        submission.score = request.score;
+        submission.score = nonNegativeOrNull(request.score);
         if (submission.judgeStartTime == null) {
             submission.judgeStartTime = now;
         }
-        if (isFinalStatus(request.status)) {
+        if (isFinalStatus(normalizedStatus)) {
             submission.judgeEndTime = now;
         }
         submission.judgeServer = submission.judgeServer == null ? "CALLBACK" : submission.judgeServer;
-        if ("SE".equals(request.status) || "SYSTEM_ERROR".equals(request.status) || "FAILED".equals(request.status)) {
-            submission.errorMessage = request.status;
+        if ("SE".equals(normalizedStatus) || "FAILED".equals(normalizedStatus)) {
+            submission.errorMessage = Utf8TextLimiter.fitMysqlText(normalizedStatus);
+        } else {
+            submission.errorMessage = null;
         }
         submission.updatedAt = now;
         submissionMapper.updateById(submission);
 
-        // 保存测试用例结果
-        if (request.caseResults != null && !request.caseResults.isEmpty()) {
-            List<SubmissionCaseResult> caseResults = new ArrayList<>();
-            for (JudgeResultCallbackRequest.CaseResultDTO caseDto : request.caseResults) {
-                SubmissionCaseResult caseResult = new SubmissionCaseResult();
-                caseResult.submissionId = submission.id;
-                caseResult.caseNo = caseDto.caseNo;
-                caseResult.subtaskNo = caseDto.subtaskNo;
-                caseResult.status = caseDto.status;
-                caseResult.score = caseDto.score;
-                caseResult.maxScore = caseDto.maxScore;
-                caseResult.timeUsed = caseDto.timeUsed;
-                caseResult.memoryUsed = caseDto.memoryUsed;
-                caseResults.add(caseResult);
-            }
+        replaceCaseResults(submission.id, request.caseResults, now);
+        updateDerivedState(submission, normalizedStatus);
+    }
 
-            // 批量插入测试用例结果
-            for (SubmissionCaseResult caseResult : caseResults) {
-                caseResultMapper.insert(caseResult);
-            }
+    private void replaceCaseResults(
+        Long submissionId,
+        List<JudgeResultCallbackRequest.CaseResultDTO> requestedCases,
+        LocalDateTime createdAt
+    ) {
+        caseResultMapper.delete(
+            new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submissionId)
+        );
+        if (requestedCases == null || requestedCases.isEmpty()) {
+            return;
         }
-
-        // 如果是比赛提交，更新排名
-        if (submission.contestId != null && submission.participantId != null) {
-            Contest contest = contestMapper.selectById(submission.contestId);
-            if (contest != null) {
-                String scoringMode = contest.scoringMode != null ? contest.scoringMode : contest.type;
-
-                if ("ACM".equals(scoringMode)) {
-                    acmRankService.updateRankAfterJudge(submission);
-                } else if ("OI".equals(scoringMode)) {
-                    oiRankService.updateRankAfterJudge(submission);
-                }
+        List<SubmissionCaseResult> caseResults = new ArrayList<>();
+        for (JudgeResultCallbackRequest.CaseResultDTO item : requestedCases) {
+            if (item == null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
+                throw new BizException(400, "测试点结果不能为空");
             }
-        } else if (isFinalStatus(request.status)) {
-            userProblemStatusService.recordJudged(submission);
-            userScoreService.recompute(submission.userId);
+            String caseStatus = normalizeStatus(item.status);
+            if (caseStatus == null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
+                throw new BizException(400, "测试点判题状态无效");
+            }
+            SubmissionCaseResult caseResult = new SubmissionCaseResult();
+            caseResult.submissionId = submissionId;
+            caseResult.caseNo = item.caseNo;
+            caseResult.subtaskNo = item.subtaskNo;
+            caseResult.status = caseStatus;
+            caseResult.score = nonNegativeOrNull(item.score);
+            caseResult.maxScore = nonNegativeOrNull(item.maxScore);
+            caseResult.timeUsed = positiveOrNull(item.timeUsed);
+            caseResult.memoryUsed = positiveOrNull(item.memoryUsed);
+            caseResult.createdAt = createdAt;
+            caseResults.add(caseResult);
+        }
+        for (SubmissionCaseResult caseResult : caseResults) {
+            caseResultMapper.insert(caseResult);
         }
     }
 
-    /**
-     * 判断是否为终态
-     */
-    private boolean isFinalStatus(String status) {
-        if (status == null) {
-            return false;
+    private void updateDerivedState(Submission submission, String normalizedStatus) {
+        if (!isFinalStatus(normalizedStatus)) {
+            return;
         }
-        return status.equals("AC") || status.equals("ACCEPTED")
-            || status.equals("WA") || status.equals("WRONG_ANSWER")
-            || status.equals("TLE") || status.equals("TIME_LIMIT_EXCEEDED")
-            || status.equals("MLE") || status.equals("MEMORY_LIMIT_EXCEEDED")
-            || status.equals("RE") || status.equals("RUNTIME_ERROR")
-            || status.equals("CE") || status.equals("COMPILE_ERROR")
-            || status.equals("SE") || status.equals("SYSTEM_ERROR")
-            || status.equals("FAILED");
+        if (submission.contestId == null) {
+            userProblemStatusService.recordJudged(submission);
+            userScoreService.recompute(submission.userId);
+            return;
+        }
+        if (submission.participantId == null) {
+            return;
+        }
+
+        Contest contest = contestMapper.selectById(submission.contestId);
+        if (contest == null) {
+            return;
+        }
+        String scoringMode = contest.scoringMode != null ? contest.scoringMode : contest.type;
+        if ("ACM".equals(scoringMode)) {
+            if (Boolean.TRUE.equals(submission.isRejudged)) {
+                acmRankService.rebuildRank(submission.contestId);
+            } else {
+                acmRankService.updateRankAfterJudge(submission);
+            }
+        } else if ("OI".equals(scoringMode)) {
+            if (Boolean.TRUE.equals(submission.isRejudged)) {
+                oiRankService.rebuildRank(submission.contestId);
+            } else {
+                oiRankService.updateRankAfterJudge(submission);
+            }
+        }
+    }
+
+    private boolean isFinalStatus(String status) {
+        String normalized = normalizeStatus(status);
+        return normalized != null && switch (normalized) {
+            case "AC", "WA", "TLE", "MLE", "RE", "CE", "NOO", "SE", "FAILED" -> true;
+            default -> false;
+        };
+    }
+
+    private String normalizeStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        String normalized = status.trim().toUpperCase(Locale.ROOT).replace('-', '_').replace(' ', '_');
+        return switch (normalized) {
+            case "WAITING", "PENDING", "JUDGING", "COMPILING", "RUNNING", "REJUDGE_PENDING" -> normalized;
+            case "AC", "ACCEPTED" -> "AC";
+            case "WA", "WRONG_ANSWER" -> "WA";
+            case "TLE", "TIME_LIMIT_EXCEEDED" -> "TLE";
+            case "MLE", "MEMORY_LIMIT_EXCEEDED" -> "MLE";
+            case "RE", "RUNTIME_ERROR" -> "RE";
+            case "CE", "COMPILE_ERROR", "COMPILATION_ERROR" -> "CE";
+            case "NOO", "NO_OUTPUT", "OUTPUT_LIMIT_EXCEEDED" -> "NOO";
+            case "SE", "SYSTEM_ERROR", "INTERNAL_ERROR" -> "SE";
+            case "FAILED" -> "FAILED";
+            default -> null;
+        };
     }
 
     private Integer maxCaseTimeUsed(List<JudgeResultCallbackRequest.CaseResultDTO> caseResults) {
         if (caseResults == null || caseResults.isEmpty()) {
             return null;
         }
-        Integer maxTimeUsed = null;
+        Integer maximum = null;
         for (JudgeResultCallbackRequest.CaseResultDTO item : caseResults) {
-            Integer timeUsed = positiveOrNull(item.timeUsed);
-            if (timeUsed != null && (maxTimeUsed == null || timeUsed > maxTimeUsed)) {
-                maxTimeUsed = timeUsed;
+            if (item == null) {
+                continue;
+            }
+            Integer value = positiveOrNull(item.timeUsed);
+            if (value != null && (maximum == null || value > maximum)) {
+                maximum = value;
             }
         }
-        return maxTimeUsed;
+        return maximum;
     }
 
     private Integer maxCaseMemoryUsed(List<JudgeResultCallbackRequest.CaseResultDTO> caseResults) {
         if (caseResults == null || caseResults.isEmpty()) {
             return null;
         }
-        Integer maxMemoryUsed = null;
+        Integer maximum = null;
         for (JudgeResultCallbackRequest.CaseResultDTO item : caseResults) {
-            Integer memoryUsed = positiveOrNull(item.memoryUsed);
-            if (memoryUsed != null && (maxMemoryUsed == null || memoryUsed > maxMemoryUsed)) {
-                maxMemoryUsed = memoryUsed;
+            if (item == null) {
+                continue;
+            }
+            Integer value = positiveOrNull(item.memoryUsed);
+            if (value != null && (maximum == null || value > maximum)) {
+                maximum = value;
             }
         }
-        return maxMemoryUsed;
+        return maximum;
     }
 
     private Integer positiveOrNull(Integer value) {
         return value != null && value > 0 ? value : null;
+    }
+
+    private Integer nonNegativeOrNull(Integer value) {
+        return value == null ? null : Math.max(0, value);
     }
 }

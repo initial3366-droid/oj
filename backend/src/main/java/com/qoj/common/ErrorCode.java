@@ -25,15 +25,24 @@ public enum ErrorCode {
     private final int code;
     private final String message;
 
+    /**
+     * 构造 Error编码 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     ErrorCode(int code, String message) {
         this.code = code;
         this.message = message;
     }
 
+    /**
+     * 读取编码并返回给调用方。直接返回当前实例保存的编码，不产生额外的数据写入。
+     */
     public int getCode() {
         return code;
     }
 
+    /**
+     * 读取消息并返回给调用方。直接返回当前实例保存的消息，不产生额外的数据写入。
+     */
     public String getMessage() {
         return message;
     }

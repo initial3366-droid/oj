@@ -1,6 +1,12 @@
+/**
+ * 用户头像组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Avatar, Tooltip } from '@douyinfe/semi-ui';
 import { IconUser } from '@douyinfe/semi-icons';
 
+/**
+ * 用户头像Props接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface UserAvatarProps {
   username: string;
   avatarUrl?: string;
@@ -22,6 +28,9 @@ export function UserAvatar({
   onClick,
   style,
 }: UserAvatarProps) {
+  /**
+   * 读取ColorFromUsername并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const getColorFromUsername = (name: string) => {
     const colors: Array<'amber' | 'blue' | 'cyan' | 'green' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow'> = [
       'amber',

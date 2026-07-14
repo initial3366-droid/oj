@@ -1,3 +1,6 @@
+/**
+ * 教师练习列表页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -14,6 +17,9 @@ import {
 import { IconDelete, IconEdit, IconEye, IconPlus, IconRefresh, IconSearch } from '@arco-design/web-react/icon';
 import { teacherGet, teacherDelete } from '../teacherApi';
 
+/**
+ * 练习接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Practice {
   id: number;
   title: string;
@@ -25,16 +31,25 @@ interface Practice {
   createdAt: string;
 }
 
+/**
+ * 页面结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PageResult {
   total: number;
   list: Practice[];
 }
 
+/**
+ * 封装audienceText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function audienceText(practice: Practice) {
   if (practice.audience === 'CLASS') return '班级';
   return '所有人';
 }
 
+/**
+ * 渲染教师练习列表页面，并协调其数据加载、状态和交互。
+ */
 export function TeacherPracticeListPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -45,6 +60,9 @@ export function TeacherPracticeListPage() {
     loadPractices();
   }, []);
 
+  /**
+   * 读取Practices并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadPractices() {
     setLoading(true);
     try {
@@ -57,6 +75,9 @@ export function TeacherPracticeListPage() {
     }
   }
 
+  /**
+   * 处理Delete。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function handleDelete(id: number) {
     try {
       await teacherDelete(`/api/admin/v1/practices/${id}`);

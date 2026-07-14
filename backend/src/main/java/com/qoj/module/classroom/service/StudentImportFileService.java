@@ -22,6 +22,9 @@ import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * StudentImportFile业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class StudentImportFileService {
     private static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
@@ -30,26 +33,47 @@ public class StudentImportFileService {
     private static final Pattern TAG_PATTERN = Pattern.compile("<[^>]*>");
     private static final Pattern SCRIPT_PATTERN = Pattern.compile("(?i)<\\s*script[^>]*>.*?<\\s*/\\s*script\\s*>");
 
+    /**
+     * 解析并规范化输入数据。不满足业务约束时直接抛出明确异常。
+     */
     public StudentImportRequest parse(Long classId, String studentNoField, String nameField, MultipartFile file) {
         if (classId == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "请选择目标班级");
         }
         if (studentNoField == null || studentNoField.isBlank()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "请填写学号字段");
         }
         if (nameField == null || nameField.isBlank()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "请填写姓名字段");
         }
         if (file == null || file.isEmpty()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "请选择导入文件");
         }
         if (file.getSize() > MAX_FILE_SIZE) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "文件不能超过 5MB");
         }
 
         String filename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase(Locale.ROOT);
         String contentType = file.getContentType() == null ? "" : file.getContentType().toLowerCase(Locale.ROOT);
         if (!allowedContentType(contentType)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "仅支持 csv、xls、xlsx 文件");
         }
         List<Map<String, String>> rows;
@@ -59,19 +83,34 @@ public class StudentImportFileService {
             } else if (filename.endsWith(".xls") || filename.endsWith(".xlsx")) {
                 rows = parseExcel(file);
             } else {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "仅支持 csv、xls、xlsx 文件");
             }
         } catch (BizException ex) {
             throw ex;
         } catch (Exception ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "文件解析失败，请检查格式");
         }
         if (rows.isEmpty()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "导入文件没有学生数据");
         }
+        /**
+         * 封装StudentImport请求相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new StudentImportRequest(classId, studentNoField.trim(), nameField.trim(), List.of(), rows);
     }
 
+    /**
+     * 封装allowedContent类型相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     private boolean allowedContentType(String contentType) {
         return contentType.isBlank()
             || "text/csv".equals(contentType)
@@ -81,6 +120,9 @@ public class StudentImportFileService {
             || "application/octet-stream".equals(contentType);
     }
 
+    /**
+     * 解析并规范化Csv。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     private List<Map<String, String>> parseCsv(MultipartFile file) throws IOException {
         List<List<String>> records = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
@@ -89,9 +131,15 @@ public class StudentImportFileService {
                 records.add(parseCsvLine(line));
             }
         }
+        /**
+         * 封装recordsToRows相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return recordsToRows(records);
     }
 
+    /**
+     * 解析并规范化CsvLine。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     private List<String> parseCsvLine(String line) {
         List<String> cells = new ArrayList<>();
         StringBuilder cell = new StringBuilder();
@@ -116,6 +164,9 @@ public class StudentImportFileService {
         return cells;
     }
 
+    /**
+     * 解析并规范化Excel。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     private List<Map<String, String>> parseExcel(MultipartFile file) throws IOException {
         byte[] bytes = file.getBytes();
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
@@ -140,10 +191,16 @@ public class StudentImportFileService {
                 }
                 records.add(cells);
             }
+            /**
+             * 封装recordsToRows相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return recordsToRows(records);
         }
     }
 
+    /**
+     * 封装recordsToRows相关逻辑。不满足业务约束时直接抛出明确异常。
+     */
     private List<Map<String, String>> recordsToRows(List<List<String>> records) {
         List<String> headers = null;
         List<Map<String, String>> rows = new ArrayList<>();
@@ -155,14 +212,23 @@ public class StudentImportFileService {
             if (headers == null) {
                 headers = record.stream().map(this::cleanText).filter(item -> !item.isBlank()).toList();
                 if (headers.isEmpty()) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(400, "表头不能为空");
                 }
                 if (headers.size() > MAX_COLUMNS) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(400, "字段列数不能超过 50");
                 }
                 continue;
             }
             if (++dataRows > MAX_ROWS) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "导入行数不能超过 5000");
             }
             Map<String, String> row = new LinkedHashMap<>();
@@ -175,6 +241,9 @@ public class StudentImportFileService {
         return rows;
     }
 
+    /**
+     * 封装cleanText相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     private String cleanText(String value) {
         if (value == null) {
             return "";

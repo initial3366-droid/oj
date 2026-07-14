@@ -1,3 +1,6 @@
+/**
+ * 教师题目文件夹页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -19,6 +22,9 @@ const { Row, Col } = Grid;
 const FormItem = Form.Item;
 const TextArea = Input.TextArea;
 
+/**
+ * 文件夹题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface FolderProblem {
   id: number;
   title: string;
@@ -27,6 +33,9 @@ interface FolderProblem {
   memoryLimit: number;
 }
 
+/**
+ * 题目文件夹接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ProblemFolder {
   id: number;
   name: string;
@@ -38,6 +47,9 @@ interface ProblemFolder {
   updatedAt: string;
 }
 
+/**
+ * 题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Problem {
   id: number;
   title: string;
@@ -45,11 +57,17 @@ interface Problem {
   folderId?: number;
 }
 
+/**
+ * 页面结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PageResult {
   total: number;
   list: Problem[];
 }
 
+/**
+ * 封装模式FromPath相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function modeFromPath(pathname: string) {
   const parts = pathname.split('/').filter(Boolean);
   if (parts.includes('new')) return 'create';
@@ -66,17 +84,26 @@ const difficultyMap: Record<number, { text: string; color: string }> = {
   5: { text: '地狱', color: 'purple' },
 };
 
+/**
+ * 封装difficultyTag相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function difficultyTag(value?: number) {
   const info = difficultyMap[value ?? 0] ?? { text: '未知', color: 'gray' };
   return <Tag color={info.color}>{info.text}</Tag>;
 }
 
+/**
+ * 格式化Date。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatDate(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
 }
 
+/**
+ * 渲染教师题目文件夹页面，并协调其数据加载、状态和交互。
+ */
 export function TeacherProblemFolderPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -94,12 +121,18 @@ export function TeacherProblemFolderPage() {
   const [keyword, setKeyword] = useState('');
   const [problemKeyword, setProblemKeyword] = useState('');
 
+  /**
+   * 封装filteredFolders相关逻辑。对原始数据进行派生或聚合。
+   */
   const filteredFolders = useMemo(() => {
     const normalized = keyword.trim().toLowerCase();
     if (!normalized) return folders;
     return folders.filter((f) => f.name.toLowerCase().includes(normalized));
   }, [keyword, folders]);
 
+  /**
+   * 封装availableProblems相关逻辑。对原始数据进行派生或聚合。
+   */
   const availableProblems = useMemo(() => {
     const selectedSet = new Set(selectedProblemIds);
     return allProblems
@@ -111,6 +144,9 @@ export function TeacherProblemFolderPage() {
       });
   }, [allProblems, selectedProblemIds, problemKeyword]);
 
+  /**
+   * 封装selectedProblems相关逻辑。对原始数据进行派生或聚合。
+   */
   const selectedProblems = useMemo(() => {
     const map = new Map(allProblems.map((p) => [p.id, p]));
     return selectedProblemIds.map((id) => map.get(id)).filter(Boolean) as Problem[];
@@ -121,6 +157,9 @@ export function TeacherProblemFolderPage() {
     if (mode === 'detail' && folderId) loadFolderDetail(folderId);
   }, [mode, folderId]);
 
+  /**
+   * 读取Folders并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadFolders() {
     setLoading(true);
     try {
@@ -133,6 +172,9 @@ export function TeacherProblemFolderPage() {
     }
   }
 
+  /**
+   * 读取文件夹详情并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function loadFolderDetail(id: number) {
     setLoading(true);
     try {
@@ -152,6 +194,9 @@ export function TeacherProblemFolderPage() {
     }
   }
 
+  /**
+   * 处理Create。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function handleCreate() {
     try {
       const values = await form.validate();
@@ -170,6 +215,9 @@ export function TeacherProblemFolderPage() {
     }
   }
 
+  /**
+   * 处理UpdateInfo。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function handleUpdateInfo() {
     if (!folderId) return;
     try {
@@ -188,6 +236,9 @@ export function TeacherProblemFolderPage() {
     }
   }
 
+  /**
+   * 处理SaveProblems。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function handleSaveProblems() {
     if (!folderId) return;
     setSubmitting(true);
@@ -204,6 +255,9 @@ export function TeacherProblemFolderPage() {
     }
   }
 
+  /**
+   * 处理Delete。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function handleDelete(id: number) {
     try {
       await teacherDelete(`/api/admin/v1/problem-folders/${id}`);
@@ -214,10 +268,16 @@ export function TeacherProblemFolderPage() {
     }
   }
 
+  /**
+   * 创建或提交题目。会更新 React 状态并触发重新渲染。
+   */
   function addProblem(id: number) {
     setSelectedProblemIds((prev) => [...prev, id]);
   }
 
+  /**
+   * 删除题目。会更新 React 状态并触发重新渲染。
+   */
   function removeProblem(id: number) {
     setSelectedProblemIds((prev) => prev.filter((pid) => pid !== id));
   }

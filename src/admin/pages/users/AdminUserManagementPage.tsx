@@ -1,3 +1,6 @@
+/**
+ * 管理员用户Management页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { adminPath } from '../../../utils/adminPath';
 import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -21,6 +24,9 @@ import { adminGet, adminPost, adminPut, adminDelete } from '../../api/adminClien
 const FormItem = Form.Item;
 const Option = Select.Option;
 
+/**
+ * 用户接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface User {
   id: number;
   username: string;
@@ -34,11 +40,17 @@ interface User {
   updatedAt?: string | null;
 }
 
+/**
+ * 页面结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PageResult<T> {
   list: T[];
   total: number;
 }
 
+/**
+ * 用户FormData接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface UserFormData {
   username: string;
   displayName: string;
@@ -48,6 +60,9 @@ interface UserFormData {
   password?: string;
 }
 
+/**
+ * 管理员提交接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface AdminSubmission {
   id: number;
   userId: number;
@@ -69,17 +84,26 @@ interface AdminSubmission {
 const ACTIVE_USER_ROLES = new Set(['STUDENT', 'GUEST']);
 const DETAIL_SUBMISSION_PAGE_SIZE = 10;
 
+/**
+ * 格式化Date。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatDate(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
 }
 
+/**
+ * 封装dash相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function dash(value: unknown) {
   if (value === null || value === undefined || value === '') return '-';
   return String(value);
 }
 
+/**
+ * 封装角色Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function roleText(role?: string | null) {
   const map: Record<string, string> = {
     SUPER_ADMIN: '系统管理员',
@@ -90,6 +114,9 @@ function roleText(role?: string | null) {
   return role ? (map[role] || role) : '-';
 }
 
+/**
+ * 封装状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusColor(status?: string | null) {
   const normalized = (status || '').toUpperCase();
   if (normalized === 'AC' || normalized === 'ACCEPTED') return 'green';
@@ -100,10 +127,16 @@ function statusColor(status?: string | null) {
 }
 
 
+/**
+ * 判断有效用户是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function isActiveUser(user: User) {
   return ACTIVE_USER_ROLES.has(user.role);
 }
 
+/**
+ * 渲染管理员用户Management页面，并协调其数据加载、状态和交互。
+ */
 export function AdminUserManagementPage() {
   const location = useLocation();
   const [loading, setLoading] = useState(false);
@@ -140,6 +173,9 @@ export function AdminUserManagementPage() {
     loadUsers();
   }, [page, keyword, roleFilter]);
 
+  /**
+   * 读取Users并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadUsers() {
     setLoading(true);
     try {
@@ -162,17 +198,26 @@ export function AdminUserManagementPage() {
     }
   }
 
+  /**
+   * 处理Search。会更新 React 状态并触发重新渲染。
+   */
   function handleSearch() {
     setKeyword(searchInput);
     setPage(1);
   }
 
+  /**
+   * 处理Create。会更新 React 状态并触发重新渲染。
+   */
   function handleCreate() {
     setEditingUser(null);
     form.resetFields();
     setModalVisible(true);
   }
 
+  /**
+   * 处理Edit。会更新 React 状态并触发重新渲染。
+   */
   function handleEdit(user: User) {
     setEditingUser(user);
     form.setFieldsValue({
@@ -186,6 +231,9 @@ export function AdminUserManagementPage() {
   }
 
 
+  /**
+   * 处理头像Upload。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function handleAvatarUpload(userId: number, file: File) {
     if (!file.type.startsWith('image/')) {
       Message.error('请选择图片文件');
@@ -208,6 +256,9 @@ export function AdminUserManagementPage() {
     }
   }
 
+  /**
+   * 读取用户详情并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadUserDetail(userId: number) {
     setDetailLoading(true);
     try {
@@ -219,6 +270,9 @@ export function AdminUserManagementPage() {
     }
   }
 
+  /**
+   * 读取用户Submissions并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadUserSubmissions(userId: number, nextPage = detailSubmissionPage) {
     setDetailSubmissionLoading(true);
     try {
@@ -239,6 +293,9 @@ export function AdminUserManagementPage() {
     }
   }
 
+  /**
+   * 处理View。会更新 React 状态并触发重新渲染。
+   */
   function handleView(user: User) {
     setViewingUser(user);
     setDetailSubmissions([]);
@@ -249,6 +306,9 @@ export function AdminUserManagementPage() {
     loadUserSubmissions(user.id, 1);
   }
 
+  /**
+   * 渲染用户头像。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function renderUserAvatar(user: Pick<User, 'avatarUrl' | 'displayName' | 'username'>, size = 32) {
     const name = user.displayName || user.username || '用户';
     return (
@@ -265,6 +325,9 @@ export function AdminUserManagementPage() {
   }
 
 
+  /**
+   * 处理Delete。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function handleDelete(id: number) {
     try {
       await adminDelete(`/api/admin/v1/users/${id}`);
@@ -275,6 +338,9 @@ export function AdminUserManagementPage() {
     }
   }
 
+  /**
+   * 处理ResetAiQuota。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function handleResetAiQuota(userId: number) {
     try {
       await adminPost(`/api/admin/v1/agent/reset/user/${userId}`);
@@ -285,6 +351,9 @@ export function AdminUserManagementPage() {
     }
   }
 
+  /**
+   * 处理ResetAllAiQuota。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function handleResetAllAiQuota() {
     try {
       await adminPost('/api/admin/v1/agent/reset/all');
@@ -294,6 +363,9 @@ export function AdminUserManagementPage() {
     }
   }
 
+  /**
+   * 处理Submit。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function handleSubmit(values: UserFormData) {
     try {
       if (editingUser) {
@@ -316,6 +388,9 @@ export function AdminUserManagementPage() {
     if (users.length > 0) loadQuotas();
   }, [users]);
 
+  /**
+   * 读取Quotas并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadQuotas() {
     const map: Record<number, { used: number; remaining: number }> = {};
     for (const user of users) {

@@ -1,3 +1,6 @@
+/**
+ * 管理员教师Management页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Button, Card, Form, Input, Message, Modal, Popconfirm, Space, Table } from '@arco-design/web-react';
 import { IconDelete, IconEdit, IconPlus, IconSearch } from '@arco-design/web-react/icon';
 import { useCallback, useEffect, useState } from 'react';
@@ -5,6 +8,9 @@ import { adminDelete, adminGet, adminPost, adminPut } from '../../api/adminClien
 
 const FormItem = Form.Item;
 
+/**
+ * 教师接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Teacher {
   id: number;
   username: string;
@@ -15,6 +21,9 @@ interface Teacher {
   createdAt: string;
 }
 
+/**
+ * 教师FormData接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TeacherFormData {
   username: string;
   password?: string;
@@ -23,6 +32,9 @@ interface TeacherFormData {
   email?: string;
 }
 
+/**
+ * 渲染管理员教师Management页面，并协调其数据加载、状态和交互。
+ */
 export function AdminTeacherManagementPage() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(false);
@@ -32,6 +44,9 @@ export function AdminTeacherManagementPage() {
   const [editing, setEditing] = useState<Teacher | null>(null);
   const [form] = Form.useForm<TeacherFormData>();
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -49,12 +64,18 @@ export function AdminTeacherManagementPage() {
     load();
   }, [load]);
 
+  /**
+   * 封装openCreate相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openCreate() {
     setEditing(null);
     form.resetFields();
     setModalVisible(true);
   }
 
+  /**
+   * 封装openEdit相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openEdit(teacher: Teacher) {
     setEditing(teacher);
     form.setFieldsValue({
@@ -67,6 +88,9 @@ export function AdminTeacherManagementPage() {
     setModalVisible(true);
   }
 
+  /**
+   * 创建或提交目标数据。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function submit(values: TeacherFormData) {
     try {
       const payload = {
@@ -89,6 +113,9 @@ export function AdminTeacherManagementPage() {
     }
   }
 
+  /**
+   * 删除目标数据。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function remove(id: number) {
     try {
       await adminDelete(`/api/admin/v1/teachers/${id}`);

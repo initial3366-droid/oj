@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+# File names are fixed by the backend; only Main.java contents are untrusted.
+/usr/bin/javac -encoding UTF-8 Main.java
+exec /usr/bin/jar --create --file main.jar ./*.class

@@ -1,0 +1,1 @@
+import{bM as i,c8 as d}from"./index-CjEuB_Aq.js";var s=d;function t(a,e,n){n=typeof n=="function"?n:void 0;var f=n?n(a,e):void 0;return f===void 0?s(a,e,void 0,n):!!f}var u=t;const E=i(u);export{E as i};

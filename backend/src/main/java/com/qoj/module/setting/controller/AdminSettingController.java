@@ -15,12 +15,18 @@ import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 管理员设置接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
+ */
 @RestController
 @RequestMapping("/api/admin/v1/settings")
 @PreAuthorize("hasRole('SUPER_ADMIN')")
 public class AdminSettingController {
     private final SystemSettingService settingService;
 
+    /**
+     * 构造 管理员设置Controller 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     public AdminSettingController(SystemSettingService settingService) {
         this.settingService = settingService;
     }
@@ -89,6 +95,9 @@ public class AdminSettingController {
         return ApiResponse.ok();
     }
 
+    /**
+     * Site标题请求数据模型。用于承接接口输入并通过声明式约束完成基础参数校验。
+     */
     public static class SiteTitleRequest {
         public String title;
     }
@@ -103,6 +112,9 @@ public class AdminSettingController {
         return ApiResponse.ok();
     }
 
+    /**
+     * Maintenance模式请求数据模型。用于承接接口输入并通过声明式约束完成基础参数校验。
+     */
     public static class MaintenanceModeRequest {
         public Boolean enabled;
     }
@@ -128,6 +140,9 @@ public class AdminSettingController {
         return ApiResponse.ok();
     }
 
+    /**
+     * FrontendSettings请求数据模型。用于承接接口输入并通过声明式约束完成基础参数校验。
+     */
     public static class FrontendSettingsRequest {
         public String siteTitle;
         public String siteLogo;
@@ -150,6 +165,9 @@ public class AdminSettingController {
         return ApiResponse.ok();
     }
 
+    /**
+     * FooterText请求数据模型。用于承接接口输入并通过声明式约束完成基础参数校验。
+     */
     public static class FooterTextRequest {
         public String text;
     }
@@ -164,6 +182,9 @@ public class AdminSettingController {
         return ApiResponse.ok();
     }
 
+    /**
+     * IcpNumber请求数据模型。用于承接接口输入并通过声明式约束完成基础参数校验。
+     */
     public static class IcpNumberRequest {
         public String icpNumber;
     }
@@ -184,6 +205,9 @@ public class AdminSettingController {
         return ApiResponse.ok();
     }
 
+    /**
+     * FooterLinks请求数据模型。用于承接接口输入并通过声明式约束完成基础参数校验。
+     */
     public static class FooterLinksRequest {
         public String link1Text;
         public String link1Url;
@@ -211,6 +235,9 @@ public class AdminSettingController {
         return ApiResponse.ok();
     }
 
+    /**
+     * 注册启用状态请求数据模型。用于承接接口输入并通过声明式约束完成基础参数校验。
+     */
     public static class RegisterEnabledRequest {
         public Boolean enabled;
     }
@@ -225,6 +252,9 @@ public class AdminSettingController {
         return ApiResponse.ok();
     }
 
+    /**
+     * EmailVerification请求数据模型。用于承接接口输入并通过声明式约束完成基础参数校验。
+     */
     public static class EmailVerificationRequest {
         public Boolean enabled;
     }
@@ -257,6 +287,9 @@ public class AdminSettingController {
         return ApiResponse.ok(settingService.getJudgeSettings());
     }
 
+    /**
+     * 更新判题Settings。调用前会结合当前登录身份执行权限判断；执行持久化写入。
+     */
     @PutMapping("/judge")
     public ApiResponse<Void> updateJudgeSettings(@RequestBody JudgeSettingsVO request) {
         AuthUser authUser = CurrentUser.required();
@@ -274,6 +307,9 @@ public class AdminSettingController {
         return ApiResponse.ok();
     }
 
+    /**
+     * 判题启用状态请求数据模型。用于承接接口输入并通过声明式约束完成基础参数校验。
+     */
     public static class JudgeEnabledRequest {
         public Boolean enabled;
     }
@@ -288,6 +324,9 @@ public class AdminSettingController {
         return ApiResponse.ok();
     }
 
+    /**
+     * 判题MaxConcurrent请求数据模型。用于承接接口输入并通过声明式约束完成基础参数校验。
+     */
     public static class JudgeMaxConcurrentRequest {
         public Integer maxConcurrent;
     }

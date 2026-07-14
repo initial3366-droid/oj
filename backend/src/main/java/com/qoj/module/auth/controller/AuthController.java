@@ -4,6 +4,7 @@ import com.qoj.common.ApiResponse;
 import com.qoj.module.auth.dto.AuthTokenResponse;
 import com.qoj.module.auth.dto.BindEmailRequest;
 import com.qoj.module.auth.dto.LoginRequest;
+import com.qoj.module.auth.dto.LogoutRequest;
 import com.qoj.module.auth.dto.RefreshTokenRequest;
 import com.qoj.module.auth.dto.RegisterRequest;
 import com.qoj.module.auth.dto.ResetPasswordRequest;
@@ -26,6 +27,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 认证接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
+ */
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
@@ -33,12 +37,18 @@ public class AuthController {
     private final CaptchaService captchaService;
     private final UserAvatarService userAvatarService;
 
+    /**
+     * 构造 认证Controller 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     public AuthController(AuthService authService, CaptchaService captchaService, UserAvatarService userAvatarService) {
         this.authService = authService;
         this.captchaService = captchaService;
         this.userAvatarService = userAvatarService;
     }
 
+    /**
+     * 封装登录相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @PostMapping("/login")
     public ApiResponse<AuthTokenResponse> login(@Valid @RequestBody LoginRequest request) {
         // 教师端登录会携带验证码字段，前台用户登录不传
@@ -48,25 +58,43 @@ public class AuthController {
         return ApiResponse.ok(authService.loginUser(request));
     }
 
+    /**
+     * 创建或提交目标数据。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @PostMapping("/register")
     public ApiResponse<AuthTokenResponse> register(@Valid @RequestBody RegisterRequest request) {
         return ApiResponse.ok(authService.register(request));
     }
 
+    /**
+     * 重置Password。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @PostMapping("/reset-password")
     public ApiResponse<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         authService.resetPassword(request);
         return ApiResponse.ok();
     }
 
+    /**
+     * 封装refresh相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @PostMapping("/refresh")
     public ApiResponse<AuthTokenResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
         return ApiResponse.ok(authService.refresh(request));
     }
 
+    /**
+     * 封装退出登录相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @PostMapping("/logout")
-    public ApiResponse<Void> logout(HttpServletRequest request) {
-        authService.logout(request.getHeader("Authorization"));
+    public ApiResponse<Void> logout(
+        HttpServletRequest request,
+        @RequestBody(required = false) LogoutRequest logoutRequest
+    ) {
+        authService.logout(
+            request.getHeader("Authorization"),
+            logoutRequest == null ? null : logoutRequest.refreshToken()
+        );
         return ApiResponse.ok();
     }
 

@@ -16,6 +16,9 @@ import com.qoj.security.policy.Permission;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 管理员比赛排名接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
+ */
 @RestController
 @RequestMapping("/api/admin/v1/contests")
 @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
@@ -26,6 +29,9 @@ public class AdminContestRankController {
     private final ContestMapper contestMapper;
     private final ContestAccessPolicy contestAccessPolicy;
 
+    /**
+     * 构造 管理员比赛排名Controller 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断；从持久化层读取数据。
+     */
     public AdminContestRankController(
         ContestAcmRankService acmRankService,
         ContestOiRankService oiRankService,
@@ -51,11 +57,17 @@ public class AdminContestRankController {
     ) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
 
         AuthUser user = CurrentUser.required();
         if (!contestAccessPolicy.can(user, Permission.UPDATE, contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权重建该比赛榜单");
         }
 
@@ -64,6 +76,9 @@ public class AdminContestRankController {
         } else if ("OI".equalsIgnoreCase(mode)) {
             oiRankService.rebuildRank(contestId);
         } else {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST, "无效的榜单模式，必须是 ACM 或 OI");
         }
 
@@ -81,11 +96,17 @@ public class AdminContestRankController {
     ) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
 
         AuthUser user = CurrentUser.required();
         if (!contestAccessPolicy.can(user, Permission.UPDATE, contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权创建该比赛榜单快照");
         }
 
@@ -104,11 +125,17 @@ public class AdminContestRankController {
     ) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
 
         AuthUser user = CurrentUser.required();
         if (!contestAccessPolicy.can(user, Permission.UPDATE, contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权删除该比赛榜单快照");
         }
 

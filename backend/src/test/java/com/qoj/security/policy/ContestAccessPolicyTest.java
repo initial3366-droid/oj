@@ -13,11 +13,17 @@ import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * 比赛访问Policy访问策略。根据当前身份、资源归属和操作类型统一作出权限判断。
+ */
 @DisplayName("ContestAccessPolicy Tests")
 class ContestAccessPolicyTest {
 
     private ContestAccessPolicy policy;
 
+    /**
+     * 封装setUp相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @BeforeEach
     void setUp() {
         AuditLogger auditLogger = new AuditLogger();
@@ -32,9 +38,15 @@ class ContestAccessPolicyTest {
         user.role = "SUPER_ADMIN";
         user.displayName = "Super Admin";
         user.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 
+    /**
+     * 创建或提交教师。调用前会结合当前登录身份执行权限判断。
+     */
     private AuthUser createTeacher() {
         User user = new User();
         user.id = 2L;
@@ -42,9 +54,15 @@ class ContestAccessPolicyTest {
         user.role = "TEACHER";
         user.displayName = "Teacher";
         user.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 
+    /**
+     * 创建或提交Content管理员。调用前会结合当前登录身份执行权限判断。
+     */
     private AuthUser createContentAdmin() {
         User user = new User();
         user.id = 3L;
@@ -52,9 +70,15 @@ class ContestAccessPolicyTest {
         user.role = "TEACHER";
         user.displayName = "Teacher Content";
         user.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 
+    /**
+     * 创建或提交Student。调用前会结合当前登录身份执行权限判断。
+     */
     private AuthUser createStudent() {
         User user = new User();
         user.id = 4L;
@@ -62,9 +86,15 @@ class ContestAccessPolicyTest {
         user.role = "STUDENT";
         user.displayName = "Student";
         user.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 
+    /**
+     * 创建或提交管理员Account。调用前会结合当前登录身份执行权限判断。
+     */
     private AuthUser createAdminAccount() {
         AdminUser adminUser = new AdminUser();
         adminUser.id = 100L;
@@ -72,9 +102,15 @@ class ContestAccessPolicyTest {
         adminUser.role = "SUPER_ADMIN";
         adminUser.displayName = "Backend Admin";
         adminUser.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(adminUser);
     }
 
+    /**
+     * 创建或提交用户。调用前会结合当前登录身份执行权限判断。
+     */
     private AuthUser createUser(Long userId, String role) {
         User user = new User();
         user.id = userId;
@@ -82,9 +118,15 @@ class ContestAccessPolicyTest {
         user.role = role;
         user.displayName = "User " + userId;
         user.passwordHash = "hash";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 
+    /**
+     * 创建或提交Public比赛。直接返回当前实例保存的比赛，不产生额外的数据写入。
+     */
     private Contest createPublicContest(Long ownerId) {
         Contest contest = new Contest();
         contest.id = 1L;
@@ -97,6 +139,9 @@ class ContestAccessPolicyTest {
         return contest;
     }
 
+    /**
+     * 创建或提交Private比赛。直接返回当前实例保存的比赛，不产生额外的数据写入。
+     */
     private Contest createPrivateContest(Long ownerId) {
         Contest contest = new Contest();
         contest.id = 2L;
@@ -119,6 +164,9 @@ class ContestAccessPolicyTest {
         assertFalse(policy.can(user, Permission.VIEW, null));
     }
 
+    /**
+     * 封装testViewSuper管理员ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("VIEW: super admin can view any contest")
     void testView_SuperAdmin_ShouldAllow() {
@@ -127,6 +175,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(admin, Permission.VIEW, contest));
     }
 
+    /**
+     * 封装testViewOwnerShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("VIEW: owner can view their contest")
     void testView_Owner_ShouldAllow() {
@@ -135,6 +186,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(owner, Permission.VIEW, contest));
     }
 
+    /**
+     * 封装testViewPublic比赛ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("VIEW: public contest allows anyone")
     void testView_PublicContest_ShouldAllow() {
@@ -143,6 +197,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(student, Permission.VIEW, contest));
     }
 
+    /**
+     * 封装testViewPrivate比赛NonMemberShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("VIEW: private contest denies non-member")
     void testView_PrivateContest_NonMember_ShouldDeny() {
@@ -162,6 +219,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.canViewProblemDetail(admin, contest));
     }
 
+    /**
+     * 封装testView题目详情BeforeStartOwnerShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断；结果依赖当前时间。
+     */
     @Test
     @DisplayName("canViewProblemDetail: before start time, owner can view")
     void testViewProblemDetail_BeforeStart_Owner_ShouldAllow() {
@@ -171,6 +231,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.canViewProblemDetail(owner, contest));
     }
 
+    /**
+     * 封装testView题目详情BeforeStartRegular用户ShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断；结果依赖当前时间。
+     */
     @Test
     @DisplayName("canViewProblemDetail: before start time, regular user cannot view")
     void testViewProblemDetail_BeforeStart_RegularUser_ShouldDeny() {
@@ -180,6 +243,9 @@ class ContestAccessPolicyTest {
         assertFalse(policy.canViewProblemDetail(student, contest));
     }
 
+    /**
+     * 封装testView题目详情AfterStartShouldCheckView权限相关逻辑。调用前会结合当前登录身份执行权限判断；结果依赖当前时间。
+     */
     @Test
     @DisplayName("canViewProblemDetail: after start time, can view if has VIEW permission")
     void testViewProblemDetail_AfterStart_ShouldCheckViewPermission() {
@@ -198,6 +264,9 @@ class ContestAccessPolicyTest {
         assertFalse(policy.can(null, Permission.CREATE, contest));
     }
 
+    /**
+     * 封装testCreateSuper管理员ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("CREATE: super admin should allow")
     void testCreate_SuperAdmin_ShouldAllow() {
@@ -206,6 +275,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(admin, Permission.CREATE, contest));
     }
 
+    /**
+     * 封装testCreate教师Content角色ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("CREATE: teacher content role should allow")
     void testCreate_TeacherContentRole_ShouldAllow() {
@@ -214,6 +286,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(teacher, Permission.CREATE, contest));
     }
 
+    /**
+     * 封装testCreateAnother教师Content角色ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("CREATE: another teacher content role should allow")
     void testCreate_AnotherTeacherContentRole_ShouldAllow() {
@@ -222,6 +297,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(contentAdmin, Permission.CREATE, contest));
     }
 
+    /**
+     * 封装testCreateStudentShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("CREATE: student should deny")
     void testCreate_Student_ShouldDeny() {
@@ -239,6 +317,9 @@ class ContestAccessPolicyTest {
         assertFalse(policy.can(null, Permission.UPDATE, contest));
     }
 
+    /**
+     * 封装testUpdateSuper管理员ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("UPDATE: super admin should allow")
     void testUpdate_SuperAdmin_ShouldAllow() {
@@ -247,6 +328,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(admin, Permission.UPDATE, contest));
     }
 
+    /**
+     * 封装testUpdateOwnerShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("UPDATE: owner should allow")
     void testUpdate_Owner_ShouldAllow() {
@@ -255,6 +339,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(owner, Permission.UPDATE, contest));
     }
 
+    /**
+     * 封装testUpdateOther用户ShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("UPDATE: other user should deny")
     void testUpdate_OtherUser_ShouldDeny() {
@@ -272,6 +359,9 @@ class ContestAccessPolicyTest {
         assertFalse(policy.can(null, Permission.DELETE, contest));
     }
 
+    /**
+     * 封装testDeleteSuper管理员ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("DELETE: super admin should allow")
     void testDelete_SuperAdmin_ShouldAllow() {
@@ -280,6 +370,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(admin, Permission.DELETE, contest));
     }
 
+    /**
+     * 封装testDeleteOwnerShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("DELETE: owner should allow")
     void testDelete_Owner_ShouldAllow() {
@@ -288,6 +381,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(owner, Permission.DELETE, contest));
     }
 
+    /**
+     * 封装testDeleteOther用户ShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("DELETE: other user should deny")
     void testDelete_OtherUser_ShouldDeny() {
@@ -305,6 +401,9 @@ class ContestAccessPolicyTest {
         assertFalse(policy.can(null, Permission.SUBMIT, contest));
     }
 
+    /**
+     * 封装testSubmitBeforeStartShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断；结果依赖当前时间。
+     */
     @Test
     @DisplayName("SUBMIT: before contest start should deny")
     void testSubmit_BeforeStart_ShouldDeny() {
@@ -315,6 +414,9 @@ class ContestAccessPolicyTest {
         assertFalse(policy.can(student, Permission.SUBMIT, contest));
     }
 
+    /**
+     * 封装testSubmitAfterEndShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断；结果依赖当前时间。
+     */
     @Test
     @DisplayName("SUBMIT: after contest end should deny")
     void testSubmit_AfterEnd_ShouldDeny() {
@@ -326,6 +428,9 @@ class ContestAccessPolicyTest {
         assertFalse(policy.can(student, Permission.SUBMIT, contest));
     }
 
+    /**
+     * 封装testSubmitAfterEndAllowedBy配置ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断；结果依赖当前时间。
+     */
     @Test
     @DisplayName("SUBMIT: after contest end with allowAfterEndSubmit should allow")
     void testSubmit_AfterEnd_AllowedByConfig_ShouldAllow() {
@@ -337,6 +442,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(student, Permission.SUBMIT, contest));
     }
 
+    /**
+     * 封装testSubmitSuper管理员ShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断；结果依赖当前时间。
+     */
     @Test
     @DisplayName("SUBMIT: super admin should deny")
     void testSubmit_SuperAdmin_ShouldDeny() {
@@ -347,6 +455,9 @@ class ContestAccessPolicyTest {
         assertFalse(policy.can(admin, Permission.SUBMIT, contest));
     }
 
+    /**
+     * 封装testSubmitOwnerShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断；结果依赖当前时间。
+     */
     @Test
     @DisplayName("SUBMIT: owner should deny")
     void testSubmit_Owner_ShouldDeny() {
@@ -357,6 +468,9 @@ class ContestAccessPolicyTest {
         assertFalse(policy.can(owner, Permission.SUBMIT, contest));
     }
 
+    /**
+     * 封装testSubmit管理员AccountShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断；结果依赖当前时间。
+     */
     @Test
     @DisplayName("SUBMIT: admin account should deny")
     void testSubmit_AdminAccount_ShouldDeny() {
@@ -367,6 +481,9 @@ class ContestAccessPolicyTest {
         assertFalse(policy.can(adminAccount, Permission.SUBMIT, contest));
     }
 
+    /**
+     * 封装testSubmitRegular用户During比赛ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断；结果依赖当前时间。
+     */
     @Test
     @DisplayName("SUBMIT: regular user during contest should allow")
     void testSubmit_RegularUserDuringContest_ShouldAllow() {
@@ -386,6 +503,9 @@ class ContestAccessPolicyTest {
         assertFalse(policy.canViewScoreboardDuringFreeze(null, contest));
     }
 
+    /**
+     * 封装testView榜单DuringFreezeSuper管理员ShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("canViewScoreboardDuringFreeze: super admin should allow")
     void testViewScoreboardDuringFreeze_SuperAdmin_ShouldAllow() {
@@ -394,6 +514,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.canViewScoreboardDuringFreeze(admin, contest));
     }
 
+    /**
+     * 封装testView榜单DuringFreezeOwnerShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("canViewScoreboardDuringFreeze: owner should allow")
     void testViewScoreboardDuringFreeze_Owner_ShouldAllow() {
@@ -402,6 +525,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.canViewScoreboardDuringFreeze(owner, contest));
     }
 
+    /**
+     * 封装testView榜单DuringFreezeRegular用户ShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("canViewScoreboardDuringFreeze: regular user should deny")
     void testViewScoreboardDuringFreeze_RegularUser_ShouldDeny() {
@@ -420,6 +546,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(admin, Permission.MANAGE_REGISTRATION, contest));
     }
 
+    /**
+     * 封装testManage报名OwnerShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("MANAGE_REGISTRATION: owner should allow")
     void testManageRegistration_Owner_ShouldAllow() {
@@ -428,6 +557,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(owner, Permission.MANAGE_REGISTRATION, contest));
     }
 
+    /**
+     * 封装testManage报名Other用户ShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("MANAGE_REGISTRATION: other user should deny")
     void testManageRegistration_OtherUser_ShouldDeny() {
@@ -446,6 +578,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(admin, Permission.REJUDGE, contest));
     }
 
+    /**
+     * 封装testRejudgeOwnerShouldAllow相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("REJUDGE: owner should allow")
     void testRejudge_Owner_ShouldAllow() {
@@ -454,6 +589,9 @@ class ContestAccessPolicyTest {
         assertTrue(policy.can(owner, Permission.REJUDGE, contest));
     }
 
+    /**
+     * 封装testRejudgeOther用户ShouldDeny相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     @DisplayName("REJUDGE: other user should deny")
     void testRejudge_OtherUser_ShouldDeny() {
