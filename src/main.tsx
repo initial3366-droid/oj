@@ -8,6 +8,7 @@ import { BrowserRouter } from "react-router-dom";
 import { filterReact19RefWarning } from "./utils/filterReact19RefWarning";
 import { App } from "./App";
 import { OjDataProvider } from "./data/OjDataProvider";
+import "katex/dist/katex.min.css";
 import "./styles/semi-base.css";
 import "./styles/semi-theme.css";
 import "./styles/semi-overrides.css";

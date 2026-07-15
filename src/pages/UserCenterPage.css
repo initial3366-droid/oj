@@ -293,6 +293,11 @@
   border-radius: 10px;
 }
 
+.uc-page .semi-button-primary:not(.semi-button-disabled),
+.uc-page .semi-button-primary:not(.semi-button-disabled) .semi-button-content {
+  color: #fff !important;
+}
+
 .uc-btn-primary.semi-button-primary:hover {
   background: linear-gradient(135deg, #1d4ed8 0%, #4338ca 100%) !important;
   transform: translateY(-1px);

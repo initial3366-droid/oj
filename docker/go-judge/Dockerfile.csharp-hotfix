@@ -1,0 +1,10 @@
+FROM qoj-go-judge:1.12.1
+
+COPY qoj-csharp-launcher.cs /tmp/qoj-csharp-launcher.cs
+RUN /usr/bin/mcs -optimize+ \
+        -out:/usr/bin/qoj-csharp-launcher.exe \
+        /tmp/qoj-csharp-launcher.cs \
+    && rm /tmp/qoj-csharp-launcher.cs \
+    && mkdir -p /usr/local/lib \
+    && ln -sf /usr/bin/qoj-csharp-launcher.exe /usr/local/lib/qoj-csharp-launcher.exe \
+    && test -s /usr/bin/qoj-csharp-launcher.exe

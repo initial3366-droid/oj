@@ -130,6 +130,7 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
             OR (#{acceptCpp} = TRUE AND LOWER(TRIM(s.language)) IN ('cpp', 'c++', 'cxx', 'g++'))
             OR (#{acceptJava} = TRUE AND LOWER(TRIM(s.language)) = 'java')
             OR (#{acceptPython} = TRUE AND LOWER(TRIM(s.language)) IN ('python', 'python3', 'py'))
+            OR (#{acceptCsharp} = TRUE AND LOWER(TRIM(s.language)) IN ('c#', 'csharp', 'cs'))
           )
         ORDER BY s.priority DESC, s.submit_time ASC
         LIMIT #{limit}
@@ -144,6 +145,7 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
         @Param("acceptCpp") boolean acceptCpp,
         @Param("acceptJava") boolean acceptJava,
         @Param("acceptPython") boolean acceptPython,
+        @Param("acceptCsharp") boolean acceptCsharp,
         @Param("staleBefore") LocalDateTime staleBefore
     );
 
@@ -182,7 +184,7 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
               (#{oiWorker} = TRUE AND UPPER(COALESCE(c.scoring_mode, c.type, 'ACM')) = 'OI')
               OR (#{oiWorker} = FALSE AND UPPER(COALESCE(c.scoring_mode, c.type, 'ACM')) <> 'OI')
           )
-          AND LOWER(TRIM(s.language)) IN ('c', 'cpp', 'c++', 'cxx', 'g++', 'java', 'python', 'python3', 'py')
+          AND LOWER(TRIM(s.language)) IN ('c', 'cpp', 'c++', 'cxx', 'g++', 'java', 'python', 'python3', 'py', 'c#', 'csharp', 'cs')
         """)
     int claimForCcpcoj(
         @Param("id") Long id,

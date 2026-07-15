@@ -208,6 +208,27 @@ class CcpcojJudgeGatewayServiceTest {
         assertEquals("", service.sourceCode(9L, sessionId));
     }
 
+    @Test
+    void csharpSubmissionUsesCcpcojLanguageIdNine() {
+        String sessionId = "12345678-abcd-4abc-8abc-1234567890ab";
+        JudgeSettingsVO settings = judgeSettings();
+        mockAuthenticatedSession(sessionId, "judger", settings);
+
+        Submission submission = new Submission();
+        submission.id = 9L;
+        submission.userId = 4L;
+        submission.problemId = 1L;
+        submission.contestId = 2L;
+        submission.language = "csharp";
+        submission.status = "RUNNING";
+        submission.judgeServer = "CCPCOJ";
+        submission.judgeBackend = "CCPCOJ";
+        submission.judgeWorkerId = "judger-12345678";
+        when(submissionMapper.selectById(9L)).thenReturn(submission);
+
+        assertEquals("2\n4\n9\n2\n", service.solutionInfo(9L, sessionId));
+    }
+
     /**
      * 封装testDataRequiresAn有效ClaimAndLoadsOnlyHiddenCases相关逻辑。从持久化层读取数据；可能调用外部判题或网关服务。
      */

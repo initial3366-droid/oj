@@ -487,6 +487,11 @@ public class GoJudgeService implements JudgeService {
             "Main.java",
             "main.jar",
             List.of("/usr/local/bin/qoj-java-compile")
+        ),
+        CSHARP(
+            "Main.cs",
+            "main.exe",
+            List.of("/usr/bin/mcs", "-optimize+", "-out:main.exe", "Main.cs")
         );
 
         private final String sourceName;
@@ -518,6 +523,11 @@ public class GoJudgeService implements JudgeService {
                     "main.jar",
                     "Main"
                 );
+                case CSHARP -> List.of(
+                    "/usr/bin/mono",
+                    "/usr/bin/qoj-csharp-launcher.exe",
+                    "main.exe"
+                );
             };
         }
 
@@ -531,6 +541,7 @@ public class GoJudgeService implements JudgeService {
                 case "cpp", "c++", "cxx", "g++" -> CPP;
                 case "python", "python3", "py" -> PYTHON;
                 case "java" -> JAVA;
+                case "c#", "csharp", "cs" -> CSHARP;
                 default -> null;
             };
         }

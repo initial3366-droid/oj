@@ -23,6 +23,7 @@ interface CodeViewerProps {
 const LANGUAGE_MAP: Record<string, string> = {
   cpp: 'C++',
   c: 'C',
+  csharp: 'C#',
   java: 'Java',
   python: 'Python',
   javascript: 'JavaScript',

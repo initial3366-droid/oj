@@ -656,12 +656,13 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       <Modal
         title="找回密码"
         visible={resetModalVisible}
+        width={520}
         onCancel={() => setResetModalVisible(false)}
         okText="重置密码"
         confirmLoading={resetLoading}
         onOk={submitResetPassword}
         cancelButtonProps={{ style: { display: 'none' } }}
-        className="auth-bind-modal"
+        className="auth-bind-modal auth-reset-modal"
       >
         <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
           请输入注册时使用的邮箱，通过邮箱验证码验证身份后重置密码。
@@ -693,7 +694,12 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
               value={resetForm.emailVerificationCode}
               onChange={(emailVerificationCode) => setResetForm({ ...resetForm, emailVerificationCode })}
             />
-            <Button type="primary" onClick={sendResetEmailCode} disabled={resetEmailCountdown > 0}>
+            <Button
+              type="primary"
+              className="auth-modal-send-code"
+              onClick={sendResetEmailCode}
+              disabled={resetEmailCountdown > 0}
+            >
               {resetEmailCountdown > 0 ? `${resetEmailCountdown}秒后重试` : '发送验证码'}
             </Button>
           </div>

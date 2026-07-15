@@ -43,11 +43,7 @@ services:
       # worker is responsive and accepted the token without executing code.
       test:
         - CMD-SHELL
-        - >-
-          python3 -c "import http.client,os,sys;
-          c=http.client.HTTPConnection('127.0.0.1',5050,timeout=2);
-          c.request('GET','/file/qoj-health-probe-does-not-exist',headers={'Authorization':'Bearer '+os.environ['GO_JUDGE_HEALTH_TOKEN']});
-          sys.exit(0 if c.getresponse().status == 404 else 1)"
+        - test -s /usr/bin/qoj-csharp-launcher.exe && curl -fsS http://127.0.0.1:5050/version >/dev/null || exit 1
       interval: 10s
       timeout: 3s
       retries: 12

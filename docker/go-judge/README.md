@@ -1,7 +1,7 @@
 # QOJ go-judge worker
 
 This directory builds a pinned criyle/go-judge `1.12.1` worker with the C,
-C++, Java 17 and Python 3 toolchains used by QOJ.
+C++, Java 17, Python 3 and Mono C# toolchains used by QOJ.
 
 ## Start
 

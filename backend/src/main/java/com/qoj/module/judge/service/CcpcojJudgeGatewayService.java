@@ -181,6 +181,7 @@ public class CcpcojJudgeGatewayService {
             acceptedLanguages.contains(1),
             acceptedLanguages.contains(3),
             acceptedLanguages.contains(6),
+            acceptedLanguages.contains(9),
             staleBefore
         );
         return candidates.stream()
@@ -461,6 +462,7 @@ public class CcpcojJudgeGatewayService {
             case "cpp", "c++", "cxx", "g++" -> 1;
             case "java" -> 3;
             case "python", "python3", "py" -> 6;
+            case "c#", "csharp", "cs" -> 9;
             default -> -1;
         };
     }

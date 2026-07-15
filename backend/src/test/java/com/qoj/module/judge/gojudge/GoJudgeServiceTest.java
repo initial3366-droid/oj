@@ -66,6 +66,9 @@ class GoJudgeServiceTest {
             () -> assertTrue(service.supportsLanguage("python3")),
             () -> assertTrue(service.supportsLanguage("py")),
             () -> assertTrue(service.supportsLanguage("java")),
+            () -> assertTrue(service.supportsLanguage("c#")),
+            () -> assertTrue(service.supportsLanguage("csharp")),
+            () -> assertTrue(service.supportsLanguage("cs")),
             () -> assertFalse(service.supportsLanguage(null)),
             () -> assertFalse(service.supportsLanguage("")),
             () -> assertFalse(service.supportsLanguage("javascript")),
@@ -204,6 +207,32 @@ class GoJudgeServiceTest {
             List.of("/usr/local/bin/qoj-java-compile"),
             requestCaptor.getAllValues().get(0).cmd().get(0).args()
         );
+    }
+
+    @Test
+    void csharpCompilationAndExecutionUseFixedMonoCommands() {
+        String source = "using System; class Program { static void Main() { Console.WriteLine(42); } }";
+        when(client.run(any(RunRequest.class), any(Duration.class)))
+            .thenReturn(List.of(compileSuccess("main.exe")))
+            .thenReturn(List.of(runResult("Accepted", 0, "42\n")));
+
+        service.judge(task("csharp", source, "42\n"));
+
+        ArgumentCaptor<RunRequest> requestCaptor = ArgumentCaptor.forClass(RunRequest.class);
+        verify(client, times(2)).run(requestCaptor.capture(), any(Duration.class));
+        Command compileCommand = requestCaptor.getAllValues().get(0).cmd().get(0);
+        Command runCommand = requestCaptor.getAllValues().get(1).cmd().get(0);
+        assertEquals(
+            List.of("/usr/bin/mcs", "-optimize+", "-out:main.exe", "Main.cs"),
+            compileCommand.args()
+        );
+        assertEquals(
+            List.of("/usr/bin/mono", "/usr/bin/qoj-csharp-launcher.exe", "main.exe"),
+            runCommand.args()
+        );
+        assertEquals(List.of("Main.cs"), List.copyOf(compileCommand.copyIn().keySet()));
+        assertEquals(source, compileCommand.copyIn().get("Main.cs").content());
+        assertEquals(FILE_ID, runCommand.copyIn().get("main.exe").fileId());
     }
 
     private JudgeTask task(String language, String code, String expectedOutput) {

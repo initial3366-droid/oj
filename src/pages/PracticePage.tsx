@@ -20,7 +20,7 @@ import { decryptIdFromUrl } from "../utils/cipher";
 /**
  * 练习Language类型别名，明确该模块内部及 API 边界使用的数据结构。
  */
-type PracticeLanguage = "C" | "C++" | "Python" | "Java";
+type PracticeLanguage = "C" | "C++" | "Python" | "Java" | "C#";
 
 /**
  * DebugAlert类型别名，明确该模块内部及 API 边界使用的数据结构。
@@ -66,6 +66,7 @@ const languageOptions: Array<{ label: PracticeLanguage; apiValue: string }> = [
   { label: "C++", apiValue: "cpp" },
   { label: "Python", apiValue: "python" },
   { label: "Java", apiValue: "java" },
+  { label: "C#", apiValue: "csharp" },
 ];
 
 const monacoLanguages: Record<PracticeLanguage, string> = {
@@ -73,6 +74,7 @@ const monacoLanguages: Record<PracticeLanguage, string> = {
   "C++": "cpp",
   Python: "python",
   Java: "java",
+  "C#": "csharp",
 };
 
 const templates: Record<PracticeLanguage, string> = {
@@ -103,6 +105,14 @@ import java.util.*;
 
 public class Main {
     public static void main(String[] args) throws Exception {
+    }
+}`,
+  "C#": `using System;
+
+public static class Program
+{
+    public static void Main()
+    {
     }
 }`,
 };
@@ -345,7 +355,7 @@ export function PracticePage() {
   const showDebugFields = debugAlert?.source !== "submit";
   const isEditorDark = editorTheme === "dark";
   const monacoThemeName = isEditorDark ? "qoj-vscode-dark" : "qoj-vscode-light";
-  const debugTextareaClassName = "min-h-0 flex-1 font-mono text-sm leading-6";
+  const debugTextareaClassName = "practice-debug-textarea min-h-0 flex-1 font-mono text-sm leading-6";
 
   useEffect(() => {
     return () => {
@@ -670,7 +680,7 @@ export function PracticePage() {
     try {
     const src = model.getValue();
     const lang = monacoLanguages[languageRef.current];
-    const isSemicolonLang = lang === "c" || lang === "cpp" || lang === "java";
+    const isSemicolonLang = lang === "c" || lang === "cpp" || lang === "java" || lang === "csharp";
 
     /* ── strip comments and strings to avoid false positives ── */
     const stripped: string[] = [];
@@ -1182,15 +1192,15 @@ export function PracticePage() {
   return (
     <div
       ref={splitRootRef}
-      className="fixed inset-0 grid overflow-hidden bg-slate-100"
+      className="practice-workspace fixed inset-0 grid overflow-hidden bg-slate-100"
       style={{
         gridTemplateColumns: `minmax(0, ${leftPanePercent}fr) 6px minmax(0, ${100 - leftPanePercent}fr)`,
       }}
     >
-      <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-white">
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 text-slate-800">
+      <section className="practice-pane flex min-h-0 min-w-0 flex-col overflow-hidden bg-white">
+        <div className="practice-pane-header practice-problem-header flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 text-slate-800">
           <div className="flex min-w-0 items-center gap-2">
-            <Tag color="blue" size="large">
+            <Tag color="blue">
               <span className="inline-flex items-center gap-1 text-base font-semibold text-blue-800">
                 <IconFile style={{ fontSize: 16 }} />
                 {isContestMode ? "比赛题目" : "题目"}
@@ -1208,30 +1218,30 @@ export function PracticePage() {
           )}
         </div>
 
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
-          <article className="min-w-0 space-y-6 text-sm leading-8 text-slate-700">
-            <section>
-              <h2 className="mb-3 text-lg font-bold text-slate-800">题目描述</h2>
-              <MarkdownMath className="pl-7" value={problem.statement || problem.summary} />
+        <div className="practice-problem-scroll min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
+          <article className="practice-problem-content min-w-0 space-y-6 text-sm leading-8 text-slate-700">
+            <section className="practice-problem-section">
+              <h2 className="practice-problem-heading mb-3 text-lg font-bold text-slate-800">题目描述</h2>
+              <MarkdownMath className="practice-description-body pl-7" value={problem.statement || problem.summary} />
             </section>
 
-            <section>
-              <h2 className="mb-3 text-base font-bold text-slate-700">输入描述：</h2>
-              <div className="border-l-4 border-success bg-slate-50 px-7 py-4">
+            <section className="practice-problem-section">
+              <h2 className="practice-problem-heading mb-3 text-base font-bold text-slate-700">输入描述：</h2>
+              <div className="practice-io-block border-l-4 border-emerald-500 bg-slate-50 px-7 py-4">
                 <MarkdownMath value={problem.inputFormat || "输入数据。"} />
               </div>
             </section>
 
-            <section>
-              <h2 className="mb-3 text-base font-bold text-slate-700">输出描述：</h2>
-              <div className="border-l-4 border-success bg-slate-50 px-7 py-4">
+            <section className="practice-problem-section">
+              <h2 className="practice-problem-heading mb-3 text-base font-bold text-slate-700">输出描述：</h2>
+              <div className="practice-io-block border-l-4 border-emerald-500 bg-slate-50 px-7 py-4">
                 <MarkdownMath value={problem.outputFormat || "输出答案。"} />
               </div>
             </section>
 
-            <fieldset className="layui-elem-field bg-white">
-              <legend>评测信息</legend>
-              <div className="grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
+            <fieldset className="practice-judge-fieldset rounded-md border border-slate-200 bg-white px-5 pb-5">
+              <legend className="practice-judge-legend px-2 text-base font-bold text-slate-700">评测信息</legend>
+              <div className="practice-judge-grid mt-2 grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
                 <div>
                   <p className="text-xs text-slate-500">运行时间</p>
                   <p className="mt-1 font-semibold">{problem.timeLimit} ms</p>
@@ -1248,21 +1258,21 @@ export function PracticePage() {
             </fieldset>
 
             {samples.map((sample, index) => (
-              <section key={`${sample.caseNo}-${index}`} className="mt-6">
-                <h2 className="mb-3 text-base font-bold text-slate-700">示例{index + 1}</h2>
-                <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-                  <div className="px-4 py-3 font-semibold text-slate-600">输入</div>
-                  <pre className="overflow-x-auto whitespace-pre-wrap border-l-4 border-success bg-white px-7 py-4 font-mono text-slate-700">
+              <section key={`${sample.caseNo}-${index}`} className="practice-sample mt-6">
+                <h2 className="practice-problem-heading mb-3 text-base font-bold text-slate-700">示例{index + 1}</h2>
+                <div className="practice-sample-card overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+                  <div className="practice-sample-label px-4 py-3 font-semibold text-slate-600">输入</div>
+                  <pre className="practice-sample-value overflow-x-auto whitespace-pre-wrap border-l-4 border-emerald-500 bg-white px-7 py-4 font-mono text-slate-700">
                     {sample.input}
                   </pre>
-                  <div className="px-4 py-3 font-semibold text-slate-600">输出</div>
-                  <pre className="overflow-x-auto whitespace-pre-wrap border-l-4 border-success bg-white px-7 py-4 font-mono text-slate-700">
+                  <div className="practice-sample-label px-4 py-3 font-semibold text-slate-600">输出</div>
+                  <pre className="practice-sample-value overflow-x-auto whitespace-pre-wrap border-l-4 border-emerald-500 bg-white px-7 py-4 font-mono text-slate-700">
                     {sample.output}
                   </pre>
                   {sample.explanation ? (
                     <>
-                      <div className="px-4 py-3 font-semibold text-slate-600">解释</div>
-                      <div className="bg-white px-7 py-4 text-slate-700">
+                      <div className="practice-sample-label px-4 py-3 font-semibold text-slate-600">解释</div>
+                      <div className="practice-sample-value bg-white px-7 py-4 text-slate-700">
                         <MarkdownMath value={sample.explanation} />
                       </div>
                     </>
@@ -1275,18 +1285,18 @@ export function PracticePage() {
       </section>
 
       <div
-        className="z-20 cursor-col-resize bg-slate-200 hover:bg-primary"
+        className="practice-pane-divider z-20 cursor-col-resize"
         onMouseDown={startPaneResize}
         title="拖动调整题面和代码区域比例"
       />
 
-      <section className={`relative flex min-h-0 min-w-0 flex-col overflow-hidden ${editorTheme === "dark" ? "bg-[#20251f]" : "bg-white"}`}>
-        <div className="flex h-14 min-w-0 shrink-0 items-center justify-between gap-3 overflow-hidden border-b border-slate-200 bg-white px-4 text-slate-800">
+      <section className={`practice-pane relative flex min-h-0 min-w-0 flex-col overflow-hidden ${editorTheme === "dark" ? "bg-[#20251f]" : "bg-white"}`}>
+        <div className="practice-pane-header flex h-14 min-w-0 shrink-0 items-center justify-between gap-3 overflow-hidden border-b border-slate-200 bg-white px-4 text-slate-800">
           <div className="flex min-w-0 items-center gap-3">
             <label className="sr-only" htmlFor="practice-language">选择提交语言</label>
             <select
               id="practice-language"
-              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none focus:border-success"
+              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none focus:border-emerald-500"
               value={language}
               onChange={(event) => changeLanguage(event.target.value as PracticeLanguage)}
             >
@@ -1543,7 +1553,7 @@ export function PracticePage() {
                     />
                   </div>
                 </div>
-                <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
+                <div className="practice-debug-body flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
                   {showDebugFields ? (
                     <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                       <label className="flex min-h-0 flex-col gap-2 text-sm font-medium text-slate-700">

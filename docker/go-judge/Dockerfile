@@ -4,14 +4,33 @@ FROM public.ecr.aws/docker/library/debian:bookworm-slim@sha256:60eac759739651111
 ARG GO_JUDGE_VERSION=1.12.1
 ARG TARGETARCH
 
-# The image contains only the four language toolchains exposed by QOJ's allowlist.
+# The image contains only the language toolchains exposed by QOJ's allowlist.
 # Package indexes are removed in the same layer to keep the runtime surface small.
-RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+RUN set -eu; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i \
+        -e 's|https\?://deb.debian.org/debian-security|http://mirrors.huaweicloud.com/debian-security|g' \
+        -e 's|https\?://deb.debian.org/debian|http://mirrors.huaweicloud.com/debian|g' \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    if [ -f /etc/apt/sources.list ]; then \
+      sed -i \
+        -e 's|https\?://deb.debian.org/debian-security|http://mirrors.huaweicloud.com/debian-security|g' \
+        -e 's|https\?://security.debian.org/debian-security|http://mirrors.huaweicloud.com/debian-security|g' \
+        -e 's|https\?://deb.debian.org/debian|http://mirrors.huaweicloud.com/debian|g' \
+        /etc/apt/sources.list; \
+    fi; \
+    apt-get -o Acquire::Retries=10 -o Acquire::http::Timeout=30 update \
+    && DEBIAN_FRONTEND=noninteractive apt-get \
+        -o Acquire::Retries=10 \
+        -o Acquire::http::Timeout=30 \
+        install -y --no-install-recommends \
         ca-certificates \
         curl \
         gcc \
         g++ \
+        mono-mcs \
+        mono-runtime \
         openjdk-17-jdk-headless \
         python3 \
     && rm -rf /var/lib/apt/lists/*
@@ -36,10 +55,18 @@ RUN set -eu; \
     echo "${checksum}  /usr/local/bin/go-judge" | sha256sum -c -; \
     chmod 0755 /usr/local/bin/go-judge
 
-# Java compilation is a fixed image-owned command. The REST request never
-# supplies shell text or file names, which keeps user input out of command args.
+# Java compilation and C# process shutdown use fixed image-owned helpers. The
+# REST request never supplies shell text or file names in command arguments.
 COPY qoj-java-compile /usr/local/bin/qoj-java-compile
-RUN chmod 0755 /usr/local/bin/qoj-java-compile
+COPY qoj-csharp-launcher.cs /tmp/qoj-csharp-launcher.cs
+RUN chmod 0755 /usr/local/bin/qoj-java-compile \
+    && /usr/bin/mcs -optimize+ \
+        -out:/usr/bin/qoj-csharp-launcher.exe \
+        /tmp/qoj-csharp-launcher.cs \
+    && rm /tmp/qoj-csharp-launcher.cs \
+    && mkdir -p /usr/local/lib \
+    && ln -sf /usr/bin/qoj-csharp-launcher.exe /usr/local/lib/qoj-csharp-launcher.exe \
+    && test -s /usr/bin/qoj-csharp-launcher.exe
 
 EXPOSE 5050
 ENTRYPOINT ["/usr/local/bin/go-judge"]
