@@ -14,7 +14,9 @@ import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.vo.ProblemVO;
+import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
+import com.qoj.security.policy.ResourceAccessService;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -45,6 +47,8 @@ public class ProblemDraftService {
     private final ObjectMapper objectMapper;
     private final ProblemMapper problemMapper;
     private final ProblemService problemService;
+    private final ProblemFolderService problemFolderService;
+    private final ResourceAccessService resourceAccessService;
 
     /**
      * 构造 题目DraftService 实例并保存其必要依赖或初始状态。从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
@@ -53,12 +57,16 @@ public class ProblemDraftService {
         StringRedisTemplate redisTemplate,
         ObjectMapper objectMapper,
         ProblemMapper problemMapper,
-        ProblemService problemService
+        ProblemService problemService,
+        ProblemFolderService problemFolderService,
+        ResourceAccessService resourceAccessService
     ) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.problemMapper = problemMapper;
         this.problemService = problemService;
+        this.problemFolderService = problemFolderService;
+        this.resourceAccessService = resourceAccessService;
     }
 
     public ProblemDraftVO createDraft() {
@@ -138,6 +146,7 @@ public class ProblemDraftService {
              */
             throw new BizException(400, "请先添加测试点");
         }
+        AuthUser owner = CurrentUser.required();
         Problem problem = new Problem();
         ProblemDraftBasicRequest basic = draft.basic();
         problem.title = basic.title();
@@ -150,10 +159,24 @@ public class ProblemDraftService {
         problem.difficulty = basic.difficulty() == null ? 1 : Math.max(1, Math.min(5, basic.difficulty()));
         problem.tags = writeJson(basic.tags() == null ? List.of() : basic.tags());
         problem.folderId = basic.folderId();
-        problem.ownerId = CurrentUser.id();
-        problem.isPublic = !Boolean.FALSE.equals(basic.isPublic());
+        problem.ownerId = owner.id();
+        problem.ownerAccountType = owner.accountType();
+        var scope = resourceAccessService.resolveScope(owner, basic.accessScope(), basic.majorId());
+        problem.accessScope = scope.accessScope();
+        problem.majorId = scope.majorId();
+        String publishStatus = normalizePublishStatus(basic.studentPublishStatus(), basic.isPublic());
+        problem.studentPublishStatus = publishStatus;
+        problem.isPublic = "PUBLISHED".equals(publishStatus);
+        if (problem.isPublic) {
+            problem.publishedByAccountType = owner.accountType();
+            problem.publishedById = owner.id();
+            problem.publishedAt = java.time.LocalDateTime.now();
+        }
         problem.acRate = BigDecimal.ZERO;
         problemMapper.insert(problem);
+        if (problem.folderId != null) {
+            problemFolderService.assignOwnedProblem(problem.folderId, problem);
+        }
 
         problemService.replaceTestCases(problem.id, sampleEntities(basic.samples()), true);
         problemService.replaceTestCases(problem.id, hiddenEntities(draft.testCases()), false);
@@ -194,7 +217,18 @@ public class ProblemDraftService {
     }
 
     private String key(String draftId) {
-        return RedisKeys.problemDraft(CurrentUser.id(), draftId);
+        AuthUser user = CurrentUser.required();
+        return RedisKeys.problemDraft(user.accountType(), user.id(), draftId);
+    }
+
+    private String normalizePublishStatus(String value, Boolean legacyPublic) {
+        String status = value == null
+            ? (Boolean.FALSE.equals(legacyPublic) ? "DRAFT" : "PUBLISHED")
+            : value.trim().toUpperCase();
+        if (!"DRAFT".equals(status) && !"PUBLISHED".equals(status)) {
+            throw new BizException(400, "题目发布状态无效");
+        }
+        return status;
     }
 
     private DraftData read(String value) {

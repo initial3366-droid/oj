@@ -3,7 +3,8 @@ package com.qoj.module.practice.controller;
 import com.qoj.common.ApiResponse;
 import com.qoj.module.practice.dto.PracticeUnlockRequest;
 import com.qoj.module.practice.service.PracticeService;
-import com.qoj.module.practice.vo.PracticeVO;
+import com.qoj.module.practice.service.PracticePublicationService;
+import com.qoj.module.practice.vo.PracticePublicationVO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -21,6 +22,8 @@ import static org.mockito.Mockito.when;
 class PracticeControllerTest {
     @Mock
     private PracticeService practiceService;
+    @Mock
+    private PracticePublicationService publicationService;
 
     @InjectMocks
     private PracticeController practiceController;
@@ -30,13 +33,13 @@ class PracticeControllerTest {
      */
     @Test
     void detailDoesNotReadPasswordFromQuery() {
-        PracticeVO practice = new PracticeVO(1L, "Practice", "", "ALL", null, true, 2L, null, null, null);
-        when(practiceService.detail(1L, null)).thenReturn(practice);
+        PracticePublicationVO practice = publication();
+        when(publicationService.publicDetail(1L, null)).thenReturn(practice);
 
-        ApiResponse<PracticeVO> response = practiceController.detail(1L);
+        ApiResponse<PracticePublicationVO> response = practiceController.detail(1L);
 
         assertSame(practice, response.data());
-        verify(practiceService).detail(1L, null);
+        verify(publicationService).publicDetail(1L, null);
     }
 
     /**
@@ -44,12 +47,20 @@ class PracticeControllerTest {
      */
     @Test
     void unlockPassesPasswordFromRequestBody() {
-        PracticeVO practice = new PracticeVO(1L, "Practice", "", "ALL", null, true, 2L, null, null, null);
-        when(practiceService.detail(1L, "secret")).thenReturn(practice);
+        PracticePublicationVO practice = publication();
+        when(publicationService.publicDetail(1L, "secret")).thenReturn(practice);
 
-        ApiResponse<PracticeVO> response = practiceController.unlock(1L, new PracticeUnlockRequest("secret"));
+        ApiResponse<PracticePublicationVO> response = practiceController.unlock(1L, new PracticeUnlockRequest("secret"));
 
         assertSame(practice, response.data());
-        verify(practiceService).detail(1L, "secret");
+        verify(publicationService).publicDetail(1L, "secret");
+    }
+
+    private PracticePublicationVO publication() {
+        return new PracticePublicationVO(
+            1L, 10L, "Practice", "", "ALL", null, true, 2L,
+            java.util.List.of(), null, null, "TEACHER", "PUBLISHED", "ALL",
+            java.util.List.of(), java.util.List.of()
+        );
     }
 }

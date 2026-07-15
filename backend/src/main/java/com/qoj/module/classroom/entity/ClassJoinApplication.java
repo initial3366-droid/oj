@@ -17,6 +17,7 @@ public class ClassJoinApplication {
     public String status;
     public String reason;
     public Long handledBy;
+    public String handledByAccountType;
     public LocalDateTime handledAt;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;

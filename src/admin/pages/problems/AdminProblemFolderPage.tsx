@@ -12,12 +12,17 @@ import {
   Input,
   Message,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tag,
   Typography,
 } from '@arco-design/web-react';
 import { IconDelete, IconEdit, IconLeft, IconPlus, IconSave, IconSearch } from '@arco-design/web-react/icon';
+import {
+  ProblemFolderCandidatePicker,
+  type ProblemFolderCandidate,
+} from '../../../components/problems/ProblemFolderCandidatePicker';
 import { adminDelete, adminGet, adminPost, adminPut } from '../../api/adminClient';
 import { AdminPageContainer } from '../../layout/AdminPageContainer';
 
@@ -48,6 +53,11 @@ interface ProblemFolder {
   problems: FolderProblem[];
   createdAt: string;
   updatedAt: string;
+  accessScope: 'ALL' | 'MAJOR' | 'PRIVATE';
+  majorId?: number | null;
+  majorName?: string | null;
+  owner: boolean;
+  canEdit: boolean;
 }
 
 /**
@@ -63,11 +73,6 @@ interface Problem {
 /**
  * 页面结果接口，明确该模块内部及 API 边界使用的数据结构。
  */
-interface PageResult<T> {
-  total: number;
-  list: T[];
-}
-
 /**
  * 封装模式FromPath相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
@@ -110,10 +115,11 @@ export function AdminProblemFolderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [folders, setFolders] = useState<ProblemFolder[]>([]);
   const [currentFolder, setCurrentFolder] = useState<ProblemFolder | null>(null);
-  const [allProblems, setAllProblems] = useState<Problem[]>([]);
-  const [selectedProblemIds, setSelectedProblemIds] = useState<number[]>([]);
+  const [selectedProblems, setSelectedProblems] = useState<Problem[]>([]);
   const [keyword, setKeyword] = useState('');
-  const [problemKeyword, setProblemKeyword] = useState('');
+  const [majors, setMajors] = useState<Array<{ id: number; code: string; name: string }>>([]);
+  const [accessScope, setAccessScope] = useState<'ALL' | 'MAJOR' | 'PRIVATE'>('ALL');
+  const selectedProblemIds = useMemo(() => selectedProblems.map((problem) => problem.id), [selectedProblems]);
 
   /**
    * 封装filteredFolders相关逻辑。对原始数据进行派生或聚合。
@@ -124,28 +130,6 @@ export function AdminProblemFolderPage() {
     return folders.filter((f) => f.name.toLowerCase().includes(normalized));
   }, [keyword, folders]);
 
-  /**
-   * 封装availableProblems相关逻辑。对原始数据进行派生或聚合。
-   */
-  const availableProblems = useMemo(() => {
-    const selectedSet = new Set(selectedProblemIds);
-    return allProblems
-      .filter((p) => !selectedSet.has(p.id))
-      .filter((p) => {
-        if (!problemKeyword.trim()) return true;
-        const kw = problemKeyword.trim().toLowerCase();
-        return p.title.toLowerCase().includes(kw) || String(p.id).includes(kw);
-      });
-  }, [allProblems, selectedProblemIds, problemKeyword]);
-
-  /**
-   * 封装selectedProblems相关逻辑。对原始数据进行派生或聚合。
-   */
-  const selectedProblems = useMemo(() => {
-    const map = new Map(allProblems.map((p) => [p.id, p]));
-    return selectedProblemIds.map((id) => map.get(id)).filter(Boolean) as Problem[];
-  }, [allProblems, selectedProblemIds]);
-
   useEffect(() => {
     if (mode === 'list' || mode === 'create') {
       loadFolders();
@@ -154,6 +138,10 @@ export function AdminProblemFolderPage() {
       loadFolderDetail(folderId);
     }
   }, [mode, folderId]);
+
+  useEffect(() => {
+    adminGet<Array<{ id: number; code: string; name: string }>>('/api/admin/v1/majors?activeOnly=true').then(setMajors).catch(() => setMajors([]));
+  }, []);
 
   /**
    * 读取Folders并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
@@ -176,14 +164,15 @@ export function AdminProblemFolderPage() {
   async function loadFolderDetail(id: number) {
     setLoading(true);
     try {
-      const [folder, problemResult] = await Promise.all([
+      const [folder, folderResult] = await Promise.all([
         adminGet<ProblemFolder>(`/api/admin/v1/problem-folders/${id}`),
-        adminGet<PageResult<Problem>>('/api/admin/v1/problems?page=1&pageSize=500'),
+        adminGet<ProblemFolder[]>('/api/admin/v1/problem-folders'),
       ]);
       setCurrentFolder(folder);
-      setAllProblems(problemResult.list);
-      setSelectedProblemIds(folder.problems.map((p) => p.id));
-      form.setFieldsValue({ name: folder.name, description: folder.description });
+      setFolders(folderResult);
+      setSelectedProblems(folder.problems);
+      form.setFieldsValue({ name: folder.name, description: folder.description, accessScope: folder.accessScope, majorId: folder.majorId });
+      setAccessScope(folder.accessScope);
     } catch (error) {
       Message.error(error instanceof Error ? error.message : '加载失败');
       navigate(adminPath('/problem-folders'));
@@ -199,13 +188,15 @@ export function AdminProblemFolderPage() {
     try {
       const values = await form.validate();
       setSubmitting(true);
-      await adminPost('/api/admin/v1/problem-folders', {
+      const created = await adminPost<ProblemFolder>('/api/admin/v1/problem-folders', {
         name: values.name.trim(),
         description: values.description?.trim() || '',
         displayOrder: 0,
+        accessScope: values.accessScope || 'ALL',
+        majorId: values.majorId || null,
       });
       Message.success('文件夹创建成功');
-      navigate(adminPath('/problem-folders'));
+      navigate(adminPath(`/problem-folders/${created.id}`));
     } catch (error) {
       if (error instanceof Error) Message.error(error.message);
     } finally {
@@ -225,6 +216,8 @@ export function AdminProblemFolderPage() {
         name: values.name.trim(),
         description: values.description?.trim() || '',
         displayOrder: currentFolder?.displayOrder ?? 0,
+        accessScope: values.accessScope,
+        majorId: values.majorId || null,
       });
       Message.success('文件夹信息已保存');
     } catch (error) {
@@ -241,7 +234,7 @@ export function AdminProblemFolderPage() {
     if (!folderId) return;
     setSubmitting(true);
     try {
-      await adminPost(`/api/admin/v1/problem-folders/${folderId}/problems`, {
+      await adminPut(`/api/admin/v1/problem-folders/${folderId}/problems`, {
         problemIds: selectedProblemIds,
       });
       Message.success('题目已更新');
@@ -269,22 +262,24 @@ export function AdminProblemFolderPage() {
   /**
    * 创建或提交题目。会更新 React 状态并触发重新渲染。
    */
-  function addProblem(id: number) {
-    setSelectedProblemIds((prev) => [...prev, id]);
+  function addProblem(problem: ProblemFolderCandidate) {
+    setSelectedProblems((current) => current.some((item) => item.id === problem.id)
+      ? current
+      : [...current, problem]);
   }
 
   /**
    * 删除题目。会更新 React 状态并触发重新渲染。
    */
   function removeProblem(id: number) {
-    setSelectedProblemIds((prev) => prev.filter((pid) => pid !== id));
+    setSelectedProblems((current) => current.filter((problem) => problem.id !== id));
   }
 
   // 卡片列表模式
   if (mode === 'list') {
     return (
       <AdminPageContainer
-        title="题目文件夹"
+        title={`题目文件夹（${folders.length}）`}
         loading={loading}
         extra={
           <Space>
@@ -311,6 +306,10 @@ export function AdminProblemFolderPage() {
             { title: '文件夹名称', dataIndex: 'name', ellipsis: true },
             { title: '描述', dataIndex: 'description', width: 260, ellipsis: true, render: (v: string) => v || '-' },
             { title: '题目数量', dataIndex: 'problemCount', width: 100, align: 'center' },
+            {
+              title: '开放范围', dataIndex: 'accessScope', width: 120,
+              render: (_: unknown, item: ProblemFolder) => <Tag>{item.accessScope === 'ALL' ? '所有人' : item.accessScope === 'MAJOR' ? item.majorName || '本专业' : '私有'}</Tag>,
+            },
             { title: '显示顺序', dataIndex: 'displayOrder', width: 100, align: 'center' },
             {
               title: '创建时间',
@@ -331,7 +330,7 @@ export function AdminProblemFolderPage() {
                     编辑
                   </Button>
                   <Popconfirm
-                    title="确定删除？题目将移至默认文件夹"
+                    title="确定删除？文件夹中的题目会保留"
                     onOk={() => handleDelete(folder.id)}
                   >
                     <Button size="mini" status="danger" icon={<IconDelete />}>
@@ -371,6 +370,14 @@ export function AdminProblemFolderPage() {
           <FormItem label="文件夹介绍" field="description">
             <TextArea placeholder="文件夹描述（可选）" autoSize={{ minRows: 3, maxRows: 6 }} maxLength={500} showWordLimit />
           </FormItem>
+          <FormItem label="教师开放范围" field="accessScope" initialValue="ALL" rules={[{ required: true }]}>
+            <Select onChange={(value) => setAccessScope(value as 'ALL' | 'MAJOR' | 'PRIVATE')}>
+              <Select.Option value="ALL">所有人</Select.Option><Select.Option value="MAJOR">本专业</Select.Option><Select.Option value="PRIVATE">私有</Select.Option>
+            </Select>
+          </FormItem>
+          {accessScope === 'MAJOR' && <FormItem label="所属专业" field="majorId" rules={[{ required: true, message: '请选择专业' }]}>
+            <Select>{majors.map((major) => <Select.Option key={major.id} value={major.id}>{major.name}（{major.code}）</Select.Option>)}</Select>
+          </FormItem>}
         </Form>
       </AdminPageContainer>
     );
@@ -407,12 +414,22 @@ export function AdminProblemFolderPage() {
                 <TextArea autoSize={{ minRows: 2, maxRows: 4 }} maxLength={500} showWordLimit />
               </FormItem>
             </Col>
+            <Col span={12}>
+              <FormItem label="教师开放范围" field="accessScope" rules={[{ required: true }]}>
+                <Select onChange={(value) => setAccessScope(value as 'ALL' | 'MAJOR' | 'PRIVATE')}>
+                  <Select.Option value="ALL">所有人</Select.Option><Select.Option value="MAJOR">本专业</Select.Option><Select.Option value="PRIVATE">私有</Select.Option>
+                </Select>
+              </FormItem>
+            </Col>
+            {accessScope === 'MAJOR' && <Col span={12}><FormItem label="所属专业" field="majorId" rules={[{ required: true, message: '请选择专业' }]}>
+              <Select>{majors.map((major) => <Select.Option key={major.id} value={major.id}>{major.name}（{major.code}）</Select.Option>)}</Select>
+            </FormItem></Col>}
           </Row>
         </Form>
       </AdminPageContainer>
 
       <Row gutter={16} style={{ marginTop: 16 }}>
-        <Col span={14}>
+        <Col span={12}>
           <AdminPageContainer
             title={`已选题目 (${selectedProblems.length})`}
             extra={
@@ -447,39 +464,17 @@ export function AdminProblemFolderPage() {
             />
           </AdminPageContainer>
         </Col>
-        <Col span={10}>
-          <AdminPageContainer
-            title="可选题目"
-            extra={
-              <Input.Search
-                style={{ width: 200 }}
-                placeholder="搜索题目"
-                prefix={<IconSearch />}
-                value={problemKeyword}
-                onChange={setProblemKeyword}
-                onSearch={setProblemKeyword}
-              />
-            }
-          >
-            <Table
-              rowKey="id"
-              data={availableProblems}
-              pagination={{ pageSize: 10, showTotal: true }}
-              columns={[
-                {
-                  title: '操作', width: 80, align: 'center',
-                  render: (_: unknown, r: Problem) => (
-                    <Button size="mini" type="primary" onClick={() => addProblem(r.id)}>
-                      添加
-                    </Button>
-                  ),
-                },
-                { title: '题目', dataIndex: 'title' },
-                { title: '难度', dataIndex: 'difficulty', width: 90, render: (v: number) => difficultyTag(v) },
-              ]}
+        {folderId && <Col span={12}>
+          <AdminPageContainer title="可选题目">
+            <ProblemFolderCandidatePicker
+              variant="admin"
+              folderId={folderId}
+              folders={folders}
+              selectedProblemIds={selectedProblemIds}
+              onAdd={addProblem}
             />
           </AdminPageContainer>
-        </Col>
+        </Col>}
       </Row>
     </div>
   );

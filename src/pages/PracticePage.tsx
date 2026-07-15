@@ -12,6 +12,7 @@ import { MarkdownMath } from "../components/MarkdownMath";
 import { useOjData } from "../data/OjDataProvider";
 import { chatWithAgent, fetchAgentQuota, type AgentQuota } from "../api/agent";
 import { fetchContestProblemDetail, fetchProblemDetail } from "../api/problem";
+import { fetchPracticeDetail } from "../data/apiClient";
 import { fetchSubmissionDetail, runCodeInSandbox, submitCode, type SubmissionRecord } from "../api/submission";
 import type { Problem } from "../data/types";
 import { wsClient } from "../utils/websocket";
@@ -382,7 +383,13 @@ export function PracticePage() {
     let cancelled = false;
     const loader = contestId
       ? fetchContestProblemDetail(Number(contestId), numericProblemId)
-      : fetchProblemDetail(numericProblemId);
+      : practiceId
+        ? fetchPracticeDetail(Number(practiceId)).then((practice) => {
+            const practiceProblem = practice.problems.find((item) => backendProblemId(item.id) === numericProblemId);
+            if (!practiceProblem) throw new Error("题单题目不存在或已隐藏");
+            return practiceProblem;
+          })
+        : fetchProblemDetail(numericProblemId);
     loader
       .then((data) => {
         if (!cancelled) {
@@ -397,7 +404,7 @@ export function PracticePage() {
     return () => {
       cancelled = true;
     };
-  }, [contestId, hasLocalProblem, numericProblemId]);
+  }, [contestId, practiceId, hasLocalProblem, numericProblemId]);
 
   useEffect(() => {
     if (!problem?.id) {
@@ -1285,14 +1292,18 @@ export function PracticePage() {
       </section>
 
       <div
-        className="practice-pane-divider z-20 cursor-col-resize"
-        onMouseDown={startPaneResize}
-        title="拖动调整题面和代码区域比例"
-      />
+        className="practice-pane-divider z-20"
+      >
+        <div
+          className="practice-pane-divider-handle cursor-col-resize"
+          onMouseDown={startPaneResize}
+          title="拖动调整题面和代码区域比例"
+        />
+      </div>
 
       <section className={`practice-pane relative flex min-h-0 min-w-0 flex-col overflow-hidden ${editorTheme === "dark" ? "bg-[#20251f]" : "bg-white"}`}>
         <div className="practice-pane-header flex h-14 min-w-0 shrink-0 items-center justify-between gap-3 overflow-hidden border-b border-slate-200 bg-white px-4 text-slate-800">
-          <div className="flex min-w-0 items-center gap-3">
+          <div className="ml-[10px] flex min-w-0 items-center gap-3">
             <label className="sr-only" htmlFor="practice-language">选择提交语言</label>
             <select
               id="practice-language"

@@ -5,6 +5,8 @@ import com.qoj.common.PageResult;
 import com.qoj.module.practice.dto.PracticeUnlockRequest;
 import com.qoj.module.practice.service.PracticeService;
 import com.qoj.module.practice.vo.PracticeVO;
+import com.qoj.module.practice.service.PracticePublicationService;
+import com.qoj.module.practice.vo.PracticePublicationVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,36 +23,38 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/practices")
 public class PracticeController {
     private final PracticeService practiceService;
+    private final PracticePublicationService publicationService;
 
     /**
      * 构造 练习Controller 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
-    public PracticeController(PracticeService practiceService) {
+    public PracticeController(PracticeService practiceService, PracticePublicationService publicationService) {
         this.practiceService = practiceService;
+        this.publicationService = publicationService;
     }
 
     /**
      * 查询目标数据列表。返回结果包含分页边界。
      */
     @GetMapping
-    public ApiResponse<PageResult<PracticeVO>> list(
+    public ApiResponse<PageResult<PracticePublicationVO>> list(
         @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "10") int pageSize,
         @RequestParam(defaultValue = "all") String scope
     ) {
-        return ApiResponse.ok(practiceService.list(page, pageSize, scope));
+        return ApiResponse.ok(publicationService.publicList(page, pageSize, scope));
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<PracticeVO> detail(@PathVariable long id) {
-        return ApiResponse.ok(practiceService.detail(id, null));
+    public ApiResponse<PracticePublicationVO> detail(@PathVariable long id) {
+        return ApiResponse.ok(publicationService.publicDetail(id, null));
     }
 
     @PostMapping("/{id}/unlock")
-    public ApiResponse<PracticeVO> unlock(
+    public ApiResponse<PracticePublicationVO> unlock(
         @PathVariable long id,
         @Valid @RequestBody PracticeUnlockRequest request
     ) {
-        return ApiResponse.ok(practiceService.detail(id, request.password()));
+        return ApiResponse.ok(publicationService.publicDetail(id, request.password()));
     }
 }

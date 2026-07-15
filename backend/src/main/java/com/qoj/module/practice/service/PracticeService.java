@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qoj.common.ErrorCode;
 import com.qoj.common.PageResult;
-import com.qoj.common.enums.AudienceType;
 import com.qoj.common.enums.SubmissionStatus;
 import com.qoj.common.exception.BizException;
 import com.qoj.module.practice.dto.PracticeCreateRequest;
@@ -22,14 +21,13 @@ import com.qoj.module.problem.service.ProblemService;
 import com.qoj.module.problem.vo.ProblemVO;
 import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.mapper.SubmissionMapper;
-import com.qoj.module.classroom.entity.ClassMember;
-import com.qoj.module.classroom.entity.ClassRoom;
-import com.qoj.module.classroom.mapper.ClassMemberMapper;
-import com.qoj.module.classroom.mapper.ClassRoomMapper;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.UserMapper;
+import com.qoj.module.teacher.entity.Major;
+import com.qoj.module.teacher.mapper.MajorMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
+import com.qoj.security.policy.ResourceAccessService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -39,10 +37,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,11 +53,9 @@ public class PracticeService {
     private final ProblemService problemService;
     private final SubmissionMapper submissionMapper;
     private final UserMapper userMapper;
-    private final ClassRoomMapper classRoomMapper;
-    private final ClassMemberMapper classMemberMapper;
-    private final PasswordEncoder passwordEncoder;
-    private final StringRedisTemplate redisTemplate;
     private final com.qoj.security.policy.PracticeAccessPolicy practiceAccessPolicy;
+    private final ResourceAccessService resourceAccessService;
+    private final MajorMapper majorMapper;
 
     /**
      * 构造 练习Service 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断；从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
@@ -73,11 +67,9 @@ public class PracticeService {
         ProblemService problemService,
         SubmissionMapper submissionMapper,
         UserMapper userMapper,
-        ClassRoomMapper classRoomMapper,
-        ClassMemberMapper classMemberMapper,
-        PasswordEncoder passwordEncoder,
-        StringRedisTemplate redisTemplate,
-        com.qoj.security.policy.PracticeAccessPolicy practiceAccessPolicy
+        com.qoj.security.policy.PracticeAccessPolicy practiceAccessPolicy,
+        ResourceAccessService resourceAccessService,
+        MajorMapper majorMapper
     ) {
         this.practiceMapper = practiceMapper;
         this.practiceProblemMapper = practiceProblemMapper;
@@ -85,160 +77,26 @@ public class PracticeService {
         this.problemService = problemService;
         this.submissionMapper = submissionMapper;
         this.userMapper = userMapper;
-        this.classRoomMapper = classRoomMapper;
-        this.classMemberMapper = classMemberMapper;
-        this.passwordEncoder = passwordEncoder;
-        this.redisTemplate = redisTemplate;
         this.practiceAccessPolicy = practiceAccessPolicy;
-    }
-
-    public PageResult<PracticeVO> list(int page, int pageSize) {
-        /**
-         * 查询目标数据列表。保持该职责的输入、输出和异常边界集中，便于调用方复用。
-         */
-        return list(page, pageSize, "all");
-    }
-
-    public PageResult<PracticeVO> list(int page, int pageSize, String scope) {
-        QueryWrapper<Practice> wrapper = new QueryWrapper<>();
-        wrapper.eq("published", true)
-            .eq("is_deleted", false);  // 过滤已删除
-        AuthUser user = CurrentUser.get();
-        String normalizedScope = scope == null || scope.isBlank() ? "all" : scope.trim().toLowerCase();
-        if ("public".equals(normalizedScope)) {
-            wrapper.eq("audience", AudienceType.ALL.name());
-        } else if ("class".equals(normalizedScope)) {
-            if (user == null || user.adminAccount()) {
-                wrapper.eq("id", -1);
-            } else {
-                List<Long> classIds = currentUserClassIds(user);
-                if (!classIds.isEmpty()) {
-                    wrapper.eq("audience", AudienceType.CLASS.name()).in("audience_id", classIds);
-                } else {
-                    wrapper.eq("id", -1);
-                }
-            }
-        } else if (user == null || user.adminAccount()) {
-            wrapper.eq("audience", AudienceType.ALL.name());
-        } else {
-            List<Long> classIds = currentUserClassIds(user);
-            wrapper.and(visibleScope -> {
-                visibleScope.eq("audience", AudienceType.ALL.name());
-                if (!classIds.isEmpty()) {
-                    visibleScope.or(item -> item.eq("audience", AudienceType.CLASS.name()).in("audience_id", classIds));
-                }
-            });
-        }
-        wrapper.orderByDesc("created_at");
-        Page<Practice> result = practiceMapper.selectPage(Page.of(page, pageSize), wrapper);
-        return new PageResult<>(result.getTotal(), result.getRecords().stream().map(this::toVO).toList());
-    }
-
-    private List<Long> currentUserClassIds(AuthUser user) {
-        List<Long> classIds = new ArrayList<>();
-        if (user == null || user.adminAccount()) {
-            return classIds;
-        }
-        User entity = userMapper.selectById(user.id());
-        if (entity != null && entity.classId != null) {
-            classIds.add(entity.classId);
-        }
-        List<ClassMember> memberships = classMemberMapper.selectList(
-            new QueryWrapper<ClassMember>().eq("user_id", user.id())
-        );
-        for (ClassMember membership : memberships) {
-            if (membership.classId != null && !classIds.contains(membership.classId)) {
-                classIds.add(membership.classId);
-            }
-        }
-        return classIds;
+        this.resourceAccessService = resourceAccessService;
+        this.majorMapper = majorMapper;
     }
 
     public PageResult<PracticeVO> adminList(int page, int pageSize) {
         AuthUser user = CurrentUser.required();
-        QueryWrapper<Practice> wrapper = new QueryWrapper<>();
-        // 非超级管理员只能看自己的练习
-        if (user != null && !"SUPER_ADMIN".equals(user.role())) {
-            wrapper.eq("owner_id", user.id());
-        }
-        wrapper.eq("is_deleted", false)  // 过滤已删除
-            .orderByDesc("created_at");
-        Page<Practice> result = practiceMapper.selectPage(Page.of(page, pageSize), wrapper);
-        return new PageResult<>(result.getTotal(), result.getRecords().stream().map(this::toVO).toList());
-    }
-
-    public PracticeVO detail(long id, String password) {
-        Practice practice = requirePublished(id);
-
-        // 检查软删除（只有超级管理员和创建者能看到已删除的练习）
-        if (Boolean.TRUE.equals(practice.isDeleted)) {
-            AuthUser user = CurrentUser.get();
-            if (user == null || (!"SUPER_ADMIN".equals(user.role()) && !practice.ownerId.equals(user.id()))) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(ErrorCode.NOT_FOUND, "练习不存在");
-            }
-        }
-
-        ensureVisible(practice);
-
-        if (practice.passwordHash != null && !practice.passwordHash.isBlank()) {
-            if (password == null || password.isBlank()) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(401, "需要练习密码");
-            }
-
-            // 添加频率限制（需要 Redis）
-            String rateKey = "practice:pwd:attempt:" + id + ":user:" +
-                (CurrentUser.get() != null ? CurrentUser.get().id() : "anonymous");
-            Long attempts = redisTemplate.opsForValue().increment(rateKey);
-            if (attempts == 1) {
-                redisTemplate.expire(rateKey, java.time.Duration.ofMinutes(5));
-            }
-            if (attempts > 5) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(429, "密码尝试次数过多，请5分钟后再试");
-            }
-
-            if (!passwordEncoder.matches(password, practice.passwordHash)) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(401, "练习密码错误");
-            }
-
-            // 验证成功，清除计数
-            redisTemplate.delete(rateKey);
-        }
-
-        /**
-         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
-         */
-        return toVO(practice);
+        List<Practice> visible = practiceMapper.selectList(
+            new QueryWrapper<Practice>().eq("is_deleted", false).orderByDesc("created_at")
+        ).stream().filter(item -> resourceAccessService.canAccessPractice(user, item)).toList();
+        int normalizedPage = Math.max(1, page);
+        int normalizedSize = Math.min(Math.max(1, pageSize), 200);
+        int from = Math.min((normalizedPage - 1) * normalizedSize, visible.size());
+        int to = Math.min(from + normalizedSize, visible.size());
+        return new PageResult<>(visible.size(), visible.subList(from, to).stream().map(this::toVO).toList());
     }
 
     @Transactional
     public PracticeVO create(PracticeCreateRequest request) {
         AuthUser user = CurrentUser.required();
-        AudienceType audience = request.audience() == null ? AudienceType.ALL : request.audience();
-        if (audience != AudienceType.ALL && audience != AudienceType.CLASS) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "题单开放范围仅支持所有人或班级");
-        }
-        if (audience != AudienceType.ALL && request.audienceId() == null) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "受众 ID 不能为空");
-        }
-        ensureCanUseAudience(user, audience, request.audienceId());
         if (request.problemIds() == null || request.problemIds().isEmpty()) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
@@ -252,17 +110,22 @@ public class PracticeService {
              */
             throw new BizException(404, "练习题目不存在");
         }
+        if (problems.stream().anyMatch(problem -> !resourceAccessService.canUseProblem(user, problem))) {
+            throw new BizException(403, "题单包含无权使用的题目");
+        }
 
         Practice practice = new Practice();
         practice.title = request.title();
         practice.description = request.description();
         practice.ownerId = user.id();
-        practice.audience = audience.name();
-        practice.audienceId = audience == AudienceType.ALL ? null : request.audienceId();
-        practice.passwordHash = request.password() == null || request.password().isBlank()
-            ? null
-            : passwordEncoder.encode(request.password());
-        practice.published = true;
+        practice.ownerAccountType = user.accountType();
+        var scope = resourceAccessService.resolveScope(user, request.accessScope(), request.majorId());
+        practice.accessScope = scope.accessScope();
+        practice.majorId = scope.majorId();
+        practice.audience = "ALL";
+        practice.audienceId = null;
+        practice.passwordHash = null;
+        practice.published = false;
         practiceMapper.insert(practice);
 
         int order = 1;
@@ -283,40 +146,29 @@ public class PracticeService {
     @Transactional
     public PracticeVO update(long id, PracticeCreateRequest request) {
         Practice practice = requireOwner(id);
-
-        AudienceType audience = request.audience() == null ? AudienceType.ALL : request.audience();
-        if (audience != AudienceType.ALL && audience != AudienceType.CLASS) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "题单开放范围仅支持所有人或班级");
-        }
-        if (audience != AudienceType.ALL && request.audienceId() == null) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "受众 ID 不能为空");
-        }
-
         AuthUser user = CurrentUser.required();
-        ensureCanUseAudience(user, audience, request.audienceId());
 
         practice.title = request.title();
         practice.description = request.description();
-        practice.audience = audience.name();
-        practice.audienceId = audience == AudienceType.ALL ? null : request.audienceId();
-
-        if (request.password() != null && !request.password().isBlank()) {
-            practice.passwordHash = passwordEncoder.encode(request.password());
-        }
+        var scope = resourceAccessService.resolveScope(user, request.accessScope(), request.majorId());
+        practice.accessScope = scope.accessScope();
+        practice.majorId = scope.majorId();
 
         if (request.problemIds() != null && !request.problemIds().isEmpty()) {
+            List<Long> existingProblemIds = practiceProblems(id).stream()
+                .map(item -> item.problemId)
+                .toList();
             List<Problem> problems = problemMapper.selectBatchIds(request.problemIds());
             if (problems.size() != request.problemIds().stream().distinct().count()) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */
                 throw new BizException(404, "练习题目不存在");
+            }
+            if (problems.stream().anyMatch(problem ->
+                !existingProblemIds.contains(problem.id) && !resourceAccessService.canUseProblem(user, problem)
+            )) {
+                throw new BizException(403, "题单包含无权使用的题目");
             }
             practiceProblemMapper.delete(new QueryWrapper<PracticeProblem>()
                 .eq("practice_id", id));
@@ -338,8 +190,38 @@ public class PracticeService {
         return toVO(practice);
     }
 
+    @Transactional
+    public PracticeVO copy(long id) {
+        AuthUser user = CurrentUser.required();
+        Practice source = practiceMapper.selectById(id);
+        if (source == null || Boolean.TRUE.equals(source.isDeleted)
+            || !resourceAccessService.canAccessPractice(user, source)) {
+            throw new BizException(404, "题单不存在");
+        }
+        Practice copy = new Practice();
+        copy.title = source.title + "（副本）";
+        copy.description = source.description;
+        copy.ownerId = user.id();
+        copy.ownerAccountType = user.accountType();
+        copy.accessScope = "PRIVATE";
+        copy.majorId = user.teacherAccount() ? user.teacher().majorId : source.majorId;
+        copy.audience = "ALL";
+        copy.published = false;
+        practiceMapper.insert(copy);
+        for (PracticeProblem sourceProblem : practiceProblems(source.id)) {
+            PracticeProblem item = new PracticeProblem();
+            item.practiceId = copy.id;
+            item.problemId = sourceProblem.problemId;
+            item.displayOrder = sourceProblem.displayOrder;
+            item.score = sourceProblem.score;
+            practiceProblemMapper.insert(item);
+        }
+        return toVO(copy);
+    }
+
     public PracticeReportVO report(long id) {
         Practice practice = requireOwner(id);
+        AuthUser reporter = CurrentUser.required();
         List<PracticeProblem> practiceProblems = practiceProblems(practice.id);
         Map<Long, PracticeProblem> scoreByProblem = practiceProblems
             .stream()
@@ -351,9 +233,16 @@ public class PracticeService {
                 .stream()
                 .collect(Collectors.toMap(item -> item.id, Function.identity()));
 
-        List<Submission> submissions = submissionMapper.selectList(
-            new QueryWrapper<Submission>().eq("practice_id", practice.id).orderByDesc("created_at")
-        );
+        QueryWrapper<Submission> submissionQuery = new QueryWrapper<Submission>()
+            .eq("practice_id", practice.id);
+        if (!resourceAccessService.isSuperAdmin(reporter)) {
+            submissionQuery.apply(
+                "practice_publication_id IN (SELECT id FROM practice_publications WHERE publisher_account_type = {0} AND publisher_id = {1})",
+                reporter.accountType(),
+                reporter.id()
+            );
+        }
+        List<Submission> submissions = submissionMapper.selectList(submissionQuery.orderByDesc("created_at"));
         Map<Long, User> users = submissions.isEmpty()
             ? Map.of()
             : userMapper.selectBatchIds(submissions.stream().map(item -> item.userId).distinct().toList())
@@ -430,17 +319,6 @@ public class PracticeService {
         practiceMapper.updateById(practice);
     }
 
-    private Practice requirePublished(long id) {
-        Practice practice = practiceMapper.selectById(id);
-        if (practice == null || !Boolean.TRUE.equals(practice.published)) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(404, "练习不存在");
-        }
-        return practice;
-    }
-
     private Practice requireOwner(long id) {
         Practice practice = practiceMapper.selectById(id);
         if (practice == null) {
@@ -459,69 +337,11 @@ public class PracticeService {
         return practice;
     }
 
-    private void ensureVisible(Practice practice) {
-        // 使用Policy检查基本查看权限
-        AuthUser user = CurrentUser.get();
-
-        if (!practiceAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW, practice)) {
-            // Policy拒绝后，检查是否是audience限制的问题
-            if (!AudienceType.ALL.name().equals(practice.audience)) {
-                // 必须登录才能检查班级成员
-                if (user == null) {
-                    /**
-                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                     */
-                    throw new BizException(ErrorCode.UNAUTHORIZED.getCode(), "请先登录");
-                }
-
-                if (AudienceType.CLASS.name().equals(practice.audience) && practice.audienceId != null) {
-                    Long memberCount = classMemberMapper.selectCount(
-                        new QueryWrapper<ClassMember>()
-                            .eq("class_id", practice.audienceId)
-                            .eq("user_id", user.id())
-                    );
-                    if (memberCount != null && memberCount > 0) {
-                        return;
-                    }
-                    /**
-                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                     */
-                    throw new BizException(ErrorCode.FORBIDDEN.getCode(), "该题单仅限指定班级成员");
-                }
-            }
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权访问该练习");
-        }
-    }
-
-    private void ensureCanUseAudience(AuthUser user, AudienceType audience, Long audienceId) {
-        if (audience == AudienceType.ALL) {
-            return;
-        }
-        if ("SUPER_ADMIN".equals(user.role())) {
-            return;
-        }
-        if (audience == AudienceType.CLASS) {
-            ClassRoom classRoom = classRoomMapper.selectById(audienceId);
-            if (classRoom == null) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(ErrorCode.NOT_FOUND.getCode(), "班级不存在");
-            }
-            if (!"TEACHER".equals(user.role()) || !user.id().equals(classRoom.teacherId)) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(ErrorCode.FORBIDDEN.getCode(), "只能选择自己管理的班级");
-            }
-            return;
-        }
-    }
-
     private PracticeVO toVO(Practice practice) {
+        AuthUser user = CurrentUser.get();
+        boolean owner = user != null && resourceAccessService.isOwner(user, practice.ownerAccountType, practice.ownerId);
+        boolean contentAccount = user != null && (user.adminAccount() || user.teacherAccount());
+        Major major = practice.majorId == null ? null : majorMapper.selectById(practice.majorId);
         /**
          * 封装练习VO相关逻辑。执行持久化写入。
          */
@@ -535,7 +355,15 @@ public class PracticeService {
             practice.ownerId,
             practiceProblems(practice.id).stream().map(item -> problemService.detailAsVOUnchecked(item.problemId)).toList(),
             practice.createdAt,
-            practice.updatedAt
+            practice.updatedAt,
+            practice.ownerAccountType,
+            practice.accessScope,
+            practice.majorId,
+            major == null ? null : major.name,
+            owner,
+            owner || resourceAccessService.isSuperAdmin(user),
+            contentAccount,
+            contentAccount
         );
     }
 

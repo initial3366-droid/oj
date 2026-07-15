@@ -69,6 +69,7 @@ public class UserAdminService {
     public PageResult<UserVO> list(int page, int pageSize, String role, String keyword) {
         QueryWrapper<User> wrapper = new QueryWrapper<>();
         if (role != null && !role.isBlank()) {
+            validateUserRole(role);
             wrapper.eq("role", role);
         } else {
             wrapper.in("role", activeFrontendRoles());
@@ -246,6 +247,9 @@ public class UserAdminService {
     }
 
     private void validateUserRole(String role) {
+        if ("TEACHER".equals(role)) {
+            throw new BizException(400, "教师账号请使用教师管理接口");
+        }
         if ("SUPER_ADMIN".equals(role)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
@@ -267,7 +271,6 @@ public class UserAdminService {
     private List<String> activeFrontendRoles() {
         return List.of(
             UserRole.STUDENT.name(),
-            UserRole.TEACHER.name(),
             UserRole.GUEST.name()
         );
     }

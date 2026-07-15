@@ -292,12 +292,12 @@ public class SubmissionQueueService {
                 )
                 .or()
                 .apply(
-                    "practice_id IN (SELECT id FROM practices WHERE owner_id = {0})",
+                    "practice_id IN (SELECT id FROM practices WHERE owner_id = {0} AND owner_account_type = 'ADMIN')",
                     authUser.id()
                 )
                 .or(item -> item
                     .isNull("contest_id")
-                    .apply("problem_id IN (SELECT id FROM problems WHERE owner_id = {0})", authUser.id())
+                    .apply("problem_id IN (SELECT id FROM problems WHERE owner_id = {0} AND owner_account_type = 'ADMIN')", authUser.id())
                 )
             );
             return;
@@ -305,7 +305,7 @@ public class SubmissionQueueService {
         if (isContestAdminRole(authUser)) {
             wrapper.apply(
                 "contest_id IN (SELECT id FROM contests "
-                    + "WHERE owner_id = {0} AND owner_account_type = 'USER')",
+                    + "WHERE owner_id = {0} AND owner_account_type = 'TEACHER')",
                 authUser.id()
             );
             return;
@@ -314,7 +314,7 @@ public class SubmissionQueueService {
     }
 
     private void ensureCanManageContest(AuthUser authUser, Long contestId) {
-        if (authUser == null || !authUser.adminAccount()) {
+        if (authUser == null || (!authUser.adminAccount() && !authUser.teacherAccount())) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -474,10 +474,9 @@ public class SubmissionQueueService {
         if (contest == null || contest.ownerId == null) {
             return false;
         }
-        String ownerType = contest.ownerAccountType == null ? "USER" : contest.ownerAccountType;
+        String ownerType = contest.ownerAccountType == null ? "UNKNOWN" : contest.ownerAccountType;
         return contest.ownerId.equals(authUser.id())
-            && ((authUser.adminAccount() && "ADMIN".equals(ownerType))
-                || (!authUser.adminAccount() && "USER".equals(ownerType)));
+            && authUser.accountType().equals(ownerType);
     }
 
     private boolean isSuperAdmin(AuthUser authUser) {
@@ -485,7 +484,7 @@ public class SubmissionQueueService {
     }
 
     private boolean isContestAdminRole(AuthUser authUser) {
-        return authUser != null && "TEACHER".equals(authUser.role());
+        return authUser != null && authUser.teacherAccount();
     }
 
     private boolean isFinalStatus(String status) {

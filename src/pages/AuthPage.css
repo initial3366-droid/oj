@@ -257,6 +257,25 @@
   box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
 }
 
+.auth-portal-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.auth-portal-links a {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-portal-links a:hover {
+  text-decoration: underline;
+}
+
 /* ── Secondary toggle button ── */
 .auth-btn-toggle.semi-button-primary {
   background: linear-gradient(135deg, #f0f5ff 0%, #eef2ff 100%) !important;

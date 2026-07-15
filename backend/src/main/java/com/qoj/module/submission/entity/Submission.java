@@ -19,6 +19,7 @@ public class Submission {
     public Long participantId;
     public Long teamId;
     public Long practiceId;
+    public Long practicePublicationId;
     public String code;
     public Integer codeLength;
     public String language;

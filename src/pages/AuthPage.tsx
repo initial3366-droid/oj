@@ -393,6 +393,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         Toast.success('注册成功');
       } else {
         const auth = await loginWithoutPersist(form.username, form.password);
+        if (auth.portal === 'TEACHER') {
+          Toast.info('已切换到教师端登录');
+          navigate(`/teacher/login?username=${encodeURIComponent(form.username.trim())}`, { replace: true });
+          return;
+        }
         const me = await fetchMe(auth.accessToken);
         if (!me.email) {
           window.localStorage.removeItem('qoj.accessToken');
@@ -412,6 +417,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       window.location.href = redirectPath;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '操作失败';
+      if (!isRegister && errorMessage.includes('教师账号请使用教师端登录')) {
+        Toast.info('已切换到教师端登录');
+        navigate(`/teacher/login?username=${encodeURIComponent(form.username.trim())}`, { replace: true });
+        return;
+      }
       if (errorMessage.includes('后台账号')) {
         window.localStorage.removeItem('qoj.accessToken');
         window.localStorage.removeItem('qoj.refreshToken');
@@ -594,6 +604,13 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             >
               {isRegister ? '已有账号，去登录' : '没有账号，去注册'}
             </Button>
+
+            {!isRegister && (
+              <div className="auth-portal-links">
+                <span>教师账号</span>
+                <NavLink to="/teacher/login">教师端登录</NavLink>
+              </div>
+            )}
           </form>
         </div>
       </div>

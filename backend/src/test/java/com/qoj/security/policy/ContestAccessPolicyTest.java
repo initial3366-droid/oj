@@ -3,6 +3,7 @@ package com.qoj.security.policy;
 import com.qoj.module.contest.entity.Contest;
 import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
+import com.qoj.module.teacher.entity.Teacher;
 import com.qoj.security.AuthUser;
 import com.qoj.security.audit.AuditLogger;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +33,7 @@ class ContestAccessPolicyTest {
 
     // Helper methods
     private AuthUser createSuperAdmin() {
-        User user = new User();
+        AdminUser user = new AdminUser();
         user.id = 1L;
         user.username = "admin";
         user.role = "SUPER_ADMIN";
@@ -48,12 +49,12 @@ class ContestAccessPolicyTest {
      * 创建或提交教师。调用前会结合当前登录身份执行权限判断。
      */
     private AuthUser createTeacher() {
-        User user = new User();
+        Teacher user = new Teacher();
         user.id = 2L;
         user.username = "teacher";
-        user.role = "TEACHER";
         user.displayName = "Teacher";
         user.passwordHash = "hash";
+        user.status = "ACTIVE";
         /**
          * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
          */
@@ -64,12 +65,12 @@ class ContestAccessPolicyTest {
      * 创建或提交Content管理员。调用前会结合当前登录身份执行权限判断。
      */
     private AuthUser createContentAdmin() {
-        User user = new User();
+        Teacher user = new Teacher();
         user.id = 3L;
         user.username = "teacher_content";
-        user.role = "TEACHER";
         user.displayName = "Teacher Content";
         user.passwordHash = "hash";
+        user.status = "ACTIVE";
         /**
          * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
          */
@@ -112,6 +113,15 @@ class ContestAccessPolicyTest {
      * 创建或提交用户。调用前会结合当前登录身份执行权限判断。
      */
     private AuthUser createUser(Long userId, String role) {
+        if ("TEACHER".equals(role)) {
+            Teacher teacher = new Teacher();
+            teacher.id = userId;
+            teacher.username = "teacher" + userId;
+            teacher.displayName = "Teacher " + userId;
+            teacher.passwordHash = "hash";
+            teacher.status = "ACTIVE";
+            return new AuthUser(teacher);
+        }
         User user = new User();
         user.id = userId;
         user.username = "user" + userId;
@@ -132,7 +142,7 @@ class ContestAccessPolicyTest {
         contest.id = 1L;
         contest.title = "Public Contest";
         contest.ownerId = ownerId;
-        contest.ownerAccountType = "USER";
+        contest.ownerAccountType = "TEACHER";
         contest.audience = "ALL";
         contest.startTime = LocalDateTime.now().plusHours(1);
         contest.endTime = LocalDateTime.now().plusHours(3);
@@ -147,7 +157,7 @@ class ContestAccessPolicyTest {
         contest.id = 2L;
         contest.title = "Private Contest";
         contest.ownerId = ownerId;
-        contest.ownerAccountType = "USER";
+        contest.ownerAccountType = "TEACHER";
         contest.audience = "CLASS";
         contest.audienceId = 1L;
         contest.startTime = LocalDateTime.now().plusHours(1);
@@ -253,6 +263,28 @@ class ContestAccessPolicyTest {
         contest.startTime = LocalDateTime.now().minusHours(1);
         AuthUser student = createStudent();
         assertTrue(policy.canViewProblemDetail(student, contest));
+    }
+
+    @Test
+    @DisplayName("canViewProblemDetail: after end follows enabled setting")
+    void testViewProblemDetail_AfterEnd_Enabled_ShouldAllow() {
+        Contest contest = createPublicContest(2L);
+        contest.startTime = LocalDateTime.now().minusHours(2);
+        contest.endTime = LocalDateTime.now().minusHours(1);
+        contest.allowAfterEndViewProblem = true;
+
+        assertTrue(policy.canViewProblemDetail(createStudent(), contest));
+    }
+
+    @Test
+    @DisplayName("canViewProblemDetail: after end follows disabled setting")
+    void testViewProblemDetail_AfterEnd_Disabled_ShouldDeny() {
+        Contest contest = createPublicContest(2L);
+        contest.startTime = LocalDateTime.now().minusHours(2);
+        contest.endTime = LocalDateTime.now().minusHours(1);
+        contest.allowAfterEndViewProblem = false;
+
+        assertFalse(policy.canViewProblemDetail(createStudent(), contest));
     }
 
     // CREATE Permission Tests

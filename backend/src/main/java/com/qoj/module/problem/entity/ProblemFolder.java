@@ -16,6 +16,9 @@ public class ProblemFolder {
     public String description;
     public Integer displayOrder;
     public Long ownerId;
+    public String ownerAccountType;
+    public String accessScope;
+    public Long majorId;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;
 }

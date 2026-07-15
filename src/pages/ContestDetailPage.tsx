@@ -205,6 +205,9 @@ export function ContestDetailPage() {
   const [mySubmissionsLoaded, setMySubmissionsLoaded] = useState(false);
   const [codeModalSubmission, setCodeModalSubmission] = useState<SubmissionRecord | null>(null);
   const [codeLoadingId, setCodeLoadingId] = useState<number | null>(null);
+  const registrationClosed = Boolean(
+    contest && (contest.status === "ENDED" || Date.now() >= new Date(contest.endTime).getTime()),
+  );
 
   // 获取我的提交用于判断 AC 状态。
   const acRawIds = useMemo(() => {
@@ -276,7 +279,7 @@ export function ContestDetailPage() {
   }, [id, loadContest, redirectToLogin]);
 
   useEffect(() => {
-    if (!contest || contest.registered || !isLoggedIn()) {
+    if (!contest || contest.registered || registrationClosed || !isLoggedIn()) {
       setRegistrationOptions([]);
       return;
     }
@@ -289,7 +292,7 @@ export function ContestDetailPage() {
         setRegistrationOptions([]);
         setRegistrationMessage(error instanceof Error ? error.message : "报名选项加载失败");
       });
-  }, [contest, id]);
+  }, [contest, id, registrationClosed]);
 
   useEffect(() => {
     if (!id) return;
@@ -472,6 +475,10 @@ export function ContestDetailPage() {
   const registrationDisabledReason = availableRegistrationOption && !availableRegistrationOption.available
     ? availableRegistrationOption.disabledReason || "当前账号暂不可报名该比赛"
     : "";
+  const canViewProblemsAfterEnd = Boolean(
+    contest && registrationClosed && contest.allowAfterEndViewProblem !== false,
+  );
+  const canViewProblemSection = Boolean(contest?.registered || canViewProblemsAfterEnd);
 
   /**
    * 封装open比赛题目相关逻辑。会更新 React 状态并触发重新渲染。
@@ -481,7 +488,7 @@ export function ContestDetailPage() {
       redirectToLogin();
       return;
     }
-    if (!contest?.registered) {
+    if (!contest?.registered && !canViewProblemsAfterEnd) {
       setRegistrationMessage("请先报名比赛，报名成功后即可查看题目。");
       return;
     }
@@ -495,6 +502,11 @@ export function ContestDetailPage() {
     if (!contest) return;
     if (!isLoggedIn()) {
       redirectToLogin();
+      return;
+    }
+    if (registrationClosed) {
+      setRegistrationMessage("比赛已结束，报名已截止。");
+      setPasswordModalVisible(false);
       return;
     }
     if (contest.registrationType === "PASSWORD" && !password?.trim()) {
@@ -737,26 +749,32 @@ export function ContestDetailPage() {
                   minWidth: 180,
                 }}
               >
-                <div style={{ fontSize: 13, fontWeight: 600 }}>未报名</div>
-                <div style={{ fontSize: 12, lineHeight: '18px' }}>
-                  {registrationTypeText(contest.registrationType)}，报名后可查看题目。
+                <div style={{ fontSize: 13, fontWeight: 600 }}>
+                  {registrationClosed ? "报名已截止" : "未报名"}
                 </div>
-                <Button
-                  theme="solid"
-                  type="primary"
-                  loading={registrationLoading}
-                  disabled={Boolean(registrationDisabledReason)}
-                  onClick={() => submitRegistration()}
-                >
-                  {registrationLoading ? "报名中" : "立即报名"}
-                </Button>
+                <div style={{ fontSize: 12, lineHeight: '18px' }}>
+                  {registrationClosed
+                    ? (canViewProblemsAfterEnd ? "比赛已结束，题目已按后台设置开放查看。" : "比赛已结束，赛后题目查看已关闭。")
+                    : `${registrationTypeText(contest.registrationType)}，报名后可查看题目。`}
+                </div>
+                {!registrationClosed && (
+                  <Button
+                    theme="solid"
+                    type="primary"
+                    loading={registrationLoading}
+                    disabled={Boolean(registrationDisabledReason)}
+                    onClick={() => submitRegistration()}
+                  >
+                    {registrationLoading ? "报名中" : "立即报名"}
+                  </Button>
+                )}
               </div>
             )}
           </div>
         </div>
       </Card>
 
-      {contest.registered ? (
+      {canViewProblemSection ? (
       <Card
         style={{
           border: '1px solid var(--semi-color-border)',
@@ -765,7 +783,7 @@ export function ContestDetailPage() {
         bodyStyle={{ padding: 0 }}
       >
         <Tabs
-          activeKey={activeTab}
+          activeKey={contest.registered ? activeTab : 'problems'}
           onChange={(key) => setActiveTab(key)}
           style={{ padding: '0 24px' }}
         >
@@ -856,6 +874,8 @@ export function ContestDetailPage() {
             </div>
           </TabPane>
 
+          {contest.registered && (
+          <>
           <TabPane
             tab="提交记录"
             itemKey="submissions"
@@ -1287,6 +1307,8 @@ export function ContestDetailPage() {
               )}
             </div>
           </TabPane>
+          </>
+          )}
         </Tabs>
       </Card>
       ) : (
@@ -1307,12 +1329,14 @@ export function ContestDetailPage() {
             }}
           >
             <div style={{ flex: 1, minWidth: 260 }}>
-              <Tag color="orange" size="large">需要报名</Tag>
+              <Tag color="orange" size="large">{registrationClosed ? "赛后题目关闭" : "需要报名"}</Tag>
               <h2 style={{ margin: '16px 0 8px', fontSize: 22, fontWeight: 600, color: 'var(--semi-color-text-0)' }}>
-                报名后查看比赛题目
+                {registrationClosed ? "比赛题目暂不可查看" : "报名后查看比赛题目"}
               </h2>
               <p style={{ margin: 0, fontSize: 14, lineHeight: '24px', color: 'var(--semi-color-text-1)' }}>
-                当前比赛未报名，题目列表和答题入口已隐藏。完成报名后即可查看题目、进入在线 IDE 并参与提交。
+                {registrationClosed
+                  ? "比赛已结束，后台当前关闭了赛后题目查看。"
+                  : "当前比赛未报名，题目列表和答题入口已隐藏。完成报名后即可查看题目、进入在线 IDE 并参与提交。"}
               </p>
               <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 <Tag>{registrationTypeText(contest.registrationType)}</Tag>
@@ -1345,21 +1369,25 @@ export function ContestDetailPage() {
                 padding: 20,
               }}
             >
-              <div style={{ fontSize: 13, color: 'var(--semi-color-text-2)' }}>报名方式</div>
-              <div style={{ marginTop: 6, fontSize: 18, fontWeight: 600, color: 'var(--semi-color-primary)' }}>
-                {registrationTypeText(contest.registrationType)}
+              <div style={{ fontSize: 13, color: 'var(--semi-color-text-2)' }}>
+                {registrationClosed ? "报名状态" : "报名方式"}
               </div>
-              <Button
-                block
-                theme="solid"
-                type="primary"
-                loading={registrationLoading}
-                disabled={Boolean(registrationDisabledReason)}
-                style={{ marginTop: 18 }}
-                onClick={() => submitRegistration()}
-              >
-                {registrationLoading ? "报名中" : "立即报名"}
-              </Button>
+              <div style={{ marginTop: 6, fontSize: 18, fontWeight: 600, color: 'var(--semi-color-primary)' }}>
+                {registrationClosed ? "报名已截止" : registrationTypeText(contest.registrationType)}
+              </div>
+              {!registrationClosed && (
+                <Button
+                  block
+                  theme="solid"
+                  type="primary"
+                  loading={registrationLoading}
+                  disabled={Boolean(registrationDisabledReason)}
+                  style={{ marginTop: 18 }}
+                  onClick={() => submitRegistration()}
+                >
+                  {registrationLoading ? "报名中" : "立即报名"}
+                </Button>
+              )}
             </div>
           </div>
         </Card>

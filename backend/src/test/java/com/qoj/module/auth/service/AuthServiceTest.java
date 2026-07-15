@@ -5,8 +5,13 @@ import com.qoj.common.exception.BizException;
 import com.qoj.common.redis.RedisKeys;
 import com.qoj.config.QojProperties;
 import com.qoj.module.auth.dto.AuthTokenResponse;
+import com.qoj.module.auth.dto.FrontendLoginResponse;
 import com.qoj.module.auth.dto.LoginRequest;
 import com.qoj.module.classroom.mapper.ClassMemberMapper;
+import com.qoj.module.classroom.mapper.ClassRoomMapper;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.MajorMapper;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.AdminUserMapper;
@@ -50,7 +55,13 @@ class AuthServiceTest {
     @Mock
     private AdminUserMapper adminUserMapper;
     @Mock
+    private TeacherMapper teacherMapper;
+    @Mock
+    private MajorMapper majorMapper;
+    @Mock
     private UserScoreMapper userScoreMapper;
+    @Mock
+    private ClassRoomMapper classRoomMapper;
     @Mock
     private ClassMemberMapper classMemberMapper;
     @Mock
@@ -76,8 +87,10 @@ class AuthServiceTest {
         authService = new AuthService(
             userMapper,
             adminUserMapper,
+            teacherMapper,
+            majorMapper,
             userScoreMapper,
-            null,
+            classRoomMapper,
             classMemberMapper,
             passwordEncoder,
             jwtService,
@@ -89,43 +102,24 @@ class AuthServiceTest {
      * 封装登录用户教师管理员AccountShouldIssueFrontend令牌相关逻辑。执行持久化写入。
      */
     @Test
-    @DisplayName("Frontend login: admin_users TEACHER role should sync to users and issue USER token")
-    void loginUser_TeacherAdminAccount_ShouldIssueFrontendToken() {
-        AdminUser adminUser = new AdminUser();
-        adminUser.id = 8L;
-        adminUser.username = "teacher";
-        adminUser.passwordHash = "encoded";
-        adminUser.role = "TEACHER";
-        adminUser.displayName = "Teacher";
-        adminUser.email = "teacher@example.com";
+    @DisplayName("Teacher login should issue an isolated TEACHER token")
+    void loginTeacher_ShouldIssueTeacherToken() {
+        Teacher teacher = new Teacher();
+        teacher.id = 8L;
+        teacher.username = "teacher";
+        teacher.passwordHash = "encoded";
+        teacher.displayName = "Teacher";
+        teacher.status = "ACTIVE";
 
-        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
-        when(adminUserMapper.selectOne(any(Wrapper.class))).thenReturn(adminUser);
+        when(teacherMapper.selectOne(any(Wrapper.class))).thenReturn(teacher);
         when(passwordEncoder.matches("secret", "encoded")).thenReturn(true);
-        when(userMapper.selectCount(any(Wrapper.class))).thenReturn(0L);
-        doAnswer(invocation -> {
-            User user = invocation.getArgument(0);
-            user.id = 100L;
-            return 1;
-        }).when(userMapper).insert(any(User.class));
-        when(userScoreMapper.selectById(100L)).thenReturn(null);
 
-        AuthTokenResponse response = authService.loginUser(new LoginRequest("teacher", "secret", null, null));
+        AuthTokenResponse response = authService.loginTeacher(new LoginRequest("teacher", "secret", null, null));
 
         Claims claims = jwtService.parse(response.accessToken());
-        assertEquals("100", claims.getSubject());
-        assertEquals("USER", claims.get("accountType", String.class));
+        assertEquals("8", claims.getSubject());
+        assertEquals("TEACHER", claims.get("accountType", String.class));
         assertEquals("TEACHER", claims.get("role", String.class));
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        /**
-         * 校验前置条件。执行持久化写入。
-         */
-        verify(userMapper).insert(userCaptor.capture());
-        User syncedUser = userCaptor.getValue();
-        assertEquals("teacher", syncedUser.username);
-        assertEquals("encoded", syncedUser.passwordHash);
-        assertEquals("TEACHER", syncedUser.role);
-        assertEquals("Teacher", syncedUser.displayName);
         verify(valueOperations).set(any(String.class), eq("1"), any(Duration.class));
     }
 
@@ -133,25 +127,48 @@ class AuthServiceTest {
      * 封装登录用户Super管理员管理员AccountShouldRejectFrontend登录相关逻辑。不满足业务约束时直接抛出明确异常；从持久化层读取数据。
      */
     @Test
-    @DisplayName("Frontend login: admin_users SUPER_ADMIN should still be rejected")
-    void loginUser_SuperAdminAdminAccount_ShouldRejectFrontendLogin() {
-        AdminUser adminUser = new AdminUser();
-        adminUser.id = 1L;
-        adminUser.username = "admin";
-        adminUser.passwordHash = "encoded";
-        adminUser.role = "SUPER_ADMIN";
-
+    @DisplayName("Frontend login should return the teacher portal without an HTTP error")
+    void loginUser_TeacherOnlyAccount_ShouldDirectToTeacherLogin() {
+        Teacher teacher = new Teacher();
+        teacher.id = 8L;
+        teacher.username = "teacher";
+        teacher.passwordHash = "encoded";
+        teacher.displayName = "Teacher";
+        teacher.status = "ACTIVE";
         when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
-        when(adminUserMapper.selectOne(any(Wrapper.class))).thenReturn(adminUser);
-        when(passwordEncoder.matches("admin123", "encoded")).thenReturn(true);
+        when(teacherMapper.selectOne(any(Wrapper.class))).thenReturn(teacher);
+        when(passwordEncoder.matches("secret", "encoded")).thenReturn(true);
 
-        BizException exception = assertThrows(
-            BizException.class,
-            () -> authService.loginUser(new LoginRequest("admin", "admin123", null, null))
+        FrontendLoginResponse response = authService.loginUser(
+            new LoginRequest("teacher", "secret", null, null)
         );
 
-        assertEquals(403, exception.getCode());
-        assertTrue(exception.getMessage().contains("后台账号请从后台入口登录"));
+        assertEquals("TEACHER", response.portal());
+        assertEquals(null, response.accessToken());
+        assertEquals(null, response.refreshToken());
+    }
+
+    @Test
+    @DisplayName("Frontend login should issue tokens for an active student")
+    void loginUser_StudentAccount_ShouldIssueFrontendTokens() {
+        User user = new User();
+        user.id = 42L;
+        user.username = "student";
+        user.passwordHash = "encoded";
+        user.role = "STUDENT";
+        user.displayName = "Student";
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(user);
+        when(passwordEncoder.matches("secret", "encoded")).thenReturn(true);
+
+        FrontendLoginResponse response = authService.loginUser(
+            new LoginRequest("student", "secret", null, null)
+        );
+
+        assertEquals("USER", response.portal());
+        Claims claims = jwtService.parse(response.accessToken());
+        assertEquals("42", claims.getSubject());
+        assertEquals("USER", claims.get("accountType", String.class));
+        assertEquals("STUDENT", claims.get("role", String.class));
     }
 
     /**
@@ -183,7 +200,7 @@ class AuthServiceTest {
             any(Duration.class)
         );
         assertTrue(redisTemplate.deletedKeys.contains(RedisKeys.refreshTokenFamily(pair.familyId())));
-        assertTrue(redisTemplate.deletedKeys.contains(RedisKeys.onlineUser(user.id)));
+        assertTrue(redisTemplate.deletedKeys.contains(RedisKeys.onlineAccount("USER", user.id)));
     }
 
     /**

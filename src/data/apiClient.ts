@@ -115,6 +115,10 @@ export interface AuthTokenResponse {
   refreshToken: string;
 }
 
+export type FrontendLoginResponse =
+  | ({ portal: "USER" } & AuthTokenResponse)
+  | { portal: "TEACHER"; accessToken: null; refreshToken: null };
+
 /**
  * 管理员仪表盘接口，明确该模块内部及 API 边界使用的数据结构。
  */
@@ -147,7 +151,7 @@ export interface AdminUser {
   avatarUrl?: string;
   studentNo?: string;
   email?: string;
-  role: "SUPER_ADMIN" | "TEACHER" | "STUDENT" | "GUEST";
+  role: "SUPER_ADMIN" | "STUDENT" | "GUEST";
   createdAt: string;
   updatedAt: string;
 }
@@ -851,7 +855,7 @@ interface BackendUserMe {
   avatarUrl?: string;
   studentNo?: string;
   email?: string;
-  role: "STUDENT" | "TEACHER" | "SUPER_ADMIN" | "GUEST";
+  role: "STUDENT" | "GUEST";
   totalSolved?: number;
   totalSubmissions?: number;
   classId?: number | null;
@@ -1402,10 +1406,14 @@ export async function adminLogin(username: string, password: string) {
  * 封装登录相关逻辑。包含异步流程并由调用方处理完成或失败状态。
  */
 export async function login(username: string, password: string) {
-  const tokens = await request<AuthTokenResponse>("/api/v1/auth/login", {
+  const result = await request<FrontendLoginResponse>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({ username, password }),
   });
+  if (result.portal === "TEACHER") {
+    throw new Error("教师账号请使用教师端登录");
+  }
+  const tokens: AuthTokenResponse = result;
   saveFrontendAuthTokens(tokens);
   return tokens;
 }
@@ -1414,11 +1422,10 @@ export async function login(username: string, password: string) {
  * 封装登录WithoutPersist相关逻辑。包含异步流程并由调用方处理完成或失败状态。
  */
 export async function loginWithoutPersist(username: string, password: string) {
-  const tokens = await request<AuthTokenResponse>("/api/v1/auth/login", {
+  return request<FrontendLoginResponse>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({ username, password }),
   });
-  return tokens;
 }
 
 /**

@@ -33,6 +33,10 @@ interface Problem {
   isPublic: boolean;
   createdAt: string;
   testCaseCount: number;
+  accessScope: 'ALL' | 'MAJOR' | 'PRIVATE';
+  majorName?: string | null;
+  studentPublishStatus: 'DRAFT' | 'PUBLISHED';
+  canEdit: boolean;
 }
 
 /**
@@ -216,22 +220,21 @@ export function TeacherProblemListPage() {
       render: (value: number) => value ?? 0,
     },
     {
-      title: '状态',
-      dataIndex: 'isPublic',
-      width: 72,
+      title: '开放范围',
+      dataIndex: 'accessScope',
+      width: 100,
       align: 'center' as const,
-      render: (isPublic: boolean) => (
-        <Tag color={isPublic ? 'green' : 'red'}>
-          {isPublic ? '公开' : '隐藏'}
-        </Tag>
+      render: (_: unknown, record: Problem) => (
+        <Tag>{record.accessScope === 'ALL' ? '所有人' : record.accessScope === 'MAJOR' ? record.majorName || '本专业' : '私有'}</Tag>
       ),
     },
+    { title: '学生题库', dataIndex: 'studentPublishStatus', width: 90, render: (value: Problem['studentPublishStatus']) => <Tag color={value === 'PUBLISHED' ? 'green' : 'gray'}>{value === 'PUBLISHED' ? '已发布' : '未发布'}</Tag> },
     {
       title: '操作',
       width: 180,
       align: 'center' as const,
       render: (_: unknown, record: Problem) => (
-        <Space size={2} wrap={false}>
+        record.canEdit ? <Space size={2} wrap={false}>
           <Button
             type="text"
             size="small"
@@ -253,7 +256,7 @@ export function TeacherProblemListPage() {
               删除
             </Button>
           </Popconfirm>
-        </Space>
+        </Space> : <Tag color="blue">可组题</Tag>
       ),
     },
   ];

@@ -9,8 +9,11 @@ public record TeacherVO(
     Long id,
     String username,
     String displayName,
-    String studentNo,
+    String teacherNo,
     String email,
+    Long majorId,
+    String majorName,
+    String status,
     Integer classCount,
     LocalDateTime createdAt,
     LocalDateTime updatedAt

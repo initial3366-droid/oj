@@ -33,6 +33,7 @@ const PATHS = {
   users: adminPath('/users'),
   students: adminPath('/users/students'),
   teachers: adminPath('/users/teachers'),
+  majors: adminPath('/majors'),
   problems: adminPath('/problems'),
   problemsNew: adminPath('/problems/new'),
   problemFolders: adminPath('/problem-folders'),
@@ -86,6 +87,7 @@ export function AdminSider({ userRole }: AdminSiderProps) {
       [PATHS.submissions]: 'submissions-menu',
       [adminPath('/judge')]: 'judge-menu',
       [PATHS.classes]: 'classes-menu',
+      [PATHS.majors]: 'users-menu',
       [adminPath('/settings')]: 'settings-menu',
     };
 
@@ -129,6 +131,7 @@ export function AdminSider({ userRole }: AdminSiderProps) {
         <SubMenu key="users-menu" title={<><IconUser />用户管理</>}>
           <MenuItem key={PATHS.students}>学生列表</MenuItem>
           <MenuItem key={PATHS.teachers}>教师列表</MenuItem>
+          <MenuItem key={PATHS.majors}>专业管理</MenuItem>
         </SubMenu>
       )}
 

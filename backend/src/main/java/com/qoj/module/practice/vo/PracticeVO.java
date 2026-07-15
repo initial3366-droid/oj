@@ -17,6 +17,14 @@ public record PracticeVO(
     Long ownerId,
     List<ProblemVO> problems,
     LocalDateTime createdAt,
-    LocalDateTime updatedAt
+    LocalDateTime updatedAt,
+    String ownerAccountType,
+    String accessScope,
+    Long majorId,
+    String majorName,
+    Boolean owner,
+    Boolean canEdit,
+    Boolean canCopy,
+    Boolean canPublish
 ) {
 }

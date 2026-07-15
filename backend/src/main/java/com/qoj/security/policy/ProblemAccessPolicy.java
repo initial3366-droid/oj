@@ -12,12 +12,14 @@ import org.springframework.stereotype.Component;
 public class ProblemAccessPolicy extends AccessPolicy<Problem> {
 
     private final AuditLogger auditLogger;
+    private final ResourceAccessService resourceAccessService;
 
     /**
      * 构造 题目访问Policy 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断。
      */
-    public ProblemAccessPolicy(AuditLogger auditLogger) {
+    public ProblemAccessPolicy(AuditLogger auditLogger, ResourceAccessService resourceAccessService) {
         this.auditLogger = auditLogger;
+        this.resourceAccessService = resourceAccessService;
     }
 
     /**
@@ -43,12 +45,7 @@ public class ProblemAccessPolicy extends AccessPolicy<Problem> {
      * 判断View是否成立。调用前会结合当前登录身份执行权限判断。
      */
     private boolean canView(AuthUser user, Problem problem) {
-        // 公开题目任何人可见
-        if (Boolean.TRUE.equals(problem.isPublic)) {
-            return true;
-        }
-
-        // 未登录用户不能查看非公开题目
+        // 学生只能查看由教师或后台正式发布的题目。
         if (user == null) {
             /**
              * 校验AndLog。调用前会结合当前登录身份执行权限判断。
@@ -62,8 +59,16 @@ public class ProblemAccessPolicy extends AccessPolicy<Problem> {
             return true;
         }
 
+        if (user.teacherAccount() && resourceAccessService.canUseProblem(user, problem)) {
+            return true;
+        }
+
+        if ("USER".equals(user.accountType()) && "PUBLISHED".equals(problem.studentPublishStatus)) {
+            return true;
+        }
+
         // 题目创建者可以查看自己的题目
-        if (problem.ownerId != null && problem.ownerId.equals(user.id())) {
+        if (isProblemOwner(problem, user)) {
             return true;
         }
 
@@ -108,7 +113,7 @@ public class ProblemAccessPolicy extends AccessPolicy<Problem> {
         }
 
         // 题目创建者可以修改自己的题目
-        if (problem.ownerId != null && problem.ownerId.equals(user.id())) {
+        if (isProblemOwner(problem, user)) {
             return true;
         }
 
@@ -142,7 +147,7 @@ public class ProblemAccessPolicy extends AccessPolicy<Problem> {
         }
 
         // 题目创建者可以删除自己的题目
-        if (problem.ownerId != null && problem.ownerId.equals(user.id())) {
+        if (isProblemOwner(problem, user)) {
             /**
              * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
              */
@@ -176,7 +181,7 @@ public class ProblemAccessPolicy extends AccessPolicy<Problem> {
         }
 
         // 题目创建者可以查看自己题目的测试用例
-        if (problem.ownerId != null && problem.ownerId.equals(user.id())) {
+        if (isProblemOwner(problem, user)) {
             return true;
         }
 
@@ -185,5 +190,9 @@ public class ProblemAccessPolicy extends AccessPolicy<Problem> {
          */
         return checkAndLog(user, Permission.VIEW_HIDDEN_CASE, "Problem", problem.id, false,
             "非题目创建者", auditLogger);
+    }
+
+    private boolean isProblemOwner(Problem problem, AuthUser user) {
+        return resourceAccessService.isOwner(user, problem.ownerAccountType, problem.ownerId);
     }
 }

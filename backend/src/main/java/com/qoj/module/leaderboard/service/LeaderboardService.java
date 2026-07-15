@@ -18,6 +18,8 @@ import com.qoj.module.user.entity.User;
 import com.qoj.module.user.entity.UserScore;
 import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.module.user.mapper.UserScoreMapper;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import jakarta.annotation.PostConstruct;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -45,6 +47,7 @@ public class LeaderboardService {
     private final SubmissionMapper submissionMapper;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final TeacherMapper teacherMapper;
 
     /**
      * 构造 排行榜Service 实例并保存其必要依赖或初始状态。从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
@@ -56,7 +59,8 @@ public class LeaderboardService {
         ClassMemberMapper classMemberMapper,
         SubmissionMapper submissionMapper,
         StringRedisTemplate redisTemplate,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        TeacherMapper teacherMapper
     ) {
         this.userScoreMapper = userScoreMapper;
         this.userMapper = userMapper;
@@ -65,6 +69,7 @@ public class LeaderboardService {
         this.submissionMapper = submissionMapper;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
+        this.teacherMapper = teacherMapper;
     }
 
     public List<RatingUserVO> global(int limit) {
@@ -234,7 +239,7 @@ public class LeaderboardService {
 
             String teacherName = "";
             if (classRoom.teacherId != null) {
-                User teacher = userMapper.selectById(classRoom.teacherId);
+                Teacher teacher = teacherMapper.selectById(classRoom.teacherId);
                 teacherName = teacher != null && teacher.displayName != null ? teacher.displayName : "";
             }
 

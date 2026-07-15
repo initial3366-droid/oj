@@ -31,6 +31,10 @@ import com.qoj.module.contest.mapper.ContestAudienceMapper;
 import com.qoj.module.contest.mapper.ContestMapper;
 import com.qoj.module.practice.entity.Practice;
 import com.qoj.module.practice.mapper.PracticeMapper;
+import com.qoj.module.teacher.entity.Major;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.MajorMapper;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.entity.UserScore;
@@ -69,6 +73,8 @@ public class ClassRoomService {
     private final ClassMemberMapper classMemberMapper;
     private final ClassJoinApplicationMapper applicationMapper;
     private final UserMapper userMapper;
+    private final TeacherMapper teacherMapper;
+    private final MajorMapper majorMapper;
     private final UserScoreMapper userScoreMapper;
     private final AdminUserMapper adminUserMapper;
     private final ContestMapper contestMapper;
@@ -85,6 +91,8 @@ public class ClassRoomService {
         ClassMemberMapper classMemberMapper,
         ClassJoinApplicationMapper applicationMapper,
         UserMapper userMapper,
+        TeacherMapper teacherMapper,
+        MajorMapper majorMapper,
         UserScoreMapper userScoreMapper,
         AdminUserMapper adminUserMapper,
         ContestMapper contestMapper,
@@ -97,6 +105,8 @@ public class ClassRoomService {
         this.classMemberMapper = classMemberMapper;
         this.applicationMapper = applicationMapper;
         this.userMapper = userMapper;
+        this.teacherMapper = teacherMapper;
+        this.majorMapper = majorMapper;
         this.userScoreMapper = userScoreMapper;
         this.adminUserMapper = adminUserMapper;
         this.contestMapper = contestMapper;
@@ -130,7 +140,7 @@ public class ClassRoomService {
              */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "请选择教师");
         }
-        User teacher = requireTeacher(request.teacherId());
+        Teacher teacher = requireTeacher(request.teacherId());
         ClassRoom classRoom = newClassRoom(request, teacher.id);
         classRoomMapper.insert(classRoom);
         /**
@@ -161,7 +171,7 @@ public class ClassRoomService {
     }
 
     public List<TeacherVO> listTeachers(String keyword) {
-        QueryWrapper<User> wrapper = new QueryWrapper<User>().eq("role", UserRole.TEACHER.name());
+        QueryWrapper<Teacher> wrapper = new QueryWrapper<>();
         if (keyword != null && !keyword.isBlank()) {
             String value = keyword.trim();
             wrapper.and(item -> item
@@ -169,75 +179,85 @@ public class ClassRoomService {
                 .or()
                 .like("display_name", value)
                 .or()
-                .like("student_no", value)
+                .like("teacher_no", value)
                 .or()
                 .like("email", value)
             );
         }
         wrapper.orderByDesc("created_at");
-        return userMapper.selectList(wrapper).stream().map(this::toTeacherVO).toList();
+        return teacherMapper.selectList(wrapper).stream().map(this::toTeacherVO).toList();
     }
 
     @Transactional
     public TeacherVO createTeacher(TeacherCreateRequest request) {
         ensureUnique("username", request.username(), null, "用户名已存在");
-        ensureUnique("student_no", request.studentNo(), null, "学号已存在");
+        ensureUnique("teacher_no", request.teacherNo(), null, "教师编号已存在");
         ensureUnique("email", request.email(), null, "邮箱已存在");
-        User user = new User();
-        user.username = request.username().trim();
-        user.passwordHash = passwordEncoder.encode(request.password());
-        user.displayName = request.displayName().trim();
-        user.studentNo = blankToNull(request.studentNo());
-        user.email = blankToNull(request.email());
-        user.role = UserRole.TEACHER.name();
-        userMapper.insert(user);
-        ensureScore(user.id);
+        Major major = requireActiveMajor(request.majorId());
+        Teacher teacher = new Teacher();
+        teacher.username = request.username().trim();
+        teacher.passwordHash = passwordEncoder.encode(request.password());
+        teacher.displayName = request.displayName().trim();
+        teacher.teacherNo = blankToNull(request.teacherNo());
+        teacher.email = blankToNull(request.email());
+        teacher.majorId = major.id;
+        teacher.status = "ACTIVE";
+        teacherMapper.insert(teacher);
         /**
          * 构造或转换教师VO。从持久化层读取数据。
          */
-        return toTeacherVO(userMapper.selectById(user.id));
+        return toTeacherVO(teacherMapper.selectById(teacher.id));
     }
 
     @Transactional
     public TeacherVO updateTeacher(long teacherId, TeacherUpdateRequest request) {
-        User user = requireTeacher(teacherId);
-        ensureUnique("username", request.username(), user.id, "用户名已存在");
-        ensureUnique("student_no", request.studentNo(), user.id, "学号已存在");
-        ensureUnique("email", request.email(), user.id, "邮箱已存在");
+        Teacher teacher = requireTeacher(teacherId);
+        ensureUnique("username", request.username(), teacher.id, "用户名已存在");
+        ensureUnique("teacher_no", request.teacherNo(), teacher.id, "教师编号已存在");
+        ensureUnique("email", request.email(), teacher.id, "邮箱已存在");
         if (request.username() != null && !request.username().isBlank()) {
-            user.username = request.username().trim();
+            teacher.username = request.username().trim();
         }
         if (request.password() != null && !request.password().isBlank()) {
-            user.passwordHash = passwordEncoder.encode(request.password());
+            teacher.passwordHash = passwordEncoder.encode(request.password());
         }
         if (request.displayName() != null && !request.displayName().isBlank()) {
-            user.displayName = request.displayName().trim();
+            teacher.displayName = request.displayName().trim();
         }
-        if (request.studentNo() != null) {
-            user.studentNo = blankToNull(request.studentNo());
+        if (request.teacherNo() != null) {
+            teacher.teacherNo = blankToNull(request.teacherNo());
         }
         if (request.email() != null) {
-            user.email = blankToNull(request.email());
+            teacher.email = blankToNull(request.email());
         }
-        userMapper.updateById(user);
+        if (request.majorId() != null) {
+            teacher.majorId = requireActiveMajor(request.majorId()).id;
+        }
+        if (request.status() != null) {
+            String status = request.status().trim().toUpperCase();
+            if (!Set.of("ACTIVE", "DISABLED").contains(status)) {
+                throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "教师状态无效");
+            }
+            teacher.status = status;
+        }
+        teacherMapper.updateById(teacher);
         /**
          * 构造或转换教师VO。从持久化层读取数据。
          */
-        return toTeacherVO(userMapper.selectById(user.id));
+        return toTeacherVO(teacherMapper.selectById(teacher.id));
     }
 
     @Transactional
     public void deleteTeacher(long teacherId) {
-        User user = requireTeacher(teacherId);
-        Long classCount = classRoomMapper.selectCount(new QueryWrapper<ClassRoom>().eq("teacher_id", user.id));
+        Teacher teacher = requireTeacher(teacherId);
+        Long classCount = classRoomMapper.selectCount(new QueryWrapper<ClassRoom>().eq("teacher_id", teacher.id));
         if (classCount != null && classCount > 0) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "该教师仍有关联班级，请先转移或删除班级");
         }
-        userScoreMapper.deleteById(user.id);
-        userMapper.deleteById(user.id);
+        teacherMapper.deleteById(teacher.id);
     }
 
     public List<ClassRoomVO> teacherClasses() {
@@ -281,8 +301,8 @@ public class ClassRoomService {
     @Transactional
     public void teacherDelete(long classId, String password) {
         AuthUser teacher = requireTeacherAccount();
-        User currentUser = userMapper.selectById(teacher.id());
-        if (currentUser == null || !passwordEncoder.matches(password, currentUser.passwordHash)) {
+        Teacher currentTeacher = teacherMapper.selectById(teacher.id());
+        if (currentTeacher == null || !passwordEncoder.matches(password, currentTeacher.passwordHash)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -437,7 +457,7 @@ public class ClassRoomService {
     @Transactional
     public ClassJoinApplicationVO apply(long classId, ClassJoinApplicationRequest request) {
         AuthUser authUser = CurrentUser.required();
-        if (authUser.adminAccount() || UserRole.TEACHER.name().equals(authUser.role())) {
+        if (authUser.adminAccount() || authUser.teacherAccount()) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -513,6 +533,7 @@ public class ClassRoomService {
         application.status = "APPROVED";
         application.handledAt = LocalDateTime.now();
         application.handledBy = CurrentUser.required().id();
+        application.handledByAccountType = CurrentUser.required().accountType();
         applicationMapper.updateById(application);
         /**
          * 构造或转换ApplicationVO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
@@ -533,6 +554,7 @@ public class ClassRoomService {
         application.status = "REJECTED";
         application.handledAt = LocalDateTime.now();
         application.handledBy = CurrentUser.required().id();
+        application.handledByAccountType = CurrentUser.required().accountType();
         applicationMapper.updateById(application);
         /**
          * 构造或转换ApplicationVO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
@@ -762,7 +784,7 @@ public class ClassRoomService {
         if ("SUPER_ADMIN".equals(authUser.role())) {
             return classRoom;
         }
-        if (authUser.adminAccount() || !UserRole.TEACHER.name().equals(authUser.role()) || !Objects.equals(classRoom.teacherId, authUser.id())) {
+        if (!authUser.teacherAccount() || !Objects.equals(classRoom.teacherId, authUser.id())) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -773,7 +795,7 @@ public class ClassRoomService {
 
     private AuthUser requireTeacherAccount() {
         AuthUser authUser = CurrentUser.required();
-        if (authUser.adminAccount() || !UserRole.TEACHER.name().equals(authUser.role())) {
+        if (!authUser.teacherAccount()) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -802,15 +824,26 @@ public class ClassRoomService {
         return application;
     }
 
-    private User requireTeacher(Long userId) {
-        User user = userMapper.selectById(userId);
-        if (user == null || !UserRole.TEACHER.name().equals(user.role)) {
+    private Teacher requireTeacher(Long teacherId) {
+        Teacher teacher = teacherMapper.selectById(teacherId);
+        if (teacher == null) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "教师不存在");
         }
-        return user;
+        return teacher;
+    }
+
+    private Major requireActiveMajor(Long majorId) {
+        if (majorId == null) {
+            throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "请选择专业");
+        }
+        Major major = majorMapper.selectById(majorId);
+        if (major == null || !"ACTIVE".equals(major.status)) {
+            throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "专业不存在或已停用");
+        }
+        return major;
     }
 
     private User requireActiveUser(Long userId) {
@@ -847,14 +880,19 @@ public class ClassRoomService {
         if (value == null || value.isBlank()) {
             return;
         }
-        QueryWrapper<User> userWrapper = new QueryWrapper<User>().eq(column, value.trim());
-        if (currentUserId != null) {
-            userWrapper.ne("id", currentUserId);
-        }
+        QueryWrapper<User> userWrapper = new QueryWrapper<User>().eq(
+            "teacher_no".equals(column) ? "student_no" : column,
+            value.trim()
+        );
         boolean existsInUsers = userMapper.selectCount(userWrapper) > 0;
         boolean existsInAdmins = ("username".equals(column) || "email".equals(column))
             && adminUserMapper.selectCount(new QueryWrapper<AdminUser>().eq(column, value.trim())) > 0;
-        if (existsInUsers || existsInAdmins) {
+        QueryWrapper<Teacher> teacherWrapper = new QueryWrapper<Teacher>().eq(column, value.trim());
+        if (currentUserId != null) {
+            teacherWrapper.ne("id", currentUserId);
+        }
+        boolean existsInTeachers = teacherMapper.selectCount(teacherWrapper) > 0;
+        if (existsInUsers || existsInAdmins || existsInTeachers) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -876,25 +914,29 @@ public class ClassRoomService {
         userScoreMapper.insert(score);
     }
 
-    private TeacherVO toTeacherVO(User user) {
-        Long classCount = classRoomMapper.selectCount(new QueryWrapper<ClassRoom>().eq("teacher_id", user.id));
+    private TeacherVO toTeacherVO(Teacher teacher) {
+        Long classCount = classRoomMapper.selectCount(new QueryWrapper<ClassRoom>().eq("teacher_id", teacher.id));
+        Major major = teacher.majorId == null ? null : majorMapper.selectById(teacher.majorId);
         /**
          * 封装教师VO相关逻辑。执行持久化写入。
          */
         return new TeacherVO(
-            user.id,
-            user.username,
-            user.displayName,
-            user.studentNo,
-            user.email,
+            teacher.id,
+            teacher.username,
+            teacher.displayName,
+            teacher.teacherNo,
+            teacher.email,
+            teacher.majorId,
+            major == null ? null : major.name,
+            teacher.status,
             Math.toIntExact(classCount == null ? 0L : classCount),
-            user.createdAt,
-            user.updatedAt
+            teacher.createdAt,
+            teacher.updatedAt
         );
     }
 
     private ClassRoomVO toVO(ClassRoom classRoom, boolean includeMembers) {
-        User teacher = classRoom.teacherId == null ? null : userMapper.selectById(classRoom.teacherId);
+        Teacher teacher = classRoom.teacherId == null ? null : teacherMapper.selectById(classRoom.teacherId);
         Long memberCount = classMemberMapper.selectCount(new QueryWrapper<ClassMember>().eq("class_id", classRoom.id));
         List<ClassRoomMemberVO> members = includeMembers
             ? classMemberMapper

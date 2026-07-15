@@ -19,14 +19,14 @@ public abstract class AccessPolicy<T> {
      * 判断Content管理员是否成立。调用前会结合当前登录身份执行权限判断。
      */
     protected boolean isContentAdmin(AuthUser user) {
-        return user != null && "TEACHER".equals(user.role());
+        return user != null && user.teacherAccount();
     }
 
     /**
      * 判断教师是否成立。调用前会结合当前登录身份执行权限判断。
      */
     protected boolean isTeacher(AuthUser user) {
-        return user != null && "TEACHER".equals(user.role());
+        return user != null && user.teacherAccount();
     }
 
     /**
@@ -43,9 +43,7 @@ public abstract class AccessPolicy<T> {
         if (user == null || ownerId == null) {
             return false;
         }
-        boolean accountTypeMatches = (user.adminAccount() && "ADMIN".equals(ownerAccountType))
-            || (!user.adminAccount() && "USER".equals(ownerAccountType));
-        return accountTypeMatches && ownerId.equals(user.id());
+        return user.accountType().equals(ownerAccountType) && ownerId.equals(user.id());
     }
 
     /**

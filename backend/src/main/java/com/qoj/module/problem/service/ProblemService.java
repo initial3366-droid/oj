@@ -32,8 +32,13 @@ import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.module.user.mapper.UserMapper;
+import com.qoj.module.teacher.entity.Major;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.MajorMapper;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
+import com.qoj.security.policy.ResourceAccessService;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -73,6 +78,10 @@ public class ProblemService {
     private final StringRedisTemplate redisTemplate;
     private final com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy;
     private final ProblemFolderMapper problemFolderMapper;
+    private final TeacherMapper teacherMapper;
+    private final MajorMapper majorMapper;
+    private final ResourceAccessService resourceAccessService;
+    private final ProblemFolderService problemFolderService;
 
     /**
      * 构造 题目Service 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断；从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
@@ -87,7 +96,11 @@ public class ProblemService {
         ObjectMapper objectMapper,
         StringRedisTemplate redisTemplate,
         com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy,
-        ProblemFolderMapper problemFolderMapper
+        ProblemFolderMapper problemFolderMapper,
+        TeacherMapper teacherMapper,
+        MajorMapper majorMapper,
+        ResourceAccessService resourceAccessService,
+        ProblemFolderService problemFolderService
     ) {
         this.problemMapper = problemMapper;
         this.problemTestCaseMapper = problemTestCaseMapper;
@@ -99,12 +112,16 @@ public class ProblemService {
         this.redisTemplate = redisTemplate;
         this.problemAccessPolicy = problemAccessPolicy;
         this.problemFolderMapper = problemFolderMapper;
+        this.teacherMapper = teacherMapper;
+        this.majorMapper = majorMapper;
+        this.resourceAccessService = resourceAccessService;
+        this.problemFolderService = problemFolderService;
     }
 
     public PageResult<PublicProblemVO> list(int page, int pageSize, String keyword, Integer difficulty, String tag) {
         QueryWrapper<Problem> wrapper = new QueryWrapper<>();
         wrapper.eq("is_deleted", false);
-        wrapper.eq("is_public", true);
+        wrapper.eq("student_publish_status", "PUBLISHED");
         if (keyword != null && !keyword.isBlank()) {
             wrapper.and(w -> w.like("title", keyword).or().like("statement", keyword));
         }
@@ -126,7 +143,23 @@ public class ProblemService {
         QueryWrapper<Problem> wrapper = new QueryWrapper<>();
         wrapper.eq("is_deleted", false);
         if (!"SUPER_ADMIN".equals(user.role())) {
-            wrapper.eq("owner_id", user.id());
+            Teacher teacher = user.teacherAccount() ? teacherMapper.selectById(user.id()) : null;
+            wrapper.and(visible -> {
+                visible.and(owner -> owner.eq("owner_id", user.id()).eq("owner_account_type", user.accountType()))
+                    .or().eq("access_scope", "ALL");
+                if (teacher != null && teacher.majorId != null) {
+                        visible.or(major -> major.eq("access_scope", "MAJOR").eq("major_id", teacher.majorId))
+                        .or().apply(
+                            "id IN (SELECT pfi.problem_id FROM problem_folder_items pfi JOIN problem_folders pf ON pf.id = pfi.folder_id WHERE pfi.relation_type = 'GRANT' AND (pf.access_scope = 'ALL' OR (pf.access_scope = 'MAJOR' AND pf.major_id = {0}) OR (pf.owner_account_type = 'TEACHER' AND pf.owner_id = {1})))",
+                            teacher.majorId,
+                            teacher.id
+                        );
+                } else {
+                    visible.or().apply(
+                        "id IN (SELECT pfi.problem_id FROM problem_folder_items pfi JOIN problem_folders pf ON pf.id = pfi.folder_id WHERE pfi.relation_type = 'GRANT' AND pf.access_scope = 'ALL')"
+                    );
+                }
+            });
         }
         if (keyword != null && !keyword.isBlank()) {
             wrapper.and(w -> w.like("title", keyword).or().like("statement", keyword));
@@ -138,14 +171,19 @@ public class ProblemService {
             wrapper.like("tags", tag);
         }
         if (folderId != null) {
-            wrapper.eq("folder_id", folderId);
+            wrapper.apply(
+                "id IN (SELECT problem_id FROM problem_folder_items WHERE folder_id = {0})",
+                folderId
+            );
         }
         if (ownerName != null && !ownerName.isBlank()) {
             String normalizedOwnerName = ownerName.trim();
             wrapper.and(w -> w
-                .apply("owner_id IN (SELECT id FROM users WHERE display_name LIKE CONCAT('%', {0}, '%'))", normalizedOwnerName)
+                .apply("(owner_account_type = 'USER' AND owner_id IN (SELECT id FROM users WHERE display_name LIKE CONCAT('%', {0}, '%')))", normalizedOwnerName)
                 .or()
-                .apply("owner_id IN (SELECT id FROM admin_users WHERE display_name LIKE CONCAT('%', {0}, '%'))", normalizedOwnerName)
+                .apply("(owner_account_type = 'TEACHER' AND owner_id IN (SELECT id FROM teachers WHERE display_name LIKE CONCAT('%', {0}, '%')))", normalizedOwnerName)
+                .or()
+                .apply("(owner_account_type = 'ADMIN' AND owner_id IN (SELECT id FROM admin_users WHERE display_name LIKE CONCAT('%', {0}, '%')))", normalizedOwnerName)
             );
         }
         wrapper.orderByDesc("created_at");
@@ -166,7 +204,7 @@ public class ProblemService {
         AuthUser user = CurrentUser.get();
         if (Boolean.TRUE.equals(problem.isDeleted)) {
             // 只有SUPER_ADMIN和创建者可以查看已删除的题目
-            if (user == null || (!"SUPER_ADMIN".equals(user.role()) && !problem.ownerId.equals(user.id()))) {
+            if (user == null || (!"SUPER_ADMIN".equals(user.role()) && !isOwner(problem, user))) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */
@@ -247,7 +285,7 @@ public class ProblemService {
         AuthUser user = CurrentUser.get();
         if (Boolean.TRUE.equals(problem.isDeleted)) {
             // 只有SUPER_ADMIN和创建者可以查看已删除的题目
-            if (user == null || (!"SUPER_ADMIN".equals(user.role()) && !problem.ownerId.equals(user.id()))) {
+            if (user == null || (!"SUPER_ADMIN".equals(user.role()) && !isOwner(problem, user))) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */
@@ -301,8 +339,26 @@ public class ProblemService {
         if (request.folderId() != null) {
             problem.folderId = request.folderId();
         }
-        problem.isPublic = !Boolean.FALSE.equals(request.isPublic());
+        AuthUser user = CurrentUser.required();
+        var scope = resourceAccessService.resolveScope(user, request.accessScope(), request.majorId());
+        problem.accessScope = scope.accessScope();
+        problem.majorId = scope.majorId();
+        String publishStatus = normalizePublishStatus(request.studentPublishStatus(), request.isPublic());
+        problem.studentPublishStatus = publishStatus;
+        problem.isPublic = "PUBLISHED".equals(publishStatus);
+        if (problem.isPublic) {
+            problem.publishedByAccountType = user.accountType();
+            problem.publishedById = user.id();
+            problem.publishedAt = java.time.LocalDateTime.now();
+        } else {
+            problem.publishedByAccountType = null;
+            problem.publishedById = null;
+            problem.publishedAt = null;
+        }
         problemMapper.updateById(problem);
+        if (request.folderId() != null) {
+            problemFolderService.assignOwnedProblem(request.folderId(), problem);
+        }
         replaceTestCases(problem.id, sampleEntities(samples), true);
         redisTemplate.delete(RedisKeys.problem(problem.id));
         Problem updated = problemMapper.selectById(problem.id);
@@ -532,8 +588,8 @@ public class ProblemService {
 
     private Problem requirePublicManageOwner(long id) {
         Problem problem = requireOwnerOrSuperAdmin(id);
-        String role = CurrentUser.required().role();
-        if (!"SUPER_ADMIN".equals(role) && !"TEACHER".equals(role)) {
+        AuthUser user = CurrentUser.required();
+        if (!user.adminAccount() && !user.teacherAccount()) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -563,7 +619,7 @@ public class ProblemService {
             problemTestCaseMapper.selectCount(
                 new QueryWrapper<ProblemTestCase>().eq("problem_id", problem.id).eq("sample", false)
             ),
-            ownerName(problem.ownerId),
+            ownerName(problem.ownerId, problem.ownerAccountType),
             null
         );
     }
@@ -588,12 +644,14 @@ public class ProblemService {
             problemTestCaseMapper.selectCount(
                 new QueryWrapper<ProblemTestCase>().eq("problem_id", problem.id).eq("sample", false)
             ),
-            ownerName(problem.ownerId),
+            ownerName(problem.ownerId, problem.ownerAccountType),
             null
         );
     }
 
     private AdminProblemVO toAdminVO(Problem problem) {
+        AuthUser user = CurrentUser.get();
+        boolean owner = user != null && resourceAccessService.isOwner(user, problem.ownerAccountType, problem.ownerId);
         return new AdminProblemVO(
             problem.id,
             problem.title,
@@ -613,15 +671,24 @@ public class ProblemService {
             problemTestCaseMapper.selectCount(
                 new QueryWrapper<ProblemTestCase>().eq("problem_id", problem.id).eq("sample", false)
             ),
-            ownerName(problem.ownerId),
+            ownerName(problem.ownerId, problem.ownerAccountType),
             null,
             problem.ownerId,
             problem.isPublic,
-            problem.updatedAt
+            problem.updatedAt,
+            problem.ownerAccountType,
+            problem.accessScope,
+            problem.majorId,
+            majorName(problem.majorId),
+            problem.studentPublishStatus,
+            owner,
+            owner || resourceAccessService.isSuperAdmin(user)
         );
     }
 
     private AdminProblemVO toAdminVOForUpdate(Problem problem) {
+        AuthUser user = CurrentUser.get();
+        boolean owner = user != null && resourceAccessService.isOwner(user, problem.ownerAccountType, problem.ownerId);
         return new AdminProblemVO(
             problem.id,
             problem.title,
@@ -645,7 +712,14 @@ public class ProblemService {
             null,
             problem.ownerId,
             problem.isPublic,
-            problem.updatedAt
+            problem.updatedAt,
+            problem.ownerAccountType,
+            problem.accessScope,
+            problem.majorId,
+            majorName(problem.majorId),
+            problem.studentPublishStatus,
+            owner,
+            owner || resourceAccessService.isSuperAdmin(user)
         );
     }
 
@@ -711,7 +785,14 @@ public class ProblemService {
             attemptStatus,
             vo.ownerId(),
             vo.isPublic(),
-            vo.updatedAt()
+            vo.updatedAt(),
+            vo.ownerAccountType(),
+            vo.accessScope(),
+            vo.majorId(),
+            vo.majorName(),
+            vo.studentPublishStatus(),
+            vo.owner(),
+            vo.canEdit()
         );
     }
 
@@ -829,7 +910,7 @@ public class ProblemService {
     private Long currentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.getPrincipal() instanceof AuthUser authUser) {
-            if (authUser.adminAccount()) {
+            if (!"USER".equals(authUser.accountType())) {
                 return null;
             }
             return authUser.id();
@@ -982,16 +1063,51 @@ public class ProblemService {
         );
     }
 
-    private String ownerName(Long ownerId) {
+    private String ownerName(Long ownerId, String ownerAccountType) {
         if (ownerId == null) {
             return "";
         }
-        User user = userMapper.selectById(ownerId);
-        if (user != null) {
-            return user.displayName;
+        String type = resourceAccessService.normalizeOwnerType(ownerAccountType);
+        if ("ADMIN".equals(type)) {
+            AdminUser adminUser = adminUserMapper.selectById(ownerId);
+            return adminUser == null ? "" : adminUser.displayName;
         }
-        AdminUser adminUser = adminUserMapper.selectById(ownerId);
-        return adminUser == null ? "" : adminUser.displayName;
+        if ("TEACHER".equals(type)) {
+            Teacher teacher = teacherMapper.selectById(ownerId);
+            return teacher == null ? "" : teacher.displayName;
+        }
+        User user = userMapper.selectById(ownerId);
+        return user == null ? "" : user.displayName;
+    }
+
+    private boolean isOwner(Problem problem, AuthUser user) {
+        return resourceAccessService.isOwner(user, problem.ownerAccountType, problem.ownerId);
+    }
+
+    private String accountType(AuthUser user) {
+        return user.accountType();
+    }
+
+    private String normalizeAccountType(String value) {
+        return resourceAccessService.normalizeOwnerType(value);
+    }
+
+    private String normalizePublishStatus(String value, Boolean legacyPublic) {
+        String status = value == null
+            ? (Boolean.FALSE.equals(legacyPublic) ? "DRAFT" : "PUBLISHED")
+            : value.trim().toUpperCase();
+        if (!Set.of("DRAFT", "PUBLISHED").contains(status)) {
+            throw new BizException(400, "题目发布状态无效");
+        }
+        return status;
+    }
+
+    private String majorName(Long majorId) {
+        if (majorId == null) {
+            return null;
+        }
+        Major major = majorMapper.selectById(majorId);
+        return major == null ? null : major.name;
     }
 
     private String folderName(Long folderId) {

@@ -13,5 +13,7 @@ public record PracticeUpdateRequest(
     AudienceType audience,
     Long audienceId,
     String password,
-    List<Long> problemIds
+    List<Long> problemIds,
+    String accessScope,
+    Long majorId
 ) {}

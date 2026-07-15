@@ -22,6 +22,9 @@ public record ProblemDraftBasicRequest(
     @Min(value = 1, message = "难度不能小于1") @Max(value = 5, message = "难度不能大于5") Integer difficulty,
     Long folderId,
     Boolean isPublic,
+    String accessScope,
+    Long majorId,
+    String studentPublishStatus,
     @Valid List<ProblemSampleCaseRequest> samples
 ) {
 }

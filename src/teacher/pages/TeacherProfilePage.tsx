@@ -139,6 +139,12 @@ export function TeacherProfilePage() {
           <FormItem label="用户名">
             <Input value={me?.username} disabled />
           </FormItem>
+          <FormItem label="教师编号">
+            <Input value={me?.teacherNo || '-'} disabled />
+          </FormItem>
+          <FormItem label="专业">
+            <Input value={me?.majorName || '未分配'} disabled />
+          </FormItem>
           <FormItem
             label="姓名"
             field="displayName"

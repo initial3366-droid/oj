@@ -1,7 +1,7 @@
 /**
  * 教师Routes组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import '../utils/arcoSetup';
 import {
   Alert,
@@ -71,6 +71,7 @@ import { TeacherContestDetailPage } from './pages/TeacherContestDetailPage';
 import { TeacherPracticeListPage } from './pages/TeacherPracticeListPage';
 import { TeacherPracticeCreatePage } from './pages/TeacherPracticeCreatePage';
 import { TeacherPracticeReportPage } from './pages/TeacherPracticeReportPage';
+import { PracticePublishPage } from '../components/practices/PracticePublishPage';
 import { TeacherProfilePage } from './pages/TeacherProfilePage';
 import { TeacherDashboardPage } from './TeacherDashboardPage';
 
@@ -388,10 +389,18 @@ function TeacherGuard({ children }: { children: ReactElement }) {
  */
 function TeacherLoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [captchaId, setCaptchaId] = useState('');
   const [captchaImage, setCaptchaImage] = useState('');
   const [form] = Form.useForm<{ username: string; password: string; captcha: string }>();
+
+  useEffect(() => {
+    const username = searchParams.get('username');
+    if (username) {
+      form.setFieldValue('username', username);
+    }
+  }, [form, searchParams]);
 
   /**
    * 读取Captcha并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
@@ -647,6 +656,7 @@ function TeacherLayout() {
             <Route path="/problem-folders/:folderId" element={<TeacherProblemFolderPage />} />
             <Route path="/practices" element={<TeacherPracticeListPage />} />
             <Route path="/practices/new" element={<TeacherPracticeCreatePage />} />
+            <Route path="/practices/:practiceId/publish" element={<PracticePublishPage variant="teacher" />} />
             <Route path="/practices/:practiceId/edit" element={<TeacherPracticeCreatePage />} />
             <Route path="/practices/:practiceId/report" element={<TeacherPracticeReportPage />} />
             <Route path="/contests" element={<TeacherContestListPage />} />

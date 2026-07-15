@@ -9,5 +9,7 @@ import jakarta.validation.constraints.Size;
 public record ProblemFolderRequest(
     @NotBlank @Size(max = 100) String name,
     @Size(max = 500) String description,
-    Integer displayOrder
+    Integer displayOrder,
+    String accessScope,
+    Long majorId
 ) {}

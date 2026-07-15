@@ -14,6 +14,8 @@ public record PracticeCreateRequest(
     AudienceType audience,
     Long audienceId,
     String password,
-    @NotEmpty List<Long> problemIds
+    @NotEmpty List<Long> problemIds,
+    String accessScope,
+    Long majorId
 ) {
 }

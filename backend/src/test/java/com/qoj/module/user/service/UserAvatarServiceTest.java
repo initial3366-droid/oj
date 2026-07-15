@@ -14,6 +14,7 @@ import com.qoj.module.setting.service.SystemSettingService;
 import com.qoj.module.setting.vo.OssSettingsVO;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.UserMapper;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import com.qoj.module.user.vo.AvatarUploadVO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -33,6 +34,8 @@ class UserAvatarServiceTest {
     @Mock
     private UserMapper userMapper;
     @Mock
+    private TeacherMapper teacherMapper;
+    @Mock
     private SystemSettingService settingService;
     @Mock
     private TencentCosClientFactory cosClientFactory;
@@ -45,7 +48,7 @@ class UserAvatarServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new UserAvatarService(userMapper, settingService, cosClientFactory, redisTemplate);
+        service = new UserAvatarService(userMapper, teacherMapper, settingService, cosClientFactory, redisTemplate);
     }
 
     @Test

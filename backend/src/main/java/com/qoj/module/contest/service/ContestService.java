@@ -65,6 +65,8 @@ import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.module.user.mapper.UserMapper;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
 import java.math.BigDecimal;
@@ -109,6 +111,7 @@ public class ContestService {
     private final SubmissionCaseResultMapper submissionCaseResultMapper;
     private final UserMapper userMapper;
     private final AdminUserMapper adminUserMapper;
+    private final TeacherMapper teacherMapper;
     private final ClassRoomMapper classRoomMapper;
     private final ClassMemberMapper classMemberMapper;
     private final StringRedisTemplate redisTemplate;
@@ -132,6 +135,7 @@ public class ContestService {
         SubmissionCaseResultMapper submissionCaseResultMapper,
         UserMapper userMapper,
         AdminUserMapper adminUserMapper,
+        TeacherMapper teacherMapper,
         ClassRoomMapper classRoomMapper,
         ClassMemberMapper classMemberMapper,
         StringRedisTemplate redisTemplate,
@@ -154,6 +158,7 @@ public class ContestService {
         this.submissionCaseResultMapper = submissionCaseResultMapper;
         this.userMapper = userMapper;
         this.adminUserMapper = adminUserMapper;
+        this.teacherMapper = teacherMapper;
         this.classRoomMapper = classRoomMapper;
         this.classMemberMapper = classMemberMapper;
         this.redisTemplate = redisTemplate;
@@ -179,6 +184,13 @@ public class ContestService {
             wrapper.inSql("id", "SELECT DISTINCT contest_id FROM contest_audiences WHERE audience_type = 'ALL' AND audience_id = 0");
         } else if (user.adminAccount() || "SUPER_ADMIN".equals(user.role())) {
             // 管理员：看所有
+        } else if (!"USER".equals(user.accountType())) {
+            wrapper.and(visible -> visible
+                .inSql("id", "SELECT DISTINCT contest_id FROM contest_audiences WHERE audience_type = 'ALL' AND audience_id = 0")
+                .or(owner -> owner
+                    .eq("owner_account_type", user.accountType())
+                    .eq("owner_id", user.id()))
+            );
         } else {
             // 普通用户：看自己有权访问的比赛
             List<Long> visibleContestIds = new ArrayList<>();
@@ -240,7 +252,7 @@ public class ContestService {
         QueryWrapper<Contest> wrapper = new QueryWrapper<>();
         wrapper.eq("is_deleted", false)
             .eq("owner_id", user.id())
-            .eq("owner_account_type", user.adminAccount() ? "ADMIN" : "USER")
+            .eq("owner_account_type", user.accountType())
             .orderByDesc("start_time");
         Page<Contest> result = contestMapper.selectPage(Page.of(page, pageSize), wrapper);
         return new PageResult<>(result.getTotal(), result.getRecords().stream().map(this::toVO).toList());
@@ -268,8 +280,7 @@ public class ContestService {
                 throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
             }
             boolean isOwner = contest.ownerId.equals(user.id())
-                && ((user.adminAccount() && "ADMIN".equals(contest.ownerAccountType))
-                    || (!user.adminAccount() && "USER".equals(contest.ownerAccountType)));
+                && user.accountType().equals(contest.ownerAccountType);
             if (!"SUPER_ADMIN".equals(user.role()) && !isOwner) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
@@ -311,8 +322,10 @@ public class ContestService {
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权查看比赛题目");
         }
 
-        // 检查用户是否有权访问该比赛（非 ALL 类型需要报名）
-        if (!AudienceType.ALL.name().equals(contest.audience)) {
+        // 比赛期间非公开比赛需要先报名；赛后开放题目时只校验比赛开放范围。
+        boolean afterEndViewingEnabled = isRegistrationClosed(contest)
+            && !Boolean.FALSE.equals(contest.allowAfterEndViewProblem);
+        if (!AudienceType.ALL.name().equals(contest.audience) && !afterEndViewingEnabled) {
             if (user != null && !contestAccessPolicy.can(user, com.qoj.security.policy.Permission.UPDATE, contest)) {
                 ContestRegistration registration = registrationMapper.selectOne(
                     new QueryWrapper<ContestRegistration>()
@@ -368,7 +381,7 @@ public class ContestService {
         ensureJudgeBackendConfigured(judgeBackend);
         contest.judgeMode = judgeBackend.name();
         contest.ownerId = authUser.id();
-        contest.ownerAccountType = authUser.adminAccount() ? "ADMIN" : "USER";
+        contest.ownerAccountType = authUser.accountType();
         AudienceType primaryAudience = requireSupportedAudience(request.audience());
         contest.audience = primaryAudience.name();
         contest.audienceId = AudienceType.ALL.equals(primaryAudience) ? 0L : request.audienceId();
@@ -576,11 +589,14 @@ public class ContestService {
             throw new BizException(404, "比赛不存在");
         }
         var user = CurrentUser.required();
-        if (user.adminAccount()) {
+        if (!"USER".equals(user.accountType())) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
-            throw new BizException(403, "后台账号不能报名比赛");
+            throw new BizException(403, "仅学生账号可以报名比赛");
+        }
+        if (isRegistrationClosed(contest)) {
+            throw new BizException(403, "比赛已结束，报名已截止");
         }
         verifyRegistrationPassword(contest, request.password());
 
@@ -629,21 +645,25 @@ public class ContestService {
             throw new BizException(404, "比赛不存在");
         }
         var user = CurrentUser.required();
-        if (user.adminAccount()) {
+        if (!"USER".equals(user.accountType())) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
-            throw new BizException(403, "后台账号不能报名比赛");
+            throw new BizException(403, "仅学生账号可以报名比赛");
         }
         java.util.ArrayList<ContestRegistrationOptionVO> options = new java.util.ArrayList<>();
-        boolean contestVisible = isContestVisibleToUser(contest.id, user.id());
+        boolean contestVisible = isContestVisibleToStudent(contest.id, user.id());
+        boolean registrationOpen = !isRegistrationClosed(contest);
+        String disabledReason = !registrationOpen
+            ? "比赛已结束，报名已截止"
+            : (contestVisible ? null : "当前账号不在比赛开放范围内");
         options.add(new ContestRegistrationOptionVO(
             IdentityType.PERSONAL.name(),
             user.id(),
             user.displayName(),
-            contestVisible,
-            contestVisible ? null : "当前账号不在比赛开放范围内",
-            Boolean.TRUE.equals(contest.allowStarRegistration)
+            contestVisible && registrationOpen,
+            disabledReason,
+            registrationOpen && Boolean.TRUE.equals(contest.allowStarRegistration)
         ));
 
         return options;
@@ -1028,7 +1048,7 @@ public class ContestService {
                  */
                 throw new BizException(ErrorCode.NOT_FOUND.getCode(), "班级不存在");
             }
-            if (!"TEACHER".equals(user.role()) || !user.id().equals(classRoom.teacherId)) {
+            if (!user.teacherAccount() || !user.id().equals(classRoom.teacherId)) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */
@@ -1060,8 +1080,8 @@ public class ContestService {
         if (!contest.ownerId.equals(user.id())) {
             return false;
         }
-        String ownerType = contest.ownerAccountType == null ? "USER" : contest.ownerAccountType;
-        return user.adminAccount() ? "ADMIN".equals(ownerType) : "USER".equals(ownerType);
+        String ownerType = contest.ownerAccountType == null ? "UNKNOWN" : contest.ownerAccountType;
+        return user.accountType().equals(ownerType);
     }
 
     private RegistrationIdentity resolveRegistrationIdentity(
@@ -1072,7 +1092,7 @@ public class ContestService {
     ) {
         IdentityType type = requestedType == null ? IdentityType.PERSONAL : requestedType;
         if (type == IdentityType.PERSONAL) {
-            if (!isContestVisibleToUser(contest.id, userId)) {
+            if (!isContestVisibleToStudent(contest.id, userId)) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */
@@ -1100,13 +1120,13 @@ public class ContestService {
         if (audienceAllows(contest.id, AudienceType.ALL, 0L)) {
             return true;
         }
-        if (user == null || user.adminAccount() || user.id() == null) {
+        if (user == null || !"USER".equals(user.accountType()) || user.id() == null) {
             return false;
         }
         /**
          * 判断比赛VisibleTo用户是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
-        return isContestVisibleToUser(contest.id, user.id());
+        return isContestVisibleToStudent(contest.id, user.id());
     }
 
     private boolean canCurrentUserViewContestProblemDetail(AuthUser user, Contest contest) {
@@ -1129,7 +1149,10 @@ public class ContestService {
         if (audienceAllows(contest.id, AudienceType.ALL, 0L)) {
             return true;
         }
-        return user != null && !user.adminAccount() && user.id() != null && isContestVisibleToUser(contest.id, user.id());
+        return user != null
+            && "USER".equals(user.accountType())
+            && user.id() != null
+            && isContestVisibleToStudent(contest.id, user.id());
     }
 
     private boolean isContestOwnerOrSuperAdmin(Contest contest, AuthUser user) {
@@ -1142,13 +1165,12 @@ public class ContestService {
         if (contest.ownerId == null) {
             return false;
         }
-        String ownerType = contest.ownerAccountType == null ? "USER" : contest.ownerAccountType;
+        String ownerType = contest.ownerAccountType == null ? "UNKNOWN" : contest.ownerAccountType;
         return contest.ownerId.equals(user.id())
-            && ((user.adminAccount() && "ADMIN".equals(ownerType))
-                || (!user.adminAccount() && "USER".equals(ownerType)));
+            && user.accountType().equals(ownerType);
     }
 
-    private boolean isContestVisibleToUser(Long contestId, Long userId) {
+    private boolean isContestVisibleToStudent(Long contestId, Long userId) {
         if (audienceAllows(contestId, AudienceType.ALL, 0L)) {
             return true;
         }
@@ -2012,6 +2034,12 @@ public class ContestService {
         return calculateStatus(contest.startTime, contest.endTime);
     }
 
+    private boolean isRegistrationClosed(Contest contest) {
+        return contest != null
+            && contest.endTime != null
+            && !LocalDateTime.now().isBefore(contest.endTime);
+    }
+
     private Integer durationMinutes(Integer durationMinutes, LocalDateTime startTime, LocalDateTime endTime) {
         if (durationMinutes != null) {
             return durationMinutes;
@@ -2138,6 +2166,10 @@ public class ContestService {
             AdminUser adminUser = adminUserMapper.selectById(ownerId);
             return adminUser == null ? String.valueOf(ownerId) : adminUser.displayName;
         }
+        if ("TEACHER".equals(ownerAccountType)) {
+            Teacher teacher = teacherMapper.selectById(ownerId);
+            return teacher == null ? String.valueOf(ownerId) : teacher.displayName;
+        }
         User user = userMapper.selectById(ownerId);
         if (user != null) {
             return user.displayName;
@@ -2159,7 +2191,7 @@ public class ContestService {
 
     private String contestDraftKey() {
         var user = CurrentUser.required();
-        return RedisKeys.contestDraft(user.adminAccount() ? "admin" : "user", user.id());
+        return RedisKeys.contestDraft(user.accountType().toLowerCase(java.util.Locale.ROOT), user.id());
     }
 
     /**

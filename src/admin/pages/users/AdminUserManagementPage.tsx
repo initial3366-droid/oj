@@ -107,7 +107,6 @@ function dash(value: unknown) {
 function roleText(role?: string | null) {
   const map: Record<string, string> = {
     SUPER_ADMIN: '系统管理员',
-    TEACHER: '教师',
     STUDENT: '学生',
     GUEST: '访客',
   };
@@ -445,7 +444,6 @@ export function AdminUserManagementPage() {
       render: (role: string) => {
         const colorMap: Record<string, string> = {
           SUPER_ADMIN: 'red',
-          TEACHER: 'blue',
           STUDENT: 'green',
           GUEST: 'gray',
         };

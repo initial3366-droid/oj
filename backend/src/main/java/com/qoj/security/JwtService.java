@@ -80,7 +80,7 @@ public class JwtService {
             .claim("displayName", user.displayName())
             .claim("role", user.role())
             .claim("typ", tokenType)
-            .claim("accountType", user.adminAccount() ? "ADMIN" : "USER")
+            .claim("accountType", user.accountType())
             .claim("userId", user.id())
             .issuedAt(Date.from(now))
             .expiration(Date.from(now.plusSeconds(ttlSeconds)))

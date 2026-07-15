@@ -23,12 +23,11 @@ import com.qoj.module.practice.vo.PracticeReportVO;
 import com.qoj.module.submission.service.SubmissionExportService;
 import com.qoj.module.submission.service.SubmissionService;
 import com.qoj.module.submission.vo.AdminSubmissionVO;
-import com.qoj.module.user.entity.User;
-import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.module.user.service.UserAvatarService;
+import com.qoj.module.user.entity.User;
 import com.qoj.module.user.vo.AvatarUploadVO;
 import com.qoj.module.user.vo.UserVO;
-import com.qoj.module.user.vo.UserMeVO;
+import com.qoj.module.teacher.vo.TeacherMeVO;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
 import jakarta.validation.Valid;
@@ -62,7 +61,6 @@ public class TeacherController {
     private final ClassRoomService classRoomService;
     private final SubmissionService submissionService;
     private final PracticeService practiceService;
-    private final UserMapper userMapper;
     private final SubmissionExportService submissionExportService;
     private final StudentImportFileService studentImportFileService;
     private final AdminDashboardService adminDashboardService;
@@ -76,7 +74,6 @@ public class TeacherController {
         ClassRoomService classRoomService,
         SubmissionService submissionService,
         PracticeService practiceService,
-        UserMapper userMapper,
         SubmissionExportService submissionExportService,
         StudentImportFileService studentImportFileService,
         AdminDashboardService adminDashboardService,
@@ -86,7 +83,6 @@ public class TeacherController {
         this.classRoomService = classRoomService;
         this.submissionService = submissionService;
         this.practiceService = practiceService;
-        this.userMapper = userMapper;
         this.submissionExportService = submissionExportService;
         this.studentImportFileService = studentImportFileService;
         this.adminDashboardService = adminDashboardService;
@@ -94,8 +90,8 @@ public class TeacherController {
     }
 
     @GetMapping("/me")
-    public ApiResponse<UserMeVO> me() {
-        return ApiResponse.ok(authService.me());
+    public ApiResponse<TeacherMeVO> me() {
+        return ApiResponse.ok(authService.teacherMe());
     }
 
     @GetMapping("/dashboard")
@@ -108,22 +104,13 @@ public class TeacherController {
      */
     @PutMapping("/me/profile")
     public ApiResponse<Void> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
-        AuthUser authUser = CurrentUser.required();
-        User user = authUser.user();
-        if (request.displayName() == null || request.displayName().trim().isEmpty()) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "姓名不能为空");
-        }
-        user.displayName = request.displayName().trim();
-        userMapper.updateById(user);
+        authService.updateTeacherProfile(request);
         return ApiResponse.ok();
     }
 
     @PostMapping(value = "/me/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<AvatarUploadVO> updateMyAvatar(@RequestParam("file") MultipartFile file) {
-        return ApiResponse.ok(userAvatarService.updateUserAvatar(CurrentUser.required().user(), file));
+        return ApiResponse.ok(userAvatarService.updateTeacherAvatar(CurrentUser.required().teacher(), file));
     }
 
     /**
@@ -131,7 +118,7 @@ public class TeacherController {
      */
     @PutMapping("/me/password")
     public ApiResponse<Void> updatePassword(@Valid @RequestBody UpdatePasswordRequest request) {
-        authService.updatePassword(request);
+        authService.updateTeacherPassword(request);
         return ApiResponse.ok();
     }
 

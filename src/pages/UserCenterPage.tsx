@@ -574,7 +574,13 @@ export function UserCenterPage() {
       title: '操作',
       width: 120,
       render: (_value: unknown, record: Practice) => (
-        <Button size="small" type="primary" onClick={() => navigate(`/practice/${record.id}`)}>
+        <Button
+          className="uc-practice-view-button"
+          size="small"
+          type="primary"
+          theme="solid"
+          onClick={() => navigate(`/practice/${record.id}`)}
+        >
           查看
         </Button>
       ),
@@ -604,7 +610,14 @@ export function UserCenterPage() {
                   style={{ display: 'none' }}
                   onChange={handleAvatarFileChange}
                 />
-                <Button size="small" loading={avatarUploading} onClick={() => avatarInputRef.current?.click()}>
+                <Button
+                  className="uc-avatar-button"
+                  size="small"
+                  type="primary"
+                  theme="solid"
+                  loading={avatarUploading}
+                  onClick={() => avatarInputRef.current?.click()}
+                >
                   修改头像
                 </Button>
               </div>
@@ -749,7 +762,7 @@ export function UserCenterPage() {
                 </div>
               </div>
             </TabPane>
-          ) : user.role !== 'TEACHER' ? (
+          ) : (
             <TabPane tab="加入班级" itemKey="join-class">
               <div className="uc-form-section">
                 <div className="uc-form-title">发送入班申请</div>
@@ -786,7 +799,7 @@ export function UserCenterPage() {
                 </div>
               </div>
             </TabPane>
-          ) : null}
+          )}
           <TabPane tab="设置" itemKey="settings">
             <div className="uc-settings">
               <div className="uc-settings-section">

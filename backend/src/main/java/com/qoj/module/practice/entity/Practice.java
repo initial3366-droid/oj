@@ -15,6 +15,9 @@ public class Practice {
     public String title;
     public String description;
     public Long ownerId;
+    public String ownerAccountType;
+    public String accessScope;
+    public Long majorId;
     public String audience;
     public Long audienceId;
     public String passwordHash;

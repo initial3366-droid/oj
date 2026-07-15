@@ -3,6 +3,7 @@ package com.qoj.security;
 import com.qoj.common.exception.BizException;
 import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
+import com.qoj.module.teacher.entity.Teacher;
 import java.util.Collection;
 import java.util.List;
 import org.springframework.security.core.GrantedAuthority;
@@ -15,12 +16,14 @@ import org.springframework.security.core.userdetails.UserDetails;
 public class AuthUser implements UserDetails {
     private final User user;
     private final AdminUser adminUser;
+    private final Teacher teacher;
     private final Long id;
     private final String username;
     private final String passwordHash;
     private final String role;
     private final String displayName;
     private final boolean adminAccount;
+    private final String accountType;
 
     /**
      * 构造 认证用户 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断。
@@ -28,12 +31,14 @@ public class AuthUser implements UserDetails {
     public AuthUser(User user) {
         this.user = user;
         this.adminUser = null;
+        this.teacher = null;
         this.id = user.id;
         this.username = user.username;
         this.passwordHash = user.passwordHash;
         this.role = user.role;
         this.displayName = user.displayName;
         this.adminAccount = false;
+        this.accountType = "USER";
     }
 
     /**
@@ -42,12 +47,27 @@ public class AuthUser implements UserDetails {
     public AuthUser(AdminUser adminUser) {
         this.user = null;
         this.adminUser = adminUser;
+        this.teacher = null;
         this.id = adminUser.id;
         this.username = adminUser.username;
         this.passwordHash = adminUser.passwordHash;
         this.role = adminUser.role;
         this.displayName = adminUser.displayName;
         this.adminAccount = true;
+        this.accountType = "ADMIN";
+    }
+
+    public AuthUser(Teacher teacher) {
+        this.user = null;
+        this.adminUser = null;
+        this.teacher = teacher;
+        this.id = teacher.id;
+        this.username = teacher.username;
+        this.passwordHash = teacher.passwordHash;
+        this.role = "TEACHER";
+        this.displayName = teacher.displayName;
+        this.adminAccount = false;
+        this.accountType = "TEACHER";
     }
 
     /**
@@ -91,11 +111,26 @@ public class AuthUser implements UserDetails {
         return adminUser;
     }
 
+    public Teacher teacher() {
+        if (teacher == null) {
+            throw new BizException(403, "当前账号不是教师账号");
+        }
+        return teacher;
+    }
+
     /**
      * 封装管理员Account相关逻辑。直接返回当前实例保存的管理员Account，不产生额外的数据写入。
      */
     public boolean adminAccount() {
         return adminAccount;
+    }
+
+    public boolean teacherAccount() {
+        return "TEACHER".equals(accountType);
+    }
+
+    public String accountType() {
+        return accountType;
     }
 
     /**

@@ -1,6 +1,8 @@
 package com.qoj.security.policy;
 
 import com.qoj.module.submission.entity.Submission;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.security.AuthUser;
 import com.qoj.security.audit.AuditLogger;
@@ -29,7 +31,7 @@ class SubmissionAccessPolicyTest {
 
     // Helper methods
     private AuthUser createSuperAdmin() {
-        User user = new User();
+        AdminUser user = new AdminUser();
         user.id = 1L;
         user.username = "admin";
         user.role = "SUPER_ADMIN";
@@ -45,12 +47,12 @@ class SubmissionAccessPolicyTest {
      * 创建或提交教师。调用前会结合当前登录身份执行权限判断。
      */
     private AuthUser createTeacher() {
-        User user = new User();
+        Teacher user = new Teacher();
         user.id = 2L;
         user.username = "teacher";
-        user.role = "TEACHER";
         user.displayName = "Teacher";
         user.passwordHash = "hash";
+        user.status = "ACTIVE";
         /**
          * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
          */
@@ -61,12 +63,12 @@ class SubmissionAccessPolicyTest {
      * 创建或提交Content管理员。调用前会结合当前登录身份执行权限判断。
      */
     private AuthUser createContentAdmin() {
-        User user = new User();
+        Teacher user = new Teacher();
         user.id = 3L;
         user.username = "teacher_content";
-        user.role = "TEACHER";
         user.displayName = "Teacher Content";
         user.passwordHash = "hash";
+        user.status = "ACTIVE";
         /**
          * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
          */

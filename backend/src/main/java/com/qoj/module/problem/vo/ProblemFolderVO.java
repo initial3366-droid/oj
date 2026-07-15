@@ -14,7 +14,14 @@ public record ProblemFolderVO(
     int problemCount,
     List<FolderProblemVO> problems,
     LocalDateTime createdAt,
-    LocalDateTime updatedAt
+    LocalDateTime updatedAt,
+    String ownerAccountType,
+    Long ownerId,
+    String accessScope,
+    Long majorId,
+    String majorName,
+    Boolean owner,
+    Boolean canEdit
 ) {
     /**
      * 文件夹题目响应视图模型。仅暴露调用方需要的字段，避免直接返回持久化实体。

@@ -1,5 +1,7 @@
 package com.qoj.security.policy;
 
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.security.AuthUser;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,7 +28,7 @@ class ScoreboardAccessPolicyTest {
 
     // Helper methods
     private AuthUser createSuperAdmin() {
-        User user = new User();
+        AdminUser user = new AdminUser();
         user.id = 1L;
         user.username = "admin";
         user.role = "SUPER_ADMIN";
@@ -42,12 +44,12 @@ class ScoreboardAccessPolicyTest {
      * 创建或提交教师。调用前会结合当前登录身份执行权限判断。
      */
     private AuthUser createTeacher(Long userId) {
-        User user = new User();
+        Teacher user = new Teacher();
         user.id = userId;
         user.username = "teacher" + userId;
-        user.role = "TEACHER";
         user.displayName = "Teacher " + userId;
         user.passwordHash = "hash";
+        user.status = "ACTIVE";
         /**
          * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
          */

@@ -46,21 +46,20 @@ body {
 
 .practice-pane-divider {
   position: relative;
-  background: transparent;
+  background: #fff;
 }
 
-.practice-pane-divider::after {
+.practice-pane-divider-handle {
   position: absolute;
   top: 48px;
   right: 0;
   bottom: 0;
   left: 0;
   background: #e2e8f0;
-  content: "";
   transition: background-color 0.15s ease;
 }
 
-.practice-pane-divider:hover::after {
+.practice-pane-divider-handle:hover {
   background: #3b82f6;
 }
 

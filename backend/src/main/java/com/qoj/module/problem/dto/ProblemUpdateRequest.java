@@ -23,6 +23,9 @@ public record ProblemUpdateRequest(
     List<String> tags,
     Long folderId,
     Boolean isPublic,
+    String accessScope,
+    Long majorId,
+    String studentPublishStatus,
     List<ProblemSampleCaseRequest> samples,
     String sampleCases
 ) {

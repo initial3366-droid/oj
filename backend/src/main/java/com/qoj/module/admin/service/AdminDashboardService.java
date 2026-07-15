@@ -15,6 +15,8 @@ import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.mapper.SubmissionMapper;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.UserMapper;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
 import java.time.LocalDate;
@@ -42,6 +44,7 @@ public class AdminDashboardService {
     private final ContestMapper contestMapper;
     private final JdbcTemplate jdbcTemplate;
     private final StringRedisTemplate redisTemplate;
+    private final TeacherMapper teacherMapper;
 
     /**
      * 构造 管理员仪表盘Service 实例并保存其必要依赖或初始状态。从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
@@ -52,7 +55,8 @@ public class AdminDashboardService {
         ProblemMapper problemMapper,
         ContestMapper contestMapper,
         JdbcTemplate jdbcTemplate,
-        StringRedisTemplate redisTemplate
+        StringRedisTemplate redisTemplate,
+        TeacherMapper teacherMapper
     ) {
         this.userMapper = userMapper;
         this.submissionMapper = submissionMapper;
@@ -60,6 +64,7 @@ public class AdminDashboardService {
         this.contestMapper = contestMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.redisTemplate = redisTemplate;
+        this.teacherMapper = teacherMapper;
     }
 
     public AdminDashboardVO dashboard() {
@@ -68,7 +73,8 @@ public class AdminDashboardService {
         LocalDateTime weekAgo = todayStart.minusDays(6);
         LocalDateTime now = LocalDateTime.now();
 
-        long userCount = userMapper.selectCount(new QueryWrapper<User>().in("role", activeFrontendRoles()));
+        long userCount = userMapper.selectCount(new QueryWrapper<User>().in("role", activeFrontendRoles()))
+            + teacherMapper.selectCount(new QueryWrapper<Teacher>().eq("status", "ACTIVE"));
         long problemCount = problemMapper.selectCount(new QueryWrapper<Problem>());
         long submissionCount = submissionMapper.selectCount(new QueryWrapper<Submission>());
         long todaySubmissions = submissionMapper.selectCount(
@@ -105,6 +111,7 @@ public class AdminDashboardService {
         for (Map<String, Object> row : userMapper.selectUserCountByRole()) {
             userByRole.put((String) row.get("role"), ((Number) row.get("count")).longValue());
         }
+        userByRole.put("TEACHER", teacherMapper.selectCount(new QueryWrapper<Teacher>().eq("status", "ACTIVE")));
 
         Map<Integer, Long> problemByDifficulty = new TreeMap<>();
         for (Map<String, Object> row : problemMapper.selectDifficultyDistribution()) {
@@ -242,13 +249,13 @@ public class AdminDashboardService {
         QueryWrapper<Contest> wrapper = new QueryWrapper<Contest>().eq("is_deleted", false);
         if (!"SUPER_ADMIN".equals(user.role())) {
             wrapper.eq("owner_id", user.id())
-                .eq("owner_account_type", user.adminAccount() ? "ADMIN" : "USER");
+                .eq("owner_account_type", user.accountType());
         }
         return wrapper;
     }
 
     private List<String> activeFrontendRoles() {
-        return List.of(UserRole.STUDENT.name(), UserRole.TEACHER.name(), UserRole.GUEST.name());
+        return List.of(UserRole.STUDENT.name(), UserRole.GUEST.name());
     }
 
     // ── Teacher-scoped dashboard ──
@@ -301,10 +308,10 @@ public class AdminDashboardService {
 
         // Contest count (owned by teacher)
         long contestCount = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM contests WHERE is_deleted = 0 AND owner_id = ? AND owner_account_type = 'USER'",
+            "SELECT COUNT(*) FROM contests WHERE is_deleted = 0 AND owner_id = ? AND owner_account_type = 'TEACHER'",
             Long.class, teacherId);
         long activeContestCount = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM contests WHERE is_deleted = 0 AND owner_id = ? AND owner_account_type = 'USER' AND start_time <= ? AND end_time >= ?",
+            "SELECT COUNT(*) FROM contests WHERE is_deleted = 0 AND owner_id = ? AND owner_account_type = 'TEACHER' AND start_time <= ? AND end_time >= ?",
             Long.class, teacherId, now, now);
 
         // TotalStats
@@ -325,7 +332,7 @@ public class AdminDashboardService {
 
         Map<String, Long> contestByType = new HashMap<>();
         for (Map<String, Object> row : jdbcTemplate.queryForList(
-            "SELECT type, COUNT(*) AS cnt FROM contests WHERE is_deleted = 0 AND owner_id = ? AND owner_account_type = 'USER' GROUP BY type",
+            "SELECT type, COUNT(*) AS cnt FROM contests WHERE is_deleted = 0 AND owner_id = ? AND owner_account_type = 'TEACHER' GROUP BY type",
             teacherId)) {
             contestByType.put((String) row.get("type"), ((Number) row.get("cnt")).longValue());
         }
@@ -418,7 +425,7 @@ public class AdminDashboardService {
         List<AdminDashboardContestVO> recentContests = contestMapper.selectPage(
             Page.of(1, 5),
             new QueryWrapper<Contest>().eq("is_deleted", false)
-                .eq("owner_id", teacherId).eq("owner_account_type", "USER")
+                .eq("owner_id", teacherId).eq("owner_account_type", "TEACHER")
                 .orderByDesc("start_time")
         ).getRecords().stream().map(contest -> {
             String status = "NOT_STARTED";

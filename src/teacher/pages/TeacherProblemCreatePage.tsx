@@ -15,7 +15,6 @@ import {
   Select,
   Space,
   Steps,
-  Switch,
   Tag,
   Upload,
 } from '@arco-design/web-react';
@@ -52,6 +51,8 @@ interface BasicFormData {
   difficulty?: number;
   folderId?: number;
   isPublic?: boolean;
+  accessScope?: 'ALL' | 'MAJOR' | 'PRIVATE';
+  studentPublishStatus?: 'DRAFT' | 'PUBLISHED';
   samples: SampleCase[];
 }
 
@@ -131,6 +132,8 @@ function normalizeBasicPayload(values: Partial<BasicFormData>, tags: string[]) {
     folderId: values.folderId || undefined,
     samples: normalizeSamples(values.samples),
     isPublic: values.isPublic !== false,
+    accessScope: values.accessScope || 'ALL',
+    studentPublishStatus: values.studentPublishStatus || 'PUBLISHED',
   };
 }
 
@@ -179,7 +182,7 @@ export function TeacherProblemCreatePage() {
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
-  const [folders, setFolders] = useState<Array<{ id: number; name: string }>>([]);
+  const [folders, setFolders] = useState<Array<{ id: number; name: string; canEdit: boolean }>>([]);
   const [codeModalVisible, setCodeModalVisible] = useState(false);
   const [statementModalVisible, setStatementModalVisible] = useState(false);
   const [inputFormatModalVisible, setInputFormatModalVisible] = useState(false);
@@ -194,8 +197,8 @@ export function TeacherProblemCreatePage() {
     } else {
       createDraft();
     }
-    teacherGet<Array<{ id: number; name: string }>>('/api/admin/v1/problem-folders')
-      .then((res) => setFolders(res))
+    teacherGet<Array<{ id: number; name: string; canEdit: boolean }>>('/api/admin/v1/problem-folders')
+      .then((res) => setFolders(res.filter((folder) => folder.canEdit)))
       .catch(() => {});
   }, [isEditMode, problemId]);
 
@@ -217,6 +220,8 @@ export function TeacherProblemCreatePage() {
         difficulty: result.difficulty ?? 1,
         folderId: result.folderId || undefined,
         isPublic: result.isPublic !== false,
+        accessScope: result.accessScope || 'PRIVATE',
+        studentPublishStatus: result.studentPublishStatus || (result.isPublic ? 'PUBLISHED' : 'DRAFT'),
         samples: result.samples || [],
       });
       setTags(result.tags || []);
@@ -505,7 +510,7 @@ export function TeacherProblemCreatePage() {
             wrapperCol={{ span: 18 }}
             labelAlign="left"
             requiredSymbol={false}
-            initialValues={{ timeLimit: 1000, memoryLimit: 256, isPublic: true, difficulty: 1, samples: [] }}
+            initialValues={{ timeLimit: 1000, memoryLimit: 256, isPublic: true, accessScope: 'ALL', studentPublishStatus: 'PUBLISHED', difficulty: 1, samples: [] }}
             style={{ maxWidth: '1200px', margin: '0 auto' }}
           >
             <FormItem label="题目名称" field="title" rules={[{ required: true, message: '请输入题目名称' }]}>
@@ -517,8 +522,18 @@ export function TeacherProblemCreatePage() {
             <FormItem label="内存限制" field="memoryLimit" rules={[{ required: true, message: '请输入内存限制' }]} extra="单位：兆字节(MB)">
               <InputNumber min={16} max={1024} style={{ width: '100%' }} />
             </FormItem>
-            <FormItem label="可见性" field="isPublic" triggerPropName="checked" extra="关闭后普通用户、前台题库、直接访问题目链接和普通提交接口都不可见。">
-              <Switch checkedText="公开" uncheckedText="隐藏" />
+            <FormItem label="教师开放范围" field="accessScope" rules={[{ required: true, message: '请选择开放范围' }]}>
+              <Select>
+                <Select.Option value="ALL">所有人</Select.Option>
+                <Select.Option value="MAJOR">本专业</Select.Option>
+                <Select.Option value="PRIVATE">私有</Select.Option>
+              </Select>
+            </FormItem>
+            <FormItem label="学生题库状态" field="studentPublishStatus" rules={[{ required: true, message: '请选择发布状态' }]}>
+              <Select>
+                <Select.Option value="PUBLISHED">已发布</Select.Option>
+                <Select.Option value="DRAFT">未发布</Select.Option>
+              </Select>
             </FormItem>
             <FormItem label="难度" field="difficulty" rules={[{ required: true, message: '请选择难度' }]}>
               <Select placeholder="请选择难度">

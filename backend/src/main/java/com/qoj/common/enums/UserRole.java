@@ -4,8 +4,6 @@ package com.qoj.common.enums;
  * 用户角色枚举。限定该领域允许出现的离散状态，避免在业务代码中传播无约束字符串。
  */
 public enum UserRole {
-    SUPER_ADMIN,
-    TEACHER,
     STUDENT,
     GUEST;
 
@@ -14,7 +12,6 @@ public enum UserRole {
      */
     public static boolean isActiveFrontendRole(String role) {
         return STUDENT.name().equals(role)
-            || TEACHER.name().equals(role)
             || GUEST.name().equals(role);
     }
 }

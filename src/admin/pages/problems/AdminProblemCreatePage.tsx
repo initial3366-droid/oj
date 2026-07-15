@@ -17,7 +17,6 @@ import {
   Upload,
   Popconfirm,
   Select,
-  Switch,
   Tag,
 } from '@arco-design/web-react';
 import { IconPlus, IconDelete, IconEdit, IconUpload } from '@arco-design/web-react/icon';
@@ -53,6 +52,9 @@ interface BasicFormData {
   difficulty?: number;
   folderId?: number;
   isPublic?: boolean;
+  accessScope?: 'ALL' | 'MAJOR' | 'PRIVATE';
+  majorId?: number;
+  studentPublishStatus?: 'DRAFT' | 'PUBLISHED';
   samples: SampleCase[];
 }
 
@@ -132,6 +134,9 @@ function normalizeBasicPayload(values: Partial<BasicFormData>, tags: string[]) {
     folderId: values.folderId || undefined,
     samples: normalizeSamples(values.samples),
     isPublic: values.isPublic !== false,
+    accessScope: values.accessScope || 'ALL',
+    majorId: values.majorId || undefined,
+    studentPublishStatus: values.studentPublishStatus || 'PUBLISHED',
   };
 }
 
@@ -185,6 +190,8 @@ export function AdminProblemCreatePage() {
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [folders, setFolders] = useState<Array<{ id: number; name: string }>>([]);
+  const [majors, setMajors] = useState<Array<{ id: number; code: string; name: string }>>([]);
+  const [accessScope, setAccessScope] = useState<'ALL' | 'MAJOR' | 'PRIVATE'>('ALL');
   const [importZipFile, setImportZipFile] = useState<File | null>(null);
   const [importZipVisible, setImportZipVisible] = useState(false);
 
@@ -199,6 +206,9 @@ export function AdminProblemCreatePage() {
     adminGet<{ id: number; name: string }[]>('/api/admin/v1/problem-folders')
       .then((res) => setFolders(res))
       .catch(() => {});
+    adminGet<Array<{ id: number; code: string; name: string }>>('/api/admin/v1/majors?activeOnly=true')
+      .then(setMajors)
+      .catch(() => setMajors([]));
   }, [isEditMode, problemId]);
 
   // 自动保存基本信息
@@ -241,8 +251,12 @@ export function AdminProblemCreatePage() {
         difficulty: result.difficulty ?? 1,
         folderId: result.folderId || undefined,
         isPublic: result.isPublic !== false,
+        accessScope: result.accessScope || 'PRIVATE',
+        majorId: result.majorId || undefined,
+        studentPublishStatus: result.studentPublishStatus || (result.isPublic ? 'PUBLISHED' : 'DRAFT'),
         samples: result.samples || [],
       });
+      setAccessScope(result.accessScope || 'PRIVATE');
       setTags(result.tags || []);
     } catch (error) {
       Message.error(error instanceof Error ? error.message : '加载题目失败');
@@ -591,6 +605,8 @@ export function AdminProblemCreatePage() {
               timeLimit: 1000,
               memoryLimit: 256,
               isPublic: true,
+              accessScope: 'ALL',
+              studentPublishStatus: 'PUBLISHED',
               difficulty: 1,
               samples: [],
             }}
@@ -622,13 +638,25 @@ export function AdminProblemCreatePage() {
             <InputNumber min={16} max={1024} style={{ width: '100%' }} />
           </FormItem>
 
-          <FormItem
-            label="可见性质"
-            field="isPublic"
-            triggerPropName="checked"
-            extra="关闭后普通用户、前台题库、直接访问题目链接和普通提交接口都不可见。"
-          >
-            <Switch checkedText="公开" uncheckedText="隐藏" />
+          <FormItem label="教师开放范围" field="accessScope" rules={[{ required: true, message: '请选择开放范围' }]}>
+            <Select onChange={(value) => setAccessScope(value as 'ALL' | 'MAJOR' | 'PRIVATE')}>
+              <Select.Option value="ALL">所有人</Select.Option>
+              <Select.Option value="MAJOR">本专业</Select.Option>
+              <Select.Option value="PRIVATE">私有</Select.Option>
+            </Select>
+          </FormItem>
+          {accessScope === 'MAJOR' && (
+            <FormItem label="所属专业" field="majorId" rules={[{ required: true, message: '请选择专业' }]}>
+              <Select placeholder="选择专业">
+                {majors.map((major) => <Select.Option key={major.id} value={major.id}>{major.name}（{major.code}）</Select.Option>)}
+              </Select>
+            </FormItem>
+          )}
+          <FormItem label="学生题库状态" field="studentPublishStatus" rules={[{ required: true, message: '请选择发布状态' }]}>
+            <Select>
+              <Select.Option value="PUBLISHED">已发布</Select.Option>
+              <Select.Option value="DRAFT">未发布</Select.Option>
+            </Select>
           </FormItem>
 
           <FormItem label="难度" field="difficulty" rules={[{ required: true, message: '请选择难度' }]}>

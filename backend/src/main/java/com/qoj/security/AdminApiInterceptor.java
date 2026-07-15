@@ -133,8 +133,8 @@ public class AdminApiInterceptor implements HandlerInterceptor {
             throw new BizException(ErrorCode.NOT_FOUND, "题目不存在");
         }
 
-        // 检查是否是题目创建者（管理员账号创建的题目）
-        return user.adminAccount() && problem.ownerId.equals(user.id());
+        String ownerAccountType = problem.ownerAccountType == null ? "UNKNOWN" : problem.ownerAccountType;
+        return user.accountType().equals(ownerAccountType) && problem.ownerId.equals(user.id());
     }
 
     private boolean checkContestOwnership(AuthUser user, Long contestId) {
@@ -147,11 +147,7 @@ public class AdminApiInterceptor implements HandlerInterceptor {
         }
 
         // 检查是否是比赛创建者
-        if ("ADMIN".equals(contest.ownerAccountType)) {
-            return contest.ownerId.equals(user.id()) && user.adminAccount();
-        } else {
-            return contest.ownerId.equals(user.id()) && !user.adminAccount();
-        }
+        return contest.ownerId.equals(user.id()) && user.accountType().equals(contest.ownerAccountType);
     }
 
     private boolean checkPracticeOwnership(AuthUser user, Long practiceId) {
@@ -164,6 +160,6 @@ public class AdminApiInterceptor implements HandlerInterceptor {
         }
 
         // 检查是否是练习创建者（管理员账号创建的练习）
-        return user.adminAccount() && practice.ownerId.equals(user.id());
+        return practice.ownerId.equals(user.id()) && user.accountType().equals(practice.ownerAccountType);
     }
 }

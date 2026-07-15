@@ -2,11 +2,12 @@
  * 练习Assignment页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
 import { Button, Card, Divider, Input, Table, Tag, Typography } from "@douyinfe/semi-ui";
-import { IconLock } from "@douyinfe/semi-icons";
+import { IconCode, IconLock } from "@douyinfe/semi-icons";
 import { FormEvent, useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { fetchPracticeDetail, type Practice } from "../data/apiClient";
 import { difficultyColor } from "../lib/format";
+import "./PracticeAssignmentPage.css";
 
 /**
  * 渲染练习Assignment页面，并协调其数据加载、状态和交互。
@@ -18,11 +19,14 @@ export function PracticeAssignmentPage() {
   const [practice, setPractice] = useState<Practice | null>(null);
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [problemPage, setProblemPage] = useState(1);
+  const [problemPageSize, setProblemPageSize] = useState(10);
 
   useEffect(() => {
     if (!numericPracticeId) {
       return;
     }
+    setProblemPage(1);
     let cancelled = false;
     fetchPracticeDetail(numericPracticeId)
       .then((data) => {
@@ -112,15 +116,15 @@ export function PracticeAssignmentPage() {
     {
       title: "题目",
       dataIndex: "title",
-      width: 300,
+      width: 360,
       render: (_: string, problem: Practice["problems"][number]) => (
-        <span style={{ fontWeight: 600, fontSize: 14 }}>{problem.title}</span>
+        <span className="practice-assignment-problem-title">{problem.title}</span>
       ),
     },
     {
       title: "标签",
       dataIndex: "tags",
-      width: 250,
+      width: 280,
       render: (_: unknown, problem: Practice["problems"][number]) => (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {(problem.tags ?? []).map((tag) => (
@@ -147,7 +151,7 @@ export function PracticeAssignmentPage() {
         <Button
           type="primary"
           theme="light"
-          size="small"
+          icon={<IconCode />}
           onClick={() => navigate(`/practice/problem/${problem.id}?practiceId=${practice.id}`)}
         >
           写代码
@@ -157,31 +161,46 @@ export function PracticeAssignmentPage() {
   ];
 
   return (
-    <div className="space-y-8">
-      <Card className="border border-slate-200 shadow-soft" bodyStyle={{ padding: 0 }}>
-        <div className="flex flex-wrap items-start justify-between gap-4 px-6 py-5">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-950">{practice.title}</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+    <div className="practice-assignment-page">
+      <header className="practice-assignment-header">
+        <div className="practice-assignment-heading-row">
+          <div className="practice-assignment-copy">
+            <Typography.Text type="tertiary" className="practice-assignment-eyebrow">题单</Typography.Text>
+            <h1 className="practice-assignment-title">{practice.title}</h1>
+            <p className="practice-assignment-description">
               {practice.description || "暂无说明"}
             </p>
           </div>
-          <div className="flex gap-3">
-            <Tag>{practice.problems.length} 题</Tag>
-            {practice.hasPassword ? <Tag color="orange">已验证</Tag> : null}
+          <div className="practice-assignment-meta">
+            <Tag color="blue" size="large">{practice.problems.length} 题</Tag>
+            {practice.hasPassword ? <Tag color="orange" size="large">已验证</Tag> : null}
           </div>
         </div>
-      </Card>
+      </header>
 
-      <Card className="border border-slate-200 shadow-soft" bodyStyle={{ padding: 0 }}>
+      <section className="practice-assignment-table-shell" aria-label="题单题目列表">
         <Table
+          className="practice-assignment-table"
           aria-label="题单题目"
           columns={problemColumns}
           dataSource={practice.problems}
           rowKey="id"
-          pagination={false}
+          pagination={{
+            position: "bottom",
+            currentPage: problemPage,
+            pageSize: problemPageSize,
+            total: practice.problems.length,
+            showSizeChanger: true,
+            pageSizeOpts: [10, 20, 50],
+            showTotal: true,
+            onPageChange: setProblemPage,
+            onPageSizeChange: (size) => {
+              setProblemPageSize(size);
+              setProblemPage(1);
+            },
+          }}
         />
-      </Card>
+      </section>
     </div>
   );
 }

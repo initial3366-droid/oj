@@ -8,6 +8,8 @@ import com.qoj.module.setting.vo.OssSettingsVO;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.module.user.vo.AvatarUploadVO;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import com.qcloud.cos.COSClient;
 import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
@@ -49,6 +51,7 @@ public class UserAvatarService {
     private static final long MAX_PIXELS = 12_000_000L;
 
     private final UserMapper userMapper;
+    private final TeacherMapper teacherMapper;
     private final SystemSettingService settingService;
     private final TencentCosClientFactory cosClientFactory;
     private final StringRedisTemplate redisTemplate;
@@ -58,11 +61,13 @@ public class UserAvatarService {
      */
     public UserAvatarService(
         UserMapper userMapper,
+        TeacherMapper teacherMapper,
         SystemSettingService settingService,
         TencentCosClientFactory cosClientFactory,
         StringRedisTemplate redisTemplate
     ) {
         this.userMapper = userMapper;
+        this.teacherMapper = teacherMapper;
         this.settingService = settingService;
         this.cosClientFactory = cosClientFactory;
         this.redisTemplate = redisTemplate;
@@ -103,7 +108,7 @@ public class UserAvatarService {
             throw new BizException(ErrorCode.BAD_REQUEST, "读取头像文件失败");
         }
         String contentType = validateFile(config, file, bytes);
-        String objectKey = buildObjectKey(config.dir, user.id, EXTENSIONS.get(contentType));
+        String objectKey = buildObjectKey(config.dir, "users", user.id, EXTENSIONS.get(contentType));
         putObject(config, objectKey, contentType, bytes);
         String avatarUrl = publicUrl(config.publicBaseUrl, objectKey);
         user.avatarUrl = avatarUrl;
@@ -116,6 +121,28 @@ public class UserAvatarService {
         /**
          * 封装头像UploadVO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
+        return new AvatarUploadVO(avatarUrl);
+    }
+
+    @Transactional
+    public AvatarUploadVO updateTeacherAvatar(Teacher teacher, MultipartFile file) {
+        if (teacher == null || teacher.id == null) {
+            throw new BizException(ErrorCode.NOT_FOUND.getCode(), "教师不存在");
+        }
+        OssSettingsVO config = settingService.getOssRuntimeSettings();
+        validateOssEnabled(config);
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "读取头像文件失败");
+        }
+        String contentType = validateFile(config, file, bytes);
+        String objectKey = buildObjectKey(config.dir, "teachers", teacher.id, EXTENSIONS.get(contentType));
+        putObject(config, objectKey, contentType, bytes);
+        String avatarUrl = publicUrl(config.publicBaseUrl, objectKey);
+        teacher.avatarUrl = avatarUrl;
+        teacherMapper.updateById(teacher);
         return new AvatarUploadVO(avatarUrl);
     }
 
@@ -255,7 +282,7 @@ public class UserAvatarService {
     /**
      * 构造或转换ObjectKey。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
-    private String buildObjectKey(String dir, long userId, String extension) {
+    private String buildObjectKey(String dir, String category, long accountId, String extension) {
         String normalizedDir = hasText(dir) ? dir.trim() : "avatars/";
         while (normalizedDir.startsWith("/")) {
             normalizedDir = normalizedDir.substring(1);
@@ -263,7 +290,7 @@ public class UserAvatarService {
         if (!normalizedDir.endsWith("/")) {
             normalizedDir += "/";
         }
-        return normalizedDir + "users/" + userId + "/" + UUID.randomUUID() + "." + extension;
+        return normalizedDir + category + "/" + accountId + "/" + UUID.randomUUID() + "." + extension;
     }
 
     /**

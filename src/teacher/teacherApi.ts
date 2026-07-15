@@ -22,7 +22,9 @@ export interface TeacherMe {
   avatarUrl?: string | null;
   role: 'TEACHER';
   email?: string | null;
-  studentNo?: string | null;
+  teacherNo?: string | null;
+  majorId?: number | null;
+  majorName?: string | null;
 }
 
 /**
@@ -318,7 +320,7 @@ export async function teacherLogout() {
  */
 export async function teacherLogin(username: string, password: string, captchaId: string, captcha: string) {
   const tokens = await request<{ accessToken: string; refreshToken: string }>(
-    '/api/v1/auth/login',
+    '/api/teacher/v1/auth/login',
     {
       method: 'POST',
       body: JSON.stringify({ username, password, captchaId, captcha }),

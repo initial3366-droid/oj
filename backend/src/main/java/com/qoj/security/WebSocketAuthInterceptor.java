@@ -4,6 +4,8 @@ import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.module.user.mapper.UserMapper;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import io.jsonwebtoken.Claims;
 import java.util.Map;
 import org.springframework.messaging.Message;
@@ -23,6 +25,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private final JwtService jwtService;
     private final UserMapper userMapper;
     private final AdminUserMapper adminUserMapper;
+    private final TeacherMapper teacherMapper;
 
     /**
      * 构造 WebSocket认证Interceptor 实例并保存其必要依赖或初始状态。从持久化层读取数据；在状态变化后发布异步消息。
@@ -30,11 +33,13 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     public WebSocketAuthInterceptor(
         JwtService jwtService,
         UserMapper userMapper,
-        AdminUserMapper adminUserMapper
+        AdminUserMapper adminUserMapper,
+        TeacherMapper teacherMapper
     ) {
         this.jwtService = jwtService;
         this.userMapper = userMapper;
         this.adminUserMapper = adminUserMapper;
+        this.teacherMapper = teacherMapper;
     }
 
     @Override
@@ -59,6 +64,13 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                             authUser = new AuthUser(adminUser);
                         } else {
                             return null; // 拒绝连接
+                        }
+                    } else if ("TEACHER".equals(accountType)) {
+                        Teacher teacher = teacherMapper.selectById(accountId);
+                        if (teacher != null && "ACTIVE".equals(teacher.status)) {
+                            authUser = new AuthUser(teacher);
+                        } else {
+                            return null;
                         }
                     } else {
                         User user = userMapper.selectById(accountId);

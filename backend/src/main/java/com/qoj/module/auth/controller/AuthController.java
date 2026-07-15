@@ -3,6 +3,7 @@ package com.qoj.module.auth.controller;
 import com.qoj.common.ApiResponse;
 import com.qoj.module.auth.dto.AuthTokenResponse;
 import com.qoj.module.auth.dto.BindEmailRequest;
+import com.qoj.module.auth.dto.FrontendLoginResponse;
 import com.qoj.module.auth.dto.LoginRequest;
 import com.qoj.module.auth.dto.LogoutRequest;
 import com.qoj.module.auth.dto.RefreshTokenRequest;
@@ -50,7 +51,7 @@ public class AuthController {
      * 封装登录相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
     @PostMapping("/login")
-    public ApiResponse<AuthTokenResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ApiResponse<FrontendLoginResponse> login(@Valid @RequestBody LoginRequest request) {
         // 教师端登录会携带验证码字段，前台用户登录不传
         if (request.captchaId() != null || request.captcha() != null) {
             captchaService.verifyCaptcha(request.captchaId(), request.captcha());

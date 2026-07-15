@@ -12,12 +12,14 @@ import org.springframework.stereotype.Component;
 public class PracticeAccessPolicy extends AccessPolicy<Practice> {
 
     private final AuditLogger auditLogger;
+    private final ResourceAccessService resourceAccessService;
 
     /**
      * 构造 练习访问Policy 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断。
      */
-    public PracticeAccessPolicy(AuditLogger auditLogger) {
+    public PracticeAccessPolicy(AuditLogger auditLogger, ResourceAccessService resourceAccessService) {
         this.auditLogger = auditLogger;
+        this.resourceAccessService = resourceAccessService;
     }
 
     /**
@@ -43,45 +45,9 @@ public class PracticeAccessPolicy extends AccessPolicy<Practice> {
      * 判断View是否成立。调用前会结合当前登录身份执行权限判断；在状态变化后发布异步消息。
      */
     private boolean canView(AuthUser user, Practice practice) {
-        // 未发布的练习只有创建者和超级管理员可见
-        if (!Boolean.TRUE.equals(practice.published)) {
-            if (user == null) {
-                /**
-                 * 校验AndLog。调用前会结合当前登录身份执行权限判断。
-                 */
-                return checkAndLog(user, Permission.VIEW, "Practice", practice.id, false,
-                    "练习未发布且未登录", auditLogger);
-            }
-            boolean allowed = isSuperAdmin(user) || (practice.ownerId != null && practice.ownerId.equals(user.id()));
-            if (!allowed) {
-                /**
-                 * 校验AndLog。调用前会结合当前登录身份执行权限判断。
-                 */
-                checkAndLog(user, Permission.VIEW, "Practice", practice.id, false,
-                    "练习未发布且非创建者", auditLogger);
-            }
-            return allowed;
-        }
-
-        // 已发布的练习
-        // 超级管理员可以查看所有练习
-        if (user != null && isSuperAdmin(user)) {
-            return true;
-        }
-
-        // 练习创建者可以查看自己的练习
-        if (user != null && practice.ownerId != null && practice.ownerId.equals(user.id())) {
-            return true;
-        }
-
-        // 如果是公开练习（audience = ALL），任何人可见
-        if ("ALL".equals(practice.audience)) {
-            return true;
-        }
-
-        // 非公开练习需要检查用户是否在目标受众中（在Service层判断）
-        return checkAndLog(user, Permission.VIEW, "Practice", practice.id, false,
-            "非公开练习且用户不在目标受众中", auditLogger);
+        boolean allowed = resourceAccessService.canAccessPractice(user, practice);
+        return allowed || checkAndLog(user, Permission.VIEW, "Practice", practice.id, false,
+            "题单专业权限不匹配", auditLogger);
     }
 
     /**
@@ -118,7 +84,7 @@ public class PracticeAccessPolicy extends AccessPolicy<Practice> {
         }
 
         // 练习创建者可以修改自己的练习
-        if (practice.ownerId != null && practice.ownerId.equals(user.id())) {
+        if (resourceAccessService.isOwner(user, practice.ownerAccountType, practice.ownerId)) {
             return true;
         }
 
@@ -152,7 +118,7 @@ public class PracticeAccessPolicy extends AccessPolicy<Practice> {
         }
 
         // 练习创建者可以删除自己的练习
-        if (practice.ownerId != null && practice.ownerId.equals(user.id())) {
+        if (resourceAccessService.isOwner(user, practice.ownerAccountType, practice.ownerId)) {
             /**
              * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
              */
@@ -189,16 +155,7 @@ public class PracticeAccessPolicy extends AccessPolicy<Practice> {
                 "后台账号不能提交", auditLogger);
         }
 
-        // 未发布的练习不能提交
-        if (!Boolean.TRUE.equals(practice.published)) {
-            /**
-             * 校验AndLog。调用前会结合当前登录身份执行权限判断。
-             */
-            return checkAndLog(user, Permission.SUBMIT, "Practice", practice.id, false,
-                "练习未发布", auditLogger);
-        }
-
-        // 其他用户需要先检查是否有查看权限
-        return canView(user, practice);
+        return checkAndLog(user, Permission.SUBMIT, "Practice", practice.id, false,
+            "题单模板不可直接提交，请使用发布实例", auditLogger);
     }
 }

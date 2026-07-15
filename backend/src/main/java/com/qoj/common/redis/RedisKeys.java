@@ -53,6 +53,10 @@ public final class RedisKeys {
         return "oj:online:" + userId;
     }
 
+    public static String onlineAccount(String accountType, long accountId) {
+        return "oj:online:" + accountType.toLowerCase() + ":" + accountId;
+    }
+
     /**
      * 处理online用户Pattern。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
@@ -65,6 +69,14 @@ public final class RedisKeys {
      */
     public static String problem(long problemId) {
         return "oj:problem:" + problemId;
+    }
+
+    public static String practicePublicationUnlock(long publicationId, long userId) {
+        return "oj:practice-publication:" + publicationId + ":unlock:" + userId;
+    }
+
+    public static String practicePublicationPasswordAttempts(long publicationId, long userId) {
+        return "oj:practice-publication:" + publicationId + ":password-attempts:" + userId;
     }
 
     /**
@@ -108,6 +120,10 @@ public final class RedisKeys {
      */
     public static String problemDraft(long userId, String draftId) {
         return "oj:problem:draft:" + userId + ":" + draftId;
+    }
+
+    public static String problemDraft(String accountType, long accountId, String draftId) {
+        return "oj:problem:draft:" + accountType.toLowerCase() + ":" + accountId + ":" + draftId;
     }
 
     /**

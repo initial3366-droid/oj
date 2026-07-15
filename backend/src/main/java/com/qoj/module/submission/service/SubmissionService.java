@@ -31,8 +31,6 @@ import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.mapper.ProblemTestCaseMapper;
-import com.qoj.module.classroom.entity.ClassMember;
-import com.qoj.module.classroom.mapper.ClassMemberMapper;
 import com.qoj.module.submission.dto.SandboxRunRequest;
 import com.qoj.module.submission.dto.SubmissionCreateRequest;
 import com.qoj.module.submission.entity.SandboxRun;
@@ -85,7 +83,6 @@ public class SubmissionService {
     private final ContestProblemMapper contestProblemMapper;
     private final com.qoj.module.contest.mapper.ContestMapper contestMapper;
     private final UserMapper userMapper;
-    private final ClassMemberMapper classMemberMapper;
     private final com.qoj.security.policy.SubmissionAccessPolicy submissionAccessPolicy;
     private final com.qoj.module.practice.mapper.PracticeMapper practiceMapper;
     private final com.qoj.module.practice.mapper.PracticeProblemMapper practiceProblemMapper;
@@ -101,6 +98,7 @@ public class SubmissionService {
     private final ContestXcpcioSubmissionSyncMapper xcpcioSubmissionSyncMapper;
     private final UserProblemStatusMapper userProblemStatusMapper;
     private final SystemSettingService settingService;
+    private final com.qoj.module.practice.service.PracticePublicationService practicePublicationService;
 
     public SubmissionService(
         SubmissionMapper submissionMapper,
@@ -118,7 +116,6 @@ public class SubmissionService {
         ContestProblemMapper contestProblemMapper,
         com.qoj.module.contest.mapper.ContestMapper contestMapper,
         UserMapper userMapper,
-        ClassMemberMapper classMemberMapper,
         com.qoj.security.policy.SubmissionAccessPolicy submissionAccessPolicy,
         com.qoj.module.practice.mapper.PracticeMapper practiceMapper,
         com.qoj.module.practice.mapper.PracticeProblemMapper practiceProblemMapper,
@@ -127,7 +124,8 @@ public class SubmissionService {
         com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy,
         ContestXcpcioSubmissionSyncMapper xcpcioSubmissionSyncMapper,
         UserProblemStatusMapper userProblemStatusMapper,
-        SystemSettingService settingService
+        SystemSettingService settingService,
+        com.qoj.module.practice.service.PracticePublicationService practicePublicationService
     ) {
         this.submissionMapper = submissionMapper;
         this.submissionCaseResultMapper = submissionCaseResultMapper;
@@ -144,7 +142,6 @@ public class SubmissionService {
         this.contestProblemMapper = contestProblemMapper;
         this.contestMapper = contestMapper;
         this.userMapper = userMapper;
-        this.classMemberMapper = classMemberMapper;
         this.submissionAccessPolicy = submissionAccessPolicy;
         this.practiceMapper = practiceMapper;
         this.practiceProblemMapper = practiceProblemMapper;
@@ -154,6 +151,7 @@ public class SubmissionService {
         this.xcpcioSubmissionSyncMapper = xcpcioSubmissionSyncMapper;
         this.userProblemStatusMapper = userProblemStatusMapper;
         this.settingService = settingService;
+        this.practicePublicationService = practicePublicationService;
     }
 
     /**
@@ -162,11 +160,11 @@ public class SubmissionService {
     @Transactional
     public SubmissionVO submit(SubmissionCreateRequest request, String ip) {
         AuthUser user = CurrentUser.required();
-        if (user.adminAccount()) {
+        if (!"USER".equals(user.accountType())) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
-            throw new BizException(403, "后台账号不能提交题目");
+            throw new BizException(403, "仅学生账号可以提交题目");
         }
         if (!goJudgeService.supportsLanguage(request.language())) {
             // Both go-judge and CCPCOJ expose the same fixed language allowlist.
@@ -246,7 +244,10 @@ public class SubmissionService {
         submission.contestId = request.contestId();
         submission.contestProblemId = contestProblem == null ? null : contestProblem.id;
         submission.participantId = contestParticipant == null ? null : contestParticipant.id;
-        submission.practiceId = request.practiceId();
+        submission.practicePublicationId = request.practiceId();
+        submission.practiceId = request.practiceId() == null
+            ? null
+            : practicePublicationService.sourcePracticeId(request.practiceId());
         submission.code = request.code();
         submission.codeLength = request.code() == null ? 0 : request.code().length();
         submission.language = request.language();
@@ -446,7 +447,7 @@ public class SubmissionService {
         LocalDateTime to
     ) {
         if (contestId != null) {
-            if ("TEACHER".equals(authUser.role())) {
+            if (authUser.teacherAccount()) {
                 applyVisibility(wrapper, authUser, userId);
             } else {
                 ensureCanManageContest(authUser, contestId);
@@ -818,7 +819,7 @@ public class SubmissionService {
     }
 
     private void ensureAdminCanViewSubmission(AuthUser authUser, Submission submission) {
-        if (authUser == null || (!authUser.adminAccount() && !"TEACHER".equals(authUser.role()))) {
+        if (authUser == null || (!authUser.adminAccount() && !authUser.teacherAccount())) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -861,17 +862,17 @@ public class SubmissionService {
                 )
                 .or()
                 .apply(
-                    "practice_id IN (SELECT id FROM practices WHERE owner_id = {0})",
+                    "practice_id IN (SELECT id FROM practices WHERE owner_id = {0} AND owner_account_type = 'ADMIN')",
                     authUser.id()
                 )
                 .or(item -> item
                     .isNull("contest_id")
-                    .apply("problem_id IN (SELECT id FROM problems WHERE owner_id = {0})", authUser.id())
+                    .apply("problem_id IN (SELECT id FROM problems WHERE owner_id = {0} AND owner_account_type = 'ADMIN')", authUser.id())
                 )
             );
             return;
         }
-        if ("TEACHER".equals(authUser.role())) {
+        if (authUser.teacherAccount()) {
             if (userId != null) {
                 wrapper.eq("user_id", userId);
             }
@@ -886,7 +887,7 @@ public class SubmissionService {
     }
 
     private void ensureCanManageContest(AuthUser authUser, Long contestId) {
-        if (authUser == null || (!authUser.adminAccount() && !"TEACHER".equals(authUser.role()))) {
+        if (authUser == null || (!authUser.adminAccount() && !authUser.teacherAccount())) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -1203,78 +1204,19 @@ public class SubmissionService {
         if (contest == null || contest.ownerId == null) {
             return false;
         }
-        String ownerType = contest.ownerAccountType == null ? "USER" : contest.ownerAccountType;
+        String ownerType = contest.ownerAccountType == null ? "UNKNOWN" : contest.ownerAccountType;
         return contest.ownerId.equals(authUser.id())
-            && ((authUser.adminAccount() && "ADMIN".equals(ownerType))
-                || (!authUser.adminAccount() && "USER".equals(ownerType)));
+            && authUser.accountType().equals(ownerType);
     }
 
     /**
      * 验证 Practice 提交的合法性
      */
     private void validatePracticeSubmission(SubmissionCreateRequest request, AuthUser user) {
-        // 1. 验证 practice 是否存在
-        com.qoj.module.practice.entity.Practice practice = practiceMapper.selectById(request.practiceId());
-        if (practice == null) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(ErrorCode.NOT_FOUND, "练习不存在");
-        }
-
-        // 2. 验证 practice 是否已发布
-        if (!Boolean.TRUE.equals(practice.published)) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(ErrorCode.FORBIDDEN, "练习未发布");
-        }
-
-        // 3. 验证 audience 权限。PracticeAccessPolicy 对非公开题单会先拒绝，
-        // 班级题单需要在这里按成员关系放行。
-        if (!"ALL".equals(practice.audience)) {
-            validatePracticeAudience(practice, user);
-        }
-
-        // 4. 验证 problem 是否属于 practice
-        Long problemInPracticeCount = practiceProblemMapper.selectCount(
-            new QueryWrapper<com.qoj.module.practice.entity.PracticeProblem>()
-                .eq("practice_id", request.practiceId())
-                .eq("problem_id", request.problemId())
-        );
-        if (problemInPracticeCount == null || problemInPracticeCount == 0) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(ErrorCode.BAD_REQUEST, "该题目不属于该练习");
+        if (!"USER".equals(user.accountType())
+            || !practicePublicationService.canSubmit(request.practiceId(), user.id(), request.problemId())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "题单不可访问或题目已隐藏");
         }
     }
 
-    /**
-     * 验证 Practice 的 audience 权限
-     */
-    private void validatePracticeAudience(com.qoj.module.practice.entity.Practice practice, AuthUser user) {
-        // 超级管理员和创建者跳过检查
-        if ("SUPER_ADMIN".equals(user.role()) || practice.ownerId.equals(user.id())) {
-            return;
-        }
-
-        if ("CLASS".equals(practice.audience) && practice.audienceId != null) {
-            User entity = userMapper.selectById(user.id());
-            if (entity != null && practice.audienceId.equals(entity.classId)) {
-                return;
-            }
-            Long memberCount = classMemberMapper.selectCount(
-                new QueryWrapper<ClassMember>()
-                    .eq("class_id", practice.audienceId)
-                    .eq("user_id", user.id())
-            );
-            if (memberCount == null || memberCount == 0) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(ErrorCode.FORBIDDEN, "该题单仅限指定班级成员");
-            }
-        }
-    }
 }

@@ -24,7 +24,14 @@ public class Problem {
     public String tags;
     public Long folderId;
     public Long ownerId;
+    public String ownerAccountType;
+    public String accessScope;
+    public Long majorId;
     public Boolean isPublic;
+    public String studentPublishStatus;
+    public String publishedByAccountType;
+    public Long publishedById;
+    public LocalDateTime publishedAt;
     public BigDecimal acRate;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;
