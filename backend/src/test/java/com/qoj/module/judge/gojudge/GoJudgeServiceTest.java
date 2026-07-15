@@ -98,6 +98,9 @@ class GoJudgeServiceTest {
 
         assertEquals(expectedStatus, result.status());
         assertEquals(expectedStatus, result.caseResults().get(0).status());
+        assertEquals("", result.caseResults().get(0).inputPreview());
+        assertEquals(actualOutput, result.caseResults().get(0).outputPreview());
+        assertEquals(expectedOutput, result.caseResults().get(0).expectedPreview());
         assertEquals(2, result.maxTimeMs());
         assertEquals(3, result.maxMemoryKb());
         /**

@@ -15,6 +15,7 @@ import {
   Space,
   Table,
   Tag,
+  Typography,
 } from '@arco-design/web-react';
 import { IconDelete, IconLeft, IconPlus, IconSave, IconSearch } from '@arco-design/web-react/icon';
 import {
@@ -290,32 +291,40 @@ export function TeacherProblemFolderPage() {
         }
       >
         <Table
+          className="teacher-problem-folder-table"
           rowKey="id"
           loading={loading}
           data={filteredFolders}
+          tableLayoutFixed
+          style={{ width: '100%' }}
           pagination={{ pageSize: 10, showTotal: true }}
           columns={[
-            { title: 'ID', dataIndex: 'id', width: 90, align: 'center' },
-            { title: '文件夹名称', dataIndex: 'name', width: 180, ellipsis: true },
+            { title: 'ID', dataIndex: 'id', width: 64, align: 'center' },
+            { title: '文件夹名称', dataIndex: 'name', width: 150, ellipsis: true },
             { title: '介绍', dataIndex: 'description', ellipsis: true, render: (value: string) => value || '暂无介绍' },
             {
               title: '题目数量',
               dataIndex: 'problemCount',
-              width: 120,
+              width: 100,
               align: 'center',
               render: (value: number) => <Tag color="blue">{value || 0} 道题目</Tag>,
             },
             {
-              title: '开放范围', dataIndex: 'accessScope', width: 120,
-              render: (_: unknown, item: ProblemFolder) => <Tag>{item.accessScope === 'ALL' ? '所有人' : item.accessScope === 'MAJOR' ? item.majorName || '本专业' : '私有'}</Tag>,
+              title: '开放范围', dataIndex: 'accessScope', width: 110,
+              render: (_: unknown, item: ProblemFolder) => <Tag style={{ display: 'block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.accessScope === 'ALL' ? '所有人' : item.accessScope === 'MAJOR' ? item.majorName || '本专业' : '私有'}</Tag>,
             },
-            { title: '创建时间', dataIndex: 'createdAt', width: 180, render: formatDate },
-            { title: '更新时间', dataIndex: 'updatedAt', width: 180, render: formatDate },
+            {
+              title: '创建时间', dataIndex: 'createdAt', width: 155,
+              render: (value: string) => <Typography.Text ellipsis style={{ display: 'block', overflow: 'hidden', whiteSpace: 'nowrap' }}>{formatDate(value)}</Typography.Text>,
+            },
+            {
+              title: '更新时间', dataIndex: 'updatedAt', width: 155,
+              render: (value: string) => <Typography.Text ellipsis style={{ display: 'block', overflow: 'hidden', whiteSpace: 'nowrap' }}>{formatDate(value)}</Typography.Text>,
+            },
             {
               title: '操作',
-              width: 150,
+              width: 130,
               align: 'center',
-              fixed: 'right',
               render: (_: unknown, folder: ProblemFolder) => (
                 <Space size={4}>
                   <Button type="text" size="small" onClick={() => navigate(`/teacher/problem-folders/${folder.id}`)}>

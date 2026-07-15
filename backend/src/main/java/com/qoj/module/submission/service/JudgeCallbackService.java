@@ -156,6 +156,10 @@ public class JudgeCallbackService {
             caseResult.maxScore = nonNegativeOrNull(item.maxScore);
             caseResult.timeUsed = positiveOrNull(item.timeUsed);
             caseResult.memoryUsed = positiveOrNull(item.memoryUsed);
+            caseResult.inputPreview = preview(item.inputPreview);
+            caseResult.outputPreview = preview(item.outputPreview);
+            caseResult.expectedPreview = preview(item.expectedPreview);
+            caseResult.judgeMessage = Utf8TextLimiter.fitMysqlText(item.judgeMessage);
             caseResult.createdAt = createdAt;
             caseResults.add(caseResult);
         }
@@ -240,6 +244,13 @@ public class JudgeCallbackService {
             }
         }
         return maximum;
+    }
+
+    private String preview(String value) {
+        if (value == null || value.length() <= 200) {
+            return value;
+        }
+        return value.substring(0, 200) + "...";
     }
 
     private Integer maxCaseMemoryUsed(List<JudgeResultCallbackRequest.CaseResultDTO> caseResults) {

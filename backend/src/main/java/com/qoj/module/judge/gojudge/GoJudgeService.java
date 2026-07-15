@@ -106,6 +106,9 @@ public class GoJudgeService implements JudgeService {
                     status,
                     execution.timeMs,
                     execution.memoryKb,
+                    truncate(testCase.input(), 200),
+                    truncate(execution.output, 200),
+                    truncate(testCase.expectedOutput(), 200),
                     status == SubmissionStatus.WA ? "Wrong Answer" : execution.message
                 ));
                 maxTimeMs = Math.max(maxTimeMs, execution.timeMs);

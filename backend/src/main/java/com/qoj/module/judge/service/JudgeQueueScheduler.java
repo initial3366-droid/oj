@@ -243,6 +243,10 @@ public class JudgeQueueScheduler {
             dto.score = item.status() == SubmissionStatus.AC ? maxScore : 0;
             dto.timeUsed = item.timeMs();
             dto.memoryUsed = item.memoryKb();
+            dto.inputPreview = item.inputPreview();
+            dto.outputPreview = item.outputPreview();
+            dto.expectedPreview = item.expectedPreview();
+            dto.judgeMessage = item.message();
             result.add(dto);
         }
         return result;

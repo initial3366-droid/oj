@@ -23,5 +23,9 @@ public class JudgeResultCallbackRequest {
         public Integer maxScore;
         public Integer timeUsed;
         public Integer memoryUsed;
+        public String inputPreview;
+        public String outputPreview;
+        public String expectedPreview;
+        public String judgeMessage;
     }
 }

@@ -115,6 +115,10 @@ class JudgeCallbackServiceTest {
         item.memoryUsed = 1024;
         item.score = 10;
         item.maxScore = 10;
+        item.inputPreview = "1 2";
+        item.outputPreview = "3";
+        item.expectedPreview = "4";
+        item.judgeMessage = "Wrong Answer";
         JudgeResultCallbackRequest request = new JudgeResultCallbackRequest();
         request.submissionId = 1L;
         request.status = "AC";
@@ -132,6 +136,10 @@ class JudgeCallbackServiceTest {
          */
         verify(caseResultMapper).insert(caseCaptor.capture());
         assertEquals("AC", caseCaptor.getValue().status);
+        assertEquals("1 2", caseCaptor.getValue().inputPreview);
+        assertEquals("3", caseCaptor.getValue().outputPreview);
+        assertEquals("4", caseCaptor.getValue().expectedPreview);
+        assertEquals("Wrong Answer", caseCaptor.getValue().judgeMessage);
         assertNotNull(caseCaptor.getValue().createdAt);
     }
 

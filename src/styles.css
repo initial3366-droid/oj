@@ -21,6 +21,10 @@ body {
   min-height: 100vh;
 }
 
+.teacher-problem-folder-table .arco-table-content-inner {
+  overflow-x: hidden;
+}
+
 /* 写代码页左右区域始终占满同一行，顶部工具栏保持等高。 */
 .practice-workspace {
   height: 100vh;

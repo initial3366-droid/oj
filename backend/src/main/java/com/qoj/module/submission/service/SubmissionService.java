@@ -23,7 +23,9 @@ import com.qoj.module.contest.entity.ContestRegistration;
 import com.qoj.module.contest.service.ContestService;
 import com.qoj.module.contest.entity.ContestProblem;
 import com.qoj.module.contest.entity.ContestParticipant;
+import com.qoj.module.contest.entity.ContestProblemTestCase;
 import com.qoj.module.contest.mapper.ContestProblemMapper;
+import com.qoj.module.contest.mapper.ContestProblemTestCaseMapper;
 import com.qoj.module.judge.JudgeService;
 import com.qoj.module.judge.gojudge.GoJudgeService;
 import com.qoj.module.practice.entity.Practice;
@@ -81,6 +83,7 @@ public class SubmissionService {
     private final UserScoreService userScoreService;
     private final ContestService contestService;
     private final ContestProblemMapper contestProblemMapper;
+    private final ContestProblemTestCaseMapper contestProblemTestCaseMapper;
     private final com.qoj.module.contest.mapper.ContestMapper contestMapper;
     private final UserMapper userMapper;
     private final com.qoj.security.policy.SubmissionAccessPolicy submissionAccessPolicy;
@@ -114,6 +117,7 @@ public class SubmissionService {
         UserScoreService userScoreService,
         ContestService contestService,
         ContestProblemMapper contestProblemMapper,
+        ContestProblemTestCaseMapper contestProblemTestCaseMapper,
         com.qoj.module.contest.mapper.ContestMapper contestMapper,
         UserMapper userMapper,
         com.qoj.security.policy.SubmissionAccessPolicy submissionAccessPolicy,
@@ -140,6 +144,7 @@ public class SubmissionService {
         this.userScoreService = userScoreService;
         this.contestService = contestService;
         this.contestProblemMapper = contestProblemMapper;
+        this.contestProblemTestCaseMapper = contestProblemTestCaseMapper;
         this.contestMapper = contestMapper;
         this.userMapper = userMapper;
         this.submissionAccessPolicy = submissionAccessPolicy;
@@ -925,7 +930,7 @@ public class SubmissionService {
                 .eq("submission_id", submission.id)
                 .eq("status", SubmissionStatus.AC.name())
         );
-        Map<Integer, ProblemTestCase> testCaseMap = includeCases ? buildTestCaseMap(submission.problemId) : Map.of();
+        Map<Integer, TestCasePreview> testCaseMap = includeCases ? buildTestCaseMap(submission) : Map.of();
         List<SubmissionCaseVO> cases = includeCases
             ? submissionCaseResultMapper
                 .selectList(new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id).orderByAsc("case_no"))
@@ -984,7 +989,7 @@ public class SubmissionService {
                 .eq("submission_id", submission.id)
                 .eq("status", SubmissionStatus.AC.name())
         );
-        Map<Integer, ProblemTestCase> testCaseMap = includeCases ? buildTestCaseMap(submission.problemId) : Map.of();
+        Map<Integer, TestCasePreview> testCaseMap = includeCases ? buildTestCaseMap(submission) : Map.of();
         List<SubmissionCaseVO> cases = includeCases
             ? submissionCaseResultMapper
                 .selectList(new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id).orderByAsc("case_no"))
@@ -1096,21 +1101,18 @@ public class SubmissionService {
         return problem == null ? String.valueOf(submission.problemId) : problem.title;
     }
 
-    private SubmissionCaseVO toCaseVO(SubmissionCaseResult item, Map<Integer, ProblemTestCase> testCaseMap) {
+    private SubmissionCaseVO toCaseVO(SubmissionCaseResult item, Map<Integer, TestCasePreview> testCaseMap) {
         String inputPreview = item.inputPreview;
         String outputPreview = item.outputPreview;
         String expectedPreview = item.expectedPreview;
         if (testCaseMap != null) {
-            ProblemTestCase tc = testCaseMap.get(item.caseNo);
+            TestCasePreview tc = testCaseMap.get(item.caseNo);
             if (tc != null) {
                 if (inputPreview == null || inputPreview.isBlank()) {
-                    inputPreview = preview(tc.inputData);
-                }
-                if (outputPreview == null || outputPreview.isBlank()) {
-                    outputPreview = preview(tc.outputData);
+                    inputPreview = preview(tc.input());
                 }
                 if (expectedPreview == null || expectedPreview.isBlank()) {
-                    expectedPreview = preview(tc.outputData);
+                    expectedPreview = preview(tc.expectedOutput());
                 }
             }
         }
@@ -1131,14 +1133,28 @@ public class SubmissionService {
         );
     }
 
-    private Map<Integer, ProblemTestCase> buildTestCaseMap(Long problemId) {
-        Map<Integer, ProblemTestCase> map = new HashMap<>();
-        if (problemId != null) {
-            for (ProblemTestCase tc : problemTestCaseMapper.selectByProblemId(problemId)) {
-                map.put(tc.caseNo, tc);
+    private Map<Integer, TestCasePreview> buildTestCaseMap(Submission submission) {
+        Map<Integer, TestCasePreview> map = new HashMap<>();
+        if (submission.contestProblemId != null) {
+            List<ContestProblemTestCase> cases = contestProblemTestCaseMapper.selectList(
+                new QueryWrapper<ContestProblemTestCase>()
+                    .eq("contest_problem_id", submission.contestProblemId)
+                    .eq("sample", false)
+            );
+            for (ContestProblemTestCase testCase : cases) {
+                map.put(testCase.caseNo, new TestCasePreview(testCase.inputData, testCase.outputData));
+            }
+            return map;
+        }
+        if (submission.problemId != null) {
+            for (ProblemTestCase testCase : problemTestCaseMapper.selectByProblemId(submission.problemId)) {
+                map.put(testCase.caseNo, new TestCasePreview(testCase.inputData, testCase.outputData));
             }
         }
         return map;
+    }
+
+    private record TestCasePreview(String input, String expectedOutput) {
     }
 
     private String preview(String text) {
