@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-QOJ is a campus Online Judge platform with a React frontend and Spring Boot 3 backend. The frontend uses React 19, Vite, Arco Design + Semi UI, and Tailwind CSS v4. The backend uses Spring Boot 3.3.5 with MyBatis-Plus, Spring Security, JWT authentication, Redis caching, and Flyway migrations. The system supports problems, contests (ACM/OI formats), practices, submissions, a WebSocket-based judging system with multiple sandbox backends (DOMjudge / Docker / unsafe-local), and an OpenAI-compatible AI assistant agent.
+QOJ is a campus Online Judge platform with a React frontend and Spring Boot 3 backend. The frontend uses React 19, Vite, Arco Design + Semi UI, and Tailwind CSS v4. The backend uses Spring Boot 3.3.5 with MyBatis-Plus, Spring Security, JWT authentication, Redis caching, and Flyway migrations. Ordinary submissions use go-judge, contest submissions use the CCPCOJ pull gateway, and the host never executes user code directly.
 
 ## Development Commands
 
@@ -44,8 +44,7 @@ Backend environment variables (see `.env` for development defaults):
 - `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USERNAME`, `MYSQL_PASSWORD`
 - `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
 - `JWT_SECRET` (minimum 64 bytes for HS512), `JWT_ACCESS_EXPIRE`, `JWT_REFRESH_EXPIRE`
-- `JUDGE_MODE` (`domjudge` | `docker` | `unsafe-local`), `ENABLE_UNSAFE_LOCAL_JUDGE` (never enable in production)
-- `DOMJUDGE_BASE_URL`, `DOMJUDGE_API_KEY`, `DOMJUDGE_DEFAULT_CONTEST_ID` (used only when `JUDGE_MODE=domjudge`)
+- `GO_JUDGE_BASE_URL`, `GO_JUDGE_AUTH_TOKEN` (environment-only; never expose to browsers)
 
 ### Running a single backend test
 
@@ -80,7 +79,7 @@ Java package: `com.qoj`. Modular monolith with 18 domain modules under `com.qoj.
 Each module follows a consistent layered pattern: `controller/` → `service/` → `mapper/` (MyBatis-Plus) with `dto/`, `entity/`, and `vo/` classes.
 
 Notable modules:
-- **`judge`**: Pluggable judging — `DomjudgeAdapter` (external DOMjudge API), `DockerJudgeService` (Docker sandbox, activated by `qoj.judge.mode=docker`), and an unsafe-local path. See **Judging** under Integration Points.
+- **`judge`**: `GoJudgeService` owns ordinary submissions and `CcpcojJudgeGatewayService` owns contest submissions. Their scopes are fixed to prevent duplicate claims.
 - **`agent`**: AI assistant (`AgentChatService`, `OpenAiCompatibleAgentClient` implementing `AgentClient`) calling an OpenAI-compatible endpoint via `java.net.http.HttpClient`; exposes chat + usage quota (`AgentQuotaVO`). Gated for users/admins via `AgentController` / `AdminAgentController`.
 - **`ws`**: STOMP WebSocket endpoints bridging judge/submission/contest events to the frontend.
 - **`xcpcio`**: Integration with the xcpcio toolchain (contest data sync / import).
@@ -127,10 +126,7 @@ JWT-based. Access token valid for 2 hours, refresh token for 7 days. Frontend st
 - **Monaco Editor**: Code editor for submissions integrated via `@monaco-editor/react`.
 - **KaTeX**: Math rendering for problem statements via `katex` library.
 - **WebSocket**: Real-time submission status updates use STOMP over WebSocket at `/ws`.
-- **Judging**: Three interchangeable judge backends selected by `qoj.judge.mode` (`JUDGE_MODE`):
-  - `domjudge` — delegates to an external DOMjudge API via `DomjudgeAdapter` (the default external judge).
-  - `docker` — `DockerJudgeService` runs user code in an isolated container (`--network none`, memory/cpu limits); enabled with `@ConditionalOnProperty(name="qoj.judge.mode", havingValue="docker")`.
-  - `unsafe-local` — executes user code directly on the host. **Never enable in production** (`ENABLE_UNSAFE_LOCAL_JUDGE`); dev-only.
+- **Judging**: `GoJudgeService` sends one fixed-whitelist command per request to an authenticated private go-judge endpoint. CCPCOJ workers claim contest tasks through `/ojtool/judge`; claim ownership gates source, hidden tests and callbacks.
 
 ## Development Notes
 

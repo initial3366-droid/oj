@@ -1,266 +1,268 @@
 @import "tailwindcss";
-@import "katex/dist/katex.min.css";
 
-@theme {
-  --font-sans: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
-  --color-primary: #2563eb;
-  --color-secondary: #0ea5e9;
-  --color-success: #10b981;
-}
-
-:root {
-  color-scheme: light;
-  background: #f8fafc;
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-}
-
+/* 全局样式 */
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  min-width: 320px;
-  margin: 0;
-  background:
-    linear-gradient(180deg, rgba(37, 99, 235, 0.05), rgba(248, 250, 252, 0) 280px),
-    #f8fafc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--semi-color-bg-1);
+  color: var(--semi-color-text-0);
 }
 
-button,
-a {
-  -webkit-tap-highlight-color: transparent;
+#root {
+  min-height: 100vh;
 }
 
-pre {
-  white-space: pre-wrap;
+.teacher-problem-folder-table .arco-table-content-inner {
+  overflow-x: hidden;
 }
 
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+/* 写代码页左右区域始终占满同一行，顶部工具栏保持等高。 */
+.practice-workspace {
+  height: 100vh;
+  height: 100dvh;
+  grid-template-rows: minmax(0, 1fr);
 }
 
-.layui-elem-field {
-  margin: 0;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  padding: 16px 18px 18px;
+.practice-workspace > .practice-pane {
+  height: 100%;
+  min-height: 0;
 }
 
-.layui-elem-field legend {
-  margin-left: 14px;
+.practice-pane-header {
+  height: 48px;
+  min-height: 48px;
+  max-height: 48px;
+}
+
+.practice-problem-header {
+  padding-right: 24px;
+  padding-left: 28px;
+}
+
+.practice-pane-divider {
+  position: relative;
+  background: #fff;
+}
+
+.practice-pane-divider-handle {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: #e2e8f0;
+  transition: background-color 0.15s ease;
+}
+
+.practice-pane-divider-handle:hover {
+  background: #3b82f6;
+}
+
+.practice-problem-scroll {
+  padding: 24px 28px 40px;
+}
+
+.practice-problem-content {
+  line-height: 2;
+}
+
+.practice-problem-content > * + * {
+  margin-top: 28px;
+}
+
+.practice-problem-heading {
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.practice-description-body {
+  padding-left: 28px;
+}
+
+.practice-io-block {
+  min-height: 0;
+  padding: 7px 24px;
+}
+
+.practice-judge-fieldset {
+  min-height: 0;
+  padding: 0 20px 12px;
+}
+
+.practice-judge-legend {
   padding: 0 8px;
-  color: #334155;
-  font-weight: 700;
+  line-height: 1.5;
+}
+
+.practice-judge-grid {
+  margin-top: 6px;
+  column-gap: 12px;
+  row-gap: 8px;
+}
+
+.practice-sample {
+  margin-top: 28px;
+}
+
+.practice-sample-label {
+  min-height: 40px;
+  padding: 8px 16px;
+  line-height: 24px;
+}
+
+.practice-sample-value {
+  min-height: 0;
+  padding: 8px 24px;
+  line-height: 1.75;
+}
+
+.practice-debug-body {
+  padding: 16px 20px 20px;
+}
+
+.practice-debug-textarea {
+  padding: 12px 18px !important;
 }
 
 .markdown-math {
+  min-width: 0;
   color: inherit;
+  overflow-wrap: anywhere;
 }
 
-.markdown-math > * + * {
-  margin-top: 0.85rem;
+.markdown-math > :first-child {
+  margin-top: 0;
+}
+
+.markdown-math > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-math p {
+  margin: 0 0 0.85em;
+  white-space: pre-wrap;
+}
+
+.markdown-math > :last-child {
+  margin-bottom: 0;
 }
 
 .markdown-math h1,
 .markdown-math h2,
 .markdown-math h3,
 .markdown-math h4 {
+  margin: 1.15em 0 0.55em;
   color: #1e293b;
   font-weight: 700;
   line-height: 1.45;
 }
 
-.markdown-math h1 {
-  font-size: 1.35rem;
-}
-
-.markdown-math h2 {
-  font-size: 1.2rem;
-}
-
-.markdown-math h3,
-.markdown-math h4 {
-  font-size: 1.05rem;
-}
-
-.markdown-math p {
-  white-space: pre-wrap;
-}
+.markdown-math h1 { font-size: 1.5em; }
+.markdown-math h2 { font-size: 1.3em; }
+.markdown-math h3 { font-size: 1.15em; }
+.markdown-math h4 { font-size: 1em; }
 
 .markdown-math ul,
 .markdown-math ol {
-  padding-left: 1.4rem;
+  margin: 0.65em 0 0.9em;
+  padding-left: 1.75em;
 }
 
-.markdown-math ul {
-  list-style: disc;
-}
+.markdown-math ul { list-style: disc; }
+.markdown-math ol { list-style: decimal; }
 
-.markdown-math ol {
-  list-style: decimal;
+.markdown-math li {
+  margin: 0.2em 0;
 }
 
 .markdown-math blockquote {
-  border-left: 4px solid #10b981;
+  margin: 0.85em 0;
+  padding: 0.65em 1em;
+  border-left: 4px solid #94a3b8;
   background: #f8fafc;
-  padding: 0.75rem 1rem;
   color: #475569;
 }
 
+.markdown-math blockquote p:last-child {
+  margin-bottom: 0;
+}
+
 .markdown-math code {
+  padding: 0.12em 0.35em;
   border-radius: 4px;
-  background: #e2e8f0;
-  padding: 0.1rem 0.35rem;
-  font-family: var(--font-mono);
+  background: #f1f5f9;
+  color: #be123c;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 0.92em;
 }
 
 .markdown-math__code {
   position: relative;
+  margin: 0.85em 0;
+  padding: 1em;
   overflow-x: auto;
-  border: 1px solid #1f2937;
-  border-radius: 6px;
-  background: #111827;
-  padding: 1rem;
-  color: #e5e7eb;
-}
-
-.markdown-math pre {
-  overflow-x: auto;
-  border: 1px solid #1f2937;
-  border-radius: 6px;
-  background: #111827;
-  padding: 1rem;
-  color: #e5e7eb;
-}
-
-.markdown-math table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 0.5rem 0;
-}
-
-.markdown-math th,
-.markdown-math td {
   border: 1px solid #e2e8f0;
-  padding: 8px 12px;
-  text-align: left;
-}
-
-.markdown-math th {
-  background: #f8fafc;
-  font-weight: 600;
-}
-
-.agent-markdown {
-  font-size: 0.94rem;
-  line-height: 1.7;
-}
-
-.agent-markdown > * + * {
-  margin-top: 0.6rem;
-}
-
-.markdown-math.agent-markdown {
-  color: #e5e7eb;
-}
-
-.markdown-math.agent-markdown > * + * {
-  margin-top: 0.6rem;
-}
-
-.markdown-math.agent-markdown h1,
-.markdown-math.agent-markdown h2,
-.markdown-math.agent-markdown h3,
-.markdown-math.agent-markdown h4 {
-  color: #f8fafc;
-}
-
-.markdown-math.agent-markdown p {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.markdown-math.agent-markdown ul,
-.markdown-math.agent-markdown ol {
-  padding-left: 1.25rem;
-}
-
-.markdown-math.agent-markdown blockquote {
-  border-left-color: #60a5fa;
-  background: rgba(255, 255, 255, 0.05);
-  color: #cbd5e1;
-}
-
-.markdown-math.agent-markdown code {
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(15, 23, 42, 0.92);
-  color: #e2e8f0;
-}
-
-.markdown-math.agent-markdown .katex {
-  color: inherit;
-}
-
-.markdown-math.agent-markdown .katex-display {
-  margin: 0.35rem 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-.markdown-math.agent-markdown pre,
-.markdown-math.agent-markdown .markdown-math__code {
-  border-color: #334155;
+  border-radius: 6px;
   background: #0f172a;
   color: #e2e8f0;
+  line-height: 1.65;
+  white-space: pre;
 }
 
-.markdown-math.agent-markdown table th,
-.markdown-math.agent-markdown table td {
-  border-color: #334155;
+.markdown-math__code code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
 }
 
-.markdown-math.agent-markdown table th {
-  background: rgba(255, 255, 255, 0.05);
+.markdown-math__code-lang {
+  display: block;
+  margin-bottom: 0.5em;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
-/* ===== Form alignment & required-symbol cleanup (applies to all panels) ===== */
-
-/* Hide all required asterisks across user / admin / teacher forms */
-.arco-form-item-required-symbol {
-  display: none !important;
+.markdown-math__display {
+  display: block;
+  max-width: 100%;
+  margin: 0.9em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
 }
 
-/* Normalize label alignment so label text and inputs line up horizontally.
-   - Horizontal forms: right-align labels to sit flush against the input column.
-   - Vertical forms: keep labels left-aligned above inputs. */
-.arco-form-item-label {
-  display: flex;
-  align-items: center;
+.markdown-math__inline {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: middle;
 }
 
-.arco-form-layout-horizontal .arco-form-item-label > label {
-  justify-content: flex-end;
-  text-align: right;
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
-.arco-form-layout-vertical .arco-form-item-label > label {
-  justify-content: flex-start;
-  text-align: left;
+::-webkit-scrollbar-track {
+  background: var(--semi-color-fill-0);
 }
 
-/* Ensure the control wrapper aligns to the same baseline as the label */
-.arco-form-item-wrapper-col {
-  display: flex;
-  align-items: center;
+::-webkit-scrollbar-thumb {
+  background: var(--semi-color-fill-2);
+  border-radius: 4px;
 }
 
-/* Keep label and control on the same row for horizontal layouts */
-.arco-form-layout-horizontal .arco-form-item-content {
-  display: flex;
-  align-items: center;
+::-webkit-scrollbar-thumb:hover {
+  background: var(--semi-color-text-3);
 }

@@ -2,6 +2,8 @@ package com.qoj.security.audit;
 
 import com.qoj.security.AuthUser;
 import com.qoj.security.policy.Permission;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,6 +19,9 @@ class AuditLoggerTest {
     @InjectMocks
     private AuditLogger auditLogger;
 
+    /**
+     * 封装testLog权限Denied相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     void testLogPermissionDenied() {
         // 创建测试用户
@@ -39,6 +44,9 @@ class AuditLoggerTest {
         // 实际验证需要查看日志文件
     }
 
+    /**
+     * 封装testLog权限DeniedAnonymous相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     void testLogPermissionDeniedAnonymous() {
         // 测试匿名用户的权限拒绝
@@ -51,9 +59,12 @@ class AuditLoggerTest {
         );
     }
 
+    /**
+     * 封装testLog权限Allowed相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     void testLogPermissionAllowed() {
-        User user = new User();
+        AdminUser user = new AdminUser();
         user.id = 1L;
         user.username = "admin";
         user.role = "SUPER_ADMIN";
@@ -69,12 +80,17 @@ class AuditLoggerTest {
         );
     }
 
+    /**
+     * 封装testLog权限Check相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     @Test
     void testLogPermissionCheck() {
-        User user = new User();
+        Teacher user = new Teacher();
         user.id = 789L;
         user.username = "teacher";
-        user.role = "TEACHER";
+        user.displayName = "Teacher";
+        user.passwordHash = "hash";
+        user.status = "ACTIVE";
         AuthUser authUser = new AuthUser(user);
 
         // 测试完整的权限检查日志

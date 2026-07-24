@@ -5,15 +5,26 @@ import com.qoj.security.AuthUser;
 import com.qoj.security.audit.AuditLogger;
 import org.springframework.stereotype.Component;
 
+/**
+ * 题目访问访问策略。根据当前身份、资源归属和操作类型统一作出权限判断。
+ */
 @Component
 public class ProblemAccessPolicy extends AccessPolicy<Problem> {
 
     private final AuditLogger auditLogger;
+    private final ResourceAccessService resourceAccessService;
 
-    public ProblemAccessPolicy(AuditLogger auditLogger) {
+    /**
+     * 构造 题目访问Policy 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断。
+     */
+    public ProblemAccessPolicy(AuditLogger auditLogger, ResourceAccessService resourceAccessService) {
         this.auditLogger = auditLogger;
+        this.resourceAccessService = resourceAccessService;
     }
 
+    /**
+     * 判断条件是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     @Override
     public boolean can(AuthUser user, Permission permission, Problem problem) {
         if (problem == null) {
@@ -30,14 +41,15 @@ public class ProblemAccessPolicy extends AccessPolicy<Problem> {
         };
     }
 
+    /**
+     * 判断View是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     private boolean canView(AuthUser user, Problem problem) {
-        // 公开题目任何人可见
-        if (Boolean.TRUE.equals(problem.isPublic)) {
-            return true;
-        }
-
-        // 未登录用户不能查看非公开题目
+        // 学生只能查看由教师或后台正式发布的题目。
         if (user == null) {
+            /**
+             * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+             */
             return checkAndLog(user, Permission.VIEW, "Problem", problem.id, false,
                 "未登录且题目非公开", auditLogger);
         }
@@ -47,15 +59,29 @@ public class ProblemAccessPolicy extends AccessPolicy<Problem> {
             return true;
         }
 
-        // 题目创建者可以查看自己的题目
-        if (problem.ownerId != null && problem.ownerId.equals(user.id())) {
+        if (user.teacherAccount() && resourceAccessService.canUseProblem(user, problem)) {
             return true;
         }
 
+        if ("USER".equals(user.accountType()) && "PUBLISHED".equals(problem.studentPublishStatus)) {
+            return true;
+        }
+
+        // 题目创建者可以查看自己的题目
+        if (isProblemOwner(problem, user)) {
+            return true;
+        }
+
+        /**
+         * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+         */
         return checkAndLog(user, Permission.VIEW, "Problem", problem.id, false,
             "非题目创建者且题目非公开", auditLogger);
     }
 
+    /**
+     * 判断Create是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     private boolean canCreate(AuthUser user) {
         if (user == null) {
             auditLogger.logPermissionDenied(user, Permission.CREATE, "Problem", null, "未登录");
@@ -69,8 +95,14 @@ public class ProblemAccessPolicy extends AccessPolicy<Problem> {
         return allowed;
     }
 
+    /**
+     * 判断Update是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     private boolean canUpdate(AuthUser user, Problem problem) {
         if (user == null) {
+            /**
+             * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+             */
             return checkAndLog(user, Permission.UPDATE, "Problem", problem.id, false,
                 "未登录", auditLogger);
         }
@@ -81,40 +113,64 @@ public class ProblemAccessPolicy extends AccessPolicy<Problem> {
         }
 
         // 题目创建者可以修改自己的题目
-        if (problem.ownerId != null && problem.ownerId.equals(user.id())) {
+        if (isProblemOwner(problem, user)) {
             return true;
         }
 
+        /**
+         * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+         */
         return checkAndLog(user, Permission.UPDATE, "Problem", problem.id, false,
             "非题目创建者", auditLogger);
     }
 
+    /**
+     * 判断Delete是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     private boolean canDelete(AuthUser user, Problem problem) {
         if (user == null) {
+            /**
+             * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
+             */
             return checkAndLogSensitive(user, Permission.DELETE, "Problem", problem.id, false,
                 "未登录", auditLogger);
         }
 
         // 超级管理员可以删除所有题目
         if (isSuperAdmin(user)) {
+            /**
+             * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
+             */
             checkAndLogSensitive(user, Permission.DELETE, "Problem", problem.id, true,
                 "超级管理员", auditLogger);
             return true;
         }
 
         // 题目创建者可以删除自己的题目
-        if (problem.ownerId != null && problem.ownerId.equals(user.id())) {
+        if (isProblemOwner(problem, user)) {
+            /**
+             * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
+             */
             checkAndLogSensitive(user, Permission.DELETE, "Problem", problem.id, true,
                 "题目创建者", auditLogger);
             return true;
         }
 
+        /**
+         * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
+         */
         return checkAndLogSensitive(user, Permission.DELETE, "Problem", problem.id, false,
             "非题目创建者", auditLogger);
     }
 
+    /**
+     * 判断ViewHidden测试点是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     private boolean canViewHiddenCase(AuthUser user, Problem problem) {
         if (user == null) {
+            /**
+             * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+             */
             return checkAndLog(user, Permission.VIEW_HIDDEN_CASE, "Problem", problem.id, false,
                 "未登录", auditLogger);
         }
@@ -125,11 +181,18 @@ public class ProblemAccessPolicy extends AccessPolicy<Problem> {
         }
 
         // 题目创建者可以查看自己题目的测试用例
-        if (problem.ownerId != null && problem.ownerId.equals(user.id())) {
+        if (isProblemOwner(problem, user)) {
             return true;
         }
 
+        /**
+         * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+         */
         return checkAndLog(user, Permission.VIEW_HIDDEN_CASE, "Problem", problem.id, false,
             "非题目创建者", auditLogger);
+    }
+
+    private boolean isProblemOwner(Problem problem, AuthUser user) {
+        return resourceAccessService.isOwner(user, problem.ownerAccountType, problem.ownerId);
     }
 }

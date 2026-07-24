@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.module.setting.entity.SystemSetting;
 import com.qoj.module.setting.mapper.SystemSettingMapper;
 import com.qoj.module.setting.vo.AgentSettingsVO;
+import com.qoj.module.setting.vo.CodeTemplateSettingsVO;
 import com.qoj.module.setting.vo.JudgeSettingsVO;
 import com.qoj.module.setting.vo.OssSettingsVO;
 import com.qoj.security.AuthUser;
@@ -19,13 +20,16 @@ import org.springframework.mock.env.MockEnvironment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.doReturn;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.anyString;
 
+/**
+ * System设置Service测试类。验证关键业务规则、异常边界及回归场景。
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SystemSettingService Tests")
 class SystemSettingServiceTest {
@@ -39,6 +43,9 @@ class SystemSettingServiceTest {
     private SystemSettingService settingService;
     private MockEnvironment environment;
 
+    /**
+     * 封装setUp相关逻辑。从持久化层读取数据。
+     */
     @BeforeEach
     void setUp() {
         environment = new MockEnvironment();
@@ -46,11 +53,17 @@ class SystemSettingServiceTest {
             settingMapper,
             adminUserMapper,
             passwordEncoder,
+            /**
+             * 封装ObjectMapper相关逻辑。从持久化层读取数据。
+             */
             new ObjectMapper(),
             environment
         );
     }
 
+    /**
+     * 读取AgentSettingsMissingRowShouldReturnDefaults并返回给调用方。从持久化层读取数据。
+     */
     @Test
     @DisplayName("Agent settings fall back to defaults when row is missing")
     void getAgentSettings_MissingRow_ShouldReturnDefaults() {
@@ -66,6 +79,9 @@ class SystemSettingServiceTest {
         assertEquals(12000, settings.maxCodeChars);
     }
 
+    /**
+     * 读取OssSettingsInvalidJsonShouldReturnDefaults并返回给调用方。从持久化层读取数据。
+     */
     @Test
     @DisplayName("OSS settings fall back to defaults when JSON is invalid")
     void getOssSettings_InvalidJson_ShouldReturnDefaults() {
@@ -87,66 +103,146 @@ class SystemSettingServiceTest {
         assertEquals(5, settings.maxSizeMb);
     }
 
+    /**
+     * 读取CodeTemplatesMissingRowShouldReturnDefaults并返回给调用方。从持久化层读取数据。
+     */
     @Test
-    @DisplayName("Judge settings fall back to database defaults and hide DOMjudge API key")
+    @DisplayName("Code templates fall back to the bundled language defaults")
+    void getCodeTemplateSettings_MissingRow_ShouldReturnDefaults() {
+        when(settingMapper.selectById("system.code_templates")).thenReturn(null);
+
+        CodeTemplateSettingsVO settings = settingService.getCodeTemplateSettings();
+
+        assertTrue(settings.c.contains("int main(void)"));
+        assertTrue(settings.cpp.contains("ios::sync_with_stdio"));
+        assertTrue(settings.python.contains("def solve"));
+        assertTrue(settings.java.contains("class Main"));
+        assertTrue(settings.csharp.contains("static class Program"));
+    }
+
+    /**
+     * 更新CodeTemplatesShouldPersistAllLanguages。调用前会结合当前登录身份执行权限判断；执行持久化写入。
+     */
+    @Test
+    @DisplayName("Code template updates persist every language in one setting")
+    void updateCodeTemplateSettings_ShouldPersistAllLanguages() {
+        when(settingMapper.selectById("system.code_templates")).thenReturn(null);
+        CodeTemplateSettingsVO request = new CodeTemplateSettingsVO();
+        request.c = "int main(void) { return 0; }";
+        request.cpp = "int main() { return 0; }";
+        request.python = "print('ok')";
+        request.java = "class Main {}";
+        request.csharp = "class Program {}";
+
+        settingService.updateCodeTemplateSettings(request, adminAuthUser());
+
+        verify(settingMapper).insert(org.mockito.ArgumentMatchers.<SystemSetting>argThat(setting ->
+            "system.code_templates".equals(setting.settingKey)
+                && setting.settingValue.contains("int main(void)")
+                && setting.settingValue.contains("class Program")
+        ));
+    }
+
+    /**
+     * 读取判题SettingsMissingRowsShouldReturnDefaultsWithoutSecret并返回给调用方。可能调用外部判题或网关服务。
+     */
+    @Test
+    @DisplayName("Judge settings use fixed engines and hide the CCPCOJ password hash")
     void getJudgeSettings_MissingRows_ShouldReturnDefaultsWithoutSecret() {
         JudgeSettingsVO settings = settingService.getJudgeSettings();
 
-        assertEquals(true, settings.enabled);
-        assertEquals("docker", settings.mode);
-        assertEquals("docker", settings.contestMode);
-        assertFalse(settings.enableUnsafeLocalJudge);
+        assertTrue(settings.enabled);
+        assertEquals("go-judge", settings.mode);
+        assertEquals("per-contest", settings.contestMode);
         assertFalse(settings.enableSandbox);
         assertEquals(2, settings.maxConcurrent);
         assertEquals(2, settings.threadPoolSize);
         assertEquals(2, settings.queueBatchSize);
         assertEquals(1000L, settings.pollIntervalMs);
-        assertEquals("http://127.0.0.1:8081", settings.domjudgeBaseUrl);
-        assertEquals("", settings.domjudgeApiKey);
-        assertFalse(settings.hasDomjudgeApiKey);
-        assertEquals(2000L, settings.domjudgePollIntervalMs);
+        assertEquals("judger", settings.ccpcojJudgeUsername);
+        assertEquals("", settings.ccpcojJudgePassword);
+        assertFalse(settings.hasCcpcojJudgePassword);
+        assertEquals(720, settings.ccpcojSessionTtlMinutes);
+        assertEquals(15, settings.ccpcojStaleTaskMinutes);
     }
 
+    /**
+     * 读取判题RuntimeSettingsShouldUseFixedEngines并返回给调用方。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @Test
-    @DisplayName("Judge runtime settings fail closed when unsafe-local is configured in production")
-    void getJudgeRuntimeSettings_UnsafeLocalInProduction_ShouldFailClosed() {
-        environment.setActiveProfiles("prod");
-        when(settingMapper.selectById(anyString())).thenReturn(null);
-        doReturn(setting("judge.mode", "unsafe-local")).when(settingMapper).selectById("judge.mode");
-        doReturn(setting("judge.contest_mode", "unsafe-local")).when(settingMapper).selectById("judge.contest_mode");
-        doReturn(setting("judge.enable_unsafe_local_judge", "true"))
-            .when(settingMapper).selectById("judge.enable_unsafe_local_judge");
+    @DisplayName("Judge runtime ownership is fixed")
+    void getJudgeRuntimeSettings_ShouldUseFixedEngines() {
+        JudgeSettingsVO settings = settingService.getJudgeRuntimeSettings();
 
-        assertThrows(IllegalStateException.class, () -> settingService.getJudgeRuntimeSettings());
+        assertEquals("go-judge", settings.mode);
+        assertEquals("per-contest", settings.contestMode);
     }
 
+    /**
+     * 更新判题SettingsBlankPasswordShouldPreserveExistingHash。调用前会结合当前登录身份执行权限判断；执行持久化写入；可能调用外部判题或网关服务。
+     */
     @Test
-    @DisplayName("Judge update preserves DOMjudge API key when request key is blank")
-    void updateJudgeSettings_BlankSecret_ShouldPreserveExistingApiKey() {
+    @DisplayName("Judge update preserves the CCPCOJ password hash when password is blank")
+    void updateJudgeSettings_BlankPassword_ShouldPreserveExistingHash() {
         when(settingMapper.selectById(anyString())).thenReturn(null);
-        when(settingMapper.selectById("judge.domjudge_api_key")).thenReturn(setting("judge.domjudge_api_key", "old-key"));
+        when(settingMapper.selectById("judge.ccpcoj_password_hash"))
+            .thenReturn(setting("judge.ccpcoj_password_hash", "old-password-hash"));
         JudgeSettingsVO request = new JudgeSettingsVO();
         request.enabled = true;
-        request.mode = "docker";
-        request.contestMode = "domjudge";
-        request.enableUnsafeLocalJudge = false;
         request.enableSandbox = true;
         request.maxConcurrent = 2;
         request.threadPoolSize = 2;
         request.queueBatchSize = 2;
         request.pollIntervalMs = 1000L;
-        request.domjudgeBaseUrl = "http://judge.local";
-        request.domjudgeApiKey = "";
-        request.domjudgeContestId = "1";
-        request.domjudgePollIntervalMs = 2000L;
+        request.ccpcojJudgeUsername = "judger";
+        request.ccpcojJudgePassword = "";
+        request.ccpcojSessionTtlMinutes = 720;
+        request.ccpcojStaleTaskMinutes = 15;
 
         settingService.updateJudgeSettings(request, adminAuthUser());
 
+        /**
+         * 校验前置条件。执行持久化写入；可能调用外部判题或网关服务。
+         */
         verify(settingMapper).updateById(org.mockito.ArgumentMatchers.<SystemSetting>argThat(setting ->
-            "judge.domjudge_api_key".equals(setting.settingKey) && "old-key".equals(setting.settingValue)
+            "judge.ccpcoj_password_hash".equals(setting.settingKey)
+                && "old-password-hash".equals(setting.settingValue)
         ));
     }
 
+    /**
+     * 更新判题SettingsMissingPasswordShouldRemainOptional。调用前会结合当前登录身份执行权限判断；执行持久化写入；可能调用外部判题或网关服务。
+     */
+    @Test
+    @DisplayName("Judge settings can be saved before CCPCOJ credentials are configured")
+    void updateJudgeSettings_MissingPassword_ShouldRemainOptional() {
+        when(settingMapper.selectById(anyString())).thenReturn(null);
+        JudgeSettingsVO request = new JudgeSettingsVO();
+        request.enabled = true;
+        request.enableSandbox = true;
+        request.maxConcurrent = 2;
+        request.threadPoolSize = 2;
+        request.queueBatchSize = 2;
+        request.pollIntervalMs = 1000L;
+        request.ccpcojJudgeUsername = "judger";
+        request.ccpcojJudgePassword = "";
+        request.ccpcojSessionTtlMinutes = 720;
+        request.ccpcojStaleTaskMinutes = 15;
+
+        assertDoesNotThrow(() -> settingService.updateJudgeSettings(request, adminAuthUser()));
+
+        /**
+         * 校验前置条件。执行持久化写入；可能调用外部判题或网关服务。
+         */
+        verify(settingMapper).insert(org.mockito.ArgumentMatchers.<SystemSetting>argThat(setting ->
+            "judge.ccpcoj_password_hash".equals(setting.settingKey)
+                && "".equals(setting.settingValue)
+        ));
+    }
+
+    /**
+     * 封装设置相关逻辑。直接返回当前实例保存的设置，不产生额外的数据写入。
+     */
     private SystemSetting setting(String key, String value) {
         SystemSetting setting = new SystemSetting();
         setting.settingKey = key;
@@ -154,6 +250,9 @@ class SystemSettingServiceTest {
         return setting;
     }
 
+    /**
+     * 封装管理员认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+     */
     private AuthUser adminAuthUser() {
         AdminUser admin = new AdminUser();
         admin.id = 1L;
@@ -161,6 +260,9 @@ class SystemSettingServiceTest {
         admin.passwordHash = "password";
         admin.role = "SUPER_ADMIN";
         admin.displayName = "Admin";
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(admin);
     }
 }

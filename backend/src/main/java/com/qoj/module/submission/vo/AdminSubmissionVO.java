@@ -3,6 +3,9 @@ package com.qoj.module.submission.vo;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 管理员提交响应视图模型。仅暴露调用方需要的字段，避免直接返回持久化实体。
+ */
 public record AdminSubmissionVO(
     Long id,
     Long userId,
@@ -26,7 +29,6 @@ public record AdminSubmissionVO(
     Integer memoryUsed,
     String identityType,
     Long identityId,
-    String domjudgeSubmissionId,
     String judgeServer,
     Integer priority,
     Integer retryCount,

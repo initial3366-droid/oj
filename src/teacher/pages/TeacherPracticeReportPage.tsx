@@ -1,3 +1,6 @@
+/**
+ * 教师练习Report页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -10,13 +13,15 @@ import {
   Statistic,
   Table,
   Tag,
-  Typography,
 } from '@arco-design/web-react';
 import { IconDownload, IconEye, IconLeft } from '@arco-design/web-react/icon';
 import { teacherGet } from '../teacherApi';
 
 const { Row, Col } = Grid;
 
+/**
+ * 练习Ranking接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PracticeRanking {
   userId: number;
   displayName: string;
@@ -25,6 +30,9 @@ interface PracticeRanking {
   submissionCount: number;
 }
 
+/**
+ * 练习提交接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PracticeSubmission {
   id: number;
   userId: number;
@@ -38,6 +46,9 @@ interface PracticeSubmission {
   createdAt: string;
 }
 
+/**
+ * 练习Report接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PracticeReport {
   practiceId: number;
   participantCount: number;
@@ -61,6 +72,9 @@ const statusColors: Record<string, string> = {
   COMPILATION_ERROR: 'gray',
 };
 
+/**
+ * 渲染教师练习Report页面，并协调其数据加载、状态和交互。
+ */
 export function TeacherPracticeReportPage() {
   const navigate = useNavigate();
   const { practiceId } = useParams();
@@ -76,6 +90,9 @@ export function TeacherPracticeReportPage() {
     if (numericId) loadReport();
   }, [numericId]);
 
+  /**
+   * 读取Report并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadReport() {
     setLoading(true);
     try {
@@ -88,6 +105,9 @@ export function TeacherPracticeReportPage() {
     }
   }
 
+  /**
+   * 封装view编码相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function viewCode(submissionId: number) {
     setCodeLoading(true);
     setCodeModalVisible(true);
@@ -101,6 +121,9 @@ export function TeacherPracticeReportPage() {
     }
   }
 
+  /**
+   * 封装导出Rankings相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function exportRankings() {
     if (!report?.rankings?.length) return;
     const header = '排名,用户ID,用户名,得分,通过题数,提交次数\n';
@@ -110,6 +133,9 @@ export function TeacherPracticeReportPage() {
     downloadCsv(header + rows, `practice_${practiceId}_rankings.csv`);
   }
 
+  /**
+   * 封装导出Submissions相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function exportSubmissions() {
     if (!report?.submissions?.length) return;
     const header = '提交ID,用户ID,用户名,题目ID,题目名称,语言,状态,耗时(ms),内存(KB),提交时间\n';
@@ -119,6 +145,9 @@ export function TeacherPracticeReportPage() {
     downloadCsv(header + rows, `practice_${practiceId}_submissions.csv`);
   }
 
+  /**
+   * 封装downloadCsv相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function downloadCsv(content: string, filename: string) {
     const blob = new Blob(['﻿' + content], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);

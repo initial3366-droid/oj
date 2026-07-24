@@ -1,9 +1,12 @@
 /**
  * 题单相关 API
  */
-import { apiGet } from "./client";
+import { apiGet, apiPost } from "./client";
 import type { Problem } from "./problem";
 
+/**
+ * 练习接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface Practice {
   id: number;
   title: string;
@@ -34,6 +37,8 @@ export async function fetchPracticeDetail(
   practiceId: number,
   password?: string
 ): Promise<Practice> {
-  const query = password ? `?password=${encodeURIComponent(password)}` : "";
-  return apiGet<Practice>(`/api/v1/practices/${practiceId}${query}`);
+  if (password) {
+    return apiPost<Practice>(`/api/v1/practices/${practiceId}/unlock`, { password });
+  }
+  return apiGet<Practice>(`/api/v1/practices/${practiceId}`);
 }

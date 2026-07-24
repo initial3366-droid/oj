@@ -1,3 +1,6 @@
+/**
+ * 比赛Public榜单页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Banner, Button, Card, Input, Modal, Select, Spin, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import { IconExternalOpen, IconList, IconOrderedList, IconRefresh, IconShield } from '@douyinfe/semi-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -14,6 +17,9 @@ import {
   type SubmissionRecord,
 } from '../data/apiClient';
 
+/**
+ * 封装absoluteUrl相关逻辑。可能改变当前路由或查询参数。
+ */
 function absoluteUrl(url?: string | null) {
   if (!url) return '';
   try {
@@ -23,6 +29,9 @@ function absoluteUrl(url?: string | null) {
   }
 }
 
+/**
+ * 封装状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusColor(status?: string): 'green' | 'orange' | 'red' | 'grey' | 'blue' {
   if (status === 'OK') return 'green';
   if (status === 'SYNCING' || status === 'PENDING') return 'orange';
@@ -31,6 +40,9 @@ function statusColor(status?: string): 'green' | 'orange' | 'red' | 'grey' | 'bl
   return 'blue';
 }
 
+/**
+ * 格式化Minutes。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatMinutes(minutes?: number | null) {
   const safe = Math.max(0, minutes ?? 0);
   const hours = Math.floor(safe / 60);
@@ -38,6 +50,9 @@ function formatMinutes(minutes?: number | null) {
   return hours > 0 ? `${hours}:${String(mins).padStart(2, '0')}` : `${mins}`;
 }
 
+/**
+ * 格式化SubmitTime。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatSubmitTime(value?: string | null) {
   if (!value) return '--:--';
   const date = new Date(value);
@@ -45,6 +60,9 @@ function formatSubmitTime(value?: string | null) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+/**
+ * 封装结果Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function resultColor(status?: string): 'green' | 'orange' | 'red' | 'grey' | 'blue' {
   const normalized = (status ?? '').toUpperCase();
   if (normalized === 'AC' || normalized === 'ACCEPTED') return 'green';
@@ -54,6 +72,9 @@ function resultColor(status?: string): 'green' | 'orange' | 'red' | 'grey' | 'bl
   return 'red';
 }
 
+/**
+ * 封装boardStateText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function boardStateText(state?: ContestPublicScoreboard['boardState']) {
   if (state === 'FROZEN') return '封榜中';
   if (state === 'ROLLING') return '滚榜中';
@@ -61,6 +82,9 @@ function boardStateText(state?: ContestPublicScoreboard['boardState']) {
   return '实时榜';
 }
 
+/**
+ * 封装boardStateColor相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function boardStateColor(state?: ContestPublicScoreboard['boardState']): 'green' | 'orange' | 'red' | 'grey' | 'blue' {
   if (state === 'FROZEN') return 'orange';
   if (state === 'ROLLING') return 'blue';
@@ -68,6 +92,9 @@ function boardStateColor(state?: ContestPublicScoreboard['boardState']): 'green'
   return 'grey';
 }
 
+/**
+ * 封装medalTag相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function medalTag(medal?: ContestPublicScoreboardRow['medal']) {
   if (medal === 'GOLD') return <Tag color="orange">金</Tag>;
   if (medal === 'SILVER') return <Tag color="grey">银</Tag>;
@@ -75,10 +102,16 @@ function medalTag(medal?: ContestPublicScoreboardRow['medal']) {
   return <span style={{ color: 'var(--semi-color-text-2)' }}>-</span>;
 }
 
+/**
+ * 封装排名Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function rankText(rank?: number | null, starred?: boolean | null) {
   return starred ? '打星' : rank ?? '-';
 }
 
+/**
+ * 渲染比赛Public榜单页面，并协调其数据加载、状态和交互。
+ */
 export function ContestPublicScoreboardPage() {
   const { contestId } = useParams();
   const id = Number(contestId ?? 0);
@@ -107,6 +140,9 @@ export function ContestPublicScoreboardPage() {
   const [qPage, setQPage] = useState(1);
   const [qPageSize, setQPageSize] = useState(20);
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const load = async () => {
     if (!id) {
       setMessage('比赛不存在');
@@ -139,6 +175,9 @@ export function ContestPublicScoreboardPage() {
   useEffect(() => {
     if (!scoreboard?.endTime) { setCountdown(''); return; }
     const end = new Date(scoreboard.endTime).getTime();
+    /**
+     * 封装tick相关逻辑。会更新 React 状态并触发重新渲染。
+     */
     const tick = () => {
       const diff = end - Date.now();
       if (diff <= 0) { setCountdown('已结束'); return; }
@@ -154,6 +193,9 @@ export function ContestPublicScoreboardPage() {
 
   const queueLoadedRef = useRef(false);
 
+  /**
+   * 读取队列并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const loadQueue = useCallback(async () => {
     if (!id) return;
     setQueueLoading(true);
@@ -174,6 +216,9 @@ export function ContestPublicScoreboardPage() {
     }
   }, [viewMode, queueLoading, loadQueue]);
 
+  /**
+   * 封装r名称Map相关逻辑。对原始数据进行派生或聚合。
+   */
   const userNameMap = useMemo(() => {
     const map = new Map<number, string>();
     scoreboard?.rows.forEach(r => {
@@ -182,6 +227,9 @@ export function ContestPublicScoreboardPage() {
     return map;
   }, [scoreboard]);
 
+  /**
+   * 封装题目LabelMap相关逻辑。对原始数据进行派生或聚合。
+   */
   const problemLabelMap = useMemo(() => {
     const map = new Map<string, string>();
     scoreboard?.problems.forEach(p => {
@@ -190,18 +238,27 @@ export function ContestPublicScoreboardPage() {
     return map;
   }, [scoreboard]);
 
+  /**
+   * 封装队列Languages相关逻辑。对原始数据进行派生或聚合。
+   */
   const queueLanguages = useMemo(() => {
     const s = new Set<string>();
     submissions.forEach(r => { if (r.language) s.add(r.language); });
     return [...s].sort();
   }, [submissions]);
 
+  /**
+   * 封装队列Statuses相关逻辑。对原始数据进行派生或聚合。
+   */
   const queueStatuses = useMemo(() => {
     const s = new Set<string>();
     submissions.forEach(r => { if (r.status) s.add(r.status); });
     return [...s].sort();
   }, [submissions]);
 
+  /**
+   * 封装filteredSubs相关逻辑。对原始数据进行派生或聚合。
+   */
   const filteredSubs = useMemo(() => {
     let data = submissions;
     const ukw = qUserKw.trim().toLowerCase();
@@ -226,16 +283,25 @@ export function ContestPublicScoreboardPage() {
     return data;
   }, [submissions, qUserKw, qProblemKw, qLangFilter, qStatusFilter, userNameMap, problemLabelMap]);
 
+  /**
+   * 封装pagedSubs相关逻辑。对原始数据进行派生或聚合。
+   */
   const pagedSubs = useMemo(() => {
     const start = (qPage - 1) * qPageSize;
     return filteredSubs.slice(start, start + qPageSize);
   }, [filteredSubs, qPage, qPageSize]);
 
+  /**
+   * 封装boardUrl相关逻辑。对原始数据进行派生或聚合。
+   */
   const boardUrl = useMemo(() => absoluteUrl(config?.boardUrl), [config?.boardUrl]);
   const isOi = scoreboard?.contestType === 'OI';
   const showClassOnScoreboard = Boolean(scoreboard?.showClassOnScoreboard);
   const boardState = scoreboard?.boardState ?? 'LIVE';
 
+  /**
+   * 封装q状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const qStatusColor = (s: string): string => {
     const u = s.toUpperCase();
     if (u === 'AC' || u === 'ACCEPTED') return 'green';
@@ -249,6 +315,9 @@ export function ContestPublicScoreboardPage() {
     return 'grey';
   };
 
+  /**
+   * 封装队列TableColumns相关逻辑。对原始数据进行派生或聚合。
+   */
   const queueTableColumns = useMemo(() => [
     {
       title: '提交者',
@@ -283,6 +352,9 @@ export function ContestPublicScoreboardPage() {
       render: (time: string) => {
         if (!time) return '-';
         const d = new Date(time);
+        /**
+         * 封装pad相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+         */
         const pad = (n: number) => String(n).padStart(2, '0');
         return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
       },

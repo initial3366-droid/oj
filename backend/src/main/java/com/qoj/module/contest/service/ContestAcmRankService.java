@@ -18,6 +18,9 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * 比赛Acm排名业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class ContestAcmRankService {
     private final ContestAcmRankCacheMapper acmRankCacheMapper;
@@ -28,6 +31,9 @@ public class ContestAcmRankService {
     private final ContestMapper contestMapper;
     private final UserMapper userMapper;
 
+    /**
+     * 构造 比赛Acm排名Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public ContestAcmRankService(
         ContestAcmRankCacheMapper acmRankCacheMapper,
         ContestAcmRankProblemMapper acmRankProblemMapper,
@@ -222,9 +228,15 @@ public class ContestAcmRankService {
     public void rebuildRank(Long contestId) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "比赛不存在");
         }
         if (!"ACM".equals(contest.type)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "该比赛不是 ACM 赛制");
         }
 
@@ -304,6 +316,9 @@ public class ContestAcmRankService {
             List<AcmProblemStatusVO> problemStatus = problems.stream()
                 .map(p -> {
                     ContestAcmRankProblem pr = problemRankMap.get(p.id);
+                    /**
+                     * 封装Acm题目状态VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                     */
                     return new AcmProblemStatusVO(
                         p.id,
                         p.label,

@@ -19,6 +19,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+/**
+ * XcpcioSync业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class XcpcioSyncService {
     private final ContestXcpcioConfigMapper configMapper;
@@ -27,6 +30,9 @@ public class XcpcioSyncService {
     private final XcpcioConfigService configService;
     private final Set<Long> runningContestIds = ConcurrentHashMap.newKeySet();
 
+    /**
+     * 构造 XcpcioSyncService 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public XcpcioSyncService(
         ContestXcpcioConfigMapper configMapper,
         ContestXcpcioSyncLogMapper syncLogMapper,
@@ -64,6 +70,9 @@ public class XcpcioSyncService {
             configService.requireManage(contest);
         }
         if (!runningContestIds.add(contestId)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.CONFLICT, "该比赛正在同步中");
         }
         LocalDateTime startedAt = LocalDateTime.now();
@@ -78,6 +87,9 @@ public class XcpcioSyncService {
         ContestXcpcioConfig config = configService.findByContestId(contestId);
         if (config == null || !Boolean.TRUE.equals(config.enabled)) {
             runningContestIds.remove(contestId);
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST, "该比赛未启用 XCPCIO 榜单");
         }
 
@@ -88,6 +100,9 @@ public class XcpcioSyncService {
 
             int changed = countChangedSubmissions(contestId, config.lastSuccessAt);
             if (XcpcioConfigService.MODE_XCPCIO_PUSH.equals(config.mode)) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.NOT_IMPLEMENTED, "尚未配置 XCPCIO 官方直推 API，请使用 CLICS 导出接口对接 clics-uploader");
             }
 

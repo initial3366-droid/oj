@@ -18,7 +18,17 @@ import type {
   RatingUser,
 } from "./types";
 import { encryptId } from "../utils/cipher";
+import {
+  clearFrontendTokens as clearStoredFrontendTokens,
+  getFrontendAccessToken as readFrontendAccessToken,
+  getValidFrontendAccessToken,
+  refreshFrontendAccessToken,
+  saveFrontendTokens,
+} from "../api/authSession";
 
+/**
+ * Api响应接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ApiResponse<T> {
   code: number;
   message: string;
@@ -26,58 +36,38 @@ interface ApiResponse<T> {
 }
 
 const API_TIMEOUT_MS = 15000;
-const FRONT_ACCESS_TOKEN_KEY = "qoj.accessToken";
-const FRONT_REFRESH_TOKEN_KEY = "qoj.refreshToken";
-let frontendRefreshPromise: Promise<string | null> | null = null;
 
+/**
+ * 重置Frontend令牌。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function clearFrontendToken() {
-  window.localStorage.removeItem(FRONT_ACCESS_TOKEN_KEY);
-  window.localStorage.removeItem(FRONT_REFRESH_TOKEN_KEY);
-  window.dispatchEvent(new Event("qoj:auth-cleared"));
+  clearStoredFrontendTokens();
 }
 
+/**
+ * 更新Frontend认证Tokens。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export function saveFrontendAuthTokens(tokens: AuthTokenResponse) {
-  window.localStorage.setItem(FRONT_ACCESS_TOKEN_KEY, tokens.accessToken);
-  window.localStorage.setItem(FRONT_REFRESH_TOKEN_KEY, tokens.refreshToken);
+  saveFrontendTokens(tokens);
 }
 
+/**
+ * 读取Frontend访问令牌并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function getFrontendAccessToken() {
-  return window.localStorage.getItem(FRONT_ACCESS_TOKEN_KEY);
+  return readFrontendAccessToken();
 }
 
-function getFrontendRefreshToken() {
-  return window.localStorage.getItem(FRONT_REFRESH_TOKEN_KEY);
-}
-
-function shouldRefreshJwtToken(token: string, skewSeconds = 30) {
-  try {
-    const payloadPart = token.split(".")[1];
-    if (!payloadPart) {
-      return true;
-    }
-    const normalized = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
-    const payload = JSON.parse(window.atob(padded)) as { exp?: number };
-    return typeof payload.exp === "number" && payload.exp * 1000 <= Date.now() + skewSeconds * 1000;
-  } catch {
-    // Optional-auth endpoints are permitAll on the backend. If a stale/corrupt token is sent,
-    // the backend may silently treat the request as anonymous and return registered=false.
-    // Try refreshing first so pages that depend on optional identity do not briefly show guest state.
-    return true;
-  }
-}
-
+/**
+ * 读取Frontend访问令牌ForOptional认证并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
+ */
 async function getFrontendAccessTokenForOptionalAuth() {
-  const token = getFrontendAccessToken();
-  if (!token) {
-    return undefined;
-  }
-  if (!shouldRefreshJwtToken(token)) {
-    return token;
-  }
-  return (await refreshFrontendAccessToken()) ?? undefined;
+  return (await getValidFrontendAccessToken()) ?? undefined;
 }
 
+/**
+ * 判断shouldRefreshFrontend令牌是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function shouldRefreshFrontendToken(url: string, token?: string, allowRefresh = true) {
   return Boolean(
     allowRefresh
@@ -88,45 +78,18 @@ function shouldRefreshFrontendToken(url: string, token?: string, allowRefresh = 
   );
 }
 
-async function refreshFrontendAccessToken() {
-  const refreshToken = getFrontendRefreshToken();
-  if (!refreshToken) {
-    return null;
-  }
-
-  if (!frontendRefreshPromise) {
-    frontendRefreshPromise = (async () => {
-      try {
-        const response = await fetchWithTimeout("/api/v1/auth/refresh", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refreshToken }),
-        });
-        const body = (await response.json()) as ApiResponse<AuthTokenResponse>;
-        if (!response.ok || !body || body.code !== 200) {
-          clearFrontendToken();
-          return null;
-        }
-        saveFrontendAuthTokens(body.data);
-        return body.data.accessToken;
-      } catch {
-        clearFrontendToken();
-        return null;
-      }
-    })().finally(() => {
-      frontendRefreshPromise = null;
-    });
-  }
-
-  return frontendRefreshPromise;
-}
-
+/**
+ * 封装timeoutSignal相关逻辑。会更新 React 状态并触发重新渲染。
+ */
 function timeoutSignal() {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
   return { controller, timeout };
 }
 
+/**
+ * 读取WithTimeout并返回给调用方。包含异步流程并由调用方处理完成或失败状态；失败时向调用方传播异常。
+ */
 async function fetchWithTimeout(url: string, init: RequestInit) {
   const { controller, timeout } = timeoutSignal();
   try {
@@ -144,11 +107,21 @@ async function fetchWithTimeout(url: string, init: RequestInit) {
   }
 }
 
+/**
+ * 认证令牌响应接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface AuthTokenResponse {
   accessToken: string;
   refreshToken: string;
 }
 
+export type FrontendLoginResponse =
+  | ({ portal: "USER" } & AuthTokenResponse)
+  | { portal: "TEACHER"; accessToken: null; refreshToken: null };
+
+/**
+ * 管理员仪表盘接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface AdminDashboard {
   onlineUserCount: number;
   userCount: number;
@@ -168,6 +141,9 @@ export interface AdminDashboard {
   }>;
 }
 
+/**
+ * 管理员用户接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface AdminUser {
   id: number;
   username: string;
@@ -175,11 +151,14 @@ export interface AdminUser {
   avatarUrl?: string;
   studentNo?: string;
   email?: string;
-  role: "SUPER_ADMIN" | "TEACHER" | "STUDENT" | "GUEST";
+  role: "SUPER_ADMIN" | "STUDENT";
   createdAt: string;
   updatedAt: string;
 }
 
+/**
+ * 管理员用户请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface AdminUserPayload {
   username?: string;
   password?: string;
@@ -189,6 +168,9 @@ export interface AdminUserPayload {
   role?: AdminUser["role"];
 }
 
+/**
+ * 注册请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface RegisterPayload {
   username: string;
   studentNo: string;
@@ -197,12 +179,18 @@ export interface RegisterPayload {
   emailVerificationCode: string;
 }
 
+/**
+ * 题目Sample请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ProblemSamplePayload {
   input: string;
   output: string;
   explanation?: string;
 }
 
+/**
+ * 题目Test测试点请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ProblemTestCasePayload {
   id?: number;
   caseNo?: number;
@@ -212,6 +200,9 @@ export interface ProblemTestCasePayload {
   sample?: boolean;
 }
 
+/**
+ * 题目DraftBasic请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ProblemDraftBasicPayload {
   title: string;
   timeLimit: number;
@@ -224,12 +215,18 @@ export interface ProblemDraftBasicPayload {
   samples: ProblemSamplePayload[];
 }
 
+/**
+ * 题目Draft接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ProblemDraft {
   draftId: string;
   basic: ProblemDraftBasicPayload | null;
   testCases: ProblemTestCasePayload[];
 }
 
+/**
+ * 练习请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface PracticePayload {
   title: string;
   description?: string;
@@ -239,6 +236,9 @@ export interface PracticePayload {
   problemIds: number[];
 }
 
+/**
+ * 练习接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface Practice {
   id: number;
   title: string;
@@ -252,6 +252,9 @@ export interface Practice {
   updatedAt: string;
 }
 
+/**
+ * 练习Report提交接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface PracticeReportSubmission {
   id: number;
   userId: number;
@@ -265,6 +268,9 @@ export interface PracticeReportSubmission {
   createdAt: string;
 }
 
+/**
+ * 练习Report排名接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface PracticeReportRank {
   userId: number;
   displayName: string;
@@ -273,6 +279,9 @@ export interface PracticeReportRank {
   submissionCount: number;
 }
 
+/**
+ * 练习Report接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface PracticeReport {
   practiceId: number;
   participantCount: number;
@@ -281,17 +290,26 @@ export interface PracticeReport {
   submissions: PracticeReportSubmission[];
 }
 
+/**
+ * 管理员OrganizationOption接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface AdminOrganizationOption {
   id: number;
   name: string;
   description?: string;
 }
 
+/**
+ * 比赛测试点分数请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestCaseScorePayload {
   caseNo: number;
   score: number;
 }
 
+/**
+ * 比赛题目请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestProblemPayload {
   contestProblemId?: number;
   problemId: number;
@@ -301,12 +319,19 @@ export interface ContestProblemPayload {
   caseScores?: ContestCaseScorePayload[];
 }
 
+/** Server-supported judge routes for a contest; submissions cannot override this choice. */
+export type ContestJudgeMode = "GO_JUDGE" | "CCPCOJ";
+
+/**
+ * 比赛Draft请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestDraftPayload {
   title?: string;
   durationMinutes?: number;
   startTime?: string;
   description?: string;
   type?: "ACM" | "OI";
+  judgeMode?: ContestJudgeMode;
   audience?: "ALL" | "CLASS";
   audienceTypes?: Array<"ALL" | "CLASS">;
   classIds?: number[];
@@ -319,6 +344,7 @@ export interface ContestDraftPayload {
   allowAfterEndSubmit?: boolean;
   allowAfterEndViewProblem?: boolean;
   allowAfterEndViewCode?: boolean;
+  enableCodeTemplates?: boolean;
   publicScoreboardEnabled?: boolean;
   showClassOnScoreboard?: boolean;
   allowStarRegistration?: boolean;
@@ -328,6 +354,9 @@ export interface ContestDraftPayload {
   problems?: ContestProblemPayload[];
 }
 
+/**
+ * 比赛请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestPayload {
   title: string;
   description?: string;
@@ -335,6 +364,7 @@ export interface ContestPayload {
   startTime: string;
   endTime: string;
   type: "ACM" | "OI";
+  judgeMode: ContestJudgeMode;
   audience: "ALL" | "CLASS";
   audienceId?: number | null;
   audiences?: Array<{ audienceType: "ALL" | "CLASS"; audienceId?: number | null }>;
@@ -350,6 +380,7 @@ export interface ContestPayload {
   allowAfterEndSubmit?: boolean;
   allowAfterEndViewProblem?: boolean;
   allowAfterEndViewCode?: boolean;
+  enableCodeTemplates?: boolean;
   publicScoreboardEnabled?: boolean;
   showClassOnScoreboard?: boolean;
   allowStarRegistration?: boolean;
@@ -359,6 +390,9 @@ export interface ContestPayload {
   problems: ContestProblemPayload[];
 }
 
+/**
+ * 管理员比赛接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface AdminContest {
   id: number;
   title: string;
@@ -367,6 +401,7 @@ export interface AdminContest {
   startTime: string;
   endTime: string;
   type: "ACM" | "OI";
+  judgeMode: ContestJudgeMode;
   ownerId: number;
   ownerName: string;
   audience: "ALL" | "CLASS";
@@ -381,6 +416,7 @@ export interface AdminContest {
   allowAfterEndSubmit: boolean;
   allowAfterEndViewProblem: boolean;
   allowAfterEndViewCode: boolean;
+  enableCodeTemplates: boolean;
   publicScoreboardEnabled: boolean;
   showClassOnScoreboard: boolean;
   allowStarRegistration: boolean;
@@ -403,6 +439,9 @@ export interface AdminContest {
   }>;
 }
 
+/**
+ * Public比赛接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface PublicContest {
   id: number;
   title: string;
@@ -422,6 +461,7 @@ export interface PublicContest {
   allowAfterEndSubmit: boolean;
   allowAfterEndViewProblem: boolean;
   allowAfterEndViewCode: boolean;
+  enableCodeTemplates: boolean;
   publicScoreboardEnabled: boolean;
   showClassOnScoreboard: boolean;
   allowStarRegistration: boolean;
@@ -439,6 +479,9 @@ export interface PublicContest {
   problems: AdminContest["problems"];
 }
 
+/**
+ * 比赛报名Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestRegistrationOption {
   identityType: "PERSONAL";
   identityId?: number | null;
@@ -448,6 +491,9 @@ export interface ContestRegistrationOption {
   starAvailable?: boolean | null;
 }
 
+/**
+ * 比赛报名请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestRegistrationPayload {
   identityType?: "PERSONAL";
   identityId?: number | null;
@@ -455,6 +501,9 @@ export interface ContestRegistrationPayload {
   password?: string;
 }
 
+/**
+ * 比赛StandingRecord接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestStandingRecord {
   contestId: number;
   userId: number;
@@ -469,6 +518,9 @@ export interface ContestStandingRecord {
   identityId?: number | null;
 }
 
+/**
+ * 比赛榜单题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestScoreboardProblem {
   problemId: number;
   contestProblemId?: number;
@@ -477,6 +529,9 @@ export interface ContestScoreboardProblem {
   score?: number | null;
 }
 
+/**
+ * 比赛榜单Cell接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestScoreboardCell {
   problemId: number;
   contestProblemId?: number;
@@ -488,6 +543,9 @@ export interface ContestScoreboardCell {
   acceptedAt?: string | null;
 }
 
+/**
+ * 比赛榜单Row接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestScoreboardRow {
   rank?: number | null;
   userId: number;
@@ -505,6 +563,9 @@ export interface ContestScoreboardRow {
   medal?: "GOLD" | "SILVER" | "BRONZE" | null;
 }
 
+/**
+ * 比赛榜单接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestScoreboard {
   contestId: number;
   title: string;
@@ -518,6 +579,9 @@ export interface ContestScoreboard {
   showClassOnScoreboard?: boolean;
 }
 
+/**
+ * 比赛XcpcioPublic配置接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestXcpcioPublicConfig {
   contestId: number;
   enabled: boolean;
@@ -528,12 +592,18 @@ export interface ContestXcpcioPublicConfig {
   clicsScoreboardUrl?: string | null;
 }
 
+/**
+ * 比赛Public榜单题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestPublicScoreboardProblem {
   label: string;
   title: string;
   score?: number | null;
 }
 
+/**
+ * 比赛Public榜单题目状态接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestPublicScoreboardProblemStatus {
   accepted: boolean;
   attempts: number;
@@ -543,12 +613,18 @@ export interface ContestPublicScoreboardProblemStatus {
   history?: ContestPublicScoreboardSubmissionHistory[];
 }
 
+/**
+ * 比赛Public榜单提交History接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestPublicScoreboardSubmissionHistory {
   status: string;
   submittedAt: string;
   timeMinutes?: number | null;
 }
 
+/**
+ * 比赛Public榜单Row接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestPublicScoreboardRow {
   rank?: number | null;
   userId: number;
@@ -568,6 +644,9 @@ export interface ContestPublicScoreboardRow {
   problems: Record<string, ContestPublicScoreboardProblemStatus>;
 }
 
+/**
+ * 比赛Public榜单接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestPublicScoreboard {
   contestId: number;
   contestTitle: string;
@@ -582,6 +661,9 @@ export interface ContestPublicScoreboard {
   showClassOnScoreboard?: boolean;
 }
 
+/**
+ * 比赛RollingStep接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestRollingStep {
   step: number;
   identityType?: "PERSONAL";
@@ -597,6 +679,9 @@ export interface ContestRollingStep {
   rankDelta?: number | null;
 }
 
+/**
+ * 比赛RollingState接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestRollingState {
   contestId: number;
   status: "NOT_STARTED" | "ROLLING" | "FINISHED" | "PUBLISHED";
@@ -609,6 +694,9 @@ export interface ContestRollingState {
   updatedAt?: string | null;
 }
 
+/**
+ * Public用户资料接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface PublicUserProfile {
   id: number;
   username: string;
@@ -620,6 +708,9 @@ export interface PublicUserProfile {
   createdAt: string;
 }
 
+/**
+ * 提交Record接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface SubmissionRecord {
   id: number;
   userId?: number;
@@ -638,6 +729,9 @@ export interface SubmissionRecord {
   code?: string | null;
 }
 
+/**
+ * 提交队列Record接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface SubmissionQueueRecord {
   queueId: number;
   submissionId: number;
@@ -664,6 +758,9 @@ export interface SubmissionQueueRecord {
   errorMessage?: string | null;
 }
 
+/**
+ * 提交队列Log接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface SubmissionQueueLog {
   queueId: number;
   submissionId: number;
@@ -676,6 +773,9 @@ export interface SubmissionQueueLog {
   finishTime?: string | null;
 }
 
+/**
+ * 提交队列Query接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface SubmissionQueueQuery {
   page?: number;
   pageSize?: number;
@@ -687,6 +787,9 @@ export interface SubmissionQueueQuery {
   sortOrder?: "asc" | "desc";
 }
 
+/**
+ * Backend题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface BackendProblem {
   id: number;
   title: string;
@@ -714,6 +817,9 @@ interface BackendProblem {
   attemptStatus?: string | null;
 }
 
+/**
+ * Backend比赛题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface BackendContestProblem {
   id: number;
   contestProblemId: number;
@@ -729,7 +835,6 @@ interface BackendContestProblem {
   tags?: string[];
   ownerId?: number | null;
   isPublic?: boolean;
-  domjudgeProblemId?: string | null;
   acRate?: number;
   createdAt?: string;
   updatedAt?: string;
@@ -744,6 +849,9 @@ interface BackendContestProblem {
   attemptStatus?: string | null;
 }
 
+/**
+ * Backend用户当前用户接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface BackendUserMe {
   id: number;
   username: string;
@@ -751,13 +859,16 @@ interface BackendUserMe {
   avatarUrl?: string;
   studentNo?: string;
   email?: string;
-  role: "STUDENT" | "TEACHER" | "SUPER_ADMIN" | "GUEST";
+  role: "STUDENT";
   totalSolved?: number;
   totalSubmissions?: number;
   classId?: number | null;
   className?: string | null;
 }
 
+/**
+ * Backend比赛接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface BackendContest {
   id: number;
   title: string;
@@ -766,6 +877,7 @@ interface BackendContest {
   startTime: string;
   endTime: string;
   type: "ACM" | "OI";
+  judgeMode?: ContestJudgeMode;
   ownerId?: number;
   ownerName?: string;
   audience: "ALL" | "CLASS";
@@ -780,6 +892,7 @@ interface BackendContest {
   allowAfterEndSubmit?: boolean;
   allowAfterEndViewProblem?: boolean;
   allowAfterEndViewCode?: boolean;
+  enableCodeTemplates?: boolean;
   publicScoreboardEnabled?: boolean;
   showClassOnScoreboard?: boolean;
   allowStarRegistration?: boolean;
@@ -797,25 +910,38 @@ interface BackendContest {
   registeredStarred?: boolean | null;
 }
 
+/**
+ * BackendSlide接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface BackendSlide {
   id: number;
   title: string;
   imageUrl: string;
 }
 
+/**
+ * Backend首页接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface BackendHome {
   carouselSlides: BackendSlide[];
   recentContests: BackendContest[];
 }
 
+/**
+ * BackendRating用户接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface BackendRatingUser {
   userId: number;
   name: string;
+  avatarUrl?: string | null;
   className?: string;
   acCount: number;
   streak: number;
 }
 
+/**
+ * 封装difficultyLabel相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function difficultyLabel(value: number): Problem["difficulty"] {
   if (value === 1) return "入门";
   if (value === 2) return "简单";
@@ -824,32 +950,50 @@ function difficultyLabel(value: number): Problem["difficulty"] {
   return "地狱";
 }
 
+/**
+ * 封装比赛状态Label相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function contestStatusLabel(value: BackendContest["status"]): Contest["status"] {
   if (value === "RUNNING") return "进行中";
   if (value === "ENDED") return "已结束";
   return "未开始";
 }
 
+/**
+ * 封装audienceLabel相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function audienceLabel(value: BackendContest["audience"]) {
   if (value === "CLASS") return "班级";
   return "全校公开";
 }
 
+/**
+ * 封装filterVisibleAudienceTypes相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function filterVisibleAudienceTypes<T extends { audienceType: string }>(items: T[] | undefined) {
   return (items ?? []).filter((item) => item.audienceType === "ALL" || item.audienceType === "CLASS") as Array<
     T & { audienceType: "ALL" | "CLASS" }
   >;
 }
 
+/**
+ * 封装visibleAudience相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function visibleAudience(value: "ALL" | "CLASS" | string): "ALL" | "CLASS" {
   return value === "CLASS" ? "CLASS" : "ALL";
 }
 
+/**
+ * 封装visibleIdentity类型相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function visibleIdentityType(value?: "PERSONAL" | string | null): "PERSONAL" | null {
   if (value === "PERSONAL") return "PERSONAL";
   return null;
 }
 
+/**
+ * 构造或转换题目。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function mapProblem(problem: BackendProblem): Problem {
   return {
     id: `p${encryptId(problem.id)}`,
@@ -874,6 +1018,9 @@ function mapProblem(problem: BackendProblem): Problem {
   };
 }
 
+/**
+ * 构造或转换比赛题目。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function mapContestProblem(problem: BackendContestProblem | BackendProblem): Problem {
   const snapshotId = "contestProblemId" in problem && problem.contestProblemId
     ? problem.contestProblemId
@@ -901,6 +1048,9 @@ function mapContestProblem(problem: BackendContestProblem | BackendProblem): Pro
   };
 }
 
+/**
+ * Backend练习接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface BackendPractice {
   id: number;
   title: string;
@@ -914,6 +1064,9 @@ interface BackendPractice {
   updatedAt: string;
 }
 
+/**
+ * 构造或转换比赛。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function mapContest(contest: BackendContest): Contest {
   return {
     id: String(contest.id),
@@ -928,6 +1081,9 @@ function mapContest(contest: BackendContest): Contest {
   };
 }
 
+/**
+ * 构造或转换管理员比赛。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function mapAdminContest(contest: BackendContest): AdminContest {
   return {
     id: contest.id,
@@ -937,6 +1093,7 @@ function mapAdminContest(contest: BackendContest): AdminContest {
     startTime: contest.startTime,
     endTime: contest.endTime,
     type: contest.type,
+    judgeMode: contest.judgeMode === "CCPCOJ" ? "CCPCOJ" : "GO_JUDGE",
     ownerId: Number(contest.ownerId ?? 0),
     ownerName: contest.ownerName || "",
     audience: visibleAudience(contest.audience),
@@ -951,6 +1108,7 @@ function mapAdminContest(contest: BackendContest): AdminContest {
     allowAfterEndSubmit: Boolean(contest.allowAfterEndSubmit),
     allowAfterEndViewProblem: contest.allowAfterEndViewProblem ?? true,
     allowAfterEndViewCode: Boolean(contest.allowAfterEndViewCode),
+    enableCodeTemplates: Boolean(contest.enableCodeTemplates),
     publicScoreboardEnabled: contest.publicScoreboardEnabled ?? true,
     showClassOnScoreboard: Boolean(contest.showClassOnScoreboard),
     allowViewAllSubmissions: contest.allowViewAllSubmissions ?? true,
@@ -974,6 +1132,9 @@ function mapAdminContest(contest: BackendContest): AdminContest {
   };
 }
 
+/**
+ * 构造或转换Public比赛。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function mapPublicContest(contest: BackendContest): PublicContest {
   return {
     id: contest.id,
@@ -994,6 +1155,7 @@ function mapPublicContest(contest: BackendContest): PublicContest {
     allowAfterEndSubmit: Boolean(contest.allowAfterEndSubmit),
     allowAfterEndViewProblem: contest.allowAfterEndViewProblem ?? true,
     allowAfterEndViewCode: Boolean(contest.allowAfterEndViewCode),
+    enableCodeTemplates: Boolean(contest.enableCodeTemplates),
     publicScoreboardEnabled: contest.publicScoreboardEnabled ?? true,
     showClassOnScoreboard: Boolean(contest.showClassOnScoreboard),
     allowViewAllSubmissions: contest.allowViewAllSubmissions ?? true,
@@ -1022,6 +1184,9 @@ function mapPublicContest(contest: BackendContest): PublicContest {
   };
 }
 
+/**
+ * 构造或转换Slide。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function mapSlide(slide: BackendSlide): CarouselSlide {
   return {
     id: `s${slide.id}`,
@@ -1030,16 +1195,24 @@ function mapSlide(slide: BackendSlide): CarouselSlide {
   };
 }
 
+/**
+ * 构造或转换Rating。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function mapRating(user: BackendRatingUser): RatingUser {
   return {
     id: `r${user.userId}`,
+    userId: user.userId,
     name: user.name,
+    avatarUrl: user.avatarUrl || "",
     className: user.className || "",
     acCount: user.acCount,
     streak: user.streak,
   };
 }
 
+/**
+ * 构造或转换练习。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function mapPractice(practice: BackendPractice): Practice {
   return {
     id: practice.id,
@@ -1055,6 +1228,9 @@ function mapPractice(practice: BackendPractice): Practice {
   };
 }
 
+/**
+ * 判断认证Failure消息是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function isAuthFailureMessage(message?: string) {
   if (!message) {
     return false;
@@ -1065,6 +1241,9 @@ function isAuthFailureMessage(message?: string) {
     || message.includes("token");
 }
 
+/**
+ * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；失败时向调用方传播异常。
+ */
 async function get<T>(url: string, token?: string, allowRefresh = true): Promise<T> {
   const response = await fetchWithTimeout(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -1093,6 +1272,9 @@ async function get<T>(url: string, token?: string, allowRefresh = true): Promise
   return body.data;
 }
 
+/**
+ * 封装请求相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；失败时向调用方传播异常。
+ */
 async function request<T>(
   url: string,
   options: RequestInit = {},
@@ -1146,6 +1328,9 @@ async function request<T>(
   return body.data;
 }
 
+/**
+ * 封装hydrateStateFromApi相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+ */
 export async function hydrateStateFromApi(current: OjState): Promise<OjState> {
   let token = getFrontendAccessToken() ?? undefined;
   let next = current;
@@ -1157,9 +1342,10 @@ export async function hydrateStateFromApi(current: OjState): Promise<OjState> {
       token = getFrontendAccessToken() ?? token;
       next = { ...next, activeUser: user };
     } catch {
-      // Token 无效，清除 localStorage 并通知页面状态同步
-      clearFrontendToken();
-      next = { ...next, activeUser: null };
+      // 认证失败时请求层会清除令牌；网络或服务异常时保留本地会话和缓存用户。
+      if (!getFrontendAccessToken()) {
+        next = { ...next, activeUser: null };
+      }
     }
   } else {
     next = { ...next, activeUser: null };
@@ -1213,6 +1399,9 @@ export async function hydrateStateFromApi(current: OjState): Promise<OjState> {
   return next;
 }
 
+/**
+ * 封装管理员登录相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function adminLogin(username: string, password: string) {
   return request<AuthTokenResponse>("/api/v1/auth/login", {
     method: "POST",
@@ -1220,23 +1409,35 @@ export async function adminLogin(username: string, password: string) {
   });
 }
 
+/**
+ * 封装登录相关逻辑。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function login(username: string, password: string) {
-  const tokens = await request<AuthTokenResponse>("/api/v1/auth/login", {
+  const result = await request<FrontendLoginResponse>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({ username, password }),
   });
+  if (result.portal === "TEACHER") {
+    throw new Error("教师账号请使用教师端登录");
+  }
+  const tokens: AuthTokenResponse = result;
   saveFrontendAuthTokens(tokens);
   return tokens;
 }
 
+/**
+ * 封装登录WithoutPersist相关逻辑。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function loginWithoutPersist(username: string, password: string) {
-  const tokens = await request<AuthTokenResponse>("/api/v1/auth/login", {
+  return request<FrontendLoginResponse>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({ username, password }),
   });
-  return tokens;
 }
 
+/**
+ * 创建或提交目标数据。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function register(payload: RegisterPayload) {
   const tokens = await request<AuthTokenResponse>("/api/v1/auth/register", {
     method: "POST",
@@ -1249,6 +1450,9 @@ export async function register(payload: RegisterPayload) {
 let _cachedMeToken: string | null = null;
 let _cachedMeResult: ReturnType<typeof _buildMeResult> | null = null;
 
+/**
+ * 封装build当前用户结果相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function _buildMeResult(user: BackendUserMe) {
   return {
     id: `u${user.id}`,
@@ -1258,7 +1462,7 @@ function _buildMeResult(user: BackendUserMe) {
     name: user.displayName || user.username,
     studentNo: user.studentNo || "",
     email: user.email || "",
-    role: user.role === "GUEST" ? "STUDENT" : user.role,
+    role: user.role,
     totalSolved: user.totalSolved ?? 0,
     totalSubmissions: user.totalSubmissions ?? 0,
     favoriteLanguage: "暂无",
@@ -1267,6 +1471,9 @@ function _buildMeResult(user: BackendUserMe) {
   } as const;
 }
 
+/**
+ * 读取当前用户并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function fetchMe(token: string) {
   if (_cachedMeToken === token && _cachedMeResult) {
     return _cachedMeResult;
@@ -1283,28 +1490,43 @@ export function clearMeCache() {
   _cachedMeResult = null;
 }
 
+/**
+ * Update资料请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface UpdateProfilePayload {
   username?: string;
   displayName?: string;
   emailVerificationCode: string;
 }
 
+/**
+ * BindEmail请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface BindEmailPayload {
   email: string;
   emailVerificationCode: string;
 }
 
+/**
+ * UpdatePassword请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface UpdatePasswordPayload {
   oldPassword: string;
   newPassword: string;
 }
 
+/**
+ * ResetPassword请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ResetPasswordPayload {
   email: string;
   emailVerificationCode: string;
   newPassword: string;
 }
 
+/**
+ * 班级JoinApplicationRecord接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ClassJoinApplicationRecord {
   id: number;
   classId: number;
@@ -1319,17 +1541,28 @@ export interface ClassJoinApplicationRecord {
   handledAt?: string | null;
 }
 
+/**
+ * 班级JoinApplication请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ClassJoinApplicationPayload {
   reason?: string;
 }
 
+/**
+ * 更新资料。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function updateProfile(payload: UpdateProfilePayload, token: string) {
-  return request<void>("/api/v1/auth/profile", {
+  const result = await request<void>("/api/v1/auth/profile", {
     method: "PUT",
     body: JSON.stringify(payload),
   }, token);
+  clearMeCache();
+  return result;
 }
 
+/**
+ * 封装uploadMy头像相关逻辑。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function uploadMyAvatar(file: File, token: string) {
   const formData = new FormData();
   formData.append("file", file);
@@ -1341,6 +1574,9 @@ export async function uploadMyAvatar(file: File, token: string) {
   return result;
 }
 
+/**
+ * 封装bindEmail相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function bindEmail(payload: BindEmailPayload, token: string) {
   return request<void>("/api/v1/auth/email", {
     method: "PUT",
@@ -1348,6 +1584,9 @@ export async function bindEmail(payload: BindEmailPayload, token: string) {
   }, token);
 }
 
+/**
+ * 更新Password。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function updatePassword(payload: UpdatePasswordPayload, token: string) {
   return request<void>("/api/v1/auth/password", {
     method: "PUT",
@@ -1355,6 +1594,9 @@ export async function updatePassword(payload: UpdatePasswordPayload, token: stri
   }, token);
 }
 
+/**
+ * 重置Password。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function resetPassword(payload: ResetPasswordPayload) {
   return request<void>("/api/v1/auth/reset-password", {
     method: "POST",
@@ -1362,6 +1604,9 @@ export async function resetPassword(payload: ResetPasswordPayload) {
   });
 }
 
+/**
+ * 校验Frontend令牌。失败时向调用方传播异常。
+ */
 function requireFrontendToken() {
   const token = getFrontendAccessToken();
   if (!token) {
@@ -1370,6 +1615,9 @@ function requireFrontendToken() {
   return token;
 }
 
+/**
+ * 封装applyTo班级相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function applyToClass(classId: number, payload: ClassJoinApplicationPayload = {}) {
   return request<ClassJoinApplicationRecord>(
     `/api/v1/classes/${classId}/applications`,
@@ -1381,6 +1629,9 @@ export async function applyToClass(classId: number, payload: ClassJoinApplicatio
   );
 }
 
+/**
+ * 读取Problems并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会读写浏览器本地会话信息。
+ */
 export async function fetchProblems() {
   const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
   const result = await get<{ total: number; list: BackendProblem[] }>(
@@ -1390,6 +1641,9 @@ export async function fetchProblems() {
   return result.list.map(mapProblem);
 }
 
+/**
+ * 读取管理员Problems并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function fetchAdminProblems(token: string, page = 1, pageSize = 10, keyword = "") {
   const query = new URLSearchParams({
     page: String(page),
@@ -1406,11 +1660,17 @@ export async function fetchAdminProblems(token: string, page = 1, pageSize = 10,
   return { total: result.total, list: result.list.map(mapProblem) };
 }
 
+/**
+ * 读取题目详情并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会读写浏览器本地会话信息。
+ */
 export async function fetchProblemDetail(problemId: number) {
   const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
   return mapProblem(await get<BackendProblem>(`/api/v1/problems/${problemId}`, token));
 }
 
+/**
+ * 读取My题目Submissions并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会读写浏览器本地会话信息。
+ */
 export async function fetchMyProblemSubmissions(problemId: number, contestId?: number | null) {
   const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
   const userId = currentUserIdFromAccessToken(token ?? null);
@@ -1424,6 +1684,9 @@ export async function fetchMyProblemSubmissions(problemId: number, contestId?: n
   return result.list;
 }
 
+/**
+ * 读取提交详情并返回给调用方。会读写浏览器本地会话信息；失败时向调用方传播异常。
+ */
 export async function fetchSubmissionDetail(submissionId: number) {
   const token = window.localStorage.getItem("qoj.accessToken");
   if (!token) {
@@ -1432,6 +1695,9 @@ export async function fetchSubmissionDetail(submissionId: number) {
   return request<SubmissionRecord>(`/api/v1/submissions/${submissionId}`, {}, token);
 }
 
+/**
+ * 封装current用户标识From访问令牌相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function currentUserIdFromAccessToken(token: string | null) {
   if (!token) return null;
   try {
@@ -1446,6 +1712,9 @@ function currentUserIdFromAccessToken(token: string | null) {
   }
 }
 
+/**
+ * 封装提交队列Query相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function submissionQueueQuery(params: SubmissionQueueQuery = {}) {
   const query = new URLSearchParams();
   query.set("page", String(params.page ?? 1));
@@ -1459,6 +1728,9 @@ function submissionQueueQuery(params: SubmissionQueueQuery = {}) {
   return query.toString();
 }
 
+/**
+ * 读取提交队列并返回给调用方。会读写浏览器本地会话信息。
+ */
 export async function fetchSubmissionQueue(params: SubmissionQueueQuery = {}) {
   const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
   return request<{ total: number; list: SubmissionQueueRecord[] }>(
@@ -1468,11 +1740,17 @@ export async function fetchSubmissionQueue(params: SubmissionQueueQuery = {}) {
   );
 }
 
+/**
+ * 读取提交队列详情并返回给调用方。会读写浏览器本地会话信息。
+ */
 export async function fetchSubmissionQueueDetail(queueId: number) {
   const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
   return request<SubmissionQueueRecord>(`/api/v1/submission-queue/${queueId}`, {}, token);
 }
 
+/**
+ * 读取MySubmissions并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会读写浏览器本地会话信息；失败时向调用方传播异常。
+ */
 export async function fetchMySubmissions(page = 1, pageSize = 20) {
   const token = window.localStorage.getItem("qoj.accessToken");
   if (!token) {
@@ -1490,14 +1768,23 @@ export async function fetchMySubmissions(page = 1, pageSize = 20) {
   return result.list;
 }
 
+/**
+ * 读取管理员题目详情并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function fetchAdminProblemDetail(token: string, problemId: number) {
   return mapProblem(await request<BackendProblem>(`/api/admin/v1/problems/${problemId}`, {}, token));
 }
 
+/**
+ * 删除管理员题目。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function deleteAdminProblem(token: string, problemId: number) {
   return request<void>(`/api/admin/v1/problems/${problemId}`, { method: "DELETE" }, token);
 }
 
+/**
+ * 更新管理员题目。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function updateAdminProblem(
   token: string,
   problemId: number,
@@ -1526,10 +1813,16 @@ export async function updateAdminProblem(
   );
 }
 
+/**
+ * 读取管理员题目TestCases并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchAdminProblemTestCases(token: string, problemId: number) {
   return request<ProblemTestCasePayload[]>(`/api/admin/v1/problems/${problemId}/test-cases`, {}, token);
 }
 
+/**
+ * 创建或提交管理员题目Test测试点。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function createAdminProblemTestCase(
   token: string,
   problemId: number,
@@ -1545,6 +1838,9 @@ export async function createAdminProblemTestCase(
   );
 }
 
+/**
+ * 更新管理员题目Test测试点。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function updateAdminProblemTestCase(
   token: string,
   problemId: number,
@@ -1561,6 +1857,9 @@ export async function updateAdminProblemTestCase(
   );
 }
 
+/**
+ * 删除管理员题目Test测试点。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function deleteAdminProblemTestCase(token: string, problemId: number, testCaseId: number) {
   return request<void>(
     `/api/admin/v1/problems/${problemId}/test-cases/${testCaseId}`,
@@ -1569,6 +1868,9 @@ export async function deleteAdminProblemTestCase(token: string, problemId: numbe
   );
 }
 
+/**
+ * 封装import管理员题目TestCasesZip相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function importAdminProblemTestCasesZip(
   token: string,
   problemId: number,
@@ -1588,10 +1890,16 @@ export async function importAdminProblemTestCasesZip(
   );
 }
 
+/**
+ * 读取管理员仪表盘并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchAdminDashboard(token: string) {
   return request<AdminDashboard>("/api/admin/v1/dashboard", {}, token);
 }
 
+/**
+ * 读取管理员Users并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchAdminUsers(token: string) {
   return request<{ total: number; list: AdminUser[] }>(
     "/api/admin/v1/users?page=1&pageSize=200",
@@ -1600,6 +1908,9 @@ export async function fetchAdminUsers(token: string) {
   );
 }
 
+/**
+ * 读取管理员UsersBy角色并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchAdminUsersByRole(token: string, role: AdminUser["role"], page = 1, pageSize = 10) {
   return request<{ total: number; list: AdminUser[] }>(
     `/api/admin/v1/users?page=${page}&pageSize=${pageSize}&role=${encodeURIComponent(role)}`,
@@ -1608,6 +1919,9 @@ export async function fetchAdminUsersByRole(token: string, role: AdminUser["role
   );
 }
 
+/**
+ * 创建或提交管理员用户。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function createAdminUser(token: string, payload: AdminUserPayload) {
   return request<AdminUser>(
     "/api/admin/v1/users",
@@ -1619,6 +1933,9 @@ export async function createAdminUser(token: string, payload: AdminUserPayload) 
   );
 }
 
+/**
+ * 更新管理员用户。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function updateAdminUser(
   token: string,
   userId: number,
@@ -1634,6 +1951,9 @@ export async function updateAdminUser(
   );
 }
 
+/**
+ * 删除管理员用户。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function deleteAdminUser(token: string, userId: number) {
   return request<void>(
     `/api/admin/v1/users/${userId}`,
@@ -1644,10 +1964,16 @@ export async function deleteAdminUser(token: string, userId: number) {
   );
 }
 
+/**
+ * 创建或提交题目Draft。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function createProblemDraft(token: string) {
   return request<ProblemDraft>("/api/admin/v1/problem-drafts", { method: "POST" }, token);
 }
 
+/**
+ * 更新题目DraftBasic。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function saveProblemDraftBasic(
   token: string,
   draftId: string,
@@ -1663,6 +1989,9 @@ export async function saveProblemDraftBasic(
   );
 }
 
+/**
+ * 更新题目DraftTestCases。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function saveProblemDraftTestCases(
   token: string,
   draftId: string,
@@ -1678,6 +2007,9 @@ export async function saveProblemDraftTestCases(
   );
 }
 
+/**
+ * 封装import题目DraftZip相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function importProblemDraftZip(token: string, draftId: string, file: File, overwrite: boolean) {
   const form = new FormData();
   form.append("file", file);
@@ -1692,6 +2024,9 @@ export async function importProblemDraftZip(token: string, draftId: string, file
   );
 }
 
+/**
+ * 封装commit题目Draft相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function commitProblemDraft(token: string, draftId: string) {
   return request<BackendProblem>(
     `/api/admin/v1/problem-drafts/${draftId}/commit`,
@@ -1702,6 +2037,9 @@ export async function commitProblemDraft(token: string, draftId: string) {
   );
 }
 
+/**
+ * 读取Practices并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function fetchPractices(page = 1, pageSize = 20, scope: "all" | "public" | "class" = "all") {
   const params = new URLSearchParams({
     page: String(page),
@@ -1719,12 +2057,27 @@ export async function fetchPractices(page = 1, pageSize = 20, scope: "all" | "pu
   };
 }
 
+/**
+ * 读取练习详情并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function fetchPracticeDetail(practiceId: number, password?: string) {
-  const query = password ? `?password=${encodeURIComponent(password)}` : "";
   const token = getFrontendAccessToken() ?? undefined;
-  return mapPractice(await get<BackendPractice>(`/api/v1/practices/${practiceId}${query}`, token));
+  if (password) {
+    return mapPractice(await request<BackendPractice>(
+      `/api/v1/practices/${practiceId}/unlock`,
+      {
+        method: "POST",
+        body: JSON.stringify({ password }),
+      },
+      token,
+    ));
+  }
+  return mapPractice(await get<BackendPractice>(`/api/v1/practices/${practiceId}`, token));
 }
 
+/**
+ * 读取管理员Practices并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function fetchAdminPractices(token: string) {
   const result = await request<{ total: number; list: BackendPractice[] }>(
     "/api/admin/v1/practices",
@@ -1734,6 +2087,9 @@ export async function fetchAdminPractices(token: string) {
   return result.list.map(mapPractice);
 }
 
+/**
+ * 创建或提交管理员练习。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function createAdminPractice(token: string, payload: PracticePayload) {
   return mapPractice(
     await request<BackendPractice>(
@@ -1747,6 +2103,9 @@ export async function createAdminPractice(token: string, payload: PracticePayloa
   );
 }
 
+/**
+ * 更新管理员练习。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function updateAdminPractice(token: string, practiceId: number, payload: PracticePayload) {
   return mapPractice(
     await request<BackendPractice>(
@@ -1760,10 +2119,16 @@ export async function updateAdminPractice(token: string, practiceId: number, pay
   );
 }
 
+/**
+ * 读取管理员练习Report并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchAdminPracticeReport(token: string, practiceId: number) {
   return request<PracticeReport>(`/api/admin/v1/practices/${practiceId}/report`, {}, token);
 }
 
+/**
+ * 读取管理员Contests并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function fetchAdminContests(token: string, page = 1, pageSize = 20) {
   const result = await request<{ total: number; list: BackendContest[] }>(
     `/api/admin/v1/contests?page=${page}&pageSize=${pageSize}`,
@@ -1773,6 +2138,9 @@ export async function fetchAdminContests(token: string, page = 1, pageSize = 20)
   return { total: result.total, list: result.list.map(mapAdminContest) };
 }
 
+/**
+ * 读取Contests并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function fetchContests(page = 1, pageSize = 20) {
   const token = await getFrontendAccessTokenForOptionalAuth();
   const result = await get<{ total: number; list: BackendContest[] }>(
@@ -1782,11 +2150,17 @@ export async function fetchContests(page = 1, pageSize = 20) {
   return { total: result.total, list: result.list.map(mapPublicContest) };
 }
 
+/**
+ * 读取比赛并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function fetchContest(contestId: number) {
   const token = await getFrontendAccessTokenForOptionalAuth();
   return mapPublicContest(await get<BackendContest>(`/api/v1/contests/${contestId}`, token));
 }
 
+/**
+ * 读取比赛Submissions并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会读写浏览器本地会话信息。
+ */
 export async function fetchContestSubmissions(contestId: number, page = 1, pageSize = 20) {
   const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
   const result = await request<{ total: number; list: SubmissionRecord[] }>(
@@ -1797,6 +2171,9 @@ export async function fetchContestSubmissions(contestId: number, page = 1, pageS
   return { total: result.total, list: result.list };
 }
 
+/**
+ * 读取My比赛Submissions并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会读写浏览器本地会话信息；失败时向调用方传播异常。
+ */
 export async function fetchMyContestSubmissions(contestId: number, page = 1, pageSize = 20) {
   const token = window.localStorage.getItem("qoj.accessToken");
   if (!token) {
@@ -1812,10 +2189,16 @@ export async function fetchMyContestSubmissions(contestId: number, page = 1, pag
   return { total: result.total, list: result.list };
 }
 
+/**
+ * 读取管理员比赛并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function fetchAdminContest(token: string, contestId: number) {
   return mapAdminContest(await request<BackendContest>(`/api/admin/v1/contests/${contestId}`, {}, token));
 }
 
+/**
+ * 创建或提交管理员比赛。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function createAdminContest(token: string, payload: ContestPayload) {
   return mapAdminContest(
     await request<BackendContest>(
@@ -1829,6 +2212,9 @@ export async function createAdminContest(token: string, payload: ContestPayload)
   );
 }
 
+/**
+ * 更新管理员比赛。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function updateAdminContest(token: string, contestId: number, payload: Partial<ContestPayload>) {
   return mapAdminContest(
     await request<BackendContest>(
@@ -1842,26 +2228,44 @@ export async function updateAdminContest(token: string, contestId: number, paylo
   );
 }
 
+/**
+ * 删除管理员比赛。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function deleteAdminContest(token: string, contestId: number) {
   return request<void>(`/api/admin/v1/contests/${contestId}`, { method: "DELETE" }, token);
 }
 
+/**
+ * 读取管理员比赛Board并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchAdminContestBoard(token: string, contestId: number) {
   return request<ContestStandingRecord[]>(`/api/admin/v1/contests/${contestId}/board`, {}, token);
 }
 
+/**
+ * 读取比赛榜单并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchContestScoreboard(contestId: number) {
   return get<ContestScoreboard>(`/api/v1/contests/${contestId}/scoreboard`);
 }
 
+/**
+ * 读取比赛Public榜单并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchContestPublicScoreboard(contestId: number) {
   return get<ContestPublicScoreboard>(`/api/v1/contests/public/${contestId}/scoreboard`);
 }
 
+/**
+ * 读取比赛RollingState并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchContestRollingState(token: string, contestId: number) {
   return request<ContestRollingState>(`/api/admin/v1/contests/${contestId}/rolling`, {}, token);
 }
 
+/**
+ * 封装start比赛Rolling相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function startContestRolling(token: string, contestId: number) {
   return request<ContestRollingState>(
     `/api/admin/v1/contests/${contestId}/rolling/start`,
@@ -1870,6 +2274,9 @@ export async function startContestRolling(token: string, contestId: number) {
   );
 }
 
+/**
+ * 封装step比赛Rolling相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function stepContestRolling(token: string, contestId: number, direction: "next" | "prev") {
   return request<ContestRollingState>(
     `/api/admin/v1/contests/${contestId}/rolling/step?direction=${direction}`,
@@ -1878,6 +2285,9 @@ export async function stepContestRolling(token: string, contestId: number, direc
   );
 }
 
+/**
+ * 封装finish比赛Rolling相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function finishContestRolling(token: string, contestId: number) {
   return request<ContestRollingState>(
     `/api/admin/v1/contests/${contestId}/rolling/finish`,
@@ -1886,6 +2296,9 @@ export async function finishContestRolling(token: string, contestId: number) {
   );
 }
 
+/**
+ * 发送比赛Final榜单。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function publishContestFinalScoreboard(token: string, contestId: number) {
   return request<ContestRollingState>(
     `/api/admin/v1/contests/${contestId}/rolling/publish-final`,
@@ -1894,20 +2307,32 @@ export async function publishContestFinalScoreboard(token: string, contestId: nu
   );
 }
 
+/**
+ * 读取比赛XcpcioPublic配置并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchContestXcpcioPublicConfig(contestId: number) {
   return get<ContestXcpcioPublicConfig>(`/api/v1/contests/${contestId}/xcpcio/public-config`);
 }
 
+/**
+ * 读取Public用户资料并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchPublicUserProfile(userId: number) {
   return get<PublicUserProfile>(`/api/v1/users/${userId}`);
 }
 
+/**
+ * 读取比赛题目详情并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function fetchContestProblemDetail(contestId: number, contestProblemId: number) {
   return mapContestProblem(
     await get<BackendProblem | BackendContestProblem>(`/api/v1/contests/${contestId}/problems/${contestProblemId}`),
   );
 }
 
+/**
+ * 读取比赛报名Options并返回给调用方。会读写浏览器本地会话信息；失败时向调用方传播异常。
+ */
 export async function fetchContestRegistrationOptions(contestId: number) {
   const token = window.localStorage.getItem("qoj.accessToken");
   if (!token) {
@@ -1920,6 +2345,9 @@ export async function fetchContestRegistrationOptions(contestId: number) {
   );
 }
 
+/**
+ * 创建或提交比赛。会读写浏览器本地会话信息；失败时向调用方传播异常。
+ */
 export async function registerContest(contestId: number, payload: ContestRegistrationPayload) {
   const token = window.localStorage.getItem("qoj.accessToken");
   if (!token) {
@@ -1935,10 +2363,16 @@ export async function registerContest(contestId: number, payload: ContestRegistr
   );
 }
 
+/**
+ * 读取比赛Draft并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchContestDraft(token: string) {
   return request<ContestDraftPayload | null>("/api/admin/v1/contests/draft", {}, token);
 }
 
+/**
+ * 更新比赛Draft。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function saveContestDraft(token: string, payload: ContestDraftPayload) {
   return request<ContestDraftPayload>(
     "/api/admin/v1/contests/draft",
@@ -1950,10 +2384,16 @@ export async function saveContestDraft(token: string, payload: ContestDraftPaylo
   );
 }
 
+/**
+ * 重置比赛Draft。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function clearContestDraft(token: string) {
   return request<void>("/api/admin/v1/contests/draft", { method: "DELETE" }, token);
 }
 
+/**
+ * 读取管理员Classes并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function fetchAdminClasses(token: string) {
   const result = await request<Array<{ id: number; name: string; description?: string }>>(
     "/api/admin/v1/classes",
@@ -1968,10 +2408,16 @@ export async function fetchContestAcmRank(contestId: number) {
   return get<import('./contestRankTypes').ContestAcmRankVO[]>(`/api/v1/contests/${contestId}/rank?mode=ACM`);
 }
 
+/**
+ * 读取比赛Oi排名并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchContestOiRank(contestId: number) {
   return get<import('./contestRankTypes').ContestOiRankVO[]>(`/api/v1/contests/${contestId}/rank?mode=OI`);
 }
 
+/**
+ * 封装rebuild比赛Acm排名相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function rebuildContestAcmRank(token: string, contestId: number) {
   return request<void>(
     `/api/admin/v1/contests/${contestId}/rank/rebuild?mode=ACM`,
@@ -1980,6 +2426,9 @@ export async function rebuildContestAcmRank(token: string, contestId: number) {
   );
 }
 
+/**
+ * 封装rebuild比赛Oi排名相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function rebuildContestOiRank(token: string, contestId: number) {
   return request<void>(
     `/api/admin/v1/contests/${contestId}/rank/rebuild?mode=OI`,
@@ -1988,6 +2437,9 @@ export async function rebuildContestOiRank(token: string, contestId: number) {
   );
 }
 
+/**
+ * 创建或提交比赛Snapshot。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function createContestSnapshot(token: string, contestId: number, type: 'freeze' | 'final') {
   return request<import('./contestRankTypes').ContestScoreboardSnapshot>(
     `/api/admin/v1/contests/${contestId}/scoreboard/snapshot?type=${type}`,
@@ -1996,12 +2448,18 @@ export async function createContestSnapshot(token: string, contestId: number, ty
   );
 }
 
+/**
+ * 读取比赛Snapshot并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchContestSnapshot(contestId: number, type: 'freeze' | 'final') {
   return get<import('./contestRankTypes').ContestScoreboardSnapshot>(
     `/api/v1/contests/${contestId}/scoreboard/snapshot/${type}`
   );
 }
 
+/**
+ * 删除比赛Snapshot。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function deleteContestSnapshot(token: string, contestId: number, type: 'freeze' | 'final') {
   return request<void>(
     `/api/admin/v1/contests/${contestId}/scoreboard/snapshot/${type}`,
@@ -2019,39 +2477,66 @@ export interface Announcement {
   authorId: number;
   authorName: string;
   isVisible: boolean;
-  viewCount: number;
+  isPinned?: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
+/**
+ * 公告Create请求接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface AnnouncementCreateRequest {
   title: string;
   content: string;
   isVisible?: boolean;
+  isPinned?: boolean;
 }
 
+/**
+ * 公告Update请求接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface AnnouncementUpdateRequest {
   title?: string;
   content?: string;
   isVisible?: boolean;
+  isPinned?: boolean;
 }
 
+/**
+ * 读取Announcements并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchAnnouncements(page: number = 1, pageSize: number = 10) {
   return get<{ total: number; list: Announcement[] }>(
     `/api/v1/announcements?page=${page}&pageSize=${pageSize}`
   );
 }
 
+/**
+ * 读取LatestAnnouncements并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchLatestAnnouncements(limit: number = 5) {
   return get<Announcement[]>(
     `/api/v1/announcements/latest?limit=${limit}`
   );
 }
 
+/**
+ * 读取Pinned公告并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
+export async function fetchPinnedAnnouncement() {
+  return get<Announcement | null>('/api/v1/announcements/pinned');
+}
+
+/**
+ * 读取公告By标识并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchAnnouncementById(id: number) {
   return get<Announcement>(`/api/v1/announcements/${id}`);
 }
 
+/**
+ * 封装管理员FetchAnnouncements相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function adminFetchAnnouncements(token: string, page: number = 1, pageSize: number = 10) {
   return get<{ total: number; list: Announcement[] }>(
     `/api/admin/v1/announcements?page=${page}&pageSize=${pageSize}`,
@@ -2059,10 +2544,16 @@ export async function adminFetchAnnouncements(token: string, page: number = 1, p
   );
 }
 
+/**
+ * 封装管理员Fetch公告By标识相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function adminFetchAnnouncementById(token: string, id: number) {
   return get<Announcement>(`/api/admin/v1/announcements/${id}`, token);
 }
 
+/**
+ * 封装管理员Create公告相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function adminCreateAnnouncement(token: string, data: AnnouncementCreateRequest) {
   return request<number>(
     `/api/admin/v1/announcements`,
@@ -2074,6 +2565,9 @@ export async function adminCreateAnnouncement(token: string, data: AnnouncementC
   );
 }
 
+/**
+ * 封装管理员Update公告相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function adminUpdateAnnouncement(token: string, id: number, data: AnnouncementUpdateRequest) {
   return request<void>(
     `/api/admin/v1/announcements/${id}`,
@@ -2085,6 +2579,9 @@ export async function adminUpdateAnnouncement(token: string, id: number, data: A
   );
 }
 
+/**
+ * 封装管理员Delete公告相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function adminDeleteAnnouncement(token: string, id: number) {
   return request<void>(
     `/api/admin/v1/announcements/${id}`,
@@ -2107,6 +2604,9 @@ export interface FrontendSettings {
   footerLink2Url?: string;
 }
 
+/**
+ * 注册Settings接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface RegisterSettings {
   enabled: boolean;
   emailVerification: boolean;
@@ -2124,27 +2624,70 @@ export interface RegisterSettings {
   };
 }
 
+/**
+ * 判题Settings接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface JudgeSettings {
+  /** Public judge switches; engine routing is fixed by the backend. */
   enabled: boolean;
-  mode?: 'domjudge' | 'docker' | 'unsafe-local';
-  contestMode?: 'domjudge' | 'docker' | 'unsafe-local';
-  enableUnsafeLocalJudge?: boolean;
   enableSandbox?: boolean;
-  maxConcurrent: number;
-  threadPoolSize: number;
-  queueBatchSize?: number;
-  pollIntervalMs?: number;
-  domjudgeBaseUrl?: string;
-  hasDomjudgeApiKey?: boolean;
-  domjudgeContestId?: string;
-  domjudgePollIntervalMs?: number;
 }
 
+/**
+ * 各语言默认代码模板接口，明确练习页与后台配置页使用的数据结构。
+ */
+export interface CodeTemplateSettings {
+  c: string;
+  cpp: string;
+  python: string;
+  java: string;
+  csharp: string;
+}
+
+const CODE_TEMPLATE_RESPONSE_PREFIX = 'base64:type15:';
+
+/**
+ * 将响应保护层包装的代码模板还原为 UTF-8 源代码。
+ */
+function decodeCodeTemplateValue(value: string | undefined): string {
+  const template = value ?? '';
+  if (!template.startsWith(CODE_TEMPLATE_RESPONSE_PREFIX)) {
+    return template;
+  }
+
+  try {
+    const binary = globalThis.atob(template.slice(CODE_TEMPLATE_RESPONSE_PREFIX.length).replace(/\s/g, ''));
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return template;
+  }
+}
+
+/**
+ * 标准化代码模板接口响应，兼容已启用的响应保护格式。
+ */
+export function decodeCodeTemplateSettings(settings: Partial<CodeTemplateSettings>): CodeTemplateSettings {
+  return {
+    c: decodeCodeTemplateValue(settings.c),
+    cpp: decodeCodeTemplateValue(settings.cpp),
+    python: decodeCodeTemplateValue(settings.python),
+    java: decodeCodeTemplateValue(settings.java),
+    csharp: decodeCodeTemplateValue(settings.csharp),
+  };
+}
+
+/**
+ * PasswordChange请求接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface PasswordChangeRequest {
   oldPassword: string;
   newPassword: string;
 }
 
+/**
+ * Email配置请求接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface EmailConfigRequest {
   host: string;
   port?: number;
@@ -2160,16 +2703,33 @@ export async function fetchSiteTitle() {
   return get<string>(`/api/v1/settings/site-title`);
 }
 
+/**
+ * 读取Maintenance模式并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchMaintenanceMode() {
   return get<boolean>(`/api/v1/settings/maintenance-mode`);
 }
 
+/**
+ * 读取注册Settings并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchRegisterSettings() {
   return get<RegisterSettings>(`/api/v1/settings/register`);
 }
 
+/**
+ * 读取判题Settings并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function fetchJudgeSettings() {
   return get<JudgeSettings>(`/api/v1/settings/judge`);
+}
+
+/**
+ * 读取各语言默认代码模板并返回给练习页。
+ */
+export async function fetchCodeTemplateSettings() {
+  const settings = await get<CodeTemplateSettings>(`/api/v1/settings/code-templates`);
+  return decodeCodeTemplateSettings(settings);
 }
 
 // Admin APIs
@@ -2177,10 +2737,16 @@ export async function adminFetchFrontendSettings(token: string) {
   return get<FrontendSettings>(`/api/admin/v1/settings/frontend`, token);
 }
 
+/**
+ * 封装管理员Fetch注册Settings相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function adminFetchRegisterSettings(token: string) {
   return get<RegisterSettings>(`/api/admin/v1/settings/register`, token);
 }
 
+/**
+ * 封装管理员UpdateFrontendSettings相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function adminUpdateFrontendSettings(token: string, settings: FrontendSettings) {
   return request<void>(
     `/api/admin/v1/settings/frontend`,
@@ -2193,16 +2759,25 @@ export async function adminUpdateFrontendSettings(token: string, settings: Front
   );
 }
 
+/**
+ * 封装管理员UpdateSite标题相关逻辑。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function adminUpdateSiteTitle(token: string, title: string) {
   const settings = await adminFetchFrontendSettings(token);
   return adminUpdateFrontendSettings(token, { ...settings, siteTitle: title });
 }
 
+/**
+ * 封装管理员UpdateMaintenance模式相关逻辑。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function adminUpdateMaintenanceMode(token: string, enabled: boolean) {
   const settings = await adminFetchFrontendSettings(token);
   return adminUpdateFrontendSettings(token, { ...settings, maintenanceMode: enabled });
 }
 
+/**
+ * 封装管理员ChangePassword相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function adminChangePassword(token: string, data: PasswordChangeRequest) {
   return request<void>(
     `/api/admin/v1/settings/admin/password`,
@@ -2214,6 +2789,9 @@ export async function adminChangePassword(token: string, data: PasswordChangeReq
   );
 }
 
+/**
+ * 封装管理员Update注册启用状态相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function adminUpdateRegisterEnabled(token: string, enabled: boolean) {
   return request<void>(
     `/api/admin/v1/settings/register/enabled`,
@@ -2226,6 +2804,9 @@ export async function adminUpdateRegisterEnabled(token: string, enabled: boolean
   );
 }
 
+/**
+ * 封装管理员UpdateEmailVerification相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function adminUpdateEmailVerification(token: string, enabled: boolean) {
   return request<void>(
     `/api/admin/v1/settings/register/email-verification`,
@@ -2238,6 +2819,9 @@ export async function adminUpdateEmailVerification(token: string, enabled: boole
   );
 }
 
+/**
+ * 封装管理员UpdateEmail配置相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function adminUpdateEmailConfig(token: string, data: EmailConfigRequest) {
   return request<void>(
     `/api/admin/v1/settings/register/email-config`,
@@ -2249,6 +2833,9 @@ export async function adminUpdateEmailConfig(token: string, data: EmailConfigReq
   );
 }
 
+/**
+ * 封装管理员UpdateFields配置相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function adminUpdateFieldsConfig(token: string, config: RegisterSettings['fieldsConfig']) {
   return request<void>(
     `/api/admin/v1/settings/register/fields-config`,

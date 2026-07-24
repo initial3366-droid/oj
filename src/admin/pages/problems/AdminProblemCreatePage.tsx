@@ -1,3 +1,6 @@
+/**
+ * 管理员题目Create页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { adminPath } from '../../../utils/adminPath';
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
@@ -14,25 +17,29 @@ import {
   Upload,
   Popconfirm,
   Select,
-  Switch,
   Tag,
 } from '@arco-design/web-react';
-import { IconPlus, IconDelete, IconEdit, IconUpload } from '@arco-design/web-react/icon';
+import { IconPlus, IconDelete, IconUpload } from '@arco-design/web-react/icon';
 import { adminGet, adminPost, adminPut } from '../../api/adminClient';
-import { MarkdownInsertModal } from '../../components/MarkdownInsertModal';
-import { CodeInsertModal } from '../../components/CodeInsertModal';
+import { HtmlMathEditor } from '../../components/HtmlMathEditor';
 import { decryptIdFromUrl } from '../../../utils/cipher';
 
 const FormItem = Form.Item;
 const Step = Steps.Step;
 const Textarea = Input.TextArea;
 
+/**
+ * Sample测试点接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface SampleCase {
   input: string;
   output: string;
   explanation?: string;
 }
 
+/**
+ * BasicFormData接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface BasicFormData {
   title: string;
   timeLimit: number;
@@ -44,6 +51,9 @@ interface BasicFormData {
   difficulty?: number;
   folderId?: number;
   isPublic?: boolean;
+  accessScope?: 'ALL' | 'MAJOR' | 'PRIVATE';
+  majorId?: number;
+  studentPublishStatus?: 'DRAFT' | 'PUBLISHED';
   samples: SampleCase[];
 }
 
@@ -55,6 +65,9 @@ const DIFFICULTY_OPTIONS = [
   { value: 5, label: '地狱' },
 ];
 
+/**
+ * Test测试点接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TestCase {
   id?: number;
   caseNo: number;
@@ -62,17 +75,26 @@ interface TestCase {
   output: string;
 }
 
+/**
+ * RawTest测试点类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type RawTestCase = Partial<TestCase> & {
   inputData?: string;
   outputData?: string;
 };
 
+/**
+ * DraftData接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface DraftData {
   draftId: string;
   basic: BasicFormData | null;
   testCases: TestCase[];
 }
 
+/**
+ * 解析并规范化Samples。失败时向调用方传播异常。
+ */
 function normalizeSamples(samples?: SampleCase[]) {
   return (samples || [])
     .filter((sample) => {
@@ -95,6 +117,9 @@ function normalizeSamples(samples?: SampleCase[]) {
     });
 }
 
+/**
+ * 解析并规范化Basic请求参数。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeBasicPayload(values: Partial<BasicFormData>, tags: string[]) {
   return {
     title: values.title?.trim() || '',
@@ -108,9 +133,15 @@ function normalizeBasicPayload(values: Partial<BasicFormData>, tags: string[]) {
     folderId: values.folderId || undefined,
     samples: normalizeSamples(values.samples),
     isPublic: values.isPublic !== false,
+    accessScope: values.accessScope || 'ALL',
+    majorId: values.majorId || undefined,
+    studentPublishStatus: values.studentPublishStatus || 'PUBLISHED',
   };
 }
 
+/**
+ * 解析并规范化TestCases。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeTestCases(testCases: TestCase[]) {
   return testCases
     .map((tc, index) => ({
@@ -121,6 +152,9 @@ function normalizeTestCases(testCases: TestCase[]) {
     .sort((left, right) => left.caseNo - right.caseNo);
 }
 
+/**
+ * 解析并规范化LoadedTestCases。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeLoadedTestCases(testCases: RawTestCase[]) {
   return (testCases || [])
     .map((tc, index) => ({
@@ -132,6 +166,9 @@ function normalizeLoadedTestCases(testCases: RawTestCase[]) {
     .sort((left, right) => left.caseNo - right.caseNo);
 }
 
+/**
+ * 渲染管理员题目Create页面，并协调其数据加载、状态和交互。
+ */
 export function AdminProblemCreatePage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -143,15 +180,13 @@ export function AdminProblemCreatePage() {
   const [draftId, setDraftId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [basicForm] = Form.useForm<BasicFormData>();
-  const [codeModalVisible, setCodeModalVisible] = useState(false);
-  const [statementModalVisible, setStatementModalVisible] = useState(false);
-  const [inputFormatModalVisible, setInputFormatModalVisible] = useState(false);
-  const [outputFormatModalVisible, setOutputFormatModalVisible] = useState(false);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [autoSaving, setAutoSaving] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [folders, setFolders] = useState<Array<{ id: number; name: string }>>([]);
+  const [majors, setMajors] = useState<Array<{ id: number; code: string; name: string }>>([]);
+  const [accessScope, setAccessScope] = useState<'ALL' | 'MAJOR' | 'PRIVATE'>('ALL');
   const [importZipFile, setImportZipFile] = useState<File | null>(null);
   const [importZipVisible, setImportZipVisible] = useState(false);
 
@@ -166,6 +201,9 @@ export function AdminProblemCreatePage() {
     adminGet<{ id: number; name: string }[]>('/api/admin/v1/problem-folders')
       .then((res) => setFolders(res))
       .catch(() => {});
+    adminGet<Array<{ id: number; code: string; name: string }>>('/api/admin/v1/majors?activeOnly=true')
+      .then(setMajors)
+      .catch(() => setMajors([]));
   }, [isEditMode, problemId]);
 
   // 自动保存基本信息
@@ -190,6 +228,9 @@ export function AdminProblemCreatePage() {
     return () => clearTimeout(timer);
   }, [isEditMode, draftId, testCases]);
 
+  /**
+   * 读取题目并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function loadProblem(id: number) {
     try {
       setLoading(true);
@@ -205,8 +246,12 @@ export function AdminProblemCreatePage() {
         difficulty: result.difficulty ?? 1,
         folderId: result.folderId || undefined,
         isPublic: result.isPublic !== false,
+        accessScope: result.accessScope || 'PRIVATE',
+        majorId: result.majorId || undefined,
+        studentPublishStatus: result.studentPublishStatus || (result.isPublic ? 'PUBLISHED' : 'DRAFT'),
         samples: result.samples || [],
       });
+      setAccessScope(result.accessScope || 'PRIVATE');
       setTags(result.tags || []);
     } catch (error) {
       Message.error(error instanceof Error ? error.message : '加载题目失败');
@@ -216,6 +261,9 @@ export function AdminProblemCreatePage() {
     }
   }
 
+  /**
+   * 读取题目TestCases并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadProblemTestCases(id: number) {
     try {
       const result = await adminGet<TestCase[]>(`/api/admin/v1/problems/${id}/test-cases`);
@@ -225,6 +273,9 @@ export function AdminProblemCreatePage() {
     }
   }
 
+  /**
+   * 创建或提交Draft。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function createDraft() {
     try {
       const result = await adminPost<DraftData>('/api/admin/v1/problem-drafts', {});
@@ -244,18 +295,8 @@ export function AdminProblemCreatePage() {
   }
 
   /**
-   * 把新内容追加到文本框末尾，二者之间恰好保留「一个」空行（不重复累计）。
-   * 之前用 current + '\n\n' + content，当 current 本身以换行结尾时，
-   * 会拼出 3 个换行符 => 文本框里显示成「两个空行」。
-   * 这里先把 current 末尾的空行/换行去掉，再以「换行 + 空行 + content」拼接，
-   * 保证无论之前末尾是什么，结果都只有一个空行。
+   * 封装autoSaveBasicInfo相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
    */
-  function appendWithBlankLine(current: string | undefined, content: string): string {
-    const base = (current ?? '').replace(/\s+$/g, '');
-    if (!base) return content.replace(/^\s+/, '');
-    return `${base}\n\n${content.replace(/^\s+/, '')}`;
-  }
-
   async function autoSaveBasicInfo() {
     if (autoSaving) return;
 
@@ -277,11 +318,14 @@ export function AdminProblemCreatePage() {
     }
   }
 
+  /**
+   * 封装autoSaveTestCases相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function autoSaveTestCases() {
     if (autoSaving || testCases.length === 0) return;
 
-    // 过滤掉空的测试点（输入或输出为空）
-    const validTestCases = testCases.filter(tc => tc.input?.trim() && tc.output?.trim());
+    // 过滤掉空的测试点（输出为空视为无效；输入可以为空）
+    const validTestCases = testCases.filter(tc => tc.output?.trim());
     if (validTestCases.length === 0) return;
 
     try {
@@ -289,7 +333,7 @@ export function AdminProblemCreatePage() {
       await adminPut(`/api/admin/v1/problem-drafts/${draftId}/test-cases`, {
         testCases: validTestCases.map(tc => ({
           caseNo: tc.caseNo,
-          input: tc.input.trim(),
+          input: tc.input?.trim() || '',
           output: tc.output.trim(),
         })),
       });
@@ -301,10 +345,16 @@ export function AdminProblemCreatePage() {
     }
   }
 
+  /**
+   * 更新BasicInfo。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function saveBasicInfo() {
     await saveProblemInfo();
   }
 
+  /**
+   * 更新题目Info。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function saveProblemInfo(stayOnStep = false) {
     try {
       await basicForm.validate();
@@ -335,39 +385,26 @@ export function AdminProblemCreatePage() {
     }
   }
 
-  function handleInsertCode(code: string) {
-    // CodeInsertModal 传过来的 code 已经是完整的 ```lang\n...\n``` 代码块，
-    // 这里不再二次包裹围栏，直接作为 Markdown 段落拼到末尾。
-    basicForm.setFieldValue('statement', appendWithBlankLine(basicForm.getFieldValue('statement') as string | undefined, code));
-    setCodeModalVisible(false);
-  }
-
-  function handleInsertStatement(markdown: string) {
-    basicForm.setFieldValue('statement', appendWithBlankLine(basicForm.getFieldValue('statement') as string | undefined, markdown));
-    setStatementModalVisible(false);
-  }
-
-  function handleInsertInputFormat(markdown: string) {
-    basicForm.setFieldValue('inputFormat', appendWithBlankLine(basicForm.getFieldValue('inputFormat') as string | undefined, markdown));
-    setInputFormatModalVisible(false);
-  }
-
-  function handleInsertOutputFormat(markdown: string) {
-    basicForm.setFieldValue('outputFormat', appendWithBlankLine(basicForm.getFieldValue('outputFormat') as string | undefined, markdown));
-    setOutputFormatModalVisible(false);
-  }
-
+  /**
+   * 创建或提交Test测试点。会更新 React 状态并触发重新渲染。
+   */
   function addTestCase() {
     const maxCaseNo = testCases.length > 0 ? Math.max(...testCases.map(tc => tc.caseNo)) : 0;
     setTestCases([...testCases, { caseNo: maxCaseNo + 1, input: '', output: '' }]);
   }
 
+  /**
+   * 删除Test测试点。会更新 React 状态并触发重新渲染。
+   */
   function removeTestCase(index: number) {
     const newTestCases = [...testCases];
     newTestCases.splice(index, 1);
     setTestCases(newTestCases);
   }
 
+  /**
+   * 更新Test测试点。会更新 React 状态并触发重新渲染。
+   */
   function updateTestCase(index: number, field: keyof TestCase, value: string) {
     const newTestCases = [...testCases];
     if (field === 'caseNo') {
@@ -378,6 +415,9 @@ export function AdminProblemCreatePage() {
     setTestCases(newTestCases);
   }
 
+  /**
+   * 处理ImportZip。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function handleImportZip(file: File, overwrite: boolean) {
     const formData = new FormData();
     formData.append('file', file);
@@ -405,6 +445,9 @@ export function AdminProblemCreatePage() {
     }
   }
 
+  /**
+   * 更新TestCases。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；对原始数据进行派生或聚合。
+   */
   async function saveTestCases(showSuccess = true) {
     try {
       const normalized = normalizeTestCases(testCases);
@@ -416,10 +459,6 @@ export function AdminProblemCreatePage() {
 
       const seenCaseNos = new Set<number>();
       for (const tc of normalized) {
-        if (!tc.input) {
-          Message.warning(`测试点 ${tc.caseNo} 的输入数据不能为空`);
-          return false;
-        }
         if (!tc.output) {
           Message.warning(`测试点 ${tc.caseNo} 的输出数据不能为空`);
           return false;
@@ -456,6 +495,9 @@ export function AdminProblemCreatePage() {
     }
   }
 
+  /**
+   * 处理Submit。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function handleSubmit() {
     try {
       if (isEditMode) {
@@ -507,6 +549,8 @@ export function AdminProblemCreatePage() {
               timeLimit: 1000,
               memoryLimit: 256,
               isPublic: true,
+              accessScope: 'ALL',
+              studentPublishStatus: 'PUBLISHED',
               difficulty: 1,
               samples: [],
             }}
@@ -538,13 +582,25 @@ export function AdminProblemCreatePage() {
             <InputNumber min={16} max={1024} style={{ width: '100%' }} />
           </FormItem>
 
-          <FormItem
-            label="可见性质"
-            field="isPublic"
-            triggerPropName="checked"
-            extra="关闭后普通用户、前台题库、直接访问题目链接和普通提交接口都不可见。"
-          >
-            <Switch checkedText="公开" uncheckedText="隐藏" />
+          <FormItem label="教师开放范围" field="accessScope" rules={[{ required: true, message: '请选择开放范围' }]}>
+            <Select onChange={(value) => setAccessScope(value as 'ALL' | 'MAJOR' | 'PRIVATE')}>
+              <Select.Option value="ALL">所有人</Select.Option>
+              <Select.Option value="MAJOR">本专业</Select.Option>
+              <Select.Option value="PRIVATE">私有</Select.Option>
+            </Select>
+          </FormItem>
+          {accessScope === 'MAJOR' && (
+            <FormItem label="所属专业" field="majorId" rules={[{ required: true, message: '请选择专业' }]}>
+              <Select placeholder="选择专业">
+                {majors.map((major) => <Select.Option key={major.id} value={major.id}>{major.name}（{major.code}）</Select.Option>)}
+              </Select>
+            </FormItem>
+          )}
+          <FormItem label="学生题库状态" field="studentPublishStatus" rules={[{ required: true, message: '请选择发布状态' }]}>
+            <Select>
+              <Select.Option value="PUBLISHED">已发布</Select.Option>
+              <Select.Option value="DRAFT">未发布</Select.Option>
+            </Select>
           </FormItem>
 
           <FormItem label="难度" field="difficulty" rules={[{ required: true, message: '请选择难度' }]}>
@@ -611,59 +667,20 @@ export function AdminProblemCreatePage() {
             field="statement"
             rules={[{ required: true, message: '请输入题目描述' }]}
             triggerPropName="value"
+            style={{ marginBottom: '20px' }}
           >
-            <Textarea
-              placeholder="支持 Markdown 和 LaTeX 格式"
-              rows={10}
-              style={{ fontFamily: 'monospace' }}
-            />
+            <HtmlMathEditor placeholder="支持 HTML 标签与 LaTeX 公式" rows={10} />
           </FormItem>
-          <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
-            <Space>
-              <Button
-                size="small"
-                icon={<IconEdit />}
-                onClick={() => setStatementModalVisible(true)}
-              >
-                插入 Markdown
-              </Button>
-              <Button
-                size="small"
-                icon={<IconEdit />}
-                onClick={() => setCodeModalVisible(true)}
-              >
-                插入代码块
-              </Button>
-            </Space>
-          </div>
 
-          <FormItem label="输入格式" field="inputFormat">
-            <Textarea placeholder="输入格式说明" rows={3} style={{ fontFamily: 'monospace' }} />
+          <FormItem label="输入格式" field="inputFormat" style={{ marginBottom: '20px' }}>
+            <HtmlMathEditor placeholder="输入格式说明（支持 HTML 与 LaTeX）" rows={3} />
           </FormItem>
-          <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
-            <Button
-              size="small"
-              icon={<IconEdit />}
-              onClick={() => setInputFormatModalVisible(true)}
-            >
-              插入 Markdown
-            </Button>
-          </div>
 
-          <FormItem label="输出格式" field="outputFormat">
-            <Textarea placeholder="输出格式说明" rows={3} style={{ fontFamily: 'monospace' }} />
+          <FormItem label="输出格式" field="outputFormat" style={{ marginBottom: '20px' }}>
+            <HtmlMathEditor placeholder="输出格式说明（支持 HTML 与 LaTeX）" rows={3} />
           </FormItem>
-          <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
-            <Button
-              size="small"
-              icon={<IconEdit />}
-              onClick={() => setOutputFormatModalVisible(true)}
-            >
-              插入 Markdown
-            </Button>
-          </div>
 
-          <FormItem label="样例" required>
+          <FormItem label="样例">
             <Form.List field="samples">
               {(fields, { add, remove }) => (
                 <>
@@ -791,36 +808,6 @@ export function AdminProblemCreatePage() {
             </Space>
           </div>
       </div>
-
-      <CodeInsertModal
-        visible={codeModalVisible}
-        onClose={() => setCodeModalVisible(false)}
-        onInsert={handleInsertCode}
-      />
-
-      <MarkdownInsertModal
-        visible={statementModalVisible}
-        onClose={() => setStatementModalVisible(false)}
-        onInsert={handleInsertStatement}
-        title="插入题目描述"
-        initialValue=""
-      />
-
-      <MarkdownInsertModal
-        visible={inputFormatModalVisible}
-        onClose={() => setInputFormatModalVisible(false)}
-        onInsert={handleInsertInputFormat}
-        title="插入输入格式"
-        initialValue=""
-      />
-
-      <MarkdownInsertModal
-        visible={outputFormatModalVisible}
-        onClose={() => setOutputFormatModalVisible(false)}
-        onInsert={handleInsertOutputFormat}
-        title="插入输出格式"
-        initialValue=""
-      />
 
       <Modal
         title="导入测试点"

@@ -1,5 +1,8 @@
 package com.qoj.common.enums;
 
+/**
+ * 提交状态枚举。限定该领域允许出现的离散状态，避免在业务代码中传播无约束字符串。
+ */
 public enum SubmissionStatus {
     WAITING,      // 等待入队
     PENDING,      // 等待判题

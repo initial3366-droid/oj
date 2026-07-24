@@ -36,6 +36,9 @@ export interface BackendProblem {
   attemptStatus?: string | null;
 }
 
+/**
+ * 封装difficultyLabel相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function difficultyLabel(value: number): Difficulty {
   if (value === 1) return "入门";
   if (value === 2) return "简单";

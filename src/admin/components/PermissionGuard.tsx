@@ -1,21 +1,33 @@
+/**
+ * 权限Guard组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { ReactNode, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Result, Spin } from '@arco-design/web-react';
 import { adminGet } from '../api/adminClient';
 import { adminPath } from '../../utils/adminPath';
 
+/**
+ * 用户Info接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface UserInfo {
   id: number;
   username: string;
   displayName: string;
-  role: 'SUPER_ADMIN' | 'STUDENT' | 'GUEST';
+  role: string;
 }
 
+/**
+ * 权限GuardProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PermissionGuardProps {
   children: ReactNode;
   requiredRoles?: Array<'SUPER_ADMIN'>;
 }
 
+/**
+ * 渲染权限Guard组件，并协调其数据加载、状态和交互。
+ */
 export function PermissionGuard({ children, requiredRoles }: PermissionGuardProps) {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<UserInfo | null>(null);
@@ -25,6 +37,9 @@ export function PermissionGuard({ children, requiredRoles }: PermissionGuardProp
     checkAuth();
   }, []);
 
+  /**
+   * 校验认证。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+   */
   async function checkAuth() {
     try {
       const token = localStorage.getItem('qoj.adminAccessToken');
@@ -52,13 +67,22 @@ export function PermissionGuard({ children, requiredRoles }: PermissionGuardProp
     );
   }
 
+  if (error) {
+    return (
+      <Result
+        status="error"
+        title="加载失败"
+        subTitle={error}
+      />
+    );
+  }
+
   // 未登录，跳转到后台登录页
   if (!user) {
     return <Navigate to={adminPath('/login')} replace />;
   }
 
-  // 学生角色不允许进入后台
-  if (user.role === 'STUDENT' || user.role === 'GUEST') {
+  if (user.role !== 'SUPER_ADMIN') {
     return (
       <Result
         status="403"
@@ -89,16 +113,6 @@ export function PermissionGuard({ children, requiredRoles }: PermissionGuardProp
         />
       );
     }
-  }
-
-  if (error) {
-    return (
-      <Result
-        status="error"
-        title="加载失败"
-        subTitle={error}
-      />
-    );
   }
 
   return <>{children}</>;

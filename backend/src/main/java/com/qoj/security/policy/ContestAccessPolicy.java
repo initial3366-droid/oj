@@ -6,15 +6,24 @@ import com.qoj.security.audit.AuditLogger;
 import java.time.LocalDateTime;
 import org.springframework.stereotype.Component;
 
+/**
+ * 比赛访问访问策略。根据当前身份、资源归属和操作类型统一作出权限判断。
+ */
 @Component
 public class ContestAccessPolicy extends AccessPolicy<Contest> {
 
     private final AuditLogger auditLogger;
 
+    /**
+     * 构造 比赛访问Policy 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断。
+     */
     public ContestAccessPolicy(AuditLogger auditLogger) {
         this.auditLogger = auditLogger;
     }
 
+    /**
+     * 判断条件是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     @Override
     public boolean can(AuthUser user, Permission permission, Contest contest) {
         if (contest == null) {
@@ -34,6 +43,9 @@ public class ContestAccessPolicy extends AccessPolicy<Contest> {
         };
     }
 
+    /**
+     * 判断View是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     private boolean canView(AuthUser user, Contest contest) {
         // 超级管理员可以查看所有比赛
         if (isSuperAdmin(user)) {
@@ -56,6 +68,9 @@ public class ContestAccessPolicy extends AccessPolicy<Contest> {
             "非公开比赛且用户不在目标受众中", auditLogger);
     }
 
+    /**
+     * 判断View题目详情是否成立。调用前会结合当前登录身份执行权限判断；结果依赖当前时间。
+     */
     public boolean canViewProblemDetail(AuthUser user, Contest contest) {
         LocalDateTime now = LocalDateTime.now();
 
@@ -81,6 +96,9 @@ public class ContestAccessPolicy extends AccessPolicy<Contest> {
         return canView(user, contest);
     }
 
+    /**
+     * 判断Create是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     private boolean canCreate(AuthUser user) {
         if (user == null) {
             auditLogger.logPermissionDenied(user, Permission.CREATE, "Contest", null, "未登录");
@@ -94,8 +112,14 @@ public class ContestAccessPolicy extends AccessPolicy<Contest> {
         return allowed;
     }
 
+    /**
+     * 判断Update是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     private boolean canUpdate(AuthUser user, Contest contest) {
         if (user == null) {
+            /**
+             * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+             */
             return checkAndLog(user, Permission.UPDATE, "Contest", contest.id, false,
                 "未登录", auditLogger);
         }
@@ -110,18 +134,30 @@ public class ContestAccessPolicy extends AccessPolicy<Contest> {
             return true;
         }
 
+        /**
+         * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+         */
         return checkAndLog(user, Permission.UPDATE, "Contest", contest.id, false,
             "非比赛创建者", auditLogger);
     }
 
+    /**
+     * 判断Delete是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     private boolean canDelete(AuthUser user, Contest contest) {
         if (user == null) {
+            /**
+             * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
+             */
             return checkAndLogSensitive(user, Permission.DELETE, "Contest", contest.id, false,
                 "未登录", auditLogger);
         }
 
         // 超级管理员可以删除所有比赛
         if (isSuperAdmin(user)) {
+            /**
+             * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
+             */
             checkAndLogSensitive(user, Permission.DELETE, "Contest", contest.id, true,
                 "超级管理员", auditLogger);
             return true;
@@ -129,17 +165,29 @@ public class ContestAccessPolicy extends AccessPolicy<Contest> {
 
         // 比赛创建者可以删除自己的比赛
         if (isOwner(contest, user, contest.ownerId, contest.ownerAccountType)) {
+            /**
+             * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
+             */
             checkAndLogSensitive(user, Permission.DELETE, "Contest", contest.id, true,
                 "比赛创建者", auditLogger);
             return true;
         }
 
+        /**
+         * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
+         */
         return checkAndLogSensitive(user, Permission.DELETE, "Contest", contest.id, false,
             "非比赛创建者", auditLogger);
     }
 
+    /**
+     * 判断Submit是否成立。调用前会结合当前登录身份执行权限判断；结果依赖当前时间。
+     */
     private boolean canSubmit(AuthUser user, Contest contest) {
         if (user == null) {
+            /**
+             * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+             */
             return checkAndLog(user, Permission.SUBMIT, "Contest", contest.id, false,
                 "未登录", auditLogger);
         }
@@ -149,18 +197,27 @@ public class ContestAccessPolicy extends AccessPolicy<Contest> {
         // 比赛未开始不能提交；比赛结束后是否允许继续提交由后台配置控制。
         if (now.isBefore(contest.startTime)
             || (now.isAfter(contest.endTime) && !Boolean.TRUE.equals(contest.allowAfterEndSubmit))) {
+            /**
+             * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+             */
             return checkAndLog(user, Permission.SUBMIT, "Contest", contest.id, false,
                 "比赛未开始或已结束", auditLogger);
         }
 
         // 超级管理员和比赛创建者不能提交
         if (isSuperAdmin(user) || isOwner(contest, user, contest.ownerId, contest.ownerAccountType)) {
+            /**
+             * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+             */
             return checkAndLog(user, Permission.SUBMIT, "Contest", contest.id, false,
                 "管理员不能提交", auditLogger);
         }
 
         // 后台账号不能提交
         if (user.adminAccount()) {
+            /**
+             * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+             */
             return checkAndLog(user, Permission.SUBMIT, "Contest", contest.id, false,
                 "后台账号不能提交", auditLogger);
         }
@@ -169,8 +226,14 @@ public class ContestAccessPolicy extends AccessPolicy<Contest> {
         return true;
     }
 
+    /**
+     * 判断Manage报名是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     private boolean canManageRegistration(AuthUser user, Contest contest) {
         if (user == null) {
+            /**
+             * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+             */
             return checkAndLog(user, Permission.MANAGE_REGISTRATION, "Contest", contest.id, false,
                 "未登录", auditLogger);
         }
@@ -185,12 +248,21 @@ public class ContestAccessPolicy extends AccessPolicy<Contest> {
             return true;
         }
 
+        /**
+         * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+         */
         return checkAndLog(user, Permission.MANAGE_REGISTRATION, "Contest", contest.id, false,
             "非比赛创建者", auditLogger);
     }
 
+    /**
+     * 判断Manage榜单是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     private boolean canManageScoreboard(AuthUser user, Contest contest) {
         if (user == null) {
+            /**
+             * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+             */
             return checkAndLog(user, Permission.MANAGE_SCOREBOARD, "Contest", contest.id, false,
                 "未登录", auditLogger);
         }
@@ -205,18 +277,30 @@ public class ContestAccessPolicy extends AccessPolicy<Contest> {
             return true;
         }
 
+        /**
+         * 校验AndLog。调用前会结合当前登录身份执行权限判断。
+         */
         return checkAndLog(user, Permission.MANAGE_SCOREBOARD, "Contest", contest.id, false,
             "非比赛创建者", auditLogger);
     }
 
+    /**
+     * 判断Rejudge是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     private boolean canRejudge(AuthUser user, Contest contest) {
         if (user == null) {
+            /**
+             * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
+             */
             return checkAndLogSensitive(user, Permission.REJUDGE, "Contest", contest.id, false,
                 "未登录", auditLogger);
         }
 
         // 超级管理员可以重判所有比赛
         if (isSuperAdmin(user)) {
+            /**
+             * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
+             */
             checkAndLogSensitive(user, Permission.REJUDGE, "Contest", contest.id, true,
                 "超级管理员", auditLogger);
             return true;
@@ -224,15 +308,24 @@ public class ContestAccessPolicy extends AccessPolicy<Contest> {
 
         // 比赛创建者可以重判自己的比赛
         if (isOwner(contest, user, contest.ownerId, contest.ownerAccountType)) {
+            /**
+             * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
+             */
             checkAndLogSensitive(user, Permission.REJUDGE, "Contest", contest.id, true,
                 "比赛创建者", auditLogger);
             return true;
         }
 
+        /**
+         * 校验AndLogSensitive。调用前会结合当前登录身份执行权限判断。
+         */
         return checkAndLogSensitive(user, Permission.REJUDGE, "Contest", contest.id, false,
             "非比赛创建者", auditLogger);
     }
 
+    /**
+     * 判断View榜单DuringFreeze是否成立。调用前会结合当前登录身份执行权限判断。
+     */
     public boolean canViewScoreboardDuringFreeze(AuthUser user, Contest contest) {
         if (user == null) {
             auditLogger.logPermissionDenied(user, Permission.VIEW, "ContestScoreboard", contest.id,

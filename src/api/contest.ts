@@ -3,6 +3,9 @@
  */
 import { apiGet, apiPost } from "./client";
 
+/**
+ * 比赛接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface Contest {
   id: number;
   title: string;
@@ -37,6 +40,9 @@ export interface Contest {
   }>;
 }
 
+/**
+ * 比赛报名Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestRegistrationOption {
   identityType: "PERSONAL";
   identityId?: number | null;
@@ -46,6 +52,9 @@ export interface ContestRegistrationOption {
   starAvailable?: boolean | null;
 }
 
+/**
+ * 比赛报名请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestRegistrationPayload {
   identityType?: "PERSONAL";
   identityId?: number | null;
@@ -53,6 +62,9 @@ export interface ContestRegistrationPayload {
   password?: string;
 }
 
+/**
+ * 比赛榜单接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestScoreboard {
   contestId: number;
   title: string;

@@ -4,6 +4,9 @@
  */
 import { adminPath } from '../../utils/adminPath';
 
+/**
+ * Api响应接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ApiResponse<T> {
   code: number;
   message: string;
@@ -15,12 +18,18 @@ const ADMIN_TOKEN_KEY = "qoj.adminAccessToken";
 const ADMIN_REFRESH_TOKEN_KEY = "qoj.adminRefreshToken";
 let adminRefreshPromise: Promise<string | null> | null = null;
 
+/**
+ * 封装timeoutSignal相关逻辑。会更新 React 状态并触发重新渲染。
+ */
 function timeoutSignal() {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
   return { controller, timeout };
 }
 
+/**
+ * 读取WithTimeout并返回给调用方。包含异步流程并由调用方处理完成或失败状态；失败时向调用方传播异常。
+ */
 async function fetchWithTimeout(url: string, init: RequestInit) {
   const { controller, timeout } = timeoutSignal();
   try {
@@ -38,14 +47,23 @@ async function fetchWithTimeout(url: string, init: RequestInit) {
   }
 }
 
+/**
+ * 读取管理员令牌并返回给调用方。会读写浏览器本地会话信息。
+ */
 function getAdminToken(): string | null {
   return window.localStorage.getItem(ADMIN_TOKEN_KEY);
 }
 
+/**
+ * 读取管理员Refresh令牌并返回给调用方。会读写浏览器本地会话信息。
+ */
 function getAdminRefreshToken(): string | null {
   return window.localStorage.getItem(ADMIN_REFRESH_TOKEN_KEY);
 }
 
+/**
+ * 封装set管理员令牌相关逻辑。会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+ */
 export function setAdminToken(token: string, refreshToken?: string) {
   window.localStorage.setItem(ADMIN_TOKEN_KEY, token);
   if (refreshToken) {
@@ -53,11 +71,46 @@ export function setAdminToken(token: string, refreshToken?: string) {
   }
 }
 
+/**
+ * 重置管理员令牌。会读写浏览器本地会话信息。
+ */
 export function clearAdminToken() {
   window.localStorage.removeItem(ADMIN_TOKEN_KEY);
   window.localStorage.removeItem(ADMIN_REFRESH_TOKEN_KEY);
 }
 
+/**
+ * 封装管理员退出登录相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+ */
+export async function adminLogout() {
+  try {
+    let token = getAdminToken();
+    if (!token) token = await refreshAdminAccessToken();
+    if (!token) return;
+
+    let response = await fetchWithTimeout('/api/v1/auth/logout', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: getAdminRefreshToken() }),
+    });
+    if (response.status === 401) {
+      token = await refreshAdminAccessToken();
+      if (token) {
+        response = await fetchWithTimeout('/api/v1/auth/logout', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: getAdminRefreshToken() }),
+        });
+      }
+    }
+  } finally {
+    clearAdminToken();
+  }
+}
+
+/**
+ * 处理Unauthorized。可能改变当前路由或查询参数。
+ */
 function handleUnauthorized() {
   clearAdminToken();
   const loginPath = adminPath('/login');
@@ -66,6 +119,9 @@ function handleUnauthorized() {
   }
 }
 
+/**
+ * 封装refresh管理员访问令牌相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；失败时向调用方传播异常。
+ */
 async function refreshAdminAccessToken() {
   const refreshToken = getAdminRefreshToken();
   if (!refreshToken) {
@@ -74,26 +130,29 @@ async function refreshAdminAccessToken() {
 
   if (!adminRefreshPromise) {
     adminRefreshPromise = (async () => {
+      const response = await fetchWithTimeout('/api/v1/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      let body: ApiResponse<{ accessToken: string; refreshToken: string }> | null = null;
       try {
-        const response = await fetchWithTimeout('/api/v1/auth/refresh', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
-        const body = (await response.json()) as ApiResponse<{
-          accessToken: string;
-          refreshToken: string;
-        }>;
-        if (!response.ok || !body || body.code !== 200) {
-          clearAdminToken();
-          return null;
-        }
-        setAdminToken(body.data.accessToken, body.data.refreshToken);
-        return body.data.accessToken;
+        body = (await response.json()) as ApiResponse<{ accessToken: string; refreshToken: string }>;
       } catch {
+        body = null;
+      }
+      if (response.status === 401 || response.status === 403) {
         clearAdminToken();
         return null;
       }
+      if (!response.ok) {
+        throw new Error(body?.message || `刷新登录状态失败：${response.status}`);
+      }
+      if (!body || body.code !== 200 || !body.data?.accessToken || !body.data?.refreshToken) {
+        throw new Error(body?.message || '刷新登录状态返回格式错误');
+      }
+      setAdminToken(body.data.accessToken, body.data.refreshToken);
+      return body.data.accessToken;
     })().finally(() => {
       adminRefreshPromise = null;
     });
@@ -102,6 +161,9 @@ async function refreshAdminAccessToken() {
   return adminRefreshPromise;
 }
 
+/**
+ * 封装管理员FetchWith认证相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；失败时向调用方传播异常。
+ */
 async function adminFetchWithAuth(
   url: string,
   init: RequestInit,
@@ -137,6 +199,9 @@ async function adminFetchWithAuth(
   return response;
 }
 
+/**
+ * 解析并规范化响应。包含异步流程并由调用方处理完成或失败状态；失败时向调用方传播异常。
+ */
 async function parseResponse<T>(response: Response, shouldHandleUnauth: boolean, url?: string): Promise<T> {
   let body: ApiResponse<T> | null = null;
   let rawText = "";
@@ -211,6 +276,9 @@ async function parseResponse<T>(response: Response, shouldHandleUnauth: boolean,
   return body.data;
 }
 
+/**
+ * 解析并规范化DownloadError。包含异步流程并由调用方处理完成或失败状态；失败时向调用方传播异常。
+ */
 async function parseDownloadError(response: Response, shouldHandleUnauth: boolean): Promise<never> {
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
@@ -240,6 +308,9 @@ async function parseDownloadError(response: Response, shouldHandleUnauth: boolea
   throw new Error(message || `下载失败：${response.status}`);
 }
 
+/**
+ * 封装管理员Get相关逻辑。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function adminGet<T>(url: string, requireAuth = true): Promise<T> {
   const response = await adminFetchWithAuth(url, {
     method: "GET",
@@ -248,6 +319,9 @@ export async function adminGet<T>(url: string, requireAuth = true): Promise<T> {
   return parseResponse<T>(response, requireAuth, url);
 }
 
+/**
+ * 封装管理员Post相关逻辑。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function adminPost<T>(
   url: string,
   body?: unknown,
@@ -266,6 +340,9 @@ export async function adminPost<T>(
   return parseResponse<T>(response, requireAuth, url);
 }
 
+/**
+ * 封装管理员Put相关逻辑。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function adminPut<T>(
   url: string,
   body?: unknown,
@@ -284,6 +361,9 @@ export async function adminPut<T>(
   return parseResponse<T>(response, requireAuth, url);
 }
 
+/**
+ * 封装管理员Delete相关逻辑。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function adminDelete<T>(url: string, requireAuth = true, body?: unknown): Promise<T> {
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
 
@@ -298,6 +378,9 @@ export async function adminDelete<T>(url: string, requireAuth = true, body?: unk
   return parseResponse<T>(response, requireAuth, url);
 }
 
+/**
+ * 封装管理员Download相关逻辑。包含异步流程并由调用方处理完成或失败状态。
+ */
 export async function adminDownload(url: string, filename: string, requireAuth = true): Promise<void> {
   const response = await adminFetchWithAuth(url, {
     method: "GET",

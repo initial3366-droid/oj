@@ -1,3 +1,6 @@
+/**
+ * 比赛排名Types数据模块。定义前端领域类型、数据转换或共享状态访问方式。
+ */
 // Contest Ranking Types
 
 export interface ContestAcmRankVO {
@@ -13,6 +16,9 @@ export interface ContestAcmRankVO {
   problemStatus: AcmProblemStatusVO[];
 }
 
+/**
+ * Acm题目状态VO接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface AcmProblemStatusVO {
   contestProblemId: number;
   label: string;
@@ -21,6 +27,9 @@ export interface AcmProblemStatusVO {
   solveTimeMinutes?: number;
 }
 
+/**
+ * 比赛Oi排名VO接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestOiRankVO {
   participantId: number;
   userId: number;
@@ -34,6 +43,9 @@ export interface ContestOiRankVO {
   problemScores: OiProblemScoreVO[];
 }
 
+/**
+ * Oi题目分数VO接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface OiProblemScoreVO {
   contestProblemId: number;
   label: string;
@@ -42,6 +54,9 @@ export interface OiProblemScoreVO {
   submissionCount: number;
 }
 
+/**
+ * 比赛榜单Snapshot接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestScoreboardSnapshot {
   id: number;
   contestId: number;

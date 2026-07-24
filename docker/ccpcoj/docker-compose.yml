@@ -1,0 +1,38 @@
+# 外部 CCPCOJ 判题机，仅用于显式选择 CCPCOJ 后端的比赛提交。
+services:
+  judge:
+    # This privileged image must be pinned by the deployer after validation.
+    # Refuse to start instead of silently pulling a mutable `latest` image.
+    image: ${CCPCOJ_IMAGE:?set CCPCOJ_IMAGE to a tested immutable tag or digest}
+    restart: unless-stopped
+    privileged: true
+    cap_add:
+      - SYS_PTRACE
+    shm_size: ${CCPCOJ_SHM_SIZE:-1g}
+    cpus: ${CCPCOJ_CPUS:-4}
+    mem_limit: ${CCPCOJ_MEMORY:-4g}
+    # 判题机通过专用账号回调 QOJ；密码必须由部署环境显式提供。
+    environment:
+      OJ_HTTP_BASEURL: ${QOJ_BASE_URL:-http://host.docker.internal:18080}
+      OJ_HTTP_USERNAME: ${CCPCOJ_JUDGE_USERNAME:-judger}
+      OJ_HTTP_PASSWORD: ${CCPCOJ_JUDGE_PASSWORD:?set CCPCOJ_JUDGE_PASSWORD}
+      OJ_OPEN_OI: ${CCPCOJ_OI_MODE:-0}
+      JUDGE_PROCESS_NUM: ${CCPCOJ_PROCESS_NUM:-1}
+      JUDGE_IGNORE_ESOL: ${CCPCOJ_IGNORE_ESOL:-1}
+      JUDGE_TOP_DIFF_BYTES: ${CCPCOJ_TOP_DIFF_BYTES:-2048}
+      JUDGE_SHM_RUN: ${CCPCOJ_SHM_RUN:-0}
+      JUDGE_V_TIME_BONUS: ${CCPCOJ_JAVA_TIME_BONUS:-2}
+      JUDGE_V_MEM_BONUS: ${CCPCOJ_JAVA_MEMORY_BONUS:-512}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ccpcoj-judge-data:/volume
+    # 限制 Docker JSON 日志轮转，防止长期判题输出耗尽宿主机磁盘。
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  ccpcoj-judge-data:

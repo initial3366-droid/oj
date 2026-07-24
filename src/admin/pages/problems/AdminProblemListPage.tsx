@@ -1,5 +1,8 @@
+/**
+ * 管理员题目列表页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { adminPath } from '../../../utils/adminPath';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Table,
@@ -11,11 +14,15 @@ import {
   Message,
   Popconfirm,
   Tag,
+  Tooltip,
 } from '@arco-design/web-react';
 import { IconPlus, IconSearch, IconEdit, IconDelete, IconFile } from '@arco-design/web-react/icon';
 import { adminGet, adminDelete } from '../../api/adminClient';
 import { encryptId } from '../../../utils/cipher';
 
+/**
+ * 题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Problem {
   id: number;
   title: string;
@@ -28,13 +35,23 @@ interface Problem {
   isPublic: boolean;
   createdAt: string;
   testCaseCount: number;
+  accessScope: 'ALL' | 'MAJOR' | 'PRIVATE';
+  majorName?: string | null;
+  studentPublishStatus: 'DRAFT' | 'PUBLISHED';
+  canEdit: boolean;
 }
 
+/**
+ * 文件夹Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface FolderOption {
   id: number;
   name: string;
 }
 
+/**
+ * 页面结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PageResult {
   list: Problem[];
   total: number;
@@ -52,7 +69,11 @@ const difficultyMap: Record<number, { text: string; color: string }> = Object.fr
   difficultyOptions.map((d) => [d.value, { text: d.label, color: d.color }])
 );
 
+/**
+ * 渲染管理员题目列表页面，并协调其数据加载、状态和交互。
+ */
 export function AdminProblemListPage() {
+  const requestSequence = useRef(0);
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -66,6 +87,9 @@ export function AdminProblemListPage() {
   const [filterOwnerName, setFilterOwnerName] = useState('');
   const [folders, setFolders] = useState<FolderOption[]>([]);
 
+  /**
+   * 读取Folders并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const loadFolders = useCallback(async () => {
     try {
       const result = await adminGet<FolderOption[]>('/api/admin/v1/problem-folders');
@@ -79,7 +103,11 @@ export function AdminProblemListPage() {
     loadProblems();
   }, [page, keyword, filterDifficulty, filterTag, filterFolderId, filterOwnerName]);
 
+  /**
+   * 读取Problems并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadProblems() {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -93,33 +121,50 @@ export function AdminProblemListPage() {
       if (filterOwnerName) params.append('ownerName', filterOwnerName);
 
       const result = await adminGet<PageResult>(`/api/admin/v1/problems?${params.toString()}`);
+      if (sequence !== requestSequence.current) return;
       setProblems(result.list);
       setTotal(result.total);
     } catch (error) {
+      if (sequence !== requestSequence.current) return;
       Message.error('加载题目列表失败');
       console.error(error);
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }
 
+  /**
+   * 处理Search。会更新 React 状态并触发重新渲染。
+   */
   function handleSearch(value: string) {
     setKeyword(value);
     setPage(1);
   }
 
+  /**
+   * 处理Create。可能改变当前路由或查询参数。
+   */
   function handleCreate() {
     navigate(adminPath('/problems/new'));
   }
 
+  /**
+   * 处理Edit。可能改变当前路由或查询参数。
+   */
   function handleEdit(id: number) {
     navigate(`/admin/problems/${encryptId(id)}/edit`);
   }
 
+  /**
+   * 处理TestCases。可能改变当前路由或查询参数。
+   */
   function handleTestCases(id: number) {
     navigate(`/admin/problems/${encryptId(id)}/test-cases`);
   }
 
+  /**
+   * 处理Delete。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function handleDelete(id: number) {
     try {
       await adminDelete(`/api/admin/v1/problems/${id}`);
@@ -134,26 +179,26 @@ export function AdminProblemListPage() {
     {
       title: 'ID',
       dataIndex: 'id',
-      width: 70,
+      width: 60,
       align: 'center' as const,
     },
     {
       title: '题目名称',
       dataIndex: 'title',
-      width: 200,
+      width: 180,
       ellipsis: true,
     },
     {
       title: '创建者',
       dataIndex: 'ownerName',
-      width: 100,
+      width: 90,
       ellipsis: true,
       render: (value: string) => value || '-',
     },
     {
       title: '难度',
       dataIndex: 'difficulty',
-      width: 80,
+      width: 72,
       align: 'center' as const,
       render: (value: number) => {
         const info = difficultyMap[value] || { text: '未知', color: 'gray' };
@@ -163,62 +208,64 @@ export function AdminProblemListPage() {
     {
       title: '所属文件夹',
       dataIndex: 'folderName',
-      width: 120,
+      width: 100,
       ellipsis: true,
       render: (value: string) => value || '-',
     },
     {
       title: '通过率',
       dataIndex: 'acRate',
-      width: 80,
+      width: 70,
       align: 'center' as const,
       render: (value: number) => `${value}%`,
     },
     {
       title: '测试点',
       dataIndex: 'testCaseCount',
-      width: 70,
+      width: 64,
       align: 'center' as const,
     },
     {
       title: '状态',
-      dataIndex: 'isPublic',
-      width: 70,
+      dataIndex: 'accessScope',
+      width: 100,
       align: 'center' as const,
-      render: (value: boolean) => (
-        <Tag color={value ? 'green' : 'gray'}>{value ? '公开' : '私有'}</Tag>
+      render: (_: unknown, record: Problem) => (
+        <Tag>{record.accessScope === 'ALL' ? '所有人' : record.accessScope === 'MAJOR' ? record.majorName || '本专业' : '私有'}</Tag>
       ),
     },
+    { title: '学生题库', dataIndex: 'studentPublishStatus', width: 86, render: (value: Problem['studentPublishStatus']) => <Tag color={value === 'PUBLISHED' ? 'green' : 'gray'}>{value === 'PUBLISHED' ? '已发布' : '未发布'}</Tag> },
     {
       title: '操作',
-      width: 220,
-      fixed: 'right' as const,
+      width: 132,
       align: 'center' as const,
       render: (_: any, record: Problem) => (
         <Space>
-          <Button
-            type="text"
-            size="small"
-            icon={<IconEdit />}
-            onClick={() => handleEdit(record.id)}
-          >
-            编辑
-          </Button>
-          <Button
-            type="text"
-            size="small"
-            icon={<IconFile />}
-            onClick={() => handleTestCases(record.id)}
-          >
-            测试点
-          </Button>
+          <Tooltip content="编辑题目">
+            <Button
+              type="text"
+              size="small"
+              aria-label="编辑题目"
+              icon={<IconEdit />}
+              onClick={() => handleEdit(record.id)}
+            />
+          </Tooltip>
+          <Tooltip content="管理测试点">
+            <Button
+              type="text"
+              size="small"
+              aria-label="管理测试点"
+              icon={<IconFile />}
+              onClick={() => handleTestCases(record.id)}
+            />
+          </Tooltip>
           <Popconfirm
             title="确定要删除该题目吗？"
             onOk={() => handleDelete(record.id)}
           >
-            <Button type="text" size="small" status="danger" icon={<IconDelete />}>
-              删除
-            </Button>
+            <Tooltip content="删除题目">
+              <Button type="text" size="small" status="danger" aria-label="删除题目" icon={<IconDelete />} />
+            </Tooltip>
           </Popconfirm>
         </Space>
       ),
@@ -226,9 +273,9 @@ export function AdminProblemListPage() {
   ];
 
   return (
-    <Card>
+    <Card title={`题目列表（${total}）`}>
       <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <Space size={8} wrap>
             <Input.Search
               style={{ width: 240 }}
@@ -277,7 +324,6 @@ export function AdminProblemListPage() {
         loading={loading}
         columns={columns}
         data={problems}
-        scroll={{ x: '100%' }}
         pagination={{
           total,
           current: page,

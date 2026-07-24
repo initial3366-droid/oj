@@ -38,6 +38,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 管理员比赛接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
+ */
 @RestController
 @RequestMapping("/api/admin/v1/contests")
 @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
@@ -49,6 +52,9 @@ public class AdminContestController {
     private final ContestAccessPolicy contestAccessPolicy;
     private final ContestInspectionExportService contestInspectionExportService;
 
+    /**
+     * 构造 管理员比赛Controller 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断；从持久化层读取数据。
+     */
     public AdminContestController(
         ContestService contestService,
         ContestMapper contestMapper,
@@ -87,11 +93,17 @@ public class AdminContestController {
     public ApiResponse<ContestVO> update(@PathVariable long id, @Valid @RequestBody ContestUpdateRequest request) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
 
         AuthUser user = CurrentUser.required();
         if (!contestAccessPolicy.can(user, Permission.UPDATE, contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权修改该比赛");
         }
 
@@ -118,11 +130,17 @@ public class AdminContestController {
     public ApiResponse<Void> delete(@PathVariable long id) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
 
         AuthUser user = CurrentUser.required();
         if (!contestAccessPolicy.can(user, Permission.DELETE, contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权删除该比赛");
         }
 
@@ -134,6 +152,9 @@ public class AdminContestController {
     public ApiResponse<List<ContestProblem>> getContestProblems(@PathVariable long id) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
 
@@ -149,10 +170,16 @@ public class AdminContestController {
     public ApiResponse<List<com.qoj.module.contest.vo.ContestRegistrationVO>> getContestRegistrations(@PathVariable long id) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
         AuthUser user = CurrentUser.required();
         if (!contestAccessPolicy.can(user, Permission.MANAGE_REGISTRATION, contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权查看该比赛报名列表");
         }
 

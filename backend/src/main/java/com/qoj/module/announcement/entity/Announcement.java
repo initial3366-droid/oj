@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 
+/**
+ * 公告持久化实体。字段与数据库记录对应，用于在数据访问层和业务层之间传递状态。
+ */
 @TableName("announcements")
 public class Announcement {
     @TableId(type = IdType.AUTO)
@@ -14,8 +17,8 @@ public class Announcement {
     public Long authorId;
     public String authorName;
     public Boolean isVisible;
+    public Boolean isPinned;
     public Boolean isDeleted;
-    public Integer viewCount;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;
 }

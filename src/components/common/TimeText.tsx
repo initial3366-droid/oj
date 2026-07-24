@@ -1,6 +1,12 @@
+/**
+ * TimeText组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Typography, Tooltip } from '@douyinfe/semi-ui';
 import { IconClock } from '@douyinfe/semi-icons';
 
+/**
+ * TimeTextProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TimeTextProps {
   time: string | number | Date;
   format?: 'relative' | 'absolute' | 'both';
@@ -18,11 +24,17 @@ export function TimeText({
   showIcon = false,
   style,
 }: TimeTextProps) {
+  /**
+   * 读取Date并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const getDate = (t: string | number | Date): Date => {
     if (t instanceof Date) return t;
     return new Date(t);
   };
 
+  /**
+   * 格式化Absolute。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const formatAbsolute = (date: Date): string => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -33,6 +45,9 @@ export function TimeText({
     return `${year}-${month}-${day} ${hours}:${minutes}`;
   };
 
+  /**
+   * 格式化Relative。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const formatRelative = (date: Date): string => {
     const now = new Date();
     const diff = now.getTime() - date.getTime();

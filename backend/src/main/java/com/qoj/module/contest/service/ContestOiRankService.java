@@ -17,6 +17,9 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * 比赛Oi排名业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class ContestOiRankService {
     private final ContestOiRankCacheMapper oiRankCacheMapper;
@@ -27,6 +30,9 @@ public class ContestOiRankService {
     private final ContestMapper contestMapper;
     private final UserMapper userMapper;
 
+    /**
+     * 构造 比赛Oi排名Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public ContestOiRankService(
         ContestOiRankCacheMapper oiRankCacheMapper,
         ContestOiRankProblemMapper oiRankProblemMapper,
@@ -207,9 +213,15 @@ public class ContestOiRankService {
     public void rebuildRank(Long contestId) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "比赛不存在");
         }
         if (!"OI".equals(contest.type)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "该比赛不是 OI 赛制");
         }
 
@@ -289,6 +301,9 @@ public class ContestOiRankService {
             List<OiProblemScoreVO> problemScores = problems.stream()
                 .map(p -> {
                     ContestOiRankProblem pr = problemRankMap.get(p.id);
+                    /**
+                     * 封装Oi题目分数VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                     */
                     return new OiProblemScoreVO(
                         p.id,
                         p.label,

@@ -23,6 +23,9 @@ public class SubmissionExportService {
 
     private final SubmissionService submissionService;
 
+    /**
+     * 构造 提交导出Service 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     public SubmissionExportService(SubmissionService submissionService) {
         this.submissionService = submissionService;
     }
@@ -63,7 +66,7 @@ public class SubmissionExportService {
             "语言", "状态", "分数", "运行时间ms", "运行内存KB",
             "通过测试点", "总测试点",
             "代码长度", "身份类型", "身份ID",
-            "DOMjudge ID", "判题机", "优先级", "重试次数",
+            "判题机", "优先级", "重试次数",
             "比赛提交", "封榜", "重判",
             "提交时间", "判题开始", "判题结束",
             "创建时间", "更新时间",
@@ -95,7 +98,6 @@ public class SubmissionExportService {
                 text(r.codeLength()),
                 text(r.identityType()),
                 text(r.identityId()),
-                text(r.domjudgeSubmissionId()),
                 text(r.judgeServer()),
                 text(r.priority()),
                 text(r.retryCount()),
@@ -111,6 +113,9 @@ public class SubmissionExportService {
                 text(r.errorMessage())
             )));
         }
+        /**
+         * 封装withBom相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return withBom(builder.toString());
     }
 
@@ -122,6 +127,9 @@ public class SubmissionExportService {
         return "submissions-" + stamp + ".csv";
     }
 
+    /**
+     * 封装withBom相关逻辑。直接返回当前实例保存的output，不产生额外的数据写入。
+     */
     private byte[] withBom(String text) {
         byte[] payload = text.getBytes(StandardCharsets.UTF_8);
         byte[] output = new byte[payload.length + 3];
@@ -132,6 +140,9 @@ public class SubmissionExportService {
         return output;
     }
 
+    /**
+     * 封装csvLine相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     private String csvLine(List<String> values) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < values.size(); i++) {
@@ -144,19 +155,31 @@ public class SubmissionExportService {
         return sb.toString();
     }
 
+    /**
+     * 封装csv相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     private String csv(String value) {
         String safe = value == null ? "" : value;
         return "\"" + safe.replace("\"", "\"\"").replace("\r", " ").replace("\n", " ") + "\"";
     }
 
+    /**
+     * 格式化Time。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     private String formatTime(LocalDateTime time) {
         return time == null ? "" : TIME_FORMAT.format(time);
     }
 
+    /**
+     * 封装text相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value);
     }
 
+    /**
+     * 封装boolText相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     private String boolText(Boolean value) {
         if (value == null) return "";
         return value ? "是" : "否";

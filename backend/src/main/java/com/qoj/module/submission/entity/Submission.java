@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 
+/**
+ * 提交持久化实体。字段与数据库记录对应，用于在数据访问层和业务层之间传递状态。
+ */
 @TableName("submissions")
 public class Submission {
     @TableId(type = IdType.AUTO)
@@ -16,6 +19,7 @@ public class Submission {
     public Long participantId;
     public Long teamId;
     public Long practiceId;
+    public Long practicePublicationId;
     public String code;
     public Integer codeLength;
     public String language;
@@ -32,8 +36,8 @@ public class Submission {
     public String judgeMessage;
     public String identityType;
     public Long identityId;
-    public String domjudgeSubmissionId;
     public String judgeServer;
+    public String judgeBackend;
     public String judgeWorkerId;
     public Integer priority;
     public Integer retryCount;

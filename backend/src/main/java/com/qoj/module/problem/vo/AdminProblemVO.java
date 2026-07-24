@@ -30,8 +30,14 @@ public record AdminProblemVO(
     // Admin-only fields
     Long ownerId,
     Boolean isPublic,
-    String domjudgeProblemId,
-    LocalDateTime updatedAt
+    LocalDateTime updatedAt,
+    String ownerAccountType,
+    String accessScope,
+    Long majorId,
+    String majorName,
+    String studentPublishStatus,
+    Boolean owner,
+    Boolean canEdit
 ) {
     /**
      * Converts this admin VO to a public VO by excluding admin-only fields.

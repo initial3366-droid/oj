@@ -1,4 +1,8 @@
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+/**
+ * 教师Routes组件。封装可复用的界面结构、展示规则及交互行为。
+ */
+import { Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import '../utils/arcoSetup';
 import {
   Alert,
   Avatar,
@@ -14,7 +18,6 @@ import {
   Popconfirm,
   Select,
   Space,
-  Statistic,
   Switch,
   Table,
   Tag,
@@ -28,10 +31,8 @@ import {
   IconDashboard,
   IconDelete,
   IconEdit,
-  IconExport,
   IconFile,
   IconImport,
-  IconList,
   IconPlus,
   IconRefresh,
   IconSave,
@@ -42,12 +43,12 @@ import {
 } from '@arco-design/web-react/icon';
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactElement } from 'react';
 import {
-  clearTeacherTokens,
   getTeacherToken,
   teacherDelete,
   teacherGet,
   teacherImportStudentsFile,
   teacherLogin,
+  teacherLogout,
   teacherPost,
   teacherPut,
   type ImportResult,
@@ -67,6 +68,7 @@ import { TeacherContestDetailPage } from './pages/TeacherContestDetailPage';
 import { TeacherPracticeListPage } from './pages/TeacherPracticeListPage';
 import { TeacherPracticeCreatePage } from './pages/TeacherPracticeCreatePage';
 import { TeacherPracticeReportPage } from './pages/TeacherPracticeReportPage';
+import { PracticePublishPage } from '../components/practices/PracticePublishPage';
 import { TeacherProfilePage } from './pages/TeacherProfilePage';
 import { TeacherDashboardPage } from './TeacherDashboardPage';
 
@@ -75,32 +77,46 @@ const FormItem = Form.Item;
 const Option = Select.Option;
 const TextArea = Input.TextArea;
 
+/**
+ * 格式化Date。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatDate(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
 }
 
+/**
+ * 封装状态Tag相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusTag(status: string) {
   const color = status === 'AC' || status === 'APPROVED' ? 'green' : status === 'PENDING' ? 'orange' : 'red';
   return <Tag color={color}>{status}</Tag>;
 }
 
+/**
+ * 封装dash相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function dash(value: unknown) {
   if (value === null || value === undefined || value === '') return '-';
   return String(value);
 }
 
+/**
+ * 封装角色Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function roleText(role?: string | null) {
   const map: Record<string, string> = {
     SUPER_ADMIN: '系统管理员',
     TEACHER: '教师',
     STUDENT: '学生',
-    GUEST: '访客',
   };
-  return role ? (map[role] || role) : '-';
+  return role ? (map[role] || '-') : '-';
 }
 
+/**
+ * 渲染Student头像。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function renderStudentAvatar(user: Pick<TeacherStudentDetail, 'avatarUrl' | 'displayName' | 'username'>, size = 72) {
   const name = user.displayName || user.username || '学生';
   return (
@@ -116,9 +132,18 @@ function renderStudentAvatar(user: Pick<TeacherStudentDetail, 'avatarUrl' | 'dis
   );
 }
 
+/**
+ * 教师Audience类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type TeacherAudience = 'ALL' | 'CLASS';
+/**
+ * 比赛类型类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type ContestType = 'ACM' | 'OI';
 
+/**
+ * 教师Student详情接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TeacherStudentDetail {
   id: number;
   username?: string | null;
@@ -132,6 +157,9 @@ interface TeacherStudentDetail {
   updatedAt?: string | null;
 }
 
+/**
+ * 教师题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TeacherProblem {
   id: number;
   title: string;
@@ -146,6 +174,9 @@ interface TeacherProblem {
   createdAt?: string | null;
 }
 
+/**
+ * 教师练习接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TeacherPractice {
   id: number;
   title: string;
@@ -157,6 +188,9 @@ interface TeacherPractice {
   createdAt?: string | null;
 }
 
+/**
+ * 教师比赛接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TeacherContest {
   id: number;
   title: string;
@@ -169,10 +203,16 @@ interface TeacherContest {
   problems?: Array<{ problemId: number; title?: string | null; label?: string | null; score?: number | null }>;
 }
 
+/**
+ * 题目Draft响应接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ProblemDraftResponse {
   draftId: string;
 }
 
+/**
+ * 教师题目FormValues接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TeacherProblemFormValues {
   title: string;
   statement: string;
@@ -186,6 +226,9 @@ interface TeacherProblemFormValues {
   isPublic: boolean;
 }
 
+/**
+ * 教师练习FormValues接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TeacherPracticeFormValues {
   title: string;
   description?: string;
@@ -195,6 +238,9 @@ interface TeacherPracticeFormValues {
   problemIds?: number[];
 }
 
+/**
+ * 教师比赛FormValues接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TeacherContestFormValues {
   title: string;
   description?: string;
@@ -206,31 +252,49 @@ interface TeacherContestFormValues {
   problemIds?: number[];
 }
 
+/**
+ * 封装labelOf相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function labelOf(index: number) {
   return String.fromCharCode(65 + index);
 }
 
+/**
+ * 封装nowLocalInput相关逻辑。会更新 React 状态并触发重新渲染。
+ */
 function nowLocalInput() {
   const date = new Date();
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
   return date.toISOString().slice(0, 16);
 }
 
+/**
+ * 构造或转换LocalDateTime。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function toLocalDateTime(value: string) {
   return value.length === 16 ? `${value}:00` : value.slice(0, 19);
 }
 
+/**
+ * 封装audienceText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function audienceText(value?: string | null) {
   if (value === 'CLASS') return '班级';
   return '公开';
 }
 
+/**
+ * 封装比赛状态Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function contestStatusText(value?: string | null) {
   if (value === 'RUNNING') return '进行中';
   if (value === 'ENDED') return '已结束';
   return '未开始';
 }
 
+/**
+ * 解析并规范化Tags。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function parseTags(value?: string) {
   return (value || '')
     .split(/[,\n，]/)
@@ -238,6 +302,9 @@ function parseTags(value?: string) {
     .filter(Boolean);
 }
 
+/**
+ * 解析并规范化TestCases。失败时向调用方传播异常。
+ */
 function parseTestCases(value: string) {
   return value
     .split(/\r?\n/)
@@ -256,6 +323,9 @@ function parseTestCases(value: string) {
     });
 }
 
+/**
+ * 构造或转换比赛Problems。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function buildContestProblems(problemIds: number[], type: ContestType) {
   if (type !== 'OI') {
     return problemIds.map((problemId, index) => ({
@@ -281,6 +351,9 @@ function buildContestProblems(problemIds: number[], type: ContestType) {
   });
 }
 
+/**
+ * 渲染教师Routes组件，并协调其数据加载、状态和交互。
+ */
 export function TeacherRoutes() {
   return (
     <Routes>
@@ -297,6 +370,9 @@ export function TeacherRoutes() {
   );
 }
 
+/**
+ * 渲染教师Guard组件，并协调其数据加载、状态和交互。
+ */
 function TeacherGuard({ children }: { children: ReactElement }) {
   if (!getTeacherToken()) {
     return <Navigate to="/teacher/login" replace />;
@@ -304,13 +380,27 @@ function TeacherGuard({ children }: { children: ReactElement }) {
   return children;
 }
 
+/**
+ * 渲染教师登录页面，并协调其数据加载、状态和交互。
+ */
 function TeacherLoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [captchaId, setCaptchaId] = useState('');
   const [captchaImage, setCaptchaImage] = useState('');
   const [form] = Form.useForm<{ username: string; password: string; captcha: string }>();
 
+  useEffect(() => {
+    const username = searchParams.get('username');
+    if (username) {
+      form.setFieldValue('username', username);
+    }
+  }, [form, searchParams]);
+
+  /**
+   * 读取Captcha并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadCaptcha() {
     try {
       const response = await fetch('/api/v1/captcha/image');
@@ -324,6 +414,9 @@ function TeacherLoginPage() {
 
   useEffect(() => { loadCaptcha(); }, []);
 
+  /**
+   * 创建或提交目标数据。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function submit(values: { username: string; password: string; captcha: string }) {
     if (!captchaId) {
       Message.warning('验证码未加载，请点击刷新');
@@ -344,8 +437,8 @@ function TeacherLoginPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#f3f6fb' }}>
-      <Card style={{ width: 420 }} title="教师端登录">
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 16, background: '#f3f6fb' }}>
+      <Card style={{ width: '100%', maxWidth: 420 }} title="教师端登录">
         <Form
           form={form}
           onSubmit={submit}
@@ -390,6 +483,9 @@ function TeacherLoginPage() {
   );
 }
 
+/**
+ * 渲染教师Layout组件，并协调其数据加载、状态和交互。
+ */
 function TeacherLayout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -410,6 +506,9 @@ function TeacherLayout() {
       .catch(() => {});
   }, []);
 
+  /**
+   * 封装selected相关逻辑。对原始数据进行派生或聚合。
+   */
   const selected = useMemo(() => {
     const path = location.pathname;
     if (path.startsWith('/teacher/classes')) return ['/teacher/classes'];
@@ -427,6 +526,9 @@ function TeacherLayout() {
     return ['/teacher/dashboard'];
   }, [location.pathname]);
 
+  /**
+   * 封装默认值OpenKeys相关逻辑。对原始数据进行派生或聚合。
+   */
   const defaultOpenKeys = useMemo(() => {
     const path = location.pathname;
     if (path.startsWith('/teacher/problems') || path.startsWith('/teacher/problem-folders')) {
@@ -441,8 +543,11 @@ function TeacherLayout() {
     return [];
   }, [location.pathname]);
 
-  function logout() {
-    clearTeacherTokens();
+  /**
+   * 封装退出登录相关逻辑。包含异步流程并由调用方处理完成或失败状态；可能改变当前路由或查询参数。
+   */
+  async function logout() {
+    await teacherLogout().catch(() => null);
     navigate('/teacher/login', { replace: true });
   }
 
@@ -523,7 +628,7 @@ function TeacherLayout() {
           >
             {me?.displayName || me?.username || '-'}
           </Typography.Text>
-          <Button icon={<IconPoweroff />} onClick={logout} style={{ height: 32, padding: '0 15px', flex: '0 0 auto' }}>
+          <Button icon={<IconPoweroff />} onClick={() => { void logout(); }} style={{ height: 32, padding: '0 15px', flex: '0 0 auto' }}>
             退出登录
           </Button>
         </Header>
@@ -547,6 +652,8 @@ function TeacherLayout() {
             <Route path="/problem-folders/:folderId" element={<TeacherProblemFolderPage />} />
             <Route path="/practices" element={<TeacherPracticeListPage />} />
             <Route path="/practices/new" element={<TeacherPracticeCreatePage />} />
+            <Route path="/practices/:practiceId/publish" element={<PracticePublishPage variant="teacher" />} />
+            <Route path="/practices/publications/:publicationId/edit" element={<PracticePublishPage variant="teacher" />} />
             <Route path="/practices/:practiceId/edit" element={<TeacherPracticeCreatePage />} />
             <Route path="/practices/:practiceId/report" element={<TeacherPracticeReportPage />} />
             <Route path="/contests" element={<TeacherContestListPage />} />
@@ -561,6 +668,9 @@ function TeacherLayout() {
   );
 }
 
+/**
+ * 渲染教师Classes组件，并协调其数据加载、状态和交互。
+ */
 function TeacherClasses() {
   const [rows, setRows] = useState<TeacherClass[]>([]);
   const [loading, setLoading] = useState(false);
@@ -571,6 +681,9 @@ function TeacherClasses() {
   const [deleting, setDeleting] = useState(false);
   const [form] = Form.useForm<{ name: string; description?: string; joinEnabled: boolean; approvalRequired: boolean }>();
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const load = async () => {
     setLoading(true);
     try {
@@ -581,6 +694,9 @@ function TeacherClasses() {
   };
   useEffect(() => { load(); }, []);
 
+  /**
+   * 封装openCreate相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openCreate() {
     setEditing(null);
     form.resetFields();
@@ -588,6 +704,9 @@ function TeacherClasses() {
     setModalVisible(true);
   }
 
+  /**
+   * 封装openEdit相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openEdit(row: TeacherClass) {
     setEditing(row);
     form.setFieldsValue({
@@ -599,6 +718,9 @@ function TeacherClasses() {
     setModalVisible(true);
   }
 
+  /**
+   * 创建或提交目标数据。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function submit(values: { name: string; description?: string; joinEnabled: boolean; approvalRequired: boolean }) {
     try {
       if (editing) {
@@ -615,11 +737,17 @@ function TeacherClasses() {
     }
   }
 
+  /**
+   * 封装openDelete相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openDelete(row: TeacherClass) {
     setDeleteTarget(row);
     setDeletePassword('');
   }
 
+  /**
+   * 封装confirmDelete相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function confirmDelete() {
     if (!deleteTarget || !deletePassword) return;
     setDeleting(true);
@@ -659,7 +787,7 @@ function TeacherClasses() {
         ]}
       />
       <Modal title={editing ? '编辑班级' : '创建班级'} visible={modalVisible} onCancel={() => setModalVisible(false)} onOk={() => form.submit()}>
-        <Form form={form} onSubmit={submit} labelCol={{ span: 6 }} wrapperCol={{ span: 18 }}>
+        <Form form={form} onSubmit={submit} labelCol={{ span: 6 }} wrapperCol={{ span: 18 }} requiredSymbol={false}>
           <FormItem field="name" label="班级名称" rules={[{ required: true, message: '请输入班级名称' }]}><Input /></FormItem>
           <FormItem field="description" label="介绍"><Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} /></FormItem>
           <FormItem field="joinEnabled" label="允许加入" triggerPropName="checked"><Switch checkedText="开启" uncheckedText="关闭" /></FormItem>
@@ -689,6 +817,9 @@ function TeacherClasses() {
 }
 
 
+/**
+ * 渲染教师Students组件，并协调其数据加载、状态和交互。
+ */
 function TeacherStudents() {
   const [rows, setRows] = useState<TeacherStudent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -708,6 +839,9 @@ function TeacherStudents() {
   const [detailSubmissionLoading, setDetailSubmissionLoading] = useState(false);
   const [editForm] = Form.useForm<{ displayName: string; studentNo: string; email: string; password: string }>();
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const load = async () => {
     setLoading(true);
     try {
@@ -731,6 +865,9 @@ function TeacherStudents() {
     }
   }, [rows]);
 
+  /**
+   * 封装filtered相关逻辑。对原始数据进行派生或聚合。
+   */
   const filtered = useMemo(() => {
     return rows.filter((r) => {
       if (filterName && !(r.displayName || '').includes(filterName) && !(r.username || '').includes(filterName)) return false;
@@ -745,6 +882,9 @@ function TeacherStudents() {
     });
   }, [rows, filterName, filterClass, filterQuota, quotaMap]);
 
+  /**
+   * 封装openEdit相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openEdit(student: TeacherStudent) {
     setEditStudent(student);
     editForm.setFieldsValue({
@@ -755,6 +895,9 @@ function TeacherStudents() {
     });
   }
 
+  /**
+   * 创建或提交Edit。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function submitEdit(values: { displayName: string; studentNo: string; email: string; password: string }) {
     if (!editStudent) return;
     setUpdating(true);
@@ -763,7 +906,7 @@ function TeacherStudents() {
       if (values.displayName.trim()) body.displayName = values.displayName.trim();
       if (values.studentNo.trim()) body.studentNo = values.studentNo.trim();
       if (values.email.trim()) body.email = values.email.trim();
-      if (values.password) body.password = values.password;
+      if (values.password?.trim()) body.password = values.password;
       await teacherPut(`/api/teacher/v1/students/${editStudent.userId}`, body);
       Message.success('学生信息已更新');
       setEditStudent(null);
@@ -775,6 +918,9 @@ function TeacherStudents() {
     }
   }
 
+  /**
+   * 读取Student详情并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadStudentDetail(userId: number) {
     setDetailLoading(true);
     try {
@@ -786,6 +932,9 @@ function TeacherStudents() {
     }
   }
 
+  /**
+   * 读取StudentSubmissions并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadStudentSubmissions(userId: number, nextPage = detailSubmissionPage) {
     setDetailSubmissionLoading(true);
     try {
@@ -806,6 +955,9 @@ function TeacherStudents() {
     }
   }
 
+  /**
+   * 封装openView相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openView(student: TeacherStudent) {
     setViewingStudent({
       id: student.userId,
@@ -825,6 +977,9 @@ function TeacherStudents() {
     loadStudentSubmissions(student.userId, 1);
   }
 
+  /**
+   * 封装confirmDelete相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function confirmDelete() {
     if (!deleteStudent || !deleteStudent.classId) return;
     try {
@@ -907,7 +1062,7 @@ function TeacherStudents() {
         onOk={() => editForm.submit()}
         confirmLoading={updating}
       >
-        <Form form={editForm} layout="vertical" onSubmit={submitEdit}>
+        <Form form={editForm} layout="vertical" onSubmit={submitEdit} requiredSymbol={false}>
           <FormItem label="姓名" field="displayName">
             <Input placeholder="留空不修改" maxLength={50} />
           </FormItem>
@@ -917,7 +1072,11 @@ function TeacherStudents() {
           <FormItem label="邮箱" field="email">
             <Input placeholder="留空不修改" maxLength={100} />
           </FormItem>
-          <FormItem label="密码" field="password">
+          <FormItem
+            label="密码"
+            field="password"
+            rules={[{ minLength: 6, message: '密码长度至少 6 位' }]}
+          >
             <Input.Password placeholder="留空不修改密码" maxLength={64} />
           </FormItem>
         </Form>
@@ -1000,6 +1159,9 @@ function TeacherStudents() {
   );
 }
 
+/**
+ * 渲染教师Import组件，并协调其数据加载、状态和交互。
+ */
 function TeacherImport() {
   const [classes, setClasses] = useState<TeacherClass[]>([]);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -1015,6 +1177,9 @@ function TeacherImport() {
     });
   }, []);
 
+  /**
+   * 处理FileChange。会更新 React 状态并触发重新渲染。
+   */
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1030,6 +1195,9 @@ function TeacherImport() {
     event.target.value = '';
   }
 
+  /**
+   * 创建或提交目标数据。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function submit(values: { classId: number; studentNoField: string; nameField: string }) {
     if (!selectedFile) {
       Message.warning('请选择 csv、xls 或 xlsx 文件');
@@ -1054,7 +1222,7 @@ function TeacherImport() {
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Card title="导入学生">
-        <Form form={form} onSubmit={submit} layout="vertical">
+        <Form form={form} onSubmit={submit} layout="vertical" requiredSymbol={false}>
           <Alert
             type="info"
             showIcon
@@ -1071,8 +1239,8 @@ function TeacherImport() {
             </Space>
           </FormItem>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <FormItem field="studentNoField" label="学号字段" rules={[{ required: true }]}><Input /></FormItem>
-            <FormItem field="nameField" label="姓名字段" rules={[{ required: true }]}><Input /></FormItem>
+            <FormItem field="studentNoField" label="学号字段" rules={[{ required: true, message: '请输入学号字段' }]}><Input /></FormItem>
+            <FormItem field="nameField" label="姓名字段" rules={[{ required: true, message: '请输入姓名字段' }]}><Input /></FormItem>
           </div>
           <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
             示例表头：学号,姓名,专业,备注
@@ -1122,11 +1290,20 @@ function TeacherImport() {
   );
 }
 
+/**
+ * 渲染教师Applications组件，并协调其数据加载、状态和交互。
+ */
 function TeacherApplications() {
   const [rows, setRows] = useState<TeacherApplication[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const load = async () => setRows(await teacherGet<TeacherApplication[]>('/api/teacher/v1/applications'));
   useEffect(() => { load().catch(() => null); }, []);
+  /**
+   * 处理当前流程。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function handle(id: number, action: 'approve' | 'reject') {
     try {
       await teacherPost(`/api/teacher/v1/applications/${id}/${action}`);
@@ -1136,6 +1313,9 @@ function TeacherApplications() {
       Message.error(error instanceof Error ? error.message : '操作失败');
     }
   }
+  /**
+   * 封装approveAll相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function approveAll() {
     const pending = rows.filter((r) => r.status === 'PENDING');
     if (pending.length === 0) {
@@ -1193,6 +1373,9 @@ function TeacherApplications() {
   );
 }
 
+/**
+ * 渲染教师Submissions组件，并协调其数据加载、状态和交互。
+ */
 function TeacherSubmissions() {
   const [rows, setRows] = useState<TeacherSubmission[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1212,6 +1395,9 @@ function TeacherSubmissions() {
     teacherGet<TeacherClass[]>('/api/teacher/v1/classes').then(setClasses).catch(() => {});
   }, []);
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const load = async () => {
     setLoading(true);
     try {
@@ -1244,6 +1430,9 @@ function TeacherSubmissions() {
 
   useEffect(() => { load(); }, [page, filters]);
 
+  /**
+   * 更新Filter。会更新 React 状态并触发重新渲染。
+   */
   function updateFilter(key: string, value: string) {
     setFilters((prev) => ({ ...prev, [key]: value }));
     setPage(1);
@@ -1334,11 +1523,17 @@ function TeacherSubmissions() {
   );
 }
 
+/**
+ * 渲染教师练习Stats组件，并协调其数据加载、状态和交互。
+ */
 function TeacherPracticeStats() {
   const [students, setStudents] = useState<TeacherStudent[]>([]);
   const [submissions, setSubmissions] = useState<TeacherSubmission[]>([]);
   const [loading, setLoading] = useState(false);
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const load = async () => {
     setLoading(true);
     try {
@@ -1357,6 +1552,9 @@ function TeacherPracticeStats() {
 
   useEffect(() => { load(); }, []);
 
+  /**
+   * 封装rows相关逻辑。对原始数据进行派生或聚合。
+   */
   const rows = useMemo(() => {
     const practiceSubmissions = submissions.filter((submission) => submission.practiceTitle);
     const grouped = new Map<number, {
@@ -1432,6 +1630,9 @@ function TeacherPracticeStats() {
   );
 }
 
+/**
+ * 渲染教师练习Submissions组件，并协调其数据加载、状态和交互。
+ */
 function TeacherPracticeSubmissions() {
   const [submissions, setSubmissions] = useState<TeacherSubmission[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1442,6 +1643,9 @@ function TeacherPracticeSubmissions() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterClass, setFilterClass] = useState('');
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const load = async () => {
     setLoading(true);
     try {
@@ -1462,6 +1666,9 @@ function TeacherPracticeSubmissions() {
 
   useEffect(() => { load(); }, []);
 
+  /**
+   * 封装练习Submissions相关逻辑。对原始数据进行派生或聚合。
+   */
   const practiceSubmissions = useMemo(
     () => submissions
       .filter((s) => s.practiceTitle)
@@ -1479,7 +1686,13 @@ function TeacherPracticeSubmissions() {
     [submissions, filterStudent, filterProblem, filterLanguage, filterStatus, filterClass, classMap],
   );
 
+  /**
+   * 封装languages相关逻辑。对原始数据进行派生或聚合。
+   */
   const languages = useMemo(() => [...new Set(submissions.filter((s) => s.practiceTitle).map((s) => s.language))].sort(), [submissions]);
+  /**
+   * 封装statuses相关逻辑。对原始数据进行派生或聚合。
+   */
   const statuses = useMemo(() => [...new Set(submissions.filter((s) => s.practiceTitle).map((s) => s.status))].sort(), [submissions]);
 
   return (
@@ -1519,6 +1732,9 @@ function TeacherPracticeSubmissions() {
   );
 }
 
+/**
+ * 渲染教师Problems组件，并协调其数据加载、状态和交互。
+ */
 function TeacherProblems() {
   const [rows, setRows] = useState<TeacherProblem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1529,6 +1745,9 @@ function TeacherProblems() {
   const [tagInput, setTagInput] = useState('');
   const [form] = Form.useForm<TeacherProblemFormValues>();
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const load = async () => {
     setLoading(true);
     try {
@@ -1543,6 +1762,9 @@ function TeacherProblems() {
 
   useEffect(() => { load(); }, []);
 
+  /**
+   * 封装openCreate相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openCreate() {
     form.resetFields();
     setTags([]);
@@ -1563,6 +1785,9 @@ function TeacherProblems() {
     setModalVisible(true);
   }
 
+  /**
+   * 创建或提交目标数据。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function create(values: TeacherProblemFormValues) {
     let testCases: Array<{ caseNo: number; input: string; output: string }>;
     try {
@@ -1605,6 +1830,9 @@ function TeacherProblems() {
     }
   }
 
+  /**
+   * 删除目标数据。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function remove(id: number) {
     try {
       await teacherDelete<void>(`/api/admin/v1/problems/${id}`);
@@ -1672,7 +1900,7 @@ function TeacherProblems() {
         okButtonProps={{ loading: submitting }}
         style={{ width: 760 }}
       >
-        <Form form={form} layout="vertical" onSubmit={create}>
+        <Form form={form} layout="vertical" onSubmit={create} requiredSymbol={false}>
           <FormItem field="title" label="题目名称" rules={[{ required: true, message: '请输入题目名称' }]}>
             <Input />
           </FormItem>
@@ -1684,10 +1912,10 @@ function TeacherProblems() {
             <FormItem field="outputFormat" label="输出格式"><TextArea autoSize={{ minRows: 3, maxRows: 6 }} /></FormItem>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-            <FormItem field="timeLimit" label="时间限制(ms)" rules={[{ required: true }]}>
+            <FormItem field="timeLimit" label="时间限制(ms)" rules={[{ required: true, message: '请输入时间限制' }]}>
               <InputNumber min={100} max={10000} style={{ width: '100%' }} />
             </FormItem>
-            <FormItem field="memoryLimit" label="内存限制(MB)" rules={[{ required: true }]}>
+            <FormItem field="memoryLimit" label="内存限制(MB)" rules={[{ required: true, message: '请输入内存限制' }]}>
               <InputNumber min={16} max={2048} style={{ width: '100%' }} />
             </FormItem>
             <FormItem field="isPublic" label="可见性" triggerPropName="checked">
@@ -1737,6 +1965,9 @@ function TeacherProblems() {
   );
 }
 
+/**
+ * 渲染教师Practices组件，并协调其数据加载、状态和交互。
+ */
 function TeacherPractices() {
   const [rows, setRows] = useState<TeacherPractice[]>([]);
   const [classes, setClasses] = useState<TeacherClass[]>([]);
@@ -1747,6 +1978,9 @@ function TeacherPractices() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form] = Form.useForm<TeacherPracticeFormValues>();
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const load = async () => {
     setLoading(true);
     try {
@@ -1770,6 +2004,9 @@ function TeacherPractices() {
 
   useEffect(() => { load(); }, []);
 
+  /**
+   * 创建或提交目标数据。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function create(values: TeacherPracticeFormValues) {
     const problemIds = values.problemIds ?? [];
     if (problemIds.length === 0) {
@@ -1802,6 +2039,9 @@ function TeacherPractices() {
     }
   }
 
+  /**
+   * 删除目标数据。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function remove(id: number) {
     try {
       await teacherDelete<void>(`/api/admin/v1/practices/${id}`);
@@ -1812,6 +2052,9 @@ function TeacherPractices() {
     }
   }
 
+  /**
+   * 封装startEdit相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function startEdit(practice: TeacherPractice) {
     setEditingId(practice.id);
     const aud = (practice.audience as TeacherAudience) || 'ALL';
@@ -1826,6 +2069,9 @@ function TeacherPractices() {
     });
   }
 
+  /**
+   * 判断celEdit是否成立。会更新 React 状态并触发重新渲染。
+   */
   function cancelEdit() {
     setEditingId(null);
     setAudience('ALL');
@@ -1833,6 +2079,9 @@ function TeacherPractices() {
     form.setFieldsValue({ audience: 'ALL', problemIds: [] });
   }
 
+  /**
+   * 处理Update。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function handleUpdate() {
     if (!editingId) return;
     const values = form.getFieldsValue();
@@ -1868,12 +2117,12 @@ function TeacherPractices() {
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Card title={editingId ? '编辑题单' : '创建题单'}>
-        <Form form={form} layout="vertical" onSubmit={editingId ? handleUpdate : create}>
+        <Form form={form} layout="vertical" onSubmit={editingId ? handleUpdate : create} requiredSymbol={false}>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 16 }}>
             <FormItem field="title" label="题单名称" rules={[{ required: true, message: '请输入题单名称' }]}>
               <Input />
             </FormItem>
-            <FormItem field="audience" label="可见范围" rules={[{ required: true }]}>
+            <FormItem field="audience" label="可见范围" rules={[{ required: true, message: '请选择可见范围' }]}>
               <Select onChange={(value) => setAudience(value as TeacherAudience)}>
                 <Option value="ALL">公开</Option>
                 <Option value="CLASS">班级</Option>
@@ -1934,6 +2183,9 @@ function TeacherPractices() {
   );
 }
 
+/**
+ * 渲染教师Contests组件，并协调其数据加载、状态和交互。
+ */
 function TeacherContests() {
   const [rows, setRows] = useState<TeacherContest[]>([]);
   const [classes, setClasses] = useState<TeacherClass[]>([]);
@@ -1943,6 +2195,9 @@ function TeacherContests() {
   const [audience, setAudience] = useState<TeacherAudience>('ALL');
   const [form] = Form.useForm<TeacherContestFormValues>();
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const load = async () => {
     setLoading(true);
     try {
@@ -1966,6 +2221,9 @@ function TeacherContests() {
 
   useEffect(() => { load(); }, []);
 
+  /**
+   * 删除目标数据。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function remove(id: number) {
     try {
       await teacherDelete<void>(`/api/admin/v1/contests/${id}`);
@@ -1976,6 +2234,9 @@ function TeacherContests() {
     }
   }
 
+  /**
+   * 格式化比赛End。会更新 React 状态并触发重新渲染。
+   */
   function formatContestEnd(startTime: string, durationMinutes: number) {
     const start = new Date(startTime);
     const end = new Date(start.getTime() + Number(durationMinutes || 180) * 60 * 1000);
@@ -1983,11 +2244,17 @@ function TeacherContests() {
     return end.toISOString().slice(0, 19);
   }
 
+  /**
+   * 创建或提交比赛。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function submitContest(values: TeacherContestFormValues) {
     const endTime = formatContestEnd(values.startTime, values.durationMinutes);
     await createWithEndTime(values, endTime);
   }
 
+  /**
+   * 创建或提交WithEndTime。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function createWithEndTime(values: TeacherContestFormValues, endTime: string) {
     const problemIds = values.problemIds ?? [];
     if (problemIds.length === 0) {
@@ -2050,18 +2317,18 @@ function TeacherContests() {
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Card title="创建比赛">
-        <Form form={form} layout="vertical" onSubmit={submitContest}>
+        <Form form={form} layout="vertical" onSubmit={submitContest} requiredSymbol={false}>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 16 }}>
             <FormItem field="title" label="比赛名称" rules={[{ required: true, message: '请输入比赛名称' }]}>
               <Input />
             </FormItem>
-            <FormItem field="type" label="赛制" rules={[{ required: true }]}>
+            <FormItem field="type" label="赛制" rules={[{ required: true, message: '请选择赛制' }]}>
               <Select>
                 <Option value="ACM">ACM</Option>
                 <Option value="OI">OI</Option>
               </Select>
             </FormItem>
-            <FormItem field="audience" label="可见范围" rules={[{ required: true }]}>
+            <FormItem field="audience" label="可见范围" rules={[{ required: true, message: '请选择可见范围' }]}>
               <Select onChange={(value) => setAudience(value as TeacherAudience)}>
                 <Option value="ALL">公开</Option>
                 <Option value="CLASS">班级</Option>
@@ -2072,13 +2339,13 @@ function TeacherContests() {
                 <Select placeholder="选择班级">{classes.map((item) => <Option key={item.id} value={item.id}>{item.name}（{item.id}）</Option>)}</Select>
               </FormItem>
             ) : (
-              <FormItem field="durationMinutes" label="时长(分钟)" rules={[{ required: true }]}>
+              <FormItem field="durationMinutes" label="时长(分钟)" rules={[{ required: true, message: '请输入比赛时长' }]}>
                 <InputNumber min={1} max={10080} style={{ width: '100%' }} />
               </FormItem>
             )}
           </div>
           {audience === 'CLASS' && (
-            <FormItem field="durationMinutes" label="时长(分钟)" rules={[{ required: true }]}>
+            <FormItem field="durationMinutes" label="时长(分钟)" rules={[{ required: true, message: '请输入比赛时长' }]}>
               <InputNumber min={1} max={10080} style={{ width: '100%' }} />
             </FormItem>
           )}

@@ -10,9 +10,18 @@
  * - RatingUser：排行榜用户
  */
 export type Difficulty = "入门" | "简单" | "中等" | "困难" | "地狱";
+/**
+ * 比赛类型类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 export type ContestType = "ACM" | "OI";
+/**
+ * 比赛状态类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 export type ContestStatus = "未开始" | "进行中" | "已结束";
 
+/**
+ * 题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface Problem {
   id: string;
   title: string;
@@ -40,6 +49,9 @@ export interface Problem {
   score: number;
 }
 
+/**
+ * 比赛接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface Contest {
   id: string;
   title: string;
@@ -52,20 +64,31 @@ export interface Contest {
   participants: number;
 }
 
+/**
+ * Rating用户接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface RatingUser {
   id: string;
+  userId: number;
   name: string;
+  avatarUrl?: string;
   className?: string;
   acCount: number;
   streak: number;
 }
 
+/**
+ * CarouselSlide接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface CarouselSlide {
   id: string;
   title: string;
   imageUrl: string;
 }
 
+/**
+ * 提交Summary接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface SubmissionSummary {
   id: string;
   problemTitle: string;
@@ -74,6 +97,9 @@ export interface SubmissionSummary {
   submittedAt: string;
 }
 
+/**
+ * 用户资料接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface UserProfile {
   id: string;
   username: string;
@@ -82,7 +108,7 @@ export interface UserProfile {
   name: string;
   studentNo: string;
   email: string;
-  role: "STUDENT" | "TEACHER" | "SUPER_ADMIN";
+  role: "STUDENT";
   totalSolved: number;
   totalSubmissions: number;
   favoriteLanguage: string;
@@ -90,29 +116,19 @@ export interface UserProfile {
   className?: string | null;
 }
 
+/**
+ * 判题Settings接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface JudgeSettings {
   /** 判题总开关；关闭后无法提交记录和调试运行 */
   enabled: boolean;
-  /** 判题模式 */
-  mode?: 'domjudge' | 'docker' | 'unsafe-local';
-  /** 比赛判题模式 */
-  contestMode?: 'domjudge' | 'docker' | 'unsafe-local';
-  /** 是否允许不安全本地判题 */
-  enableUnsafeLocalJudge?: boolean;
   /** 是否允许沙箱调试运行 */
   enableSandbox?: boolean;
-  /** 单轮最大并发判题数（上限为后端线程池大小） */
-  maxConcurrent: number;
-  /** 线程池大小，仅用于前端展示取值上限 */
-  threadPoolSize: number;
-  queueBatchSize?: number;
-  pollIntervalMs?: number;
-  domjudgeBaseUrl?: string;
-  hasDomjudgeApiKey?: boolean;
-  domjudgeContestId?: string;
-  domjudgePollIntervalMs?: number;
 }
 
+/**
+ * OjState接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface OjState {
   problems: Problem[];
   contests: Contest[];

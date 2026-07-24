@@ -1,3 +1,6 @@
+/**
+ * 管理员比赛Management页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { adminPath } from '../../../utils/adminPath';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -41,19 +44,26 @@ import {
   fetchAdminContest,
   fetchAdminContests,
   fetchAdminProblemTestCases,
-  fetchAdminProblems,
   fetchContestDraft,
   saveContestDraft,
   updateAdminContest,
   type AdminContest,
   type AdminOrganizationOption,
   type ContestDraftPayload,
+  type ContestJudgeMode,
   type ContestPayload,
   type ContestProblemPayload,
   type ProblemTestCasePayload,
 } from '../../../data/apiClient';
 import type { Problem } from '../../../data/types';
 import { adminGet } from '../../api/adminClient';
+import {
+  getTeacherToken,
+  teacherDelete,
+  teacherGet,
+  teacherPost,
+  teacherPut,
+} from '../../../teacher/teacherApi';
 
 const { Row, Col } = Grid;
 const FormItem = Form.Item;
@@ -62,9 +72,29 @@ const TextArea = Input.TextArea;
 const RadioGroup = Radio.Group;
 const CheckboxGroup = Checkbox.Group;
 
+/**
+ * 比赛模式类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type ContestMode = 'add' | 'edit' | 'list' | 'rankings';
+/**
+ * Audience类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type Audience = 'ALL' | 'CLASS';
+/**
+ * 比赛类型类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type ContestType = 'ACM' | 'OI';
+/**
+ * 比赛Portal类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
+type ContestPortal = 'admin' | 'teacher';
+
+/**
+ * 管理员比赛Management页面Props接口，明确该模块内部及 API 边界使用的数据结构。
+ */
+interface AdminContestManagementPageProps {
+  portal?: ContestPortal;
+}
 
 const emptyDraft: ContestDraftPayload = {
   title: '',
@@ -72,6 +102,7 @@ const emptyDraft: ContestDraftPayload = {
   startTime: '',
   description: '',
   type: 'ACM',
+  judgeMode: 'GO_JUDGE',
   audience: 'ALL',
   audienceTypes: ['ALL'],
   classIds: [],
@@ -84,6 +115,7 @@ const emptyDraft: ContestDraftPayload = {
   allowAfterEndSubmit: false,
   allowAfterEndViewProblem: true,
   allowAfterEndViewCode: false,
+  enableCodeTemplates: false,
   publicScoreboardEnabled: true,
   showClassOnScoreboard: false,
   allowStarRegistration: false,
@@ -93,10 +125,16 @@ const emptyDraft: ContestDraftPayload = {
   problems: [],
 };
 
+/**
+ * 封装管理员令牌相关逻辑。会读写浏览器本地会话信息。
+ */
 function adminToken() {
   return window.localStorage.getItem('qoj.adminAccessToken') ?? '';
 }
 
+/**
+ * 封装路由模式相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function routeMode(pathname: string): ContestMode {
   if (pathname.endsWith('/new')) return 'add';
   if (pathname.endsWith('/edit')) return 'edit';
@@ -104,26 +142,41 @@ function routeMode(pathname: string): ContestMode {
   return 'list';
 }
 
+/**
+ * 封装numeric题目标识相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function numericProblemId(id: string) {
   const match = id.match(/\d+/);
   return match ? Number(match[0]) : 0;
 }
 
+/**
+ * 封装nowLocalInput相关逻辑。会更新 React 状态并触发重新渲染。
+ */
 function nowLocalInput() {
   const date = new Date();
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
   return date.toISOString().slice(0, 16);
 }
 
+/**
+ * 构造或转换IsoLocal。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function toIsoLocal(value: string) {
   return value.length === 16 ? `${value}:00` : value.slice(0, 19);
 }
 
+/**
+ * 构造或转换LocalInput值。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function toLocalInputValue(date: Date) {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
   return local.toISOString().slice(0, 19);
 }
 
+/**
+ * 构造或转换DateTimeLocal。会更新 React 状态并触发重新渲染。
+ */
 function toDateTimeLocal(value?: string | null) {
   if (!value) return nowLocalInput();
   const date = new Date(value);
@@ -132,6 +185,9 @@ function toDateTimeLocal(value?: string | null) {
   return date.toISOString().slice(0, 16);
 }
 
+/**
+ * 封装默认值FreezeTime相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function defaultFreezeTime(draft: ContestDraftPayload) {
   const start = new Date(draft.startTime || nowLocalInput());
   const duration = Number(draft.durationMinutes ?? 180);
@@ -139,22 +195,43 @@ function defaultFreezeTime(draft: ContestDraftPayload) {
   return toLocalInputValue(new Date(start.getTime() + offsetMinutes * 60 * 1000)).slice(0, 16);
 }
 
+/**
+ * 封装labelOf相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function labelOf(index: number) {
   return String.fromCharCode(65 + index);
 }
 
+/**
+ * 封装状态Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusText(status: AdminContest['status']) {
   if (status === 'RUNNING') return '进行中';
   if (status === 'ENDED') return '已结束';
   return '未开始';
 }
 
+/**
+ * 封装状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusColor(status: AdminContest['status']) {
   if (status === 'RUNNING') return 'green';
   if (status === 'ENDED') return 'gray';
   return 'blue';
 }
 
+/**
+ * 封装判题模式Tag相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
+function judgeModeTag(mode?: ContestJudgeMode) {
+  return mode === 'CCPCOJ'
+    ? <Tag color="purple">CCPCOJ</Tag>
+    : <Tag color="green">go-judge</Tag>;
+}
+
+/**
+ * 封装audienceText相关逻辑。对原始数据进行派生或聚合。
+ */
 function audienceText(contest: Pick<AdminContest, 'audience' | 'audiences'>) {
   if (contest.audiences?.length) {
     const types = new Set(contest.audiences.map((item) => item.audienceType));
@@ -165,6 +242,9 @@ function audienceText(contest: Pick<AdminContest, 'audience' | 'audiences'>) {
   return '所有人';
 }
 
+/**
+ * 封装distributeScores相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function distributeScores(totalScore: number, problems: ContestProblemPayload[]) {
   if (problems.length === 0) return [];
   const base = Math.floor(totalScore / problems.length);
@@ -176,6 +256,9 @@ function distributeScores(totalScore: number, problems: ContestProblemPayload[])
   });
 }
 
+/**
+ * 封装distribute测试点Scores相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function distributeCaseScores(problemScore: number, cases: ProblemTestCasePayload[]) {
   if (cases.length === 0) return [];
   const base = Math.floor(problemScore / cases.length);
@@ -187,6 +270,9 @@ function distributeCaseScores(problemScore: number, cases: ProblemTestCasePayloa
   });
 }
 
+/**
+ * 封装distributeRemaining测试点Scores相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function distributeRemainingCaseScores(
   problemScore: number,
   currentScores: { caseNo: number; score: number }[],
@@ -208,12 +294,18 @@ function distributeRemainingCaseScores(
   });
 }
 
+/**
+ * 封装initialAudienceTypes相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function initialAudienceTypes(draft: ContestDraftPayload): Audience[] {
   const types = draft.audienceTypes?.filter((item): item is Audience => item === 'ALL' || item === 'CLASS') ?? [];
   if (types.length) return types;
   return draft.audience === 'CLASS' ? ['CLASS'] : ['ALL'];
 }
 
+/**
+ * 解析并规范化SelectedProblems。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeSelectedProblems(problems: ContestProblemPayload[]) {
   return problems.map((item, index) => ({
     ...item,
@@ -222,16 +314,82 @@ function normalizeSelectedProblems(problems: ContestProblemPayload[]) {
   }));
 }
 
-export function AdminContestManagementPage() {
+/**
+ * 渲染管理员比赛Management页面，并协调其数据加载、状态和交互。
+ */
+export function AdminContestManagementPage({ portal = 'admin' }: AdminContestManagementPageProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { contestId } = useParams();
   const mode = routeMode(location.pathname);
   const numericContestId = Number(contestId ?? 0) || undefined;
-  const token = useMemo(adminToken, []);
+  /**
+   * 构造或转换ken。对原始数据进行派生或聚合。
+   */
+  const token = useMemo(
+    () => portal === 'teacher' ? (getTeacherToken() ?? '') : adminToken(),
+    [portal],
+  );
   const isEditing = mode === 'edit';
+  const contestListPath = portal === 'teacher' ? '/teacher/contests' : adminPath('/contests');
+  const contestNewPath = portal === 'teacher' ? '/teacher/contests/new' : adminPath('/contests/new');
 
-  const [draft, setDraft] = useState<ContestDraftPayload>(emptyDraft);
+  /**
+   * 读取AvailableClasses并返回给调用方。会访问后端接口。
+   */
+  const fetchAvailableClasses = (accessToken: string) => portal === 'teacher'
+    ? teacherGet<AdminOrganizationOption[]>('/api/teacher/v1/classes')
+    : fetchAdminClasses(accessToken);
+
+  /**
+   * 封装permitted班级Ids相关逻辑。对原始数据进行派生或聚合。
+   */
+  const permittedClassIds = (ids: number[] | undefined, classList: AdminOrganizationOption[]) => {
+    const normalized = ids ?? [];
+    if (portal !== 'teacher') return normalized;
+    const ownedIds = new Set(classList.map((item) => item.id));
+    return normalized.filter((id) => ownedIds.has(id));
+  };
+
+  /**
+   * 读取比赛Draft并返回给调用方。会访问后端接口。
+   */
+  const loadContestDraft = () => portal === 'teacher'
+    ? teacherGet<ContestDraftPayload | null>('/api/admin/v1/contests/draft')
+    : fetchContestDraft(token);
+
+  /**
+   * 封装persist比赛Draft相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
+  const persistContestDraft = (nextDraft: ContestDraftPayload) => portal === 'teacher'
+    ? teacherPut<ContestDraftPayload>('/api/admin/v1/contests/draft', nextDraft)
+    : saveContestDraft(token, nextDraft);
+
+  /**
+   * 删除比赛Draft。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
+  const removeContestDraft = () => portal === 'teacher'
+    ? teacherDelete<void>('/api/admin/v1/contests/draft')
+    : clearContestDraft(token);
+
+  /**
+   * 读取比赛详情并返回给调用方。会访问后端接口。
+   */
+  const loadContestDetail = (contestId: number) => portal === 'teacher'
+    ? teacherGet<AdminContest>(`/api/admin/v1/contests/${contestId}`)
+    : fetchAdminContest(token, contestId);
+
+  /**
+   * 读取题目TestCases并返回给调用方。会访问后端接口。
+   */
+  const loadProblemTestCases = (problemId: number) => portal === 'teacher'
+    ? teacherGet<ProblemTestCasePayload[]>(`/api/admin/v1/problems/${problemId}/test-cases`)
+    : fetchAdminProblemTestCases(token, problemId);
+
+  const [draft, setDraft] = useState<ContestDraftPayload>(() => ({
+    ...emptyDraft,
+    startTime: nowLocalInput(),
+  }));
   const [step, setStep] = useState(0);
   const [savingDraft, setSavingDraft] = useState(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
@@ -248,10 +406,17 @@ export function AdminContestManagementPage() {
   const [keyword, setKeyword] = useState('');
   const [listKeyword, setListKeyword] = useState('');
   const [editingHasPassword, setEditingHasPassword] = useState(false);
+  const [judgeModeLocked, setJudgeModeLocked] = useState(false);
   const saveTimer = useRef<number | null>(null);
 
+  /**
+   * 读取FoldersWithProblems并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function fetchFoldersWithProblems() {
-    const result = await adminGet<Array<{ id: number; name: string; problems: Array<{ id: number; title: string; difficulty: number; timeLimit: number; memoryLimit: number; testCaseCount?: number }> }>>('/api/admin/v1/problem-folders');
+    const path = '/api/admin/v1/problem-folders';
+    const result = portal === 'teacher'
+      ? await teacherGet<Array<{ id: number; name: string; problems: Array<{ id: number; title: string; difficulty: number; timeLimit: number; memoryLimit: number; testCaseCount?: number }> }>>(path)
+      : await adminGet<Array<{ id: number; name: string; problems: Array<{ id: number; title: string; difficulty: number; timeLimit: number; memoryLimit: number; testCaseCount?: number }> }>>(path);
     return result.map((folder) => ({
       id: folder.id,
       name: folder.name,
@@ -280,6 +445,9 @@ export function AdminContestManagementPage() {
   }
 
   const selectedProblems = draft.problems ?? [];
+  /**
+   * 封装selected题目Ids相关逻辑。对原始数据进行派生或聚合。
+   */
   const selectedProblemIds = useMemo(
     () => new Set(selectedProblems.map((item) => item.problemId)),
     [selectedProblems],
@@ -289,12 +457,18 @@ export function AdminContestManagementPage() {
     ? 'ALL'
     : 'CLASS';
 
+  /**
+   * 封装filteredProblems相关逻辑。对原始数据进行派生或聚合。
+   */
   const filteredProblems = useMemo(() => {
     const normalized = keyword.trim().toLowerCase();
     if (!normalized) return problems;
     return problems.filter((item) => item.title.toLowerCase().includes(normalized));
   }, [keyword, problems]);
 
+  /**
+   * 封装filteredContests相关逻辑。对原始数据进行派生或聚合。
+   */
   const filteredContests = useMemo(() => {
     const normalized = listKeyword.trim().toLowerCase();
     if (!normalized) return contests;
@@ -310,23 +484,34 @@ export function AdminContestManagementPage() {
   useEffect(() => {
     if (!token) return;
     if (mode !== 'add') return;
+    // Show a usable local value immediately, before the asynchronous draft load finishes.
+    setDraft((current) => ({
+      ...current,
+      startTime: current.startTime || nowLocalInput(),
+    }));
     setLoading(true);
     setDraftLoaded(false);
-    Promise.all([fetchContestDraft(token), fetchAdminClasses(token), fetchFoldersWithProblems()])
+    Promise.all([loadContestDraft(), fetchAvailableClasses(token), fetchFoldersWithProblems()])
       .then(([remoteDraft, classList, folderList]) => {
         const mergedDraft = { ...emptyDraft, ...(remoteDraft ?? {}) };
+        const classIds = permittedClassIds(mergedDraft.classIds, classList);
         setDraft({
           ...mergedDraft,
           audience: mergedDraft.audience === 'CLASS' ? 'CLASS' : 'ALL',
           audienceTypes: initialAudienceTypes(mergedDraft),
-          startTime: mergedDraft.startTime || nowLocalInput(),
+          // A newly opened create page always starts from the current local minute.
+          // Other draft fields remain recoverable, but a stale draft must not silently
+          // schedule a new contest in the past.
+          startTime: nowLocalInput(),
+          classIds,
         });
-        setPendingClassIds(remoteDraft?.classIds ?? []);
+        setPendingClassIds(classIds);
         setClasses(classList);
         setFolders(folderList);
         const allProblems = folderList.flatMap((f) => f.problems);
         setProblems(allProblems);
         setEditingHasPassword(false);
+        setJudgeModeLocked(false);
         setStep(0);
       })
       .catch((error) => {
@@ -343,11 +528,11 @@ export function AdminContestManagementPage() {
     if (mode !== 'edit') return;
     setLoading(true);
     setDraftLoaded(false);
-    Promise.all([fetchAdminContest(token, numericContestId), fetchAdminClasses(token), fetchFoldersWithProblems()])
+    Promise.all([loadContestDetail(numericContestId), fetchAvailableClasses(token), fetchFoldersWithProblems()])
       .then(([contest, classList, folderList]) => {
-        const classIds = contest.audiences
+        const classIds = permittedClassIds(contest.audiences
           .filter((item) => item.audienceType === 'CLASS' && item.audienceId > 0)
-          .map((item) => item.audienceId);
+          .map((item) => item.audienceId), classList);
         const audienceTypes = contest.audiences.some((item) => item.audienceType === 'ALL')
           ? ['ALL' as const]
           : Array.from(new Set(contest.audiences.map((item) => item.audienceType).filter((item): item is Audience => item === 'ALL' || item === 'CLASS')));
@@ -358,6 +543,7 @@ export function AdminContestManagementPage() {
           startTime: toDateTimeLocal(contest.startTime),
           description: contest.description || '',
           type: contest.type,
+          judgeMode: contest.judgeMode,
           audience: contest.audience === 'CLASS' ? 'CLASS' : 'ALL',
           audienceTypes: audienceTypes.length ? audienceTypes : [contest.audience === 'CLASS' ? 'CLASS' : 'ALL'],
           classIds,
@@ -370,6 +556,7 @@ export function AdminContestManagementPage() {
           allowAfterEndSubmit: contest.allowAfterEndSubmit,
           allowAfterEndViewProblem: contest.allowAfterEndViewProblem,
           allowAfterEndViewCode: contest.allowAfterEndViewCode ?? false,
+          enableCodeTemplates: contest.enableCodeTemplates ?? false,
           publicScoreboardEnabled: contest.publicScoreboardEnabled,
           showClassOnScoreboard: contest.showClassOnScoreboard ?? false,
           allowStarRegistration: contest.allowStarRegistration,
@@ -391,6 +578,7 @@ export function AdminContestManagementPage() {
         const allProblems = folderList.flatMap((f) => f.problems);
         setProblems(allProblems);
         setEditingHasPassword(contest.hasPassword);
+        setJudgeModeLocked(contest.submissionCount > 0);
         setStep(0);
       })
       .catch((error) => {
@@ -409,7 +597,7 @@ export function AdminContestManagementPage() {
     }
     saveTimer.current = window.setTimeout(() => {
       setSavingDraft(true);
-      saveContestDraft(token, draft)
+      persistContestDraft(draft)
         .catch((error) => Message.error(error instanceof Error ? error.message : '比赛草稿保存失败'))
         .finally(() => setSavingDraft(false));
     }, 500);
@@ -420,10 +608,16 @@ export function AdminContestManagementPage() {
     };
   }, [draft, draftLoaded, mode, token]);
 
+  /**
+   * 更新Draft。会更新 React 状态并触发重新渲染。
+   */
   function updateDraft(next: ContestDraftPayload) {
     setDraft({ ...emptyDraft, ...next });
   }
 
+  /**
+   * 读取Contests并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadContests() {
     setLoading(true);
     try {
@@ -436,6 +630,9 @@ export function AdminContestManagementPage() {
     }
   }
 
+  /**
+   * 封装chooseAudience相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function chooseAudience(value: Audience) {
     if (value === 'ALL') {
       updateDraft({ ...draft, audience: 'ALL', audienceTypes: ['ALL'], classIds: [] });
@@ -445,11 +642,17 @@ export function AdminContestManagementPage() {
     setAudienceTypeEnabled(value, true);
   }
 
+  /**
+   * 封装open班级Picker相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function openClassPicker() {
     setPendingClassIds(draft.classIds ?? []);
     setClassModalVisible(true);
   }
 
+  /**
+   * 封装setAudience类型启用状态相关逻辑。会更新 React 状态并触发重新渲染；对原始数据进行派生或聚合。
+   */
   function setAudienceTypeEnabled(value: Exclude<Audience, 'ALL'>, checked: boolean) {
     if (!checked) {
       const nextTypes = selectedAudienceTypes.filter((item) => item !== 'ALL' && item !== value);
@@ -474,6 +677,9 @@ export function AdminContestManagementPage() {
     }
   }
 
+  /**
+   * 封装confirm班级Picker相关逻辑。会更新 React 状态并触发重新渲染；对原始数据进行派生或聚合。
+   */
   function confirmClassPicker() {
     const nextTypes = Array.from(new Set([...selectedAudienceTypes.filter((item) => item !== 'ALL'), 'CLASS' as const]));
     updateDraft({
@@ -485,10 +691,13 @@ export function AdminContestManagementPage() {
     setClassModalVisible(false);
   }
 
+  /**
+   * 重置All。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function clearAll() {
     try {
       if (mode === 'add') {
-        await clearContestDraft(token);
+        await removeContestDraft();
       }
       setDraft({ ...emptyDraft, startTime: nowLocalInput() });
       setPendingClassIds([]);
@@ -500,6 +709,9 @@ export function AdminContestManagementPage() {
     }
   }
 
+  /**
+   * 校验Basic。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function validateBasic() {
     if (!draft.title?.trim()) {
       Message.warning('请填写比赛标题');
@@ -511,6 +723,22 @@ export function AdminContestManagementPage() {
     }
     if (!Number(draft.durationMinutes)) {
       Message.warning('请填写比赛时长');
+      return false;
+    }
+    if (draft.type !== 'ACM' && draft.type !== 'OI') {
+      Message.warning('请选择比赛赛制');
+      return false;
+    }
+    if (draft.judgeMode !== 'GO_JUDGE' && draft.judgeMode !== 'CCPCOJ') {
+      Message.warning('请选择判题服务');
+      return false;
+    }
+    if (selectedAudienceTypes.length === 0) {
+      Message.warning('请选择比赛面向群体');
+      return false;
+    }
+    if (selectedAudienceTypes.includes('CLASS') && !(draft.classIds?.length)) {
+      Message.warning('请选择至少一个参赛班级');
       return false;
     }
     const start = new Date(draft.startTime);
@@ -537,11 +765,17 @@ export function AdminContestManagementPage() {
     return true;
   }
 
+  /**
+   * 封装goNext相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   function goNext() {
     if (!validateBasic()) return;
     setStep(1);
   }
 
+  /**
+   * 构造或转换ggle题目。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function toggleProblem(problem: Problem) {
     const id = numericProblemId(problem.id);
     if (!id) return;
@@ -567,7 +801,7 @@ export function AdminContestManagementPage() {
 
     if (!exists && !testCasesByProblem[id]) {
       try {
-        const cases = await fetchAdminProblemTestCases(token, id);
+        const cases = await loadProblemTestCases(id);
         setTestCasesByProblem((current) => ({ ...current, [id]: cases }));
         if (draft.type === 'OI') {
           const problemScore = nextProblems.find((item) => item.problemId === id)?.score ?? 0;
@@ -585,6 +819,9 @@ export function AdminContestManagementPage() {
     updateDraft({ ...draft, problems: nextProblems });
   }
 
+  /**
+   * 封装change比赛类型相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function changeContestType(type: ContestType) {
     const nextProblems = type === 'OI'
       ? distributeScores(Number(draft.totalScore ?? 100), selectedProblems)
@@ -592,11 +829,17 @@ export function AdminContestManagementPage() {
     updateDraft({ ...draft, type, problems: nextProblems });
   }
 
+  /**
+   * 封装setTotal分数相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function setTotalScore(totalScore: number) {
     const nextProblems = draft.type === 'OI' ? distributeScores(totalScore, selectedProblems) : selectedProblems;
     updateDraft({ ...draft, totalScore, problems: nextProblems });
   }
 
+  /**
+   * 封装set题目分数相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function setProblemScore(problemId: number, score: number) {
     updateDraft({
       ...draft,
@@ -611,6 +854,9 @@ export function AdminContestManagementPage() {
     });
   }
 
+  /**
+   * 封装set测试点分数相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function setCaseScore(problemId: number, caseNo: number, score: number) {
     updateDraft({
       ...draft,
@@ -626,6 +872,9 @@ export function AdminContestManagementPage() {
     });
   }
 
+  /**
+   * 创建或提交比赛。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function submitContest() {
     if (!validateBasic()) {
       setStep(0);
@@ -646,13 +895,14 @@ export function AdminContestManagementPage() {
         ? ['ALL' as const]
         : selectedAudienceTypes.filter((item) => item !== 'ALL');
       const audiences: NonNullable<ContestPayload['audiences']> = [];
+      const classIds = permittedClassIds(draft.classIds, classes);
 
       for (const type of audienceTypes) {
         if (type === 'ALL') {
           audiences.push({ audienceType: 'ALL', audienceId: 0 });
           continue;
         }
-        for (const id of draft.classIds?.length ? draft.classIds : [0]) {
+        for (const id of classIds.length ? classIds : [0]) {
           audiences.push({ audienceType: 'CLASS', audienceId: id });
         }
       }
@@ -665,6 +915,7 @@ export function AdminContestManagementPage() {
         startTime: toIsoLocal(currentStartTime),
         endTime: toLocalInputValue(end),
         type: draft.type ?? 'ACM',
+        judgeMode: draft.judgeMode ?? 'GO_JUDGE',
         audience: audiences[0]?.audienceType ?? 'ALL',
         audienceId: audiences[0]?.audienceId ?? 0,
         audiences,
@@ -682,6 +933,7 @@ export function AdminContestManagementPage() {
         allowAfterEndSubmit: Boolean(draft.allowAfterEndSubmit),
         allowAfterEndViewProblem: draft.allowAfterEndViewProblem !== false,
         allowAfterEndViewCode: Boolean(draft.allowAfterEndViewCode),
+        enableCodeTemplates: Boolean(draft.enableCodeTemplates),
         publicScoreboardEnabled: draft.publicScoreboardEnabled !== false,
         showClassOnScoreboard: Boolean(draft.showClassOnScoreboard),
         allowStarRegistration: Boolean(draft.allowStarRegistration),
@@ -690,13 +942,21 @@ export function AdminContestManagementPage() {
       } satisfies ContestPayload;
 
       if (isEditing && numericContestId) {
-        await updateAdminContest(token, numericContestId, payload);
+        if (portal === 'teacher') {
+          await teacherPut(`/api/admin/v1/contests/${numericContestId}`, payload);
+        } else {
+          await updateAdminContest(token, numericContestId, payload);
+        }
       } else {
-        await createAdminContest(token, payload);
-        await clearContestDraft(token);
+        if (portal === 'teacher') {
+          await teacherPost('/api/admin/v1/contests', payload);
+        } else {
+          await createAdminContest(token, payload);
+        }
+        await removeContestDraft();
       }
       Message.success(isEditing ? '比赛已更新' : '比赛已保存');
-      navigate(adminPath('/contests'));
+      navigate(contestListPath);
     } catch (error) {
       Message.error(error instanceof Error ? error.message : '保存失败');
     } finally {
@@ -704,6 +964,9 @@ export function AdminContestManagementPage() {
     }
   }
 
+  /**
+   * 删除比赛。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function removeContest(id: number) {
     try {
       await deleteAdminContest(token, id);
@@ -714,10 +977,16 @@ export function AdminContestManagementPage() {
     }
   }
 
+  /**
+   * 封装题目标题相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function problemTitle(problemId: number) {
     return problems.find((problem) => numericProblemId(problem.id) === problemId)?.title ?? String(problemId);
   }
 
+  /**
+   * 封装openPublic榜单相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   function openPublicScoreboard(contestIdValue: number) {
     window.open(`/contests/${contestIdValue}/public-scoreboard`, '_blank');
   }
@@ -731,13 +1000,13 @@ export function AdminContestManagementPage() {
       {
         title: 'ID',
         dataIndex: 'id',
-        width: 80,
+        width: '5%',
         align: 'center' as const,
       },
       {
         title: '比赛名称',
         dataIndex: 'title',
-        width: 260,
+        width: '22%',
         render: (_: unknown, record: AdminContest) => (
           <Space direction="vertical" size={2}>
             <Typography.Text bold>{record.title}</Typography.Text>
@@ -750,49 +1019,55 @@ export function AdminContestManagementPage() {
       {
         title: '赛制',
         dataIndex: 'type',
-        width: 90,
+        width: '7%',
         align: 'center' as const,
         render: (value: ContestType) => <Tag color={value === 'OI' ? 'purple' : 'arcoblue'}>{value}</Tag>,
       },
       {
+        title: '判题服务',
+        dataIndex: 'judgeMode',
+        width: '9%',
+        align: 'center' as const,
+        render: (value: ContestJudgeMode) => judgeModeTag(value),
+      },
+      {
         title: '状态',
         dataIndex: 'status',
-        width: 100,
+        width: '8%',
         align: 'center' as const,
         render: (value: AdminContest['status']) => <Tag color={statusColor(value)}>{statusText(value)}</Tag>,
       },
       {
         title: '面向群体',
-        width: 110,
+        width: '9%',
         align: 'center' as const,
         render: (_: unknown, record: AdminContest) => audienceText(record),
       },
       {
         title: '开始时间',
         dataIndex: 'startTime',
-        width: 180,
-        render: (value: string) => value ? value.replace('T', ' ').slice(0, 16) : '-',
-      },
-      {
-        title: '时长',
-        dataIndex: 'durationMinutes',
-        width: 100,
-        align: 'center' as const,
-        render: (value: number) => `${value} 分钟`,
+        width: '15%',
+        render: (value: string, record: AdminContest) => (
+          <Space direction="vertical" size={2}>
+            <Typography.Text>{value ? value.replace('T', ' ').slice(0, 16) : '-'}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {record.durationMinutes} 分钟
+            </Typography.Text>
+          </Space>
+        ),
       },
       {
         title: '参赛 / 提交',
-        width: 120,
+        width: '8%',
         align: 'center' as const,
         render: (_: unknown, record: AdminContest) => `${record.participantCount} / ${record.submissionCount}`,
       },
       {
         title: '操作',
-        width: mode === 'rankings' ? 180 : 280,
-        fixed: 'right' as const,
+        width: '17%',
         align: 'center' as const,
         render: (_: unknown, record: AdminContest) => (
-          <Space>
+          <Space size={2} wrap>
             {mode === 'list' ? (
               <>
                 <Button
@@ -837,7 +1112,7 @@ export function AdminContestManagementPage() {
               刷新
             </Button>
             {mode === 'list' ? (
-              <Button type="primary" icon={<IconPlus />} onClick={() => navigate(adminPath('/contests/new'))}>
+              <Button type="primary" icon={<IconPlus />} onClick={() => navigate(contestNewPath)}>
                 添加比赛
               </Button>
             ) : null}
@@ -854,17 +1129,45 @@ export function AdminContestManagementPage() {
             onChange={setListKeyword}
           />
         </div>
-        <Table
-          loading={loading}
-          columns={columns}
-          data={filteredContests}
-          rowKey="id"
-          scroll={{ x: 1200 }}
-          pagination={{
-            pageSize: 20,
-            showTotal: true,
-          }}
-        />
+        <div className="admin-contest-list-shell">
+          <Table
+            loading={loading}
+            columns={columns}
+            data={filteredContests}
+            rowKey="id"
+            pagination={{
+              pageSize: 20,
+              showTotal: true,
+            }}
+          />
+        </div>
+        <style>{`
+          .admin-contest-list-shell {
+            width: 100%;
+            overflow: hidden;
+          }
+          .admin-contest-list-shell .arco-table-body,
+          .admin-contest-list-shell .arco-table-header,
+          .admin-contest-list-shell .arco-table-content-inner,
+          .admin-contest-list-shell .arco-table-content-scroll {
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+          }
+          .admin-contest-list-shell table {
+            width: 100% !important;
+            min-width: 0 !important;
+            table-layout: fixed !important;
+          }
+          .admin-contest-list-shell .arco-table-cell {
+            overflow: hidden;
+          }
+          .admin-contest-list-shell .arco-table-th-item,
+          .admin-contest-list-shell .arco-table-td {
+            padding-left: 10px;
+            padding-right: 10px;
+            vertical-align: middle;
+          }
+        `}</style>
       </Card>
     );
   }
@@ -1005,7 +1308,7 @@ export function AdminContestManagementPage() {
             <Typography.Text type="secondary">
               {isEditing ? '编辑模式' : savingDraft ? '草稿保存中...' : '草稿自动保存到 Redis'}
             </Typography.Text>
-            <Button icon={<IconLeft />} onClick={() => navigate(adminPath('/contests'))}>
+            <Button icon={<IconLeft />} onClick={() => navigate(contestListPath)}>
               返回列表
             </Button>
           </Space>
@@ -1015,9 +1318,23 @@ export function AdminContestManagementPage() {
           <Step title="比赛信息" description="标题、时间、赛制、范围" />
           <Step title="选择题目" description="配置题目与分数" />
         </Steps>
+        <style>{`
+          .contest-settings-card .arco-form-item {
+            min-height: 96px;
+            margin-bottom: 8px;
+          }
+          .contest-settings-card .arco-form-item-label-col {
+            font-weight: 500;
+          }
+          @media (max-width: 767px) {
+            .contest-settings-card .arco-form-item {
+              min-height: auto;
+            }
+          }
+        `}</style>
 
         {step === 0 ? (
-          <Form layout="vertical">
+          <Form layout="vertical" requiredSymbol={false}>
             <Row gutter={24}>
               <Col span={12}>
                 <FormItem label="比赛标题" required>
@@ -1025,16 +1342,6 @@ export function AdminContestManagementPage() {
                     placeholder="请输入比赛标题"
                     value={draft.title ?? ''}
                     onChange={(value) => updateDraft({ ...draft, title: value })}
-                  />
-                </FormItem>
-              </Col>
-              <Col span={12}>
-                <FormItem label="比赛开始时间" required>
-                  <input
-                    className="arco-input"
-                    type="datetime-local"
-                    value={draft.startTime || ''}
-                    onChange={(event) => updateDraft({ ...draft, startTime: event.target.value })}
                   />
                 </FormItem>
               </Col>
@@ -1049,29 +1356,18 @@ export function AdminContestManagementPage() {
                 </FormItem>
               </Col>
               <Col span={12}>
-                <FormItem label="赛制" required>
-                  <RadioGroup
-                    type="button"
-                    value={draft.type ?? 'ACM'}
-                    onChange={(value) => changeContestType(value as ContestType)}
-                  >
-                    <Radio value="ACM">ACM / ICPC</Radio>
-                    <Radio value="OI">OI</Radio>
-                  </RadioGroup>
-                </FormItem>
-              </Col>
-              <Col span={12}>
-                <FormItem label="是否封榜">
-                  <Switch
-                    checked={Boolean(draft.frozen)}
-                    checkedText="开启"
-                    uncheckedText="关闭"
-                    onChange={(checked) => updateDraft({
-                      ...draft,
-                      frozen: checked,
-                      freezeTime: checked ? (draft.freezeTime || defaultFreezeTime(draft)) : null,
-                      enableRollingScoreboard: checked ? draft.enableRollingScoreboard : false,
-                    })}
+                <FormItem label="比赛开始时间" required>
+                  <input
+                    className="arco-input"
+                    type="datetime-local"
+                    step={60}
+                    value={draft.startTime || nowLocalInput()}
+                    onFocus={() => {
+                      if (!draft.startTime) {
+                        updateDraft({ ...draft, startTime: nowLocalInput() });
+                      }
+                    }}
+                    onChange={(event) => updateDraft({ ...draft, startTime: event.target.value })}
                   />
                 </FormItem>
               </Col>
@@ -1086,16 +1382,200 @@ export function AdminContestManagementPage() {
                   />
                 </FormItem>
               </Col>
-              <Col span={12}>
-                <FormItem label="启用滚榜">
-                  <Switch
-                    disabled={!draft.frozen}
-                    checked={Boolean(draft.frozen && draft.enableRollingScoreboard)}
-                    checkedText="开启"
-                    uncheckedText="关闭"
-                    onChange={(checked) => updateDraft({ ...draft, enableRollingScoreboard: checked })}
-                  />
-                </FormItem>
+              <Col span={24}>
+                <Card
+                  className="contest-settings-card"
+                  bordered
+                  bodyStyle={{ padding: '16px 18px 4px' }}
+                  style={{ marginBottom: 20, background: 'var(--color-fill-1)' }}
+                >
+                  <Row gutter={24}>
+                    <Col xs={24} md={8}>
+                      <FormItem label="赛制" required>
+                        <RadioGroup
+                          type="button"
+                          value={draft.type ?? 'ACM'}
+                          onChange={(value) => changeContestType(value as ContestType)}
+                        >
+                          <Radio value="ACM">ACM / ICPC</Radio>
+                          <Radio value="OI">OI</Radio>
+                        </RadioGroup>
+                      </FormItem>
+                    </Col>
+                    <Col xs={24} md={8}>
+                      <FormItem
+                        label="判题服务"
+                        required
+                        extra={judgeModeLocked
+                          ? '比赛已有提交，判题服务已锁定'
+                          : '小型比赛使用 go-judge；大型比赛可选择 CCPCOJ'}
+                      >
+                        <RadioGroup
+                          type="button"
+                          disabled={judgeModeLocked}
+                          value={draft.judgeMode ?? 'GO_JUDGE'}
+                          onChange={(value) => updateDraft({
+                            ...draft,
+                            judgeMode: value as ContestJudgeMode,
+                          })}
+                        >
+                          <Radio value="GO_JUDGE">go-judge</Radio>
+                          <Radio value="CCPCOJ">CCPCOJ</Radio>
+                        </RadioGroup>
+                      </FormItem>
+                    </Col>
+                    <Col xs={24} md={8}>
+                      <FormItem label="面向群体" required>
+                        <Space direction="vertical" size={8}>
+                          <Space wrap>
+                            <Radio
+                              checked={selectedAudienceTypes.includes('ALL')}
+                              onChange={() => chooseAudience('ALL')}
+                            >
+                              所有人
+                            </Radio>
+                            <Checkbox
+                              checked={selectedAudienceTypes.includes('CLASS')}
+                              onChange={(checked) => setAudienceTypeEnabled('CLASS', Boolean(checked))}
+                            >
+                              班级
+                            </Checkbox>
+                          </Space>
+                          {currentAudience === 'ALL' ? (
+                            <Typography.Text type="secondary">所有用户可参赛。</Typography.Text>
+                          ) : (
+                            <Space size={8} wrap>
+                              <Typography.Text type="secondary">
+                                已选择 {draft.classIds?.length ?? 0} 个班级
+                              </Typography.Text>
+                              <Button size="mini" type="text" onClick={openClassPicker}>
+                                选择班级
+                              </Button>
+                            </Space>
+                          )}
+                        </Space>
+                      </FormItem>
+                    </Col>
+                    <Col xs={24} md={8}>
+                      <FormItem label="是否封榜">
+                        <Switch
+                          checked={Boolean(draft.frozen)}
+                          checkedText="开启"
+                          uncheckedText="关闭"
+                          onChange={(checked) => updateDraft({
+                            ...draft,
+                            frozen: checked,
+                            freezeTime: checked ? (draft.freezeTime || defaultFreezeTime(draft)) : null,
+                            enableRollingScoreboard: checked ? draft.enableRollingScoreboard : false,
+                          })}
+                        />
+                      </FormItem>
+                    </Col>
+                    <Col xs={24} md={8}>
+                      <FormItem label="启用滚榜">
+                        <Switch
+                          disabled={!draft.frozen}
+                          checked={Boolean(draft.frozen && draft.enableRollingScoreboard)}
+                          checkedText="开启"
+                          uncheckedText="关闭"
+                          onChange={(checked) => updateDraft({ ...draft, enableRollingScoreboard: checked })}
+                        />
+                      </FormItem>
+                    </Col>
+                    <Col xs={24} md={8}>
+                      <FormItem label="赛后允许提交">
+                        <Switch
+                          checked={Boolean(draft.allowAfterEndSubmit)}
+                          checkedText="允许"
+                          uncheckedText="禁止"
+                          onChange={(checked) => updateDraft({ ...draft, allowAfterEndSubmit: checked })}
+                        />
+                      </FormItem>
+                    </Col>
+                    <Col xs={24} md={8}>
+                      <FormItem label="赛后查看题目">
+                        <Switch
+                          checked={draft.allowAfterEndViewProblem !== false}
+                          checkedText="允许"
+                          uncheckedText="关闭"
+                          onChange={(checked) => updateDraft({ ...draft, allowAfterEndViewProblem: checked })}
+                        />
+                      </FormItem>
+                    </Col>
+                    <Col xs={24} md={8}>
+                      <FormItem label="赛后查看他人代码">
+                        <Switch
+                          checked={Boolean(draft.allowAfterEndViewCode)}
+                          checkedText="允许"
+                          uncheckedText="关闭"
+                          onChange={(checked) => updateDraft({ ...draft, allowAfterEndViewCode: checked })}
+                        />
+                        <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
+                          比赛结束后可查看他人代码
+                        </div>
+                      </FormItem>
+                    </Col>
+                    <Col xs={24} md={8}>
+                      <FormItem label="启用默认代码模板">
+                        <Switch
+                          checked={Boolean(draft.enableCodeTemplates)}
+                          checkedText="启用"
+                          uncheckedText="关闭"
+                          onChange={(checked) => updateDraft({ ...draft, enableCodeTemplates: checked })}
+                        />
+                        <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
+                          开启后，比赛答题页会填充后台配置的语言初始代码
+                        </div>
+                      </FormItem>
+                    </Col>
+                    <Col xs={24} md={8}>
+                      <FormItem label="公共榜单">
+                        <Switch
+                          checked={draft.publicScoreboardEnabled !== false}
+                          checkedText="开启"
+                          uncheckedText="关闭"
+                          onChange={(checked) => updateDraft({ ...draft, publicScoreboardEnabled: checked })}
+                        />
+                      </FormItem>
+                    </Col>
+                    <Col xs={24} md={8}>
+                      <FormItem label="榜单显示班级">
+                        <Switch
+                          checked={Boolean(draft.showClassOnScoreboard)}
+                          checkedText="显示"
+                          uncheckedText="隐藏"
+                          onChange={(checked) => updateDraft({ ...draft, showClassOnScoreboard: checked })}
+                        />
+                        <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
+                          比赛榜单显示参赛者班级
+                        </div>
+                      </FormItem>
+                    </Col>
+                    <Col xs={24} md={8}>
+                      <FormItem label="允许打星报名">
+                        <Switch
+                          checked={Boolean(draft.allowStarRegistration)}
+                          checkedText="允许"
+                          uncheckedText="关闭"
+                          onChange={(checked) => updateDraft({ ...draft, allowStarRegistration: checked })}
+                        />
+                      </FormItem>
+                    </Col>
+                    <Col xs={24} md={8}>
+                      <FormItem label="查看他人提交状态">
+                        <Switch
+                          checked={draft.allowViewAllSubmissions !== false}
+                          checkedText="允许"
+                          uncheckedText="隐藏"
+                          onChange={(checked) => updateDraft({ ...draft, allowViewAllSubmissions: checked })}
+                        />
+                        <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
+                          关闭后参赛者仅能查看自己的状态
+                        </div>
+                      </FormItem>
+                    </Col>
+                  </Row>
+                </Card>
               </Col>
               <Col span={12}>
                 <FormItem label="奖牌比例（%）">
@@ -1128,123 +1608,12 @@ export function AdminContestManagementPage() {
                 </FormItem>
               </Col>
               <Col span={12}>
-                <FormItem label="赛后允许提交">
-                  <Switch
-                    checked={Boolean(draft.allowAfterEndSubmit)}
-                    checkedText="允许"
-                    uncheckedText="禁止"
-                    onChange={(checked) => updateDraft({ ...draft, allowAfterEndSubmit: checked })}
-                  />
-                </FormItem>
-              </Col>
-              <Col span={12}>
-                <FormItem label="赛后查看题目">
-                  <Switch
-                    checked={draft.allowAfterEndViewProblem !== false}
-                    checkedText="允许"
-                    uncheckedText="关闭"
-                    onChange={(checked) => updateDraft({ ...draft, allowAfterEndViewProblem: checked })}
-                  />
-                </FormItem>
-              </Col>
-              <Col span={12}>
-                <FormItem label="赛后查看他人代码">
-                  <Switch
-                    checked={Boolean(draft.allowAfterEndViewCode)}
-                    checkedText="允许"
-                    uncheckedText="关闭"
-                    onChange={(checked) => updateDraft({ ...draft, allowAfterEndViewCode: checked })}
-                  />
-                  <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
-                    开启后，比赛结束后参赛者可在前台所有提交列表查看他人代码
-                  </div>
-                </FormItem>
-              </Col>
-              <Col span={12}>
-                <FormItem label="公共榜单">
-                  <Switch
-                    checked={draft.publicScoreboardEnabled !== false}
-                    checkedText="开启"
-                    uncheckedText="关闭"
-                    onChange={(checked) => updateDraft({ ...draft, publicScoreboardEnabled: checked })}
-                  />
-                </FormItem>
-              </Col>
-              <Col span={12}>
-                <FormItem label="榜单显示班级">
-                  <Switch
-                    checked={Boolean(draft.showClassOnScoreboard)}
-                    checkedText="显示"
-                    uncheckedText="隐藏"
-                    onChange={(checked) => updateDraft({ ...draft, showClassOnScoreboard: checked })}
-                  />
-                  <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
-                    开启后，比赛详情页榜单与公开榜单将显示参赛者所在班级
-                  </div>
-                </FormItem>
-              </Col>
-              <Col span={12}>
-                <FormItem label="允许打星报名">
-                  <Switch
-                    checked={Boolean(draft.allowStarRegistration)}
-                    checkedText="允许"
-                    uncheckedText="关闭"
-                    onChange={(checked) => updateDraft({ ...draft, allowStarRegistration: checked })}
-                  />
-                </FormItem>
-              </Col>
-              <Col span={12}>
-                <FormItem label="查看他人提交状态">
-                  <Switch
-                    checked={draft.allowViewAllSubmissions !== false}
-                    checkedText="允许"
-                    uncheckedText="隐藏"
-                    onChange={(checked) => updateDraft({ ...draft, allowViewAllSubmissions: checked })}
-                  />
-                  <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
-                    关闭后，比赛期间参赛者只能看到自己的提交状态，他人状态显示为"等待中"
-                  </div>
-                </FormItem>
-              </Col>
-              <Col span={12}>
                 <FormItem label="比赛密码（可选）">
                   <Input.Password
                     placeholder={isEditing && editingHasPassword ? '留空则保持原密码' : '不填则公开报名'}
                     value={draft.registrationPassword ?? ''}
                     onChange={(value) => updateDraft({ ...draft, registrationPassword: value })}
                   />
-                </FormItem>
-              </Col>
-              <Col span={24}>
-                <FormItem label="面向群体" required>
-                  <Space direction="vertical" size={8}>
-                    <Space wrap>
-                      <Radio
-                        checked={selectedAudienceTypes.includes('ALL')}
-                        onChange={() => chooseAudience('ALL')}
-                      >
-                        所有人
-                      </Radio>
-                      <Checkbox
-                        checked={selectedAudienceTypes.includes('CLASS')}
-                        onChange={(checked) => setAudienceTypeEnabled('CLASS', Boolean(checked))}
-                      >
-                        班级
-                      </Checkbox>
-                    </Space>
-                    {currentAudience === 'ALL' ? (
-                      <Typography.Text type="secondary">所有用户可参赛。</Typography.Text>
-                    ) : (
-                      <Space size={8} wrap>
-                        <Typography.Text type="secondary">
-                          已选择 {draft.classIds?.length ?? 0} 个班级；未选择具体班级时，默认所有班级可参赛。
-                        </Typography.Text>
-                        <Button size="mini" type="text" onClick={openClassPicker}>
-                          选择班级
-                        </Button>
-                      </Space>
-                    )}
-                  </Space>
                 </FormItem>
               </Col>
               <Col span={24}>

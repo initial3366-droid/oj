@@ -1,0 +1,1 @@
+import{B as e}from"./index-CjEuB_Aq.js";const l={PREFIX:`${e}-avatar`},r={SHAPE:["circle","square"],SIZE:["extra-extra-small","extra-small","small","default","medium","large","extra-large"],COLOR:["grey","red","pink","purple","violet","indigo","blue","light-blue","cyan","teal","green","light-green","lime","yellow","amber","orange","white"]};export{l as c,r as s};

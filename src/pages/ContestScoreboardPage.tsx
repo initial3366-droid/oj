@@ -1,15 +1,24 @@
+/**
+ * 比赛榜单页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Card, Tag, Typography, Spin, Banner, Button } from '@douyinfe/semi-ui';
 import { IconChevronLeft, IconTreeTriangleDown } from '@douyinfe/semi-icons';
 import { useEffect, useState } from 'react';
-import { NavLink, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { fetchContestScoreboard, type ContestScoreboard } from '../data/apiClient';
 
+/**
+ * 封装状态Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusText(status: ContestScoreboard['status']) {
   if (status === 'RUNNING') return '进行中';
   if (status === 'ENDED') return '已结束';
   return '未开始';
 }
 
+/**
+ * 封装cell班级相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function cellClass(accepted: boolean, attempts: number, score: number, type: ContestScoreboard['type']) {
   if (accepted) return 'scoreboard-cell-accepted';
   if (type === 'OI' && score > 0) return 'scoreboard-cell-partial';
@@ -17,10 +26,16 @@ function cellClass(accepted: boolean, attempts: number, score: number, type: Con
   return 'scoreboard-cell-empty';
 }
 
+/**
+ * 封装identityBadge相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function identityBadge(type?: string | null) {
   return '个人';
 }
 
+/**
+ * 封装medalTag相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function medalTag(medal?: ContestScoreboard['rows'][number]['medal']) {
   if (medal === 'GOLD') return <Tag color="orange">金</Tag>;
   if (medal === 'SILVER') return <Tag color="grey">银</Tag>;
@@ -28,14 +43,23 @@ function medalTag(medal?: ContestScoreboard['rows'][number]['medal']) {
   return <Typography.Text type="tertiary">-</Typography.Text>;
 }
 
+/**
+ * 封装排名Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function rankText(rank?: number | null, starred?: boolean | null) {
   return starred ? '打星' : rank ?? '-';
 }
 
+/**
+ * 封装榜单题目标识相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function scoreboardProblemId(problem: { problemId: number; contestProblemId?: number }) {
   return problem.contestProblemId ?? problem.problemId;
 }
 
+/**
+ * 格式化DateTime。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatDateTime(dateTime: string): string {
   const date = new Date(dateTime);
   const year = date.getFullYear();
@@ -46,6 +70,9 @@ function formatDateTime(dateTime: string): string {
   return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
+/**
+ * 渲染比赛榜单页面，并协调其数据加载、状态和交互。
+ */
 export function ContestScoreboardPage() {
   const { contestId } = useParams();
   const id = Number(contestId ?? 0);

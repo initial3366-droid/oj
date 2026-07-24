@@ -15,6 +15,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * 比赛排名接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
+ */
 @RestController
 @RequestMapping("/api/v1/contests")
 public class ContestRankController {
@@ -23,6 +26,9 @@ public class ContestRankController {
     private final ContestScoreboardSnapshotService snapshotService;
     private final ContestMapper contestMapper;
 
+    /**
+     * 构造 比赛排名Controller 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public ContestRankController(
         ContestAcmRankService acmRankService,
         ContestOiRankService oiRankService,
@@ -46,6 +52,9 @@ public class ContestRankController {
     ) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
 
@@ -59,6 +68,9 @@ public class ContestRankController {
             List<ContestOiRankVO> ranks = oiRankService.getRankList(contestId);
             return ApiResponse.ok(ranks);
         } else {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST, "无效的榜单模式，必须是 ACM 或 OI");
         }
     }

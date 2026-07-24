@@ -1,7 +1,13 @@
+/**
+ * 编码Block组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Typography } from '@douyinfe/semi-ui';
 import { IconCopy } from '@douyinfe/semi-icons';
 import { Toast } from '@douyinfe/semi-ui';
 
+/**
+ * 编码BlockProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface CodeBlockProps {
   code: string;
   language?: string;
@@ -21,6 +27,9 @@ export function CodeBlock({
   maxHeight,
   title,
 }: CodeBlockProps) {
+  /**
+   * 处理Copy。包含异步流程并由调用方处理完成或失败状态。
+   */
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(code);

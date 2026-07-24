@@ -23,6 +23,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 用户管理员业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class UserAdminService {
     private final UserMapper userMapper;
@@ -31,6 +34,9 @@ public class UserAdminService {
     private final PasswordEncoder passwordEncoder;
     private final JdbcTemplate jdbcTemplate;
 
+    /**
+     * 构造 用户管理员Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public UserAdminService(
         UserMapper userMapper,
         AdminUserMapper adminUserMapper,
@@ -48,15 +54,22 @@ public class UserAdminService {
     public UserVO detail(long id) {
         User user = userMapper.selectById(id);
         if (user == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "用户不存在");
         }
         Map<Long, String> classNameMap = batchQueryClassNames(List.of(user));
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(user, classNameMap.getOrDefault(user.id, null));
     }
 
     public PageResult<UserVO> list(int page, int pageSize, String role, String keyword) {
         QueryWrapper<User> wrapper = new QueryWrapper<>();
         if (role != null && !role.isBlank()) {
+            validateUserRole(role);
             wrapper.eq("role", role);
         } else {
             wrapper.in("role", activeFrontendRoles());
@@ -109,6 +122,9 @@ public class UserAdminService {
         user.role = request.role().name();
         userMapper.insert(user);
         ensureScore(user.id);
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(user, null);
     }
 
@@ -116,6 +132,9 @@ public class UserAdminService {
     public UserVO update(long id, UserUpdateRequest request) {
         User user = userMapper.selectById(id);
         if (user == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "用户不存在");
         }
         ensureUnique(request.username(), request.studentNo(), request.email(), id);
@@ -140,6 +159,9 @@ public class UserAdminService {
         }
         userMapper.updateById(user);
         ensureScore(user.id);
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(user, null);
     }
 
@@ -147,6 +169,9 @@ public class UserAdminService {
     public void delete(long id) {
         User user = userMapper.selectById(id);
         if (user == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "用户不存在");
         }
 
@@ -158,6 +183,9 @@ public class UserAdminService {
     }
 
     public UserVO toVO(User user, String className) {
+        /**
+         * 封装rVO相关逻辑。执行持久化写入。
+         */
         return new UserVO(
             user.id,
             user.username,
@@ -174,12 +202,21 @@ public class UserAdminService {
 
     private void ensureUnique(String username, String studentNo, String email, Long currentUserId) {
         if (username != null && exists("username", username, currentUserId)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "用户名已存在");
         }
         if (studentNo != null && !studentNo.isBlank() && exists("student_no", studentNo, currentUserId)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "学号已存在");
         }
         if (email != null && !email.isBlank() && exists("email", email, currentUserId)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "邮箱已存在");
         }
     }
@@ -210,10 +247,19 @@ public class UserAdminService {
     }
 
     private void validateUserRole(String role) {
+        if ("TEACHER".equals(role)) {
+            throw new BizException(400, "教师账号请使用教师管理接口");
+        }
         if ("SUPER_ADMIN".equals(role)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "系统管理员不属于前台用户表");
         }
         if (!UserRole.isActiveFrontendRole(role)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "用户角色不可用");
         }
     }
@@ -223,10 +269,6 @@ public class UserAdminService {
     }
 
     private List<String> activeFrontendRoles() {
-        return List.of(
-            UserRole.STUDENT.name(),
-            UserRole.TEACHER.name(),
-            UserRole.GUEST.name()
-        );
+        return List.of(UserRole.STUDENT.name());
     }
 }

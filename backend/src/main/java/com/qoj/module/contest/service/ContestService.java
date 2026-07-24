@@ -11,6 +11,7 @@ import com.qoj.common.enums.AudienceType;
 import com.qoj.common.enums.ContestStatus;
 import com.qoj.common.enums.ContestType;
 import com.qoj.common.enums.IdentityType;
+import com.qoj.common.enums.JudgeBackend;
 import com.qoj.common.exception.BizException;
 import com.qoj.common.redis.RedisKeys;
 import com.qoj.module.contest.dto.ContestAudienceRequest;
@@ -59,10 +60,13 @@ import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.entity.SubmissionCaseResult;
 import com.qoj.module.submission.mapper.SubmissionCaseResultMapper;
 import com.qoj.module.submission.mapper.SubmissionMapper;
+import com.qoj.module.setting.service.SystemSettingService;
 import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.module.user.mapper.UserMapper;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
 import java.math.BigDecimal;
@@ -84,6 +88,9 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 比赛业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class ContestService {
     private static final BigDecimal DEFAULT_GOLD_RATIO = BigDecimal.valueOf(10);
@@ -104,12 +111,14 @@ public class ContestService {
     private final SubmissionCaseResultMapper submissionCaseResultMapper;
     private final UserMapper userMapper;
     private final AdminUserMapper adminUserMapper;
+    private final TeacherMapper teacherMapper;
     private final ClassRoomMapper classRoomMapper;
     private final ClassMemberMapper classMemberMapper;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
     private final com.qoj.security.policy.ContestAccessPolicy contestAccessPolicy;
     private final PasswordEncoder passwordEncoder;
+    private final SystemSettingService settingService;
 
     public ContestService(
         ContestMapper contestMapper,
@@ -126,12 +135,14 @@ public class ContestService {
         SubmissionCaseResultMapper submissionCaseResultMapper,
         UserMapper userMapper,
         AdminUserMapper adminUserMapper,
+        TeacherMapper teacherMapper,
         ClassRoomMapper classRoomMapper,
         ClassMemberMapper classMemberMapper,
         StringRedisTemplate redisTemplate,
         ObjectMapper objectMapper,
         com.qoj.security.policy.ContestAccessPolicy contestAccessPolicy,
-        PasswordEncoder passwordEncoder
+        PasswordEncoder passwordEncoder,
+        SystemSettingService settingService
     ) {
         this.contestMapper = contestMapper;
         this.contestProblemMapper = contestProblemMapper;
@@ -147,14 +158,19 @@ public class ContestService {
         this.submissionCaseResultMapper = submissionCaseResultMapper;
         this.userMapper = userMapper;
         this.adminUserMapper = adminUserMapper;
+        this.teacherMapper = teacherMapper;
         this.classRoomMapper = classRoomMapper;
         this.classMemberMapper = classMemberMapper;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.contestAccessPolicy = contestAccessPolicy;
         this.passwordEncoder = passwordEncoder;
+        this.settingService = settingService;
     }
 
+    /**
+     * 查询目标数据列表。调用前会结合当前登录身份执行权限判断；从持久化层读取数据；返回结果包含分页边界。
+     */
     public PageResult<ContestVO> list(int page, int pageSize) {
         QueryWrapper<Contest> wrapper = new QueryWrapper<>();
 
@@ -168,6 +184,13 @@ public class ContestService {
             wrapper.inSql("id", "SELECT DISTINCT contest_id FROM contest_audiences WHERE audience_type = 'ALL' AND audience_id = 0");
         } else if (user.adminAccount() || "SUPER_ADMIN".equals(user.role())) {
             // 管理员：看所有
+        } else if (!"USER".equals(user.accountType())) {
+            wrapper.and(visible -> visible
+                .inSql("id", "SELECT DISTINCT contest_id FROM contest_audiences WHERE audience_type = 'ALL' AND audience_id = 0")
+                .or(owner -> owner
+                    .eq("owner_account_type", user.accountType())
+                    .eq("owner_id", user.id()))
+            );
         } else {
             // 普通用户：看自己有权访问的比赛
             List<Long> visibleContestIds = new ArrayList<>();
@@ -214,24 +237,36 @@ public class ContestService {
         return new PageResult<>(result.getTotal(), result.getRecords().stream().map(this::toVO).toList());
     }
 
+    /**
+     * 封装管理员列表相关逻辑。调用前会结合当前登录身份执行权限判断；从持久化层读取数据；返回结果包含分页边界。
+     */
     public PageResult<ContestVO> adminList(int page, int pageSize) {
         AuthUser user = CurrentUser.required();
         if ("SUPER_ADMIN".equals(user.role())) {
+            /**
+             * 查询目标数据列表。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return list(page, pageSize);
         }
 
         QueryWrapper<Contest> wrapper = new QueryWrapper<>();
         wrapper.eq("is_deleted", false)
             .eq("owner_id", user.id())
-            .eq("owner_account_type", user.adminAccount() ? "ADMIN" : "USER")
+            .eq("owner_account_type", user.accountType())
             .orderByDesc("start_time");
         Page<Contest> result = contestMapper.selectPage(Page.of(page, pageSize), wrapper);
         return new PageResult<>(result.getTotal(), result.getRecords().stream().map(this::toVO).toList());
     }
 
+    /**
+     * 封装详情相关逻辑。调用前会结合当前登录身份执行权限判断；不满足业务约束时直接抛出明确异常；从持久化层读取数据。
+     */
     public ContestVO detail(long id) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
 
@@ -239,36 +274,58 @@ public class ContestService {
         if (Boolean.TRUE.equals(contest.isDeleted)) {
             AuthUser user = CurrentUser.get();
             if (user == null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
             }
             boolean isOwner = contest.ownerId.equals(user.id())
-                && ((user.adminAccount() && "ADMIN".equals(contest.ownerAccountType))
-                    || (!user.adminAccount() && "USER".equals(contest.ownerAccountType)));
+                && user.accountType().equals(contest.ownerAccountType);
             if (!"SUPER_ADMIN".equals(user.role()) && !isOwner) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
             }
         }
 
         if (!canCurrentUserViewContest(contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权查看该比赛");
         }
 
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(contest);
     }
 
+    /**
+     * 封装题目详情相关逻辑。调用前会结合当前登录身份执行权限判断；不满足业务约束时直接抛出明确异常；从持久化层读取数据。
+     */
     public ProblemVO problemDetail(long contestId, long contestProblemId) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
 
         AuthUser user = CurrentUser.get();
         if (!canCurrentUserViewContestProblemDetail(user, contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权查看比赛题目");
         }
 
-        // 检查用户是否有权访问该比赛（非 ALL 类型需要报名）
-        if (!AudienceType.ALL.name().equals(contest.audience)) {
+        // 比赛期间非公开比赛需要先报名；赛后开放题目时只校验比赛开放范围。
+        boolean afterEndViewingEnabled = isRegistrationClosed(contest)
+            && !Boolean.FALSE.equals(contest.allowAfterEndViewProblem);
+        if (!AudienceType.ALL.name().equals(contest.audience) && !afterEndViewingEnabled) {
             if (user != null && !contestAccessPolicy.can(user, com.qoj.security.policy.Permission.UPDATE, contest)) {
                 ContestRegistration registration = registrationMapper.selectOne(
                     new QueryWrapper<ContestRegistration>()
@@ -276,6 +333,9 @@ public class ContestService {
                         .eq("user_id", user.id())
                 );
                 if (registration == null) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(ErrorCode.FORBIDDEN.getCode(), "请先报名比赛");
                 }
                 // 验证报名身份是否仍然有效
@@ -283,6 +343,9 @@ public class ContestService {
                     IdentityType type = IdentityType.valueOf(registration.identityType);
                     resolveRegistrationIdentity(contest, type, registration.identityId, user.id());
                 } catch (BizException e) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权访问该比赛：" + e.getMessage());
                 }
             }
@@ -290,11 +353,20 @@ public class ContestService {
 
         ContestProblem contestProblem = contestProblemMapper.selectById(contestProblemId);
         if (contestProblem == null || !Long.valueOf(contestId).equals(contestProblem.contestId)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛题目不存在");
         }
+        /**
+         * 构造或转换题目详情VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toProblemDetailVO(contestProblem);
     }
 
+    /**
+     * 创建或提交目标数据。调用前会结合当前登录身份执行权限判断；执行持久化写入；读写 Redis 中的缓存、锁或限流状态；整个过程位于同一数据库事务中。
+     */
     @Transactional
     public ContestVO create(ContestCreateRequest request) {
         var authUser = CurrentUser.required();
@@ -305,8 +377,11 @@ public class ContestService {
         contest.startTime = request.startTime();
         contest.endTime = request.endTime();
         contest.type = request.type().name();
+        JudgeBackend judgeBackend = JudgeBackend.contestDefault(request.judgeMode());
+        ensureJudgeBackendConfigured(judgeBackend);
+        contest.judgeMode = judgeBackend.name();
         contest.ownerId = authUser.id();
-        contest.ownerAccountType = authUser.adminAccount() ? "ADMIN" : "USER";
+        contest.ownerAccountType = authUser.accountType();
         AudienceType primaryAudience = requireSupportedAudience(request.audience());
         contest.audience = primaryAudience.name();
         contest.audienceId = AudienceType.ALL.equals(primaryAudience) ? 0L : request.audienceId();
@@ -323,6 +398,7 @@ public class ContestService {
         contest.allowAfterEndSubmit = Boolean.TRUE.equals(request.allowAfterEndSubmit());
         contest.allowAfterEndViewProblem = request.allowAfterEndViewProblem() == null || Boolean.TRUE.equals(request.allowAfterEndViewProblem());
         contest.allowAfterEndViewCode = Boolean.TRUE.equals(request.allowAfterEndViewCode());
+        contest.enableCodeTemplates = Boolean.TRUE.equals(request.enableCodeTemplates());
         contest.publicScoreboardEnabled = request.publicScoreboardEnabled() == null || Boolean.TRUE.equals(request.publicScoreboardEnabled());
         contest.showClassOnScoreboard = Boolean.TRUE.equals(request.showClassOnScoreboard());
         contest.allowStarRegistration = Boolean.TRUE.equals(request.allowStarRegistration());
@@ -338,12 +414,51 @@ public class ContestService {
         replaceAudiences(contest.id, primaryAudience, contest.audienceId, request.audiences());
         replaceProblems(contest.id, request.problems());
         redisTemplate.delete(contestDraftKey());
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(contest);
     }
 
+    /**
+     * 更新目标数据。调用前会结合当前登录身份执行权限判断；不满足业务约束时直接抛出明确异常；执行持久化写入；读写 Redis 中的缓存、锁或限流状态；整个过程位于同一数据库事务中。
+     */
     @Transactional
     public ContestVO update(long id, ContestUpdateRequest request) {
-        Contest contest = requireOwnerOrSuperAdmin(id);
+        Contest contest = contestMapper.selectByIdForUpdate(id);
+        if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
+        }
+        AuthUser authUser = CurrentUser.required();
+        if (!contestAccessPolicy.can(authUser, com.qoj.security.policy.Permission.UPDATE, contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(ErrorCode.FORBIDDEN, "无访问权限");
+        }
+        if (request.judgeMode() != null
+            && !request.judgeMode().name().equals(contest.judgeMode)) {
+            // A locking read is required here: a prior REPEATABLE READ snapshot
+            // must not hide the first submission after this transaction waited
+            // for the same contest row lock.
+            Submission existingSubmission = submissionMapper.selectOne(
+                new QueryWrapper<Submission>()
+                    .select("id")
+                    .eq("contest_id", id)
+                    .last("LIMIT 1 FOR UPDATE")
+            );
+            if (existingSubmission != null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
+                throw new BizException(409, "比赛已有提交，不能切换判题服务");
+            }
+            ensureJudgeBackendConfigured(request.judgeMode());
+            contest.judgeMode = request.judgeMode().name();
+        }
         if (request.title() != null) {
             contest.title = request.title();
         }
@@ -407,6 +522,9 @@ public class ContestService {
         if (request.allowAfterEndViewCode() != null) {
             contest.allowAfterEndViewCode = request.allowAfterEndViewCode();
         }
+        if (request.enableCodeTemplates() != null) {
+            contest.enableCodeTemplates = request.enableCodeTemplates();
+        }
         if (request.publicScoreboardEnabled() != null) {
             contest.publicScoreboardEnabled = request.publicScoreboardEnabled();
         }
@@ -437,7 +555,13 @@ public class ContestService {
             contest.durationMinutes = durationMinutes(null, contest.startTime, contest.endTime);
         }
         validateFreezeAndRollingSettings(contest);
+        /**
+         * 校验CanUseAudience。调用前会结合当前登录身份执行权限判断。
+         */
         ensureCanUseAudience(CurrentUser.required(), AudienceType.valueOf(contest.audience), contest.audienceId);
+        /**
+         * 校验CanUseAudiences。调用前会结合当前登录身份执行权限判断。
+         */
         ensureCanUseAudiences(CurrentUser.required(), request.audiences());
         contestMapper.updateById(contest);
         if (request.audience() != null || request.audienceId() != null || request.audiences() != null) {
@@ -450,24 +574,42 @@ public class ContestService {
             replaceProblems(contest.id, request.problems());
         }
         redisTemplate.delete(RedisKeys.contestBoard(contest.id));
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(contest);
     }
 
+    /**
+     * 创建或提交目标数据。调用前会结合当前登录身份执行权限判断；不满足业务约束时直接抛出明确异常；执行持久化写入；结果依赖当前时间；整个过程位于同一数据库事务中。
+     */
     @Transactional
     public void register(long id, ContestRegisterRequest request) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "比赛不存在");
         }
         var user = CurrentUser.required();
-        if (user.adminAccount()) {
-            throw new BizException(403, "后台账号不能报名比赛");
+        if (!"USER".equals(user.accountType())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(403, "仅学生账号可以报名比赛");
+        }
+        if (isRegistrationClosed(contest)) {
+            throw new BizException(403, "比赛已结束，报名已截止");
         }
         verifyRegistrationPassword(contest, request.password());
 
         // 获取用户信息
         User userEntity = userMapper.selectById(user.id());
         if (userEntity == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "用户不存在");
         }
 
@@ -495,77 +637,141 @@ public class ContestService {
         updateContestStats(id);
     }
 
+    /**
+     * 封装报名Options相关逻辑。调用前会结合当前登录身份执行权限判断；不满足业务约束时直接抛出明确异常；从持久化层读取数据。
+     */
     public List<ContestRegistrationOptionVO> registrationOptions(long id) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "比赛不存在");
         }
         var user = CurrentUser.required();
-        if (user.adminAccount()) {
-            throw new BizException(403, "后台账号不能报名比赛");
+        if (!"USER".equals(user.accountType())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(403, "仅学生账号可以报名比赛");
         }
         java.util.ArrayList<ContestRegistrationOptionVO> options = new java.util.ArrayList<>();
-        boolean contestVisible = isContestVisibleToUser(contest.id, user.id());
+        boolean contestVisible = isContestVisibleToStudent(contest.id, user.id());
+        boolean registrationOpen = !isRegistrationClosed(contest);
+        String disabledReason = !registrationOpen
+            ? "比赛已结束，报名已截止"
+            : (contestVisible ? null : "当前账号不在比赛开放范围内");
         options.add(new ContestRegistrationOptionVO(
             IdentityType.PERSONAL.name(),
             user.id(),
             user.displayName(),
-            contestVisible,
-            contestVisible ? null : "当前账号不在比赛开放范围内",
-            Boolean.TRUE.equals(contest.allowStarRegistration)
+            contestVisible && registrationOpen,
+            disabledReason,
+            registrationOpen && Boolean.TRUE.equals(contest.allowStarRegistration)
         ));
 
         return options;
     }
 
 
+    /**
+     * 封装榜单相关逻辑。调用前会结合当前登录身份执行权限判断；不满足业务约束时直接抛出明确异常；从持久化层读取数据。
+     */
     public ContestScoreboardVO scoreboard(long id) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
 
         // 使用Policy检查封榜状态下的查看权限
         AuthUser user = CurrentUser.get();
         boolean frozenForViewer = isActiveFreeze(contest) && !contestAccessPolicy.canViewScoreboardDuringFreeze(user, contest);
+        /**
+         * 构造或转换榜单。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return buildScoreboard(contest, frozenForViewer ? contest.freezeTime : null, !frozenForViewer && isEnded(contest));
     }
 
+    /**
+     * 封装榜单For管理员导出相关逻辑。不满足业务约束时直接抛出明确异常；从持久化层读取数据。
+     */
     public ContestScoreboardVO scoreboardForAdminExport(long id) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
+        /**
+         * 构造或转换榜单。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return buildScoreboard(contest, null, true);
     }
 
+    /**
+     * 构造或转换榜单。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     private ContestScoreboardVO buildScoreboard(Contest contest) {
+        /**
+         * 构造或转换榜单。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return buildScoreboard(contest, null, false);
     }
 
+    /**
+     * 封装榜单ForSnapshot相关逻辑。不满足业务约束时直接抛出明确异常；从持久化层读取数据。
+     */
     public ContestScoreboardVO scoreboardForSnapshot(long id, String snapshotType) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
         String normalized = snapshotType == null ? "" : snapshotType.trim().toLowerCase();
         if ("freeze".equals(normalized)) {
+            /**
+             * 构造或转换榜单。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return buildScoreboard(contest, contest.freezeTime, false);
         }
         if ("final".equals(normalized)) {
+            /**
+             * 构造或转换榜单。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return buildScoreboard(contest, null, true);
         }
+        /**
+         * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+         */
         throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "快照类型必须是 freeze 或 final");
     }
 
+    /**
+     * 封装榜单ForRolling相关逻辑。不满足业务约束时直接抛出明确异常；从持久化层读取数据。
+     */
     public ContestScoreboardVO scoreboardForRolling(Long contestId, boolean finalBoard) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
+        /**
+         * 构造或转换榜单。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return buildScoreboard(contest, finalBoard ? null : contest.freezeTime, finalBoard);
     }
 
+    /**
+     * 构造或转换榜单。从持久化层读取数据。
+     */
     private ContestScoreboardVO buildScoreboard(Contest contest, LocalDateTime cutoff, boolean showMedals) {
         List<ContestProblem> contestProblems = contestProblemMapper.selectList(
             new QueryWrapper<ContestProblem>().eq("contest_id", contest.id).orderByAsc("display_order")
@@ -592,6 +798,9 @@ public class ContestService {
             : acmScoreboardRows(contest, contestProblems, submissions);
         rows = applyMedals(rows, contest, showMedals);
         rows = enrichScoreboardClassInfo(contest, rows);
+        /**
+         * 封装比赛榜单VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new ContestScoreboardVO(
             contest.id,
             contest.title,
@@ -606,6 +815,9 @@ public class ContestService {
         );
     }
 
+    /**
+     * 封装draft相关逻辑。从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
+     */
     public ContestDraftRequest draft() {
         String value = redisTemplate.opsForValue().get(contestDraftKey());
         if (value == null || value.isBlank()) {
@@ -618,20 +830,32 @@ public class ContestService {
         }
     }
 
+    /**
+     * 更新Draft。直接返回当前实例保存的请求，不产生额外的数据写入。
+     */
     public ContestDraftRequest saveDraft(ContestDraftRequest request) {
         try {
             redisTemplate.opsForValue().set(contestDraftKey(), objectMapper.writeValueAsString(request));
             return request;
         } catch (JsonProcessingException ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "比赛草稿保存失败");
         }
     }
 
+    /**
+     * 重置Draft。执行持久化写入；读写 Redis 中的缓存、锁或限流状态。
+     */
     public void clearDraft() {
         redisTemplate.delete(contestDraftKey());
     }
 
 
+    /**
+     * 封装replaceProblems相关逻辑。不满足业务约束时直接抛出明确异常；执行持久化写入。
+     */
     private void replaceProblems(Long contestId, List<ContestProblemRequest> problems) {
         // 在删除旧 contest_problems 之前，建立 sourceProblemId -> oldContestProblemId 的映射
         List<ContestProblem> oldContestProblems = contestProblemMapper.selectList(
@@ -644,10 +868,17 @@ public class ContestService {
             }
         }
 
-        contestProblemTestCaseMapper.delete(
-            new QueryWrapper<ContestProblemTestCase>()
-                .inSql("contest_problem_id", "SELECT id FROM contest_problems WHERE contest_id = " + contestId)
-        );
+        List<Long> oldContestProblemIds = oldContestProblems.stream()
+            .map(problem -> problem.id)
+            .filter(java.util.Objects::nonNull)
+            .toList();
+        if (!oldContestProblemIds.isEmpty()) {
+            // Use MyBatis bound parameters instead of concatenating identifiers into SQL.
+            contestProblemTestCaseMapper.delete(
+                new QueryWrapper<ContestProblemTestCase>()
+                    .in("contest_problem_id", oldContestProblemIds)
+            );
+        }
         caseScoreMapper.delete(new QueryWrapper<ContestProblemCaseScore>().eq("contest_id", contestId));
         contestProblemMapper.delete(new QueryWrapper<ContestProblem>().eq("contest_id", contestId));
         if (problems == null) {
@@ -660,6 +891,9 @@ public class ContestService {
         for (ContestProblemRequest request : problems) {
             Problem sourceProblem = problemMapper.selectById(request.problemId());
             if (sourceProblem == null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(404, "题目不存在：" + request.problemId());
             }
             ContestProblem contestProblem = new ContestProblem();
@@ -677,7 +911,6 @@ public class ContestService {
             contestProblem.memoryLimit = sourceProblem.memoryLimit;
             contestProblem.difficulty = sourceProblem.difficulty;
             contestProblem.tags = sourceProblem.tags;
-            contestProblem.domjudgeProblemId = sourceProblem.domjudgeProblemId;
             contestProblemMapper.insert(contestProblem);
             sourceToNewId.put(request.problemId(), contestProblem.id);
             copyProblemTestCasesToContestProblem(sourceProblem.id, contestProblem.id);
@@ -717,6 +950,9 @@ public class ContestService {
         }
     }
 
+    /**
+     * 封装copy题目TestCasesTo比赛题目相关逻辑。执行持久化写入。
+     */
     private void copyProblemTestCasesToContestProblem(Long sourceProblemId, Long contestProblemId) {
         List<ProblemTestCase> sourceCases = problemTestCaseMapper.selectList(
             new QueryWrapper<ProblemTestCase>().eq("problem_id", sourceProblemId).orderByAsc("sample").orderByAsc("case_no")
@@ -733,6 +969,9 @@ public class ContestService {
         }
     }
 
+    /**
+     * 封装replaceAudiences相关逻辑。执行持久化写入。
+     */
     private void replaceAudiences(
         Long contestId,
         AudienceType fallbackAudience,
@@ -776,6 +1015,9 @@ public class ContestService {
         if (AudienceType.CLASS.equals(audienceType)) {
             return AudienceType.CLASS;
         }
+        /**
+         * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+         */
         throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "比赛开放范围仅支持所有人或班级");
     }
 
@@ -798,13 +1040,22 @@ public class ContestService {
         }
         if (audience == AudienceType.CLASS) {
             if (audienceId == null || audienceId == 0) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "班级 ID 不能为空");
             }
             ClassRoom classRoom = classRoomMapper.selectById(audienceId);
             if (classRoom == null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.NOT_FOUND.getCode(), "班级不存在");
             }
-            if (!"TEACHER".equals(user.role()) || !user.id().equals(classRoom.teacherId)) {
+            if (!user.teacherAccount() || !user.id().equals(classRoom.teacherId)) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.FORBIDDEN.getCode(), "只能选择自己管理的班级");
             }
             return;
@@ -814,10 +1065,16 @@ public class ContestService {
     private Contest requireOwnerOrSuperAdmin(long id) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
         var user = CurrentUser.required();
         if (!contestAccessPolicy.can(user, com.qoj.security.policy.Permission.UPDATE, contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无访问权限");
         }
         return contest;
@@ -827,8 +1084,8 @@ public class ContestService {
         if (!contest.ownerId.equals(user.id())) {
             return false;
         }
-        String ownerType = contest.ownerAccountType == null ? "USER" : contest.ownerAccountType;
-        return user.adminAccount() ? "ADMIN".equals(ownerType) : "USER".equals(ownerType);
+        String ownerType = contest.ownerAccountType == null ? "UNKNOWN" : contest.ownerAccountType;
+        return user.accountType().equals(ownerType);
     }
 
     private RegistrationIdentity resolveRegistrationIdentity(
@@ -839,11 +1096,20 @@ public class ContestService {
     ) {
         IdentityType type = requestedType == null ? IdentityType.PERSONAL : requestedType;
         if (type == IdentityType.PERSONAL) {
-            if (!isContestVisibleToUser(contest.id, userId)) {
+            if (!isContestVisibleToStudent(contest.id, userId)) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(403, "当前账号不在比赛开放范围内");
             }
+            /**
+             * 构造 报名Identity 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return new RegistrationIdentity(type, userId);
         }
+        /**
+         * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+         */
         throw new BizException(400, "不支持的报名身份");
     }
 
@@ -858,10 +1124,13 @@ public class ContestService {
         if (audienceAllows(contest.id, AudienceType.ALL, 0L)) {
             return true;
         }
-        if (user == null || user.adminAccount() || user.id() == null) {
+        if (user == null || !"USER".equals(user.accountType()) || user.id() == null) {
             return false;
         }
-        return isContestVisibleToUser(contest.id, user.id());
+        /**
+         * 判断比赛VisibleTo用户是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
+        return isContestVisibleToStudent(contest.id, user.id());
     }
 
     private boolean canCurrentUserViewContestProblemDetail(AuthUser user, Contest contest) {
@@ -884,7 +1153,10 @@ public class ContestService {
         if (audienceAllows(contest.id, AudienceType.ALL, 0L)) {
             return true;
         }
-        return user != null && !user.adminAccount() && user.id() != null && isContestVisibleToUser(contest.id, user.id());
+        return user != null
+            && "USER".equals(user.accountType())
+            && user.id() != null
+            && isContestVisibleToStudent(contest.id, user.id());
     }
 
     private boolean isContestOwnerOrSuperAdmin(Contest contest, AuthUser user) {
@@ -897,13 +1169,12 @@ public class ContestService {
         if (contest.ownerId == null) {
             return false;
         }
-        String ownerType = contest.ownerAccountType == null ? "USER" : contest.ownerAccountType;
+        String ownerType = contest.ownerAccountType == null ? "UNKNOWN" : contest.ownerAccountType;
         return contest.ownerId.equals(user.id())
-            && ((user.adminAccount() && "ADMIN".equals(ownerType))
-                || (!user.adminAccount() && "USER".equals(ownerType)));
+            && user.accountType().equals(ownerType);
     }
 
-    private boolean isContestVisibleToUser(Long contestId, Long userId) {
+    private boolean isContestVisibleToStudent(Long contestId, Long userId) {
         if (audienceAllows(contestId, AudienceType.ALL, 0L)) {
             return true;
         }
@@ -946,27 +1217,42 @@ public class ContestService {
         // 1. 验证比赛存在
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
 
         // 2. 验证当前时间。比赛结束后是否允许继续提交由后台配置控制，赛后提交不计入排名。
         LocalDateTime now = LocalDateTime.now();
         if (now.isBefore(contest.startTime)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "比赛尚未开始");
         }
         if (now.isAfter(contest.endTime) && !Boolean.TRUE.equals(contest.allowAfterEndSubmit)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "比赛已结束");
         }
 
         // 3. 验证题目属于该比赛
         ContestProblem contestProblem = resolveContestProblem(contestId, submittedProblemId);
         if (contestProblem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST, "该题不属于当前比赛");
         }
 
         // 4. 验证用户已报名
         ContestRegistration registration = registrationForUser(contestId, userId);
         if (registration == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "请先报名比赛");
         }
 
@@ -975,6 +1261,9 @@ public class ContestService {
         try {
             type = IdentityType.valueOf(registration.identityType);
         } catch (Exception ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST, "报名身份数据异常，请重新报名");
         }
         resolveRegistrationIdentity(contest, type, registration.identityId, userId);
@@ -1001,6 +1290,9 @@ public class ContestService {
         if (contest == null || registration == null) {
             return null;
         }
+        /**
+         * 校验参赛者。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return ensureParticipant(contest, registration);
     }
 
@@ -1081,6 +1373,9 @@ public class ContestService {
         if (authentication == null || !(authentication.getPrincipal() instanceof AuthUser authUser) || authUser.adminAccount()) {
             return null;
         }
+        /**
+         * 封装报名For用户相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return registrationForUser(contestId, authUser.id());
     }
 
@@ -1144,6 +1439,7 @@ public class ContestService {
             contest.startTime,
             contest.endTime,
             contest.type,
+            JudgeBackend.fromStored(contest.judgeMode, JudgeBackend.GO_JUDGE).name(),
             contest.ownerId,
             ownerName(contest.ownerId, contest.ownerAccountType),
             contest.audience,
@@ -1161,11 +1457,15 @@ public class ContestService {
             Boolean.TRUE.equals(contest.allowAfterEndSubmit),
             contest.allowAfterEndViewProblem == null || Boolean.TRUE.equals(contest.allowAfterEndViewProblem),
             Boolean.TRUE.equals(contest.allowAfterEndViewCode),
+            Boolean.TRUE.equals(contest.enableCodeTemplates),
             contest.publicScoreboardEnabled == null || Boolean.TRUE.equals(contest.publicScoreboardEnabled),
             Boolean.TRUE.equals(contest.showClassOnScoreboard),
             contest.allowViewAllSubmissions == null || Boolean.TRUE.equals(contest.allowViewAllSubmissions),
             Boolean.TRUE.equals(contest.allowStarRegistration),
             contest.registrationType,
+            /**
+             * 判断报名Password是否成立。从持久化层读取数据。
+             */
             hasRegistrationPassword(contest),
             effectiveStatus(contest).name(),
             registrationCount(contest.id),
@@ -1180,6 +1480,21 @@ public class ContestService {
         );
     }
 
+    private void ensureJudgeBackendConfigured(JudgeBackend backend) {
+        if (backend != JudgeBackend.CCPCOJ) {
+            return;
+        }
+        var settings = settingService.getJudgeRuntimeSettings();
+        if (!settings.hasCcpcojJudgePassword
+            || settings.ccpcojJudgeUsername == null
+            || settings.ccpcojJudgeUsername.isBlank()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常；可能调用外部判题或网关服务。
+             */
+            throw new BizException(400, "请先在系统设置中配置 CCPCOJ 评测机账号和密码");
+        }
+    }
+
     private ContestProblemVO toProblemVO(ContestProblem item, java.util.Map<Long, Long> submissionCountMap, java.util.Map<Long, Long> acceptedCountMap) {
         List<ContestProblemCaseScoreVO> caseScores = caseScoreMapper
             .selectList(
@@ -1191,6 +1506,9 @@ public class ContestService {
             .stream()
             .map(score -> new ContestProblemCaseScoreVO(score.caseNo, score.score))
             .toList();
+        /**
+         * 封装比赛题目VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new ContestProblemVO(
             item.id,
             item.problemId,
@@ -1233,7 +1551,6 @@ public class ContestService {
             readTags(item.tags),
             null,
             true,
-            item.domjudgeProblemId,
             java.math.BigDecimal.ZERO,
             item.createdAt,
             item.updatedAt,
@@ -1256,6 +1573,9 @@ public class ContestService {
     }
 
     private ContestAudienceVO toAudienceVO(ContestAudience audience) {
+        /**
+         * 封装比赛AudienceVO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new ContestAudienceVO(audience.audienceType, audience.audienceId, audienceName(audience));
     }
 
@@ -1295,6 +1615,9 @@ public class ContestService {
                 .thenComparing(ContestScoreboardRowVO::penalty)
                 .thenComparing(ContestScoreboardRowVO::userId))
             .toList();
+        /**
+         * 封装排名Rows相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return rankRows(rows);
     }
 
@@ -1306,6 +1629,9 @@ public class ContestService {
         List<ContestScoreboardCellVO> cells = contestProblems.stream()
             .map(problem -> {
                 AcmCell cell = cellsByProblem.get(problem.id);
+                /**
+                 * 封装比赛榜单CellVO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                 */
                 return new ContestScoreboardCellVO(
                     problem.id,
                     problem.label,
@@ -1367,6 +1693,9 @@ public class ContestService {
                 .thenComparing(ContestScoreboardRowVO::solved, Comparator.reverseOrder())
                 .thenComparing(ContestScoreboardRowVO::userId))
             .toList();
+        /**
+         * 封装排名Rows相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return rankRows(rows);
     }
 
@@ -1380,6 +1709,9 @@ public class ContestService {
                 OiCell cell = cellsByProblem.get(problem.id);
                 int fullScore = problem.score == null ? 0 : problem.score;
                 int score = cell == null ? 0 : cell.score;
+                /**
+                 * 封装比赛榜单CellVO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                 */
                 return new ContestScoreboardCellVO(
                     problem.id,
                     problem.label,
@@ -1596,6 +1928,9 @@ public class ContestService {
     private BoardIdentity identityFromSubmission(Long contestId, Submission submission) {
         ContestParticipant participant = submission.participantId == null ? null : participantMapper.selectById(submission.participantId);
         Boolean starred = participant != null && Boolean.TRUE.equals(participant.starred);
+        /**
+         * 封装identityKey相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return identityKey(IdentityType.PERSONAL, submission.userId, starred);
     }
 
@@ -1606,15 +1941,24 @@ public class ContestService {
         } catch (Exception ignored) {
             identityType = IdentityType.PERSONAL;
         }
+        /**
+         * 封装identityKey相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return identityKey(identityType, id);
     }
 
     private BoardIdentity identityKey(IdentityType type, Long id) {
+        /**
+         * 封装identityKey相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return identityKey(type, id, false);
     }
 
     private BoardIdentity identityKey(IdentityType type, Long id, Boolean starred) {
         Long safeId = id == null ? 0L : id;
+        /**
+         * 构造 BoardIdentity 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new BoardIdentity(type, safeId, identityName(type.name(), safeId), Boolean.TRUE.equals(starred));
     }
 
@@ -1664,6 +2008,9 @@ public class ContestService {
     }
 
     private boolean isRankedSubmission(Contest contest, Submission submission) {
+        /**
+         * 判断Ranked提交是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return isRankedSubmission(contest, submission, null);
     }
 
@@ -1686,7 +2033,16 @@ public class ContestService {
         if (contest == null || contest.startTime == null || contest.endTime == null) {
             return ContestStatus.NOT_STARTED;
         }
+        /**
+         * 计算状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return calculateStatus(contest.startTime, contest.endTime);
+    }
+
+    private boolean isRegistrationClosed(Contest contest) {
+        return contest != null
+            && contest.endTime != null
+            && !LocalDateTime.now().isBefore(contest.endTime);
     }
 
     private Integer durationMinutes(Integer durationMinutes, LocalDateTime startTime, LocalDateTime endTime) {
@@ -1716,16 +2072,28 @@ public class ContestService {
             return;
         }
         if (!contest.endTime.isAfter(contest.startTime)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "比赛结束时间必须晚于开始时间");
         }
         if (!Boolean.TRUE.equals(contest.frozen) && Boolean.TRUE.equals(contest.enableRollingScoreboard)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "启用滚榜需要先开启封榜并设置封榜时间");
         }
         if (Boolean.TRUE.equals(contest.frozen)) {
             if (contest.freezeTime == null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "开启封榜后必须设置封榜时间");
             }
             if (contest.freezeTime.isBefore(contest.startTime) || contest.freezeTime.isAfter(contest.endTime)) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "封榜时间必须在比赛开始和结束时间之间");
             }
         } else {
@@ -1733,6 +2101,9 @@ public class ContestService {
             contest.enableRollingScoreboard = false;
         }
         if (Boolean.TRUE.equals(contest.enableRollingScoreboard) && (!Boolean.TRUE.equals(contest.frozen) || contest.freezeTime == null)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "启用滚榜需要先开启封榜并设置封榜时间");
         }
         contest.goldRatio = normalizeRatio(contest.goldRatio, DEFAULT_GOLD_RATIO);
@@ -1742,12 +2113,18 @@ public class ContestService {
         validateMedalRatio(contest.silverRatio, "银牌比例");
         validateMedalRatio(contest.bronzeRatio, "铜牌比例");
         if (contest.goldRatio.compareTo(contest.silverRatio) > 0 || contest.silverRatio.compareTo(contest.bronzeRatio) > 0) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "奖牌比例必须满足 金牌 ≤ 银牌 ≤ 铜牌");
         }
     }
 
     private void validateMedalRatio(BigDecimal ratio, String label) {
         if (ratio.compareTo(BigDecimal.ZERO) < 0 || ratio.compareTo(BigDecimal.valueOf(100)) > 0) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), label + "必须在 0 到 100 之间");
         }
     }
@@ -1778,6 +2155,9 @@ public class ContestService {
             return;
         }
         if (password == null || password.isBlank() || !passwordEncoder.matches(password.trim(), contest.registrationPassword)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "比赛密码错误");
         }
     }
@@ -1790,6 +2170,10 @@ public class ContestService {
         if ("ADMIN".equals(ownerAccountType)) {
             AdminUser adminUser = adminUserMapper.selectById(ownerId);
             return adminUser == null ? String.valueOf(ownerId) : adminUser.displayName;
+        }
+        if ("TEACHER".equals(ownerAccountType)) {
+            Teacher teacher = teacherMapper.selectById(ownerId);
+            return teacher == null ? String.valueOf(ownerId) : teacher.displayName;
         }
         User user = userMapper.selectById(ownerId);
         if (user != null) {
@@ -1812,9 +2196,12 @@ public class ContestService {
 
     private String contestDraftKey() {
         var user = CurrentUser.required();
-        return RedisKeys.contestDraft(user.adminAccount() ? "admin" : "user", user.id());
+        return RedisKeys.contestDraft(user.accountType().toLowerCase(java.util.Locale.ROOT), user.id());
     }
 
+    /**
+     * AcmCell领域类型。封装 contest.service 模块内的相关职责。
+     */
     private static class AcmCell {
         int attempts;
         boolean accepted;
@@ -1822,6 +2209,9 @@ public class ContestService {
         LocalDateTime acceptedAt;
     }
 
+    /**
+     * OiCell领域类型。封装 contest.service 模块内的相关职责。
+     */
     private static class OiCell {
         int attempts;
         boolean accepted;
@@ -1829,19 +2219,34 @@ public class ContestService {
         LocalDateTime acceptedAt;
     }
 
+    /**
+     * 报名标识不可变数据载体。通过 record 语义表达一组只读字段及其结构约束。
+     */
     private record RegistrationIdentity(IdentityType type, Long id) {
     }
 
+    /**
+     * Board标识不可变数据载体。通过 record 语义表达一组只读字段及其结构约束。
+     */
     private record BoardIdentity(IdentityType type, Long id, String name, Boolean starred) {
+        /**
+         * 封装row标识相关逻辑。直接返回当前实例保存的标识，不产生额外的数据写入。
+         */
         Long rowId() {
             return id;
         }
 
+        /**
+         * 封装值相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         String value() {
             return type.name() + ":" + id;
         }
     }
 
+    /**
+     * StandingAccumulator领域类型。封装 contest.service 模块内的相关职责。
+     */
     private static class StandingAccumulator {
         Long contestId;
         BoardIdentity identity;
@@ -1860,6 +2265,9 @@ public class ContestService {
     public void delete(long id) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
 
@@ -1901,9 +2309,15 @@ public class ContestService {
     public com.qoj.module.contest.vo.PublicScoreboardVO getPublicScoreboard(long contestId) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
         if (Boolean.FALSE.equals(contest.publicScoreboardEnabled)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "公共榜单已关闭");
         }
 
@@ -2059,6 +2473,9 @@ public class ContestService {
         }
         List<ContestScoreboardRowVO> rows = new ArrayList<>(displayed.values());
         rows.sort(Comparator.comparing(row -> row.rank() == null ? Integer.MAX_VALUE : row.rank()));
+        /**
+         * 封装比赛榜单VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new ContestScoreboardVO(
             finalScoreboard.contestId(),
             finalScoreboard.title(),

@@ -4,6 +4,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Public榜单响应视图模型。仅暴露调用方需要的字段，避免直接返回持久化实体。
+ */
 public class PublicScoreboardVO {
     public Long contestId;
     public String contestTitle;
@@ -17,12 +20,18 @@ public class PublicScoreboardVO {
     public List<ProblemInfo> problems;
     public List<UserRank> rows;
 
+    /**
+     * 题目Info响应视图模型。仅暴露调用方需要的字段，避免直接返回持久化实体。
+     */
     public static class ProblemInfo {
         public String label;
         public String title;
         public Integer score; // For OI mode
     }
 
+    /**
+     * 用户排名响应视图模型。仅暴露调用方需要的字段，避免直接返回持久化实体。
+     */
     public static class UserRank {
         public Integer rank;
         public Long userId;
@@ -42,6 +51,9 @@ public class PublicScoreboardVO {
         public Map<String, ProblemStatus> problems; // key: problem label
     }
 
+    /**
+     * 题目状态响应视图模型。仅暴露调用方需要的字段，避免直接返回持久化实体。
+     */
     public static class ProblemStatus {
         public Boolean accepted;
         public Integer attempts; // Number of submissions
@@ -51,6 +63,9 @@ public class PublicScoreboardVO {
         public List<SubmissionHistory> history;
     }
 
+    /**
+     * 提交History响应视图模型。仅暴露调用方需要的字段，避免直接返回持久化实体。
+     */
     public static class SubmissionHistory {
         public String status;
         public LocalDateTime submittedAt;

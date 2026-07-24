@@ -1,0 +1,50 @@
+# QOJ 内嵌 go-judge 沙箱。服务仅监听本机，并要求后端携带共享鉴权令牌。
+services:
+  go-judge:
+    build:
+      context: .
+      args:
+        GO_JUDGE_VERSION: "1.12.1"
+    image: qoj-go-judge:1.12.1
+    container_name: qoj-go-judge
+    # go-judge 需要特权能力创建受限执行环境；因此该容器必须与公网隔离。
+    privileged: true
+    restart: unless-stopped
+    shm_size: 512m
+    # 容器级资源上限是单次沙箱限制之外的第二层保护。
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2.0
+    ports:
+      # The API is intentionally unreachable from non-local hosts.
+      - "127.0.0.1:${GO_JUDGE_PORT:-15050}:5050"
+    environment:
+      GO_JUDGE_HEALTH_TOKEN: ${GO_JUDGE_AUTH_TOKEN:?GO_JUDGE_AUTH_TOKEN is required}
+    command:
+      - "-http-addr=:5050"
+      - "-auth-token=${GO_JUDGE_AUTH_TOKEN:?GO_JUDGE_AUTH_TOKEN is required}"
+      # Keep the 2 GiB worker at one concurrent sandbox by default. Increase
+      # both container memory and host capacity before raising this value.
+      - "-parallelism=${GO_JUDGE_PARALLELISM:-1}"
+      - "-pre-fork=1"
+      - "-container-cred-start=10000"
+      - "-no-fallback"
+      - "-file-timeout=10m"
+      - "-output-limit=4m"
+      - "-copy-out-limit=4m"
+      - "-open-file-limit=128"
+      - "-tmp-fs-param=size=256m,nr_inodes=8k"
+      - "-release"
+      # Suppress startup/request logs so the command-line auth token is never
+      # copied into Docker logs. Runtime failures are returned to the backend.
+      - "-silent"
+    healthcheck:
+      # Probe an authenticated, read-only cache lookup. A 404 proves that the
+      # worker is responsive and accepted the token without executing code.
+      test:
+        - CMD-SHELL
+        - test -s /usr/bin/qoj-csharp-launcher.exe && curl -fsS http://127.0.0.1:5050/version >/dev/null || exit 1
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s

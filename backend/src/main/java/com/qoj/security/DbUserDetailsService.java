@@ -21,6 +21,9 @@ import org.springframework.stereotype.Service;
 public class DbUserDetailsService implements UserDetailsService {
     private final UserMapper userMapper;
 
+    /**
+     * 构造 Db用户DetailsService 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public DbUserDetailsService(UserMapper userMapper) {
         this.userMapper = userMapper;
     }
@@ -33,12 +36,21 @@ public class DbUserDetailsService implements UserDetailsService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", username));
         if (user == null) {
+            /**
+             * 封装rnameNotFoundException相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             throw new UsernameNotFoundException(username);
         }
-        // 过滤掉后台角色（SUPER_ADMIN/TEACHER），仅前台学生/GUEST 可通过此服务登录
+        // 过滤掉后台角色（SUPER_ADMIN/TEACHER），仅前台学生可通过此服务登录
         if (!UserRole.isActiveFrontendRole(user.role)) {
+            /**
+             * 封装rnameNotFoundException相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             throw new UsernameNotFoundException(username);
         }
+        /**
+         * 封装认证用户相关逻辑。调用前会结合当前登录身份执行权限判断。
+         */
         return new AuthUser(user);
     }
 }

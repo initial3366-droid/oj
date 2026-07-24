@@ -1,4 +1,8 @@
+/**
+ * 管理员Routes模块。集中声明该文件对外提供的前端能力与初始化逻辑。
+ */
 import { Routes, Route, Navigate } from 'react-router-dom';
+import '../../utils/arcoSetup';
 import { AdminLayout } from '../layout/AdminLayout';
 import { PermissionGuard } from '../components/PermissionGuard';
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
@@ -7,21 +11,27 @@ import { AnnouncementManagementPage } from '../pages/announcement/AnnouncementMa
 import { AdminUserManagementPage } from '../pages/users/AdminUserManagementPage';
 import { AdminContestManagementPage } from '../pages/contests/AdminContestManagementPage';
 import { AdminContestDetailPage } from '../pages/contests/AdminContestDetailPage';
+import { AdminCodeTemplateSettingsPage } from '../pages/settings/AdminCodeTemplateSettingsPage';
 import { AdminSystemSettingsPage } from '../pages/settings/AdminSystemSettingsPage';
 import { AdminProblemListPage } from '../pages/problems/AdminProblemListPage';
 import { AdminProblemCreatePage } from '../pages/problems/AdminProblemCreatePage';
 import { AdminProblemFolderPage } from '../pages/problems/AdminProblemFolderPage';
 import { AdminPracticeManagementPage } from '../pages/practices/AdminPracticeManagementPage';
+import { PracticePublishPage } from '../../components/practices/PracticePublishPage';
 import { AdminSubmissionQueuePage } from '../pages/judge/AdminSubmissionQueuePage';
 import { AdminSubmissionListPage } from '../pages/submissions/AdminSubmissionListPage';
 import { AdminSubmissionStatisticsPage } from '../pages/submissions/AdminSubmissionStatisticsPage';
 import { AdminLeaderboardPage } from '../pages/leaderboard/AdminLeaderboardPage';
 import { AdminClassDetailPage, AdminClassManagementPage } from '../pages/classes/AdminClassManagementPage';
 import { AdminTeacherManagementPage } from '../pages/classes/AdminTeacherManagementPage';
+import { AdminMajorManagementPage } from '../pages/classes/AdminMajorManagementPage';
 import { AdminProfilePage } from '../pages/profile/AdminProfilePage';
 import { adminPath } from '../../utils/adminPath';
 import { Result } from '@arco-design/web-react';
 
+/**
+ * 渲染管理员Routes组件，并协调其数据加载、状态和交互。
+ */
 export function AdminRoutes() {
   return (
     <Routes>
@@ -44,6 +54,7 @@ export function AdminRoutes() {
                 {/* 用户管理 */}
                 <Route path="/users/students" element={<AdminUserManagementPage />} />
                 <Route path="/users/teachers" element={<AdminTeacherManagementPage />} />
+                <Route path="/majors" element={<AdminMajorManagementPage />} />
 
                 {/* 题目管理 */}
                 <Route path="/problems" element={<AdminProblemListPage />} />
@@ -57,6 +68,8 @@ export function AdminRoutes() {
                 {/* 题单管理 */}
                 <Route path="/practices" element={<AdminPracticeManagementPage />} />
                 <Route path="/practices/new" element={<AdminPracticeManagementPage />} />
+                <Route path="/practices/:practiceId/publish" element={<PracticePublishPage variant="admin" />} />
+                <Route path="/practices/publications/:publicationId/edit" element={<PracticePublishPage variant="admin" />} />
                 <Route path="/practices/:practiceId/edit" element={<AdminPracticeManagementPage />} />
 
                 {/* 比赛管理 */}
@@ -88,6 +101,7 @@ export function AdminRoutes() {
                 <Route path="/settings/frontend" element={<AdminSystemSettingsPage section="frontend" />} />
                 <Route path="/settings/register" element={<AdminSystemSettingsPage section="register" />} />
                 <Route path="/settings/system" element={<AdminSystemSettingsPage section="system" />} />
+                <Route path="/settings/code-templates" element={<AdminCodeTemplateSettingsPage />} />
                 <Route path="/settings/announcements" element={<AnnouncementManagementPage />} />
 
                 {/* 个人信息 */}

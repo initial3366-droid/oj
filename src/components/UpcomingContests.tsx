@@ -1,11 +1,20 @@
+/**
+ * UpcomingContests组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Card, Typography, Tag } from '@douyinfe/semi-ui';
 import { NavLink } from 'react-router-dom';
 import { useOjData } from '../data/OjDataProvider';
 
+/**
+ * 渲染UpcomingContests组件，并协调其数据加载、状态和交互。
+ */
 export function UpcomingContests() {
   const { state } = useOjData();
   const contests = [...state.contests].slice(0, 4);
 
+  /**
+   * 读取状态Color并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const getStatusColor = (status: string): 'blue' | 'green' | 'grey' => {
     const normalized = status.toLowerCase();
     if (normalized.includes('进行中') || normalized === 'running') return 'green';
@@ -13,6 +22,9 @@ export function UpcomingContests() {
     return 'grey';
   };
 
+  /**
+   * 格式化DateTime。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const formatDateTime = (dateTime: string): string => {
     const date = new Date(dateTime);
     const month = String(date.getMonth() + 1).padStart(2, '0');

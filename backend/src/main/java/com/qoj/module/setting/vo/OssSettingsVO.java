@@ -1,7 +1,7 @@
 package com.qoj.module.setting.vo;
 
 /**
- * OSS 存储配置，存储于 system_settings。
+ * 腾讯云 COS 存储配置，沿用 system.oss_config 以兼容已有部署。
  */
 public class OssSettingsVO {
     public Boolean enabled;

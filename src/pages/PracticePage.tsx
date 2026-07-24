@@ -1,20 +1,32 @@
+/**
+ * 练习页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import Editor, { type OnMount } from "@monaco-editor/react";
-import { Alert, Button, ConfigProvider, Input, Select, theme as antTheme } from "antd";
+import "../utils/monacoSetup";
+import { Alert, Button, Card, ConfigProvider, Empty, Flex, Input, Result, Select, Space, Spin, Typography, theme as antTheme } from "antd";
 import { Tag } from "@douyinfe/semi-ui";
-import { IconBulb, IconClose, IconCode, IconFile, IconMinus, IconPlus, IconSend } from "@douyinfe/semi-icons";
+import { IconClose, IconCode, IconFile, IconMinus, IconPlus, IconSend } from "@douyinfe/semi-icons";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { MarkdownMath } from "../components/MarkdownMath";
+import { HtmlMath } from "../components/HtmlMath";
 import { useOjData } from "../data/OjDataProvider";
 import { chatWithAgent, fetchAgentQuota, type AgentQuota } from "../api/agent";
 import { fetchContestProblemDetail, fetchProblemDetail } from "../api/problem";
+import { fetchCodeTemplateSettings, fetchContest, fetchPracticeDetail, type CodeTemplateSettings } from "../data/apiClient";
 import { fetchSubmissionDetail, runCodeInSandbox, submitCode, type SubmissionRecord } from "../api/submission";
 import type { Problem } from "../data/types";
 import { wsClient } from "../utils/websocket";
 import { decryptIdFromUrl } from "../utils/cipher";
 
-type PracticeLanguage = "C" | "C++" | "Python" | "Java";
+/**
+ * 练习Language类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
+type PracticeLanguage = "C" | "C++" | "Python" | "Java" | "C#";
 
+/**
+ * DebugAlert类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type DebugAlert = {
   type: "success" | "danger" | "neutral" | "info";
   title: string;
@@ -22,6 +34,9 @@ type DebugAlert = {
   source?: "debug" | "submit";
 };
 
+/**
+ * EditorMarker类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type EditorMarker = {
   message: string;
   severity: number;
@@ -31,11 +46,17 @@ type EditorMarker = {
   endColumn: number;
 };
 
+/**
+ * 提交结果类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type SubmissionResult = Partial<Pick<
   SubmissionRecord,
   "id" | "language" | "status" | "timeUsed" | "memoryUsed" | "passedCaseCount" | "totalCaseCount" | "cases"
 >>;
 
+/**
+ * Agent消息类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type AgentMessage = {
   id: string;
   role: "user" | "assistant";
@@ -47,6 +68,7 @@ const languageOptions: Array<{ label: PracticeLanguage; apiValue: string }> = [
   { label: "C++", apiValue: "cpp" },
   { label: "Python", apiValue: "python" },
   { label: "Java", apiValue: "java" },
+  { label: "C#", apiValue: "csharp" },
 ];
 
 const monacoLanguages: Record<PracticeLanguage, string> = {
@@ -54,40 +76,20 @@ const monacoLanguages: Record<PracticeLanguage, string> = {
   "C++": "cpp",
   Python: "python",
   Java: "java",
+  "C#": "csharp",
 };
 
-const templates: Record<PracticeLanguage, string> = {
-  C: `#include <stdio.h>
-
-int main(void) {
-    return 0;
-}`,
-  "C++": `#include <bits/stdc++.h>
-using namespace std;
-
-int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-
-    return 0;
-}`,
-  Python: `import sys
-
-def solve():
-    pass
-
-if __name__ == "__main__":
-    solve()
-`,
-  Java: `import java.io.*;
-import java.util.*;
-
-public class Main {
-    public static void main(String[] args) throws Exception {
-    }
-}`,
+const templateSettingKeys: Record<PracticeLanguage, keyof CodeTemplateSettings> = {
+  C: "c",
+  "C++": "cpp",
+  Python: "python",
+  Java: "java",
+  "C#": "csharp",
 };
 
+/**
+ * 封装backend题目标识相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function backendProblemId(problemId: string): number | null {
   const prefix = problemId.startsWith("cp") ? "cp" : problemId.startsWith("p") ? "p" : "";
   const encoded = problemId.slice(prefix.length);
@@ -95,6 +97,9 @@ function backendProblemId(problemId: string): number | null {
   return decryptIdFromUrl(encoded);
 }
 
+/**
+ * 封装current编码OwnerKey相关逻辑。会读写浏览器本地会话信息。
+ */
 function currentCodeOwnerKey() {
   const token = window.localStorage.getItem("qoj.accessToken");
   if (!token) {
@@ -111,14 +116,23 @@ function currentCodeOwnerKey() {
   }
 }
 
+/**
+ * 封装编码StorageKey相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function codeStorageKey(problemId: string, language: PracticeLanguage) {
   return `qoj.code.user.${currentCodeOwnerKey()}.${problemId}.${language}`;
 }
 
+/**
+ * 封装clampHeight相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function clampHeight(value: number) {
   return Math.min(Math.max(value, 180), Math.floor(window.innerHeight * 0.68));
 }
 
+/**
+ * 构造或转换AntAlert类型。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function toAntAlertType(type: DebugAlert["type"]): "success" | "info" | "warning" | "error" {
   if (type === "danger") {
     return "error";
@@ -129,14 +143,23 @@ function toAntAlertType(type: DebugAlert["type"]): "success" | "info" | "warning
   return type;
 }
 
+/**
+ * 封装clampSplit相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function clampSplit(value: number) {
   return Math.min(Math.max(value, 18), 82);
 }
 
+/**
+ * 封装clampFontSize相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function clampFontSize(value: number) {
   return Math.min(Math.max(value, 12), 28);
 }
 
+/**
+ * 解析并规范化Output。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeOutput(value: string) {
   return value.replace(/\r\n/g, "\n").trim();
 }
@@ -167,16 +190,25 @@ const submissionStatusLabels: Record<string, string> = {
   FAILED: "测评失败",
 };
 
+/**
+ * 判断Running提交状态是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function isRunningSubmissionStatus(status?: string | null) {
   const normalized = String(status ?? "").toUpperCase();
   return ["WAITING", "PENDING", "QUEUED", "REJUDGE_PENDING", "JUDGING", "COMPILING", "RUNNING"].includes(normalized);
 }
 
+/**
+ * 判断Final提交状态是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function isFinalSubmissionStatus(status?: string | null) {
   const normalized = String(status ?? "").toUpperCase();
   return Boolean(normalized) && !isRunningSubmissionStatus(normalized);
 }
 
+/**
+ * 封装max提交测试点Metric相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function maxSubmissionCaseMetric(
   cases: SubmissionResult["cases"],
   field: "timeMs" | "memoryKb",
@@ -187,15 +219,24 @@ function maxSubmissionCaseMetric(
   return values.length > 0 ? Math.max(...values) : null;
 }
 
+/**
+ * 封装positiveMetric相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function positiveMetric(value: number | null | undefined) {
   return typeof value === "number" && value > 0 ? value : null;
 }
 
+/**
+ * 格式化Metric。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatMetric(value: number | null | undefined, unit: string) {
   const metric = positiveMetric(value);
   return metric == null ? "-" : `${metric} ${unit}`;
 }
 
+/**
+ * 格式化提交Alert。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatSubmissionAlert(data: SubmissionResult): DebugAlert {
   const status = String(data.status ?? "PENDING").toUpperCase();
   const statusLabel = submissionStatusLabels[status] ?? status;
@@ -214,6 +255,9 @@ function formatSubmissionAlert(data: SubmissionResult): DebugAlert {
   };
 }
 
+/**
+ * 渲染练习页面，并协调其数据加载、状态和交互。
+ */
 export function PracticePage() {
   const splitRootRef = useRef<HTMLDivElement | null>(null);
   const submissionWatcherCleanupRef = useRef<(() => void) | null>(null);
@@ -224,11 +268,24 @@ export function PracticePage() {
   const [searchParams] = useSearchParams();
   const { state } = useOjData();
   const [remoteProblem, setRemoteProblem] = useState<Problem | null>(null);
+  const [problemLoadStatus, setProblemLoadStatus] = useState<"loading" | "ready" | "not-found">("loading");
+  const [codeTemplates, setCodeTemplates] = useState<CodeTemplateSettings | null>(null);
+  const [codeTemplatesReady, setCodeTemplatesReady] = useState(false);
+  const [contestCodeTemplatesEnabled, setContestCodeTemplatesEnabled] = useState(false);
+  /**
+   * 封装numeric题目标识相关逻辑。对原始数据进行派生或聚合。
+   */
   const numericProblemId = useMemo(() => (problemId ? backendProblemId(problemId) : null), [problemId]);
+  /**
+   * 判断Local题目是否成立。对原始数据进行派生或聚合。
+   */
   const hasLocalProblem = useMemo(
     () => Boolean(problemId && state.problems.some((item) => item.id === problemId)),
     [problemId, state.problems],
   );
+  /**
+   * 封装题目相关逻辑。对原始数据进行派生或聚合。
+   */
   const problem = useMemo(() => {
     if (!problemId) {
       return null;
@@ -260,6 +317,10 @@ export function PracticePage() {
   const practiceId = searchParams.get("practiceId");
   const contestId = searchParams.get("contestId");
   const isContestMode = Boolean(contestId);
+  const canUseDefaultCodeTemplates = !isContestMode || contestCodeTemplatesEnabled;
+  const defaultCodeTemplate = canUseDefaultCodeTemplates && codeTemplates
+    ? codeTemplates[templateSettingKeys[language]]
+    : "";
   const samples = problem?.samples ?? [];
   const selectedSample = typeof sampleIndex === "number" ? samples[sampleIndex] : null;
   const sampleSelectValue = typeof sampleIndex === "number" ? String(sampleIndex) : "custom";
@@ -272,7 +333,7 @@ export function PracticePage() {
   const showDebugFields = debugAlert?.source !== "submit";
   const isEditorDark = editorTheme === "dark";
   const monacoThemeName = isEditorDark ? "qoj-vscode-dark" : "qoj-vscode-light";
-  const debugTextareaClassName = "min-h-0 flex-1 font-mono text-sm leading-6";
+  const debugTextareaClassName = "practice-debug-textarea min-h-0 flex-1 font-mono text-sm leading-6";
 
   useEffect(() => {
     return () => {
@@ -293,35 +354,113 @@ export function PracticePage() {
 
   useEffect(() => {
     setRemoteProblem(null);
-    if (!numericProblemId || hasLocalProblem) {
+    if (!numericProblemId) {
+      setProblemLoadStatus("not-found");
       return;
     }
+    if (hasLocalProblem) {
+      setProblemLoadStatus("ready");
+      return;
+    }
+    setProblemLoadStatus("loading");
     let cancelled = false;
     const loader = contestId
       ? fetchContestProblemDetail(Number(contestId), numericProblemId)
-      : fetchProblemDetail(numericProblemId);
+      : practiceId
+        ? fetchPracticeDetail(Number(practiceId)).then((practice) => {
+            const practiceProblem = practice.problems.find((item) => backendProblemId(item.id) === numericProblemId);
+            if (!practiceProblem) throw new Error("题单题目不存在或已隐藏");
+            return practiceProblem;
+          })
+        : fetchProblemDetail(numericProblemId);
     loader
       .then((data) => {
         if (!cancelled) {
           setRemoteProblem(data);
+          setProblemLoadStatus("ready");
         }
       })
       .catch(() => {
         if (!cancelled) {
           setRemoteProblem(null);
+          setProblemLoadStatus("not-found");
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [contestId, hasLocalProblem, numericProblemId]);
+  }, [contestId, practiceId, hasLocalProblem, numericProblemId]);
 
   useEffect(() => {
-    if (!problem?.id) {
+    let cancelled = false;
+    const markReadyWithoutTemplates = () => {
+      if (cancelled) return;
+      setCodeTemplates(null);
+      setContestCodeTemplatesEnabled(false);
+      setCodeTemplatesReady(true);
+    };
+    const loadTemplates = () => {
+      fetchCodeTemplateSettings()
+        .then((settings) => {
+          if (!cancelled) {
+            setCodeTemplates(settings);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setCodeTemplates(null);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setCodeTemplatesReady(true);
+          }
+        });
+    };
+
+    setCodeTemplates(null);
+    setCodeTemplatesReady(false);
+    setContestCodeTemplatesEnabled(false);
+    setCode("");
+
+    if (!isContestMode) {
+      loadTemplates();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const numericContestId = Number(contestId);
+    if (!Number.isSafeInteger(numericContestId) || numericContestId <= 0) {
+      markReadyWithoutTemplates();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    fetchContest(numericContestId)
+      .then((contest) => {
+        if (cancelled) return;
+        if (!contest.enableCodeTemplates) {
+          markReadyWithoutTemplates();
+          return;
+        }
+        setContestCodeTemplatesEnabled(true);
+        loadTemplates();
+      })
+      .catch(markReadyWithoutTemplates);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contestId, isContestMode]);
+
+  useEffect(() => {
+    if (!problem?.id || !codeTemplatesReady) {
       return;
     }
-    setCode(window.localStorage.getItem(codeStorageKey(problem.id, language)) ?? templates[language]);
-  }, [language, problem?.id]);
+    setCode(window.localStorage.getItem(codeStorageKey(problem.id, language)) ?? defaultCodeTemplate);
+  }, [language, problem?.id, codeTemplatesReady, defaultCodeTemplate]);
 
   useEffect(() => {
     if (typeof sampleIndex === "number" && !samples[sampleIndex]) {
@@ -335,6 +474,9 @@ export function PracticePage() {
     return () => clearTimeout(timer);
   }, [language]);
 
+  /**
+   * 封装changeLanguage相关逻辑。会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+   */
   const changeLanguage = (next: PracticeLanguage) => {
     if (problem?.id) {
       window.localStorage.setItem(codeStorageKey(problem.id, language), code);
@@ -342,6 +484,9 @@ export function PracticePage() {
     setLanguage(next);
   };
 
+  /**
+   * 更新编码。会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+   */
   const updateCode = (next: string) => {
     setCode(next);
     if (problem?.id) {
@@ -349,10 +494,16 @@ export function PracticePage() {
     }
   };
 
+  /**
+   * 封装nextAgent消息标识相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const nextAgentMessageId = (role: AgentMessage["role"]) => {
     return `${role}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   };
 
+  /**
+   * 封装appendAgent消息相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const appendAgentMessage = (role: AgentMessage["role"], content: string) => {
     setAgentMessages((current) => [
       ...current,
@@ -360,6 +511,9 @@ export function PracticePage() {
     ]);
   };
 
+  /**
+   * 封装latestDebugText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const latestDebugText = () => {
     if (!debugAlert) {
       return "暂无最新调试或提交结果。";
@@ -367,6 +521,9 @@ export function PracticePage() {
     return [debugAlert.title, debugAlert.detail].filter(Boolean).join("\n");
   };
 
+  /**
+   * 发送Agent消息。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+   */
   const sendAgentMessage = async (message?: string) => {
     const content = (message ?? agentInput).trim();
     if (!content || agentLoading) {
@@ -419,6 +576,9 @@ export function PracticePage() {
     }
   };
 
+  /**
+   * 封装start提交Watcher相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const startSubmissionWatcher = (submissionId: number) => {
     submissionWatcherCleanupRef.current?.();
 
@@ -426,6 +586,9 @@ export function PracticePage() {
     let unsubscribe: (() => void) | null = null;
     let pollTimer: number | null = null;
 
+    /**
+     * 封装stop相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+     */
     const stop = () => {
       stopped = true;
       if (unsubscribe) {
@@ -441,6 +604,9 @@ export function PracticePage() {
       }
     };
 
+    /**
+     * 封装refresh提交相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+     */
     const refreshSubmission = async () => {
       if (stopped) {
         return;
@@ -493,13 +659,22 @@ export function PracticePage() {
     refreshSubmission();
   };
 
+  /**
+   * 封装startDebugResize相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const startDebugResize = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const startY = event.clientY;
     const startHeight = debugHeight;
+    /**
+     * 处理onMove。会更新 React 状态并触发重新渲染。
+     */
     const onMove = (moveEvent: MouseEvent) => {
       setDebugHeight(clampHeight(startHeight + startY - moveEvent.clientY));
     };
+    /**
+     * 处理onUp。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+     */
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
@@ -508,9 +683,15 @@ export function PracticePage() {
     document.addEventListener("mouseup", onUp);
   };
 
+  /**
+   * 封装startPaneResize相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const startPaneResize = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     setPaneResizing(true);
+    /**
+     * 处理onMove。会更新 React 状态并触发重新渲染。
+     */
     const onMove = (moveEvent: MouseEvent) => {
       const rect = splitRootRef.current?.getBoundingClientRect();
       if (!rect?.width) {
@@ -518,6 +699,9 @@ export function PracticePage() {
       }
       setLeftPanePercent(clampSplit(((moveEvent.clientX - rect.left) / rect.width) * 100));
     };
+    /**
+     * 处理onUp。会更新 React 状态并触发重新渲染。
+     */
     const onUp = () => {
       setPaneResizing(false);
       document.body.style.cursor = "";
@@ -531,10 +715,16 @@ export function PracticePage() {
     document.addEventListener("mouseup", onUp);
   };
 
+  /**
+   * 封装changeFontSize相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const changeFontSize = (delta: number) => {
     setFontSize((current) => clampFontSize(current + delta));
   };
 
+  /**
+   * 封装runCustomSyntaxCheck相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const runCustomSyntaxCheck = () => {
     const monaco = monacoRef.current;
     const editor = editorRef.current;
@@ -546,7 +736,7 @@ export function PracticePage() {
     try {
     const src = model.getValue();
     const lang = monacoLanguages[languageRef.current];
-    const isSemicolonLang = lang === "c" || lang === "cpp" || lang === "java";
+    const isSemicolonLang = lang === "c" || lang === "cpp" || lang === "java" || lang === "csharp";
 
     /* ── strip comments and strings to avoid false positives ── */
     const stripped: string[] = [];
@@ -814,6 +1004,9 @@ export function PracticePage() {
     monaco.editor.setModelMarkers(model, "custom-syntax", monacoMarkers);
   };
 
+  /**
+   * 封装configureEditor相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const configureEditor: OnMount = (editor, monaco) => {
     monacoRef.current = monaco;
     editorRef.current = editor;
@@ -879,6 +1072,9 @@ export function PracticePage() {
     monacoRef.current?.editor.setTheme(monacoThemeName);
   }, [monacoThemeName]);
 
+  /**
+   * 封装runDebug相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const runDebug = async () => {
     if (debugLoading) {
       return;
@@ -889,6 +1085,16 @@ export function PracticePage() {
         type: "danger",
         title: "判题服务已关闭",
         detail: "管理员已暂时关闭判题功能，无法调试运行。",
+        source: "debug",
+      });
+      return;
+    }
+    if (state.judgeSettings && !state.judgeSettings.enableSandbox) {
+      setDebugOpen(true);
+      setDebugAlert({
+        type: "danger",
+        title: "调试功能已关闭",
+        detail: "管理员已暂时关闭代码调试功能。",
         source: "debug",
       });
       return;
@@ -939,6 +1145,9 @@ export function PracticePage() {
     }
   };
 
+  /**
+   * 封装selectSample相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const selectSample = (value: string) => {
     if (value === "custom") {
       setSampleIndex("custom");
@@ -964,6 +1173,9 @@ export function PracticePage() {
     setDebugOpen(true);
   };
 
+  /**
+   * 创建或提交编码Action。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const submitCodeAction = async () => {
     if (submitLoading) {
       return;
@@ -1022,8 +1234,24 @@ export function PracticePage() {
     }
   };
 
-  // 如果没有题目数据，显示加载状态
+  // 题目不存在、被隐藏或无权访问时显示统一的不可用页面。
   if (!problem) {
+    if (problemLoadStatus === "not-found") {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+          <Result
+            status="404"
+            title="题目不存在"
+            subTitle="该题目不存在、已被隐藏，或你没有访问权限。"
+            extra={(
+              <Button type="primary" onClick={() => navigate("/problems")}>
+                返回题库
+              </Button>
+            )}
+          />
+        </div>
+      );
+    }
     return (
       <div className="flex h-[calc(100vh-200px)] items-center justify-center">
         <div className="text-center">
@@ -1036,15 +1264,15 @@ export function PracticePage() {
   return (
     <div
       ref={splitRootRef}
-      className="fixed inset-0 grid overflow-hidden bg-slate-100"
+      className="practice-workspace fixed inset-0 grid overflow-hidden bg-slate-100"
       style={{
         gridTemplateColumns: `minmax(0, ${leftPanePercent}fr) 6px minmax(0, ${100 - leftPanePercent}fr)`,
       }}
     >
-      <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-white">
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 text-slate-800">
+      <section className="practice-pane flex min-h-0 min-w-0 flex-col overflow-hidden bg-white">
+        <div className="practice-pane-header practice-problem-header flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 text-slate-800">
           <div className="flex min-w-0 items-center gap-2">
-            <Tag color="blue" size="large">
+            <Tag color="blue">
               <span className="inline-flex items-center gap-1 text-base font-semibold text-blue-800">
                 <IconFile style={{ fontSize: 16 }} />
                 {isContestMode ? "比赛题目" : "题目"}
@@ -1062,61 +1290,59 @@ export function PracticePage() {
           )}
         </div>
 
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
-          <article className="min-w-0 space-y-6 text-sm leading-8 text-slate-700">
-            <section>
-              <h2 className="mb-3 text-lg font-bold text-slate-800">题目描述</h2>
-              <MarkdownMath className="pl-7" value={problem.statement || problem.summary} />
+        <div className="practice-problem-scroll min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
+          <article className="practice-problem-content min-w-0 space-y-6 text-sm leading-8 text-slate-700">
+            <section className="practice-problem-section">
+              <h2 className="practice-problem-heading mb-3 text-lg font-bold text-slate-800">题目描述</h2>
+              <HtmlMath className="practice-description-body pl-7" value={problem.statement || problem.summary} />
             </section>
 
-            <section>
-              <h2 className="mb-3 text-base font-bold text-slate-700">输入描述：</h2>
-              <div className="border-l-4 border-success bg-slate-50 px-7 py-4">
-                <MarkdownMath value={problem.inputFormat || "输入数据。"} />
+            <section className="practice-problem-section">
+              <h2 className="practice-problem-heading mb-3 text-base font-bold text-slate-700">输入描述：</h2>
+              <div className="practice-io-block border-l-4 border-blue-500 bg-slate-50 px-7 py-4">
+                <HtmlMath value={problem.inputFormat || "输入数据。"} />
               </div>
             </section>
 
-            <section>
-              <h2 className="mb-3 text-base font-bold text-slate-700">输出描述：</h2>
-              <div className="border-l-4 border-success bg-slate-50 px-7 py-4">
-                <MarkdownMath value={problem.outputFormat || "输出答案。"} />
+            <section className="practice-problem-section">
+              <h2 className="practice-problem-heading mb-3 text-base font-bold text-slate-700">输出描述：</h2>
+              <div className="practice-io-block border-l-4 border-blue-500 bg-slate-50 px-7 py-4">
+                <HtmlMath value={problem.outputFormat || "输出答案。"} />
               </div>
             </section>
 
-            <fieldset className="layui-elem-field bg-white">
-              <legend>评测信息</legend>
-              <div className="grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
-                <div>
-                  <p className="text-xs text-slate-500">运行时间</p>
-                  <p className="mt-1 font-semibold">{problem.timeLimit} ms</p>
+            <fieldset className="practice-judge-fieldset rounded-md border border-slate-200 bg-white px-5 pb-5">
+              <legend className="practice-judge-legend px-2 text-base font-bold text-slate-700">评测信息</legend>
+              <div className="practice-judge-grid mt-2 grid gap-3 text-sm text-slate-700">
+                <div className="grid items-center gap-x-6 gap-y-1 border-b border-slate-100 pb-3 sm:grid-cols-[96px_1fr_1fr]">
+                  <p className="font-semibold text-slate-700">C/C++</p>
+                  <p>时间限制：<span className="font-semibold">{problem.timeLimit / 1000} 秒</span></p>
+                  <p>空间限制：<span className="font-semibold">{problem.memoryLimit} MB</span></p>
                 </div>
-                <div>
-                  <p className="text-xs text-slate-500">运行内存</p>
-                  <p className="mt-1 font-semibold">{problem.memoryLimit} MB</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">64bit IO Format</p>
-                  <p className="mt-1 font-semibold">%lld</p>
+                <div className="grid items-center gap-x-6 gap-y-1 sm:grid-cols-[96px_1fr_1fr]">
+                  <p className="font-semibold text-slate-700">其他语言</p>
+                  <p>时间限制：<span className="font-semibold">{(problem.timeLimit * 2) / 1000} 秒</span></p>
+                  <p>空间限制：<span className="font-semibold">{problem.memoryLimit * 2} MB</span></p>
                 </div>
               </div>
             </fieldset>
 
             {samples.map((sample, index) => (
-              <section key={`${sample.caseNo}-${index}`} className="mt-6">
-                <h2 className="mb-3 text-base font-bold text-slate-700">示例{index + 1}</h2>
-                <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-                  <div className="px-4 py-3 font-semibold text-slate-600">输入</div>
-                  <pre className="overflow-x-auto whitespace-pre-wrap border-l-4 border-success bg-white px-7 py-4 font-mono text-slate-700">
+              <section key={`${sample.caseNo}-${index}`} className="practice-sample mt-6">
+                <h2 className="practice-problem-heading mb-3 text-base font-bold text-slate-700">示例{index + 1}</h2>
+                <div className="practice-sample-card overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+                  <div className="practice-sample-label px-4 py-3 font-semibold text-slate-600">输入</div>
+                  <pre className="practice-sample-value overflow-x-auto whitespace-pre-wrap border-l-4 border-blue-500 bg-white px-7 py-4 font-mono text-slate-700">
                     {sample.input}
                   </pre>
-                  <div className="px-4 py-3 font-semibold text-slate-600">输出</div>
-                  <pre className="overflow-x-auto whitespace-pre-wrap border-l-4 border-success bg-white px-7 py-4 font-mono text-slate-700">
+                  <div className="practice-sample-label px-4 py-3 font-semibold text-slate-600">输出</div>
+                  <pre className="practice-sample-value overflow-x-auto whitespace-pre-wrap border-l-4 border-blue-500 bg-white px-7 py-4 font-mono text-slate-700">
                     {sample.output}
                   </pre>
                   {sample.explanation ? (
                     <>
-                      <div className="px-4 py-3 font-semibold text-slate-600">解释</div>
-                      <div className="bg-white px-7 py-4 text-slate-700">
+                      <div className="practice-sample-label px-4 py-3 font-semibold text-slate-600">解释</div>
+                      <div className="practice-sample-value bg-white px-7 py-4 text-slate-700">
                         <MarkdownMath value={sample.explanation} />
                       </div>
                     </>
@@ -1129,18 +1355,22 @@ export function PracticePage() {
       </section>
 
       <div
-        className="z-20 cursor-col-resize bg-slate-200 hover:bg-primary"
-        onMouseDown={startPaneResize}
-        title="拖动调整题面和代码区域比例"
-      />
+        className="practice-pane-divider z-20"
+      >
+        <div
+          className="practice-pane-divider-handle cursor-col-resize"
+          onMouseDown={startPaneResize}
+          title="拖动调整题面和代码区域比例"
+        />
+      </div>
 
-      <section className={`relative flex min-h-0 min-w-0 flex-col overflow-hidden ${editorTheme === "dark" ? "bg-[#20251f]" : "bg-white"}`}>
-        <div className="flex h-14 min-w-0 shrink-0 items-center justify-between gap-3 overflow-hidden border-b border-slate-200 bg-white px-4 text-slate-800">
-          <div className="flex min-w-0 items-center gap-3">
+      <section className={`practice-pane relative flex min-h-0 min-w-0 flex-col overflow-hidden ${editorTheme === "dark" ? "bg-[#20251f]" : "bg-white"}`}>
+        <div className="practice-pane-header flex h-14 min-w-0 shrink-0 items-center justify-between gap-3 overflow-hidden border-b border-slate-200 bg-white px-4 text-slate-800">
+          <div className="ml-[10px] flex min-w-0 items-center gap-3">
             <label className="sr-only" htmlFor="practice-language">选择提交语言</label>
             <select
               id="practice-language"
-              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none focus:border-success"
+              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none focus:border-emerald-500"
               value={language}
               onChange={(event) => changeLanguage(event.target.value as PracticeLanguage)}
             >
@@ -1175,8 +1405,8 @@ export function PracticePage() {
           <div className="flex shrink-0 items-center gap-3">
             {!isContestMode && (
               <Button
-                className={`${agentOpen ? "!bg-blue-500 !text-white hover:!bg-blue-600" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"} ${agentLoading ? 'opacity-70' : ''}`}
-                icon={<IconBulb />}
+                aria-expanded={agentOpen}
+                loading={agentLoading}
                 onClick={() => !agentLoading && setAgentOpen((open) => !open)}
               >
                 {agentLoading ? "思考中..." : `AI 助手${agentQuota ? ` (${agentQuota.remaining})` : ''}`}
@@ -1245,110 +1475,116 @@ export function PracticePage() {
             </div>
 
             {agentOpen ? (
-              <aside className={`flex h-full w-[460px] max-w-[52%] shrink-0 flex-col border-l ${isEditorDark ? "border-slate-800 bg-slate-950 text-slate-100" : "border-slate-200 bg-white text-slate-800"}`}>
-                <div className={`flex h-12 shrink-0 items-center justify-between border-b px-4 ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
-                  <h2 className="text-sm font-semibold">AI 助手</h2>
-                  <Button
-                    aria-label="关闭 AI 助手"
-                    icon={<IconClose />}
-                    size="small"
-                    type="text"
-                    className={isEditorDark ? "!text-slate-200 hover:!bg-white/10" : "!text-slate-600 hover:!bg-slate-100"}
-                    onClick={() => setAgentOpen(false)}
-                  />
-                </div>
-
-                <div className={`grid shrink-0 grid-cols-2 gap-2 border-b p-3 ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
-                  <Button
-                    size="small"
-                    className={`min-w-0 ${isEditorDark ? "!bg-white/10 !text-slate-100 hover:!bg-white/15" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"}`}
-                    onClick={() => sendAgentMessage("请解释这道题的题意和核心思路，不要给完整代码。")}
-                  >
-                    解释题目
-                  </Button>
-                  <Button
-                    size="small"
-                    className={`min-w-0 ${isEditorDark ? "!bg-white/10 !text-slate-100 hover:!bg-white/15" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"}`}
-                    onClick={() => sendAgentMessage("请分析我当前代码中可能的问题，不要直接给完整 AC 代码。")}
-                  >
-                    分析代码
-                  </Button>
-                  <Button
-                    size="small"
-                    className={`min-w-0 ${isEditorDark ? "!bg-white/10 !text-slate-100 hover:!bg-white/15" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"}`}
-                    onClick={() => sendAgentMessage(`请根据下面的调试或提交信息给出排查方向：\n${latestDebugText()}`)}
-                  >
-                    解释报错
-                  </Button>
-                  <Button
-                    size="small"
-                    className={`min-w-0 ${isEditorDark ? "!bg-white/10 !text-slate-100 hover:!bg-white/15" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"}`}
-                    onClick={() => sendAgentMessage("请提醒这道题常见边界情况和自测数据方向。")}
-                  >
-                    边界提醒
-                  </Button>
-                </div>
-
-                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-                  {agentMessages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={[
-                        "rounded-md border px-3 py-2 text-sm leading-6",
-                        message.role === "user"
-                          ? isEditorDark
-                            ? "ml-6 border-blue-400/30 bg-blue-500/15 text-blue-50"
-                            : "ml-6 border-blue-200 bg-blue-50 text-blue-900"
-                          : isEditorDark
-                            ? "mr-6 border-slate-700 bg-slate-900 text-slate-100"
-                            : "mr-6 border-slate-200 bg-slate-50 text-slate-800",
-                      ].join(" ")}
-                    >
-                      {message.role === "assistant" ? (
-                        <MarkdownMath
-                          className="agent-markdown"
-                          value={message.content}
-                          convertInlineCodeToMath
-                        />
-                      ) : (
-                        <pre className="whitespace-pre-wrap break-words font-sans">{message.content}</pre>
-                      )}
-                    </div>
-                  ))}
-                  {agentLoading ? (
-                    <div className={`mr-6 rounded-md border px-3 py-2 text-sm ${isEditorDark ? "border-slate-700 bg-slate-900 text-slate-300" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
-                      正在思考...
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className={`shrink-0 border-t p-3 ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
-                  <Input.TextArea
-                    className={`h-24 w-full resize-none text-sm leading-6 ${isEditorDark ? "!border-slate-700 !bg-slate-900 !text-slate-100 placeholder:!text-slate-500" : "!border-slate-200 !bg-white !text-slate-800 placeholder:!text-slate-400"}`}
-                    placeholder="输入你的问题"
-                    value={agentInput}
-                    autoSize={false}
-                    onChange={(event) => setAgentInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        sendAgentMessage();
-                      }
+              <ConfigProvider theme={{ algorithm: isEditorDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm }}>
+                <aside className={`h-full w-[460px] max-w-[52%] shrink-0 border-l ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
+                  <Card
+                    bordered={false}
+                    className="rounded-none"
+                    style={{ display: "flex", height: "100%", flexDirection: "column" }}
+                    title={<Typography.Text strong>AI 助手</Typography.Text>}
+                    extra={(
+                      <Button size="small" onClick={() => setAgentOpen(false)}>
+                        关闭
+                      </Button>
+                    )}
+                    styles={{
+                      body: {
+                        display: "flex",
+                        flex: 1,
+                        flexDirection: "column",
+                        minHeight: 0,
+                        padding: 0,
+                      },
                     }}
-                  />
-                  <Button
-                    block
-                    loading={agentLoading}
-                    disabled={agentLoading || !agentInput.trim()}
-                    type="primary"
-                    icon={agentLoading ? undefined : <IconSend />}
-                    className="mt-2"
-                    onClick={() => sendAgentMessage()}
                   >
-                    {agentLoading ? "发送中" : "发送"}
-                  </Button>
-                </div>
-              </aside>
+                    <div className={`shrink-0 border-y p-3 ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
+                      <Space wrap size={[8, 8]}>
+                        <Button size="small" onClick={() => sendAgentMessage("请解释这道题的题意和核心思路，不要给完整代码。")}>
+                          解释题目
+                        </Button>
+                        <Button size="small" onClick={() => sendAgentMessage("请分析我当前代码中可能的问题，不要直接给完整 AC 代码。")}>
+                          分析代码
+                        </Button>
+                        <Button size="small" onClick={() => sendAgentMessage(`请根据下面的调试或提交信息给出排查方向：\n${latestDebugText()}`)}>
+                          解释报错
+                        </Button>
+                        <Button size="small" onClick={() => sendAgentMessage("请提醒这道题常见边界情况和自测数据方向。") }>
+                          边界提醒
+                        </Button>
+                      </Space>
+                    </div>
+
+                    <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                      <Flex vertical gap={12}>
+                        {agentMessages.length === 0 && !agentLoading ? (
+                          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择快捷问题或直接输入提问" />
+                        ) : null}
+                        {agentMessages.map((message) => (
+                          <Card
+                            key={message.id}
+                            size="small"
+                            className={message.role === "user" ? "ml-6" : "mr-6"}
+                            style={message.role === "user"
+                              ? {
+                                  backgroundColor: isEditorDark ? "#111a2c" : "#e6f4ff",
+                                  borderColor: isEditorDark ? "#1668dc" : "#91caff",
+                                }
+                              : undefined}
+                            styles={{ body: { padding: "8px 12px" } }}
+                          >
+                            {message.role === "assistant" ? (
+                              <MarkdownMath
+                                className="agent-markdown"
+                                value={message.content}
+                                convertInlineCodeToMath
+                              />
+                            ) : (
+                              <Typography.Paragraph style={{ margin: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
+                                {message.content}
+                              </Typography.Paragraph>
+                            )}
+                          </Card>
+                        ))}
+                        {agentLoading ? (
+                          <Card size="small" className="mr-6" styles={{ body: { padding: "8px 12px" } }}>
+                            <Space size="small">
+                              <Spin size="small" />
+                              <Typography.Text type="secondary">正在思考...</Typography.Text>
+                            </Space>
+                          </Card>
+                        ) : null}
+                      </Flex>
+                    </div>
+
+                    <div className={`shrink-0 border-t p-3 ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
+                      <Flex vertical gap={8}>
+                        <Input.TextArea
+                          placeholder="输入你的问题"
+                          value={agentInput}
+                          autoSize={{ minRows: 4, maxRows: 4 }}
+                          onChange={(event) => setAgentInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              sendAgentMessage();
+                            }
+                          }}
+                        />
+                        <Flex justify="flex-end">
+                          <Button
+                            loading={agentLoading}
+                            disabled={agentLoading || !agentInput.trim()}
+                            type="primary"
+                            onClick={() => sendAgentMessage()}
+                          >
+                            {agentLoading ? "发送中" : "发送"}
+                          </Button>
+                        </Flex>
+                      </Flex>
+                    </div>
+                  </Card>
+                </aside>
+              </ConfigProvider>
             ) : null}
           </div>
         </div>
@@ -1397,7 +1633,7 @@ export function PracticePage() {
                     />
                   </div>
                 </div>
-                <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
+                <div className="practice-debug-body flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
                   {showDebugFields ? (
                     <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                       <label className="flex min-h-0 flex-col gap-2 text-sm font-medium text-slate-700">

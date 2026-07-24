@@ -1,3 +1,6 @@
+/**
+ * 提交Table组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Table, Typography } from '@douyinfe/semi-ui';
 import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { SubmissionStatusTag } from './SubmissionStatusTag';
@@ -5,6 +8,9 @@ import { UserAvatar } from './UserAvatar';
 import { TimeText } from './TimeText';
 import type { CSSProperties } from 'react';
 
+/**
+ * 提交接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Submission {
   id: number;
   problemId: number;
@@ -18,6 +24,9 @@ interface Submission {
   submittedAt: string;
 }
 
+/**
+ * 提交TableProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface SubmissionTableProps {
   data: Submission[];
   loading?: boolean;

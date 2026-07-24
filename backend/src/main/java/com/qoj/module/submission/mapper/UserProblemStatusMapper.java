@@ -8,6 +8,9 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
 
+/**
+ * 用户题目状态数据访问接口。声明数据库查询与写入操作，具体实现由 MyBatis 在运行时生成。
+ */
 @Mapper
 public interface UserProblemStatusMapper extends BaseMapper<UserProblemStatus> {
 
@@ -48,6 +51,9 @@ public interface UserProblemStatusMapper extends BaseMapper<UserProblemStatus> {
             END,
             last_submitted_at = VALUES(last_submitted_at)
         """)
+    /**
+     * 封装upsert状态相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     void upsertStatus(
         @Param("userId") Long userId,
         @Param("problemId") Long problemId,
@@ -87,6 +93,9 @@ public interface UserProblemStatusMapper extends BaseMapper<UserProblemStatus> {
             accepted_at = #{acceptedAt},
             last_submitted_at = #{lastSubmittedAt}
         """)
+    /**
+     * 封装replaceComputed状态相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     void replaceComputedStatus(
         @Param("userId") Long userId,
         @Param("problemId") Long problemId,
@@ -98,6 +107,9 @@ public interface UserProblemStatusMapper extends BaseMapper<UserProblemStatus> {
         @Param("lastSubmittedAt") LocalDateTime lastSubmittedAt
     );
 
+    /**
+     * 重置Last提交。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @Update("UPDATE user_problem_status SET last_submission_id = NULL WHERE last_submission_id = #{submissionId}")
     void clearLastSubmission(@Param("submissionId") Long submissionId);
 }

@@ -14,6 +14,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qoj.common.ErrorCode;
 import com.qoj.common.PageResult;
+import com.qoj.common.enums.JudgeBackend;
 import com.qoj.common.enums.SubmissionStatus;
 import com.qoj.common.exception.BizException;
 import com.qoj.common.redis.RedisKeys;
@@ -22,19 +23,16 @@ import com.qoj.module.contest.entity.ContestRegistration;
 import com.qoj.module.contest.service.ContestService;
 import com.qoj.module.contest.entity.ContestProblem;
 import com.qoj.module.contest.entity.ContestParticipant;
+import com.qoj.module.contest.entity.ContestProblemTestCase;
 import com.qoj.module.contest.mapper.ContestProblemMapper;
+import com.qoj.module.contest.mapper.ContestProblemTestCaseMapper;
 import com.qoj.module.judge.JudgeService;
-import com.qoj.module.judge.DockerJudgeService;
-import com.qoj.module.judge.dto.DomjudgeSubmissionResponse;
-import com.qoj.module.judge.service.DomjudgeAdapter;
-import com.qoj.module.judge.service.LocalJudgeService;
+import com.qoj.module.judge.gojudge.GoJudgeService;
 import com.qoj.module.practice.entity.Practice;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.mapper.ProblemTestCaseMapper;
-import com.qoj.module.classroom.entity.ClassMember;
-import com.qoj.module.classroom.mapper.ClassMemberMapper;
 import com.qoj.module.submission.dto.SandboxRunRequest;
 import com.qoj.module.submission.dto.SubmissionCreateRequest;
 import com.qoj.module.submission.entity.SandboxRun;
@@ -57,16 +55,19 @@ import com.qoj.module.user.service.UserScoreService;
 import com.qoj.module.ws.JudgeMessagePublisher;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 提交业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class SubmissionService {
     private final SubmissionMapper submissionMapper;
@@ -74,18 +75,17 @@ public class SubmissionService {
     private final SandboxRunMapper sandboxRunMapper;
     private final ProblemMapper problemMapper;
     private final ProblemTestCaseMapper problemTestCaseMapper;
-    private final DomjudgeAdapter domjudgeAdapter;
-    private final DockerJudgeService dockerJudgeService;
-    private final LocalJudgeService localJudgeService;
+    private final GoJudgeService goJudgeService;
+    private final SandboxExecutionGuard sandboxExecutionGuard;
     private final StringRedisTemplate redisTemplate;
     private final JudgeMessagePublisher judgeMessagePublisher;
     private final UserProblemStatusService userProblemStatusService;
     private final UserScoreService userScoreService;
     private final ContestService contestService;
     private final ContestProblemMapper contestProblemMapper;
+    private final ContestProblemTestCaseMapper contestProblemTestCaseMapper;
     private final com.qoj.module.contest.mapper.ContestMapper contestMapper;
     private final UserMapper userMapper;
-    private final ClassMemberMapper classMemberMapper;
     private final com.qoj.security.policy.SubmissionAccessPolicy submissionAccessPolicy;
     private final com.qoj.module.practice.mapper.PracticeMapper practiceMapper;
     private final com.qoj.module.practice.mapper.PracticeProblemMapper practiceProblemMapper;
@@ -94,11 +94,14 @@ public class SubmissionService {
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
     private static final int MAX_EXPORT_LIMIT = 10000;
+    private static final int MAX_SANDBOX_OUTPUT_BYTES = 60 * 1024;
+    private static final String SANDBOX_OUTPUT_TRUNCATED = "\n... (truncated)";
 
     private final com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy;
     private final ContestXcpcioSubmissionSyncMapper xcpcioSubmissionSyncMapper;
     private final UserProblemStatusMapper userProblemStatusMapper;
     private final SystemSettingService settingService;
+    private final com.qoj.module.practice.service.PracticePublicationService practicePublicationService;
 
     public SubmissionService(
         SubmissionMapper submissionMapper,
@@ -106,18 +109,17 @@ public class SubmissionService {
         SandboxRunMapper sandboxRunMapper,
         ProblemMapper problemMapper,
         ProblemTestCaseMapper problemTestCaseMapper,
-        DomjudgeAdapter domjudgeAdapter,
-        @Autowired(required = false) DockerJudgeService dockerJudgeService,
-        @Autowired(required = false) LocalJudgeService localJudgeService,
+        GoJudgeService goJudgeService,
+        SandboxExecutionGuard sandboxExecutionGuard,
         StringRedisTemplate redisTemplate,
         JudgeMessagePublisher judgeMessagePublisher,
         UserProblemStatusService userProblemStatusService,
         UserScoreService userScoreService,
         ContestService contestService,
         ContestProblemMapper contestProblemMapper,
+        ContestProblemTestCaseMapper contestProblemTestCaseMapper,
         com.qoj.module.contest.mapper.ContestMapper contestMapper,
         UserMapper userMapper,
-        ClassMemberMapper classMemberMapper,
         com.qoj.security.policy.SubmissionAccessPolicy submissionAccessPolicy,
         com.qoj.module.practice.mapper.PracticeMapper practiceMapper,
         com.qoj.module.practice.mapper.PracticeProblemMapper practiceProblemMapper,
@@ -126,25 +128,25 @@ public class SubmissionService {
         com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy,
         ContestXcpcioSubmissionSyncMapper xcpcioSubmissionSyncMapper,
         UserProblemStatusMapper userProblemStatusMapper,
-        SystemSettingService settingService
+        SystemSettingService settingService,
+        com.qoj.module.practice.service.PracticePublicationService practicePublicationService
     ) {
         this.submissionMapper = submissionMapper;
         this.submissionCaseResultMapper = submissionCaseResultMapper;
         this.sandboxRunMapper = sandboxRunMapper;
         this.problemMapper = problemMapper;
         this.problemTestCaseMapper = problemTestCaseMapper;
-        this.domjudgeAdapter = domjudgeAdapter;
-        this.dockerJudgeService = dockerJudgeService;
-        this.localJudgeService = localJudgeService;
+        this.goJudgeService = goJudgeService;
+        this.sandboxExecutionGuard = sandboxExecutionGuard;
         this.redisTemplate = redisTemplate;
         this.judgeMessagePublisher = judgeMessagePublisher;
         this.userProblemStatusService = userProblemStatusService;
         this.userScoreService = userScoreService;
         this.contestService = contestService;
         this.contestProblemMapper = contestProblemMapper;
+        this.contestProblemTestCaseMapper = contestProblemTestCaseMapper;
         this.contestMapper = contestMapper;
         this.userMapper = userMapper;
-        this.classMemberMapper = classMemberMapper;
         this.submissionAccessPolicy = submissionAccessPolicy;
         this.practiceMapper = practiceMapper;
         this.practiceProblemMapper = practiceProblemMapper;
@@ -154,16 +156,30 @@ public class SubmissionService {
         this.xcpcioSubmissionSyncMapper = xcpcioSubmissionSyncMapper;
         this.userProblemStatusMapper = userProblemStatusMapper;
         this.settingService = settingService;
+        this.practicePublicationService = practicePublicationService;
     }
 
+    /**
+     * 创建或提交目标数据。调用前会结合当前登录身份执行权限判断；不满足业务约束时直接抛出明确异常；执行持久化写入；读写 Redis 中的缓存、锁或限流状态；在状态变化后发布异步消息；可能调用外部判题或网关服务；结果依赖当前时间；整个过程位于同一数据库事务中。
+     */
     @Transactional
-    public SubmissionVO submit(SubmissionCreateRequest request, String ip) {
+    public SubmissionVO submit(SubmissionCreateRequest request) {
         AuthUser user = CurrentUser.required();
-        if (user.adminAccount()) {
-            throw new BizException(403, "后台账号不能提交题目");
+        if (!"USER".equals(user.accountType())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(403, "仅学生账号可以提交题目");
         }
-        if (!settingService.isJudgeEnabled()) {
-            throw new BizException(503, "判题服务已关闭，暂时无法提交");
+        if (!goJudgeService.supportsLanguage(request.language())) {
+            // Both go-judge and CCPCOJ expose the same fixed language allowlist.
+            throw new BizException(ErrorCode.BAD_REQUEST, "不支持的编程语言");
+        }
+        if (request.contestId() != null && request.practiceId() != null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(ErrorCode.BAD_REQUEST, "比赛提交与练习提交不能同时指定");
         }
         LocalDateTime now = LocalDateTime.now();
         ContestRegistration contestRegistration = null;
@@ -172,34 +188,59 @@ public class SubmissionService {
         Contest contest = null;
         Problem problem = null;
 
-        // 验证 Practice 提交
-        if (request.practiceId() != null) {
-            validatePracticeSubmission(request, user);
-        }
-
         if (request.contestId() != null) {
+            // Lock before any contest validation reads. This pairs with contest
+            // updates so the snapshot and all submit-time checks use one mode.
+            contest = contestMapper.selectByIdForUpdate(request.contestId());
+            if (contest == null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
+                throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
+            }
             contestProblem = contestService.requireSubmittableContestProblem(request.contestId(), request.problemId(), user.id());
             contestRegistration = contestService.registrationForUser(request.contestId(), user.id());
             contestParticipant = contestService.participantForUser(request.contestId(), user.id());
-            contest = contestMapper.selectById(request.contestId());
         } else {
+            // Practice and ordinary problems always use the embedded go-judge path.
+            if (request.practiceId() != null) {
+                validatePracticeSubmission(request, user);
+            }
             problem = problemMapper.selectById(request.problemId());
             if (problem == null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(404, "题目不存在");
             }
             if (request.practiceId() == null && !problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW, problem)) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(404, "题目不存在");
             }
+        }
+        if (!settingService.isJudgeEnabled()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(503, "判题服务已关闭，暂时无法提交");
         }
         Long pendingProblemKey = contestProblem == null ? request.problemId() : contestProblem.id;
         String pendingKey = RedisKeys.judgePending(user.id(), pendingProblemKey, request.contestId());
         if (Boolean.TRUE.equals(redisTemplate.hasKey(pendingKey))) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(429, "重复提交过快");
         }
-        String rateKey = RedisKeys.submitRate(ip == null ? "unknown" : ip);
+        String rateKey = RedisKeys.submitRate(user.id());
         Long count = redisTemplate.opsForValue().increment(rateKey);
         redisTemplate.expire(rateKey, Duration.ofSeconds(60));
         if (count != null && count > 10) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(429, "提交频率过高");
         }
         Submission submission = new Submission();
@@ -208,7 +249,10 @@ public class SubmissionService {
         submission.contestId = request.contestId();
         submission.contestProblemId = contestProblem == null ? null : contestProblem.id;
         submission.participantId = contestParticipant == null ? null : contestParticipant.id;
-        submission.practiceId = request.practiceId();
+        submission.practicePublicationId = request.practiceId();
+        submission.practiceId = request.practiceId() == null
+            ? null
+            : practicePublicationService.sourcePracticeId(request.practiceId());
         submission.code = request.code();
         submission.codeLength = request.code() == null ? 0 : request.code().length();
         submission.language = request.language();
@@ -221,6 +265,9 @@ public class SubmissionService {
         submission.isRejudged = false;
         submission.judgeMessage = null;
         submission.errorMessage = null;
+        submission.judgeBackend = contest == null
+            ? JudgeBackend.GO_JUDGE.name()
+            : JudgeBackend.fromStored(contest.judgeMode, JudgeBackend.GO_JUDGE).name();
         submission.identityType = contestRegistration == null ? null : contestRegistration.identityType;
         submission.identityId = contestRegistration == null ? null : contestRegistration.identityId;
         submissionMapper.insert(submission);
@@ -232,9 +279,15 @@ public class SubmissionService {
 
         // 提交已进入 WAITING 状态，由 JudgeQueueScheduler 调度判题
         judgeMessagePublisher.submissionCreated(submission.id);
+        /**
+         * 封装详情相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return detail(submission.id);
     }
 
+    /**
+     * 查询目标数据列表。调用前会结合当前登录身份执行权限判断；从持久化层读取数据；结果依赖当前时间；返回结果包含分页边界。
+     */
     public PageResult<SubmissionVO> list(
         int page,
         int pageSize,
@@ -304,12 +357,15 @@ public class SubmissionService {
         return new PageResult<>(result.getTotal(), result.getRecords().stream().map(item -> {
             SubmissionVO vo = toVO(item, false, false);
             if (doMask && !java.util.Objects.equals(item.userId, uid)) {
+                /**
+                 * 封装提交VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                 */
                 return new SubmissionVO(
                     vo.id(), vo.userId(), vo.username(), vo.displayName(),
                     vo.problemId(), vo.problemTitle(), vo.contestId(), vo.practiceId(),
                     vo.language(), "PENDING",
                     null, null,
-                    vo.identityType(), vo.identityId(), vo.domjudgeSubmissionId(),
+                    vo.identityType(), vo.identityId(),
                     vo.submitTime(), vo.createdAt(),
                     null, null, null, null
                 );
@@ -396,7 +452,7 @@ public class SubmissionService {
         LocalDateTime to
     ) {
         if (contestId != null) {
-            if ("TEACHER".equals(authUser.role())) {
+            if (authUser.teacherAccount()) {
                 applyVisibility(wrapper, authUser, userId);
             } else {
                 ensureCanManageContest(authUser, contestId);
@@ -424,9 +480,9 @@ public class SubmissionService {
         }
         // 按班级筛选：取该班级全部成员的 user_id（来源 class_members 表）
         if (classId != null) {
-            wrapper.inSql(
-                "user_id",
-                "SELECT user_id FROM class_members WHERE class_id = " + classId
+            wrapper.apply(
+                "user_id IN (SELECT user_id FROM class_members WHERE class_id = {0})",
+                classId
             );
         }
         if (language != null && !language.isBlank()) {
@@ -483,7 +539,13 @@ public class SubmissionService {
 
     public AdminSubmissionVO adminDetail(long id) {
         Submission submission = requireSubmission(id);
+        /**
+         * 校验管理员CanView提交。调用前会结合当前登录身份执行权限判断。
+         */
         ensureAdminCanViewSubmission(CurrentUser.required(), submission);
+        /**
+         * 构造或转换管理员VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toAdminVO(submission, true, true);
     }
 
@@ -494,9 +556,15 @@ public class SubmissionService {
         boolean canViewDetail = canViewSubmissionDetail(authUser, submission);
         boolean canViewAfterEndCode = canViewContestSubmissionCodeAfterEnd(authUser, submission);
         if (!canViewDetail && !canViewAfterEndCode) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权限查看该提交代码");
         }
 
+        /**
+         * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toVO(submission, canViewSubmissionCode(authUser, submission), canViewDetail);
     }
 
@@ -504,6 +572,9 @@ public class SubmissionService {
         Submission submission = requireSubmission(id);
         AuthUser authUser = CurrentUser.required();
         if (!canViewSubmissionCode(authUser, submission)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权限查看该提交代码");
         }
         return submission.code;
@@ -511,15 +582,40 @@ public class SubmissionService {
 
     public String adminCode(long id) {
         Submission submission = requireSubmission(id);
+        /**
+         * 校验管理员CanView提交。调用前会结合当前登录身份执行权限判断。
+         */
         ensureAdminCanViewSubmission(CurrentUser.required(), submission);
         return submission.code;
     }
 
     @Transactional
     public AdminSubmissionVO adminRejudge(long id) {
-        Submission submission = requireSubmission(id);
+        Submission submission = submissionMapper.selectByIdForUpdate(id);
+        if (submission == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(ErrorCode.NOT_FOUND.getCode(), "提交记录不存在");
+        }
+        /**
+         * 校验管理员CanView提交。调用前会结合当前登录身份执行权限判断。
+         */
         ensureAdminCanViewSubmission(CurrentUser.required(), submission);
+        if (!isFinalSubmissionStatus(submission.status)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(409, "提交尚未完成，不能发起重判");
+        }
+        if (submission.judgeWorkerId != null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(409, "原判题任务尚未释放，暂时不能重判");
+        }
 
+        // judgeBackend is intentionally preserved so a rejudge cannot switch workers.
         submission.status = SubmissionStatus.REJUDGE_PENDING.name();
         submission.isRejudged = true;
         submission.retryCount = safeInt(submission.retryCount) + 1;
@@ -532,18 +628,33 @@ public class SubmissionService {
         submission.judgeMessage = null;
         submission.errorMessage = null;
         submission.judgeWorkerId = null;
-        submission.domjudgeSubmissionId = null;
         submission.updatedAt = LocalDateTime.now();
 
         submissionCaseResultMapper.delete(new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id));
         submissionMapper.updateById(submission);
         judgeMessagePublisher.submissionQueueUpdated();
+        /**
+         * 构造或转换管理员VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toAdminVO(submission, false, false);
+    }
+
+    private boolean isFinalSubmissionStatus(String status) {
+        if (status == null) {
+            return false;
+        }
+        return switch (status.trim().toUpperCase()) {
+            case "AC", "WA", "TLE", "MLE", "RE", "CE", "NOO", "SE", "FAILED" -> true;
+            default -> false;
+        };
     }
 
     @Transactional
     public void adminDelete(long id) {
         Submission submission = requireSubmission(id);
+        /**
+         * 校验管理员CanView提交。调用前会结合当前登录身份执行权限判断。
+         */
         ensureAdminCanViewSubmission(CurrentUser.required(), submission);
         userProblemStatusMapper.clearLastSubmission(submission.id);
         submissionCaseResultMapper.delete(new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id));
@@ -558,66 +669,95 @@ public class SubmissionService {
 
     @Transactional
     public SandboxRunVO sandboxRun(SandboxRunRequest request) {
-        if (CurrentUser.required().adminAccount()) {
+        AuthUser user = CurrentUser.required();
+        if (user.adminAccount()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(403, "后台账号不能调试题目");
         }
         if (!settingService.isJudgeEnabled()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(503, "判题服务已关闭，暂时无法调试");
         }
         var judgeSettings = settingService.getJudgeSettings();
         if (!judgeSettings.enableSandbox) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(503, "沙箱调试功能未启用");
         }
-        if (!hasSandboxJudgeService(judgeSettings.mode)) {
-            throw new BizException(503, "沙箱调试功能未启用，请联系管理员开启 Docker 或本地判题");
+        if (!goJudgeService.supportsLanguage(request.language())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(ErrorCode.BAD_REQUEST, "不支持的编程语言");
         }
-        SandboxRun run = new SandboxRun();
-        run.userId = CurrentUser.id();
-        run.code = request.code();
-        run.language = request.language();
-        run.input = request.input();
-        SandboxRunResult result = runSandbox(judgeSettings.mode, request);
-        run.output = result.output().isBlank() ? result.error() : result.output();
-        run.status = result.status();
-        run.runAt = LocalDateTime.now();
-        sandboxRunMapper.insert(run);
-        return new SandboxRunVO(run.id, run.output, run.status, run.runAt);
+        try (SandboxExecutionGuard.Permit ignored = sandboxExecutionGuard.acquire(user.id())) {
+            SandboxRun run = new SandboxRun();
+            run.userId = user.id();
+            run.code = request.code();
+            run.language = request.language();
+            run.input = request.input();
+            SandboxRunResult result = runSandbox(request);
+            String output = result.output() == null || result.output().isBlank()
+                ? result.error()
+                : result.output();
+            run.output = limitSandboxOutput(output);
+            run.status = result.status();
+            run.runAt = LocalDateTime.now();
+            sandboxRunMapper.insert(run);
+            /**
+             * 封装沙箱RunVO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
+            return new SandboxRunVO(run.id, run.output, run.status, run.runAt);
+        }
     }
 
-    private boolean hasSandboxJudgeService(String mode) {
-        if ("docker".equalsIgnoreCase(mode)) {
-            return dockerJudgeService != null;
-        }
-        if ("unsafe-local".equalsIgnoreCase(mode)) {
-            return localJudgeService != null;
-        }
-        return false;
+    private SandboxRunResult runSandbox(SandboxRunRequest request) {
+        // Custom runs share go-judge's isolated worker and fixed language allowlist.
+        JudgeService.SandboxResult result = goJudgeService.runCustom(
+            request.language(), request.code(), request.input(), 2000, 256);
+        /**
+         * 构造 沙箱Run结果 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
+        return new SandboxRunResult(result.output(), result.error(), result.status());
     }
 
-    private SandboxRunResult runSandbox(String mode, SandboxRunRequest request) {
-        if ("docker".equalsIgnoreCase(mode)) {
-            JudgeService.SandboxResult result = dockerJudgeService.runCustom(
-                request.language(), request.code(), request.input(), 2000, 256);
-            return new SandboxRunResult(result.output(), result.error(), result.status());
+    /** Keep UTF-8 output below MySQL TEXT's byte limit without splitting a character. */
+    static String limitSandboxOutput(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
         }
-        if ("unsafe-local".equalsIgnoreCase(mode)) {
-            var judgeSettings = settingService.getJudgeSettings();
-            if (!judgeSettings.enableUnsafeLocalJudge) {
-                throw new BizException(503, "本地判题未启用，请联系管理员开启 Docker 判题模式");
-            }
-            LocalJudgeService.SandboxResult result = localJudgeService.runCustom(
-                request.language(), request.code(), request.input(), 2000, 256);
-            return new SandboxRunResult(result.output(), result.error(), result.status());
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length <= MAX_SANDBOX_OUTPUT_BYTES) {
+            return value;
         }
-        throw new BizException(503, "当前判题模式不支持沙箱调试，请使用 docker 模式");
+        byte[] suffix = SANDBOX_OUTPUT_TRUNCATED.getBytes(StandardCharsets.UTF_8);
+        int end = MAX_SANDBOX_OUTPUT_BYTES - suffix.length;
+        while (end > 0 && (bytes[end] & 0xC0) == 0x80) {
+            end--;
+        }
+        /**
+         * 封装String相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
+        return new String(bytes, 0, end, StandardCharsets.UTF_8) + SANDBOX_OUTPUT_TRUNCATED;
     }
 
+    /**
+     * 沙箱Run结果不可变数据载体。通过 record 语义表达一组只读字段及其结构约束。
+     */
     private record SandboxRunResult(String output, String error, String status) {
     }
 
     private Submission requireSubmission(long id) {
         Submission submission = submissionMapper.selectById(id);
         if (submission == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "提交不存在");
         }
         return submission;
@@ -648,7 +788,6 @@ public class SubmissionService {
             "judge_message",
             "identity_type",
             "identity_id",
-            "domjudge_submission_id",
             "judge_server",
             "priority",
             "retry_count",
@@ -685,7 +824,10 @@ public class SubmissionService {
     }
 
     private void ensureAdminCanViewSubmission(AuthUser authUser, Submission submission) {
-        if (authUser == null || (!authUser.adminAccount() && !"TEACHER".equals(authUser.role()))) {
+        if (authUser == null || (!authUser.adminAccount() && !authUser.teacherAccount())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权查看该提交");
         }
         if ("SUPER_ADMIN".equals(authUser.role())) {
@@ -699,6 +841,9 @@ public class SubmissionService {
         applyVisibility(wrapper, authUser, null);
         Long count = submissionMapper.selectCount(wrapper);
         if (count == null || count == 0) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权查看该提交");
         }
     }
@@ -715,30 +860,31 @@ public class SubmissionService {
                 wrapper.eq("user_id", userId);
             }
             wrapper.and(scope -> scope
-                .inSql(
-                    "contest_id",
-                    "SELECT id FROM contests WHERE owner_id = " + authUser.id() + " AND owner_account_type = 'ADMIN'"
+                .apply(
+                    "contest_id IN (SELECT id FROM contests "
+                        + "WHERE owner_id = {0} AND owner_account_type = 'ADMIN')",
+                    authUser.id()
                 )
                 .or()
-                .inSql(
-                    "practice_id",
-                    "SELECT id FROM practices WHERE owner_id = " + authUser.id()
+                .apply(
+                    "practice_id IN (SELECT id FROM practices WHERE owner_id = {0} AND owner_account_type = 'ADMIN')",
+                    authUser.id()
                 )
                 .or(item -> item
                     .isNull("contest_id")
-                    .inSql("problem_id", "SELECT id FROM problems WHERE owner_id = " + authUser.id())
+                    .apply("problem_id IN (SELECT id FROM problems WHERE owner_id = {0} AND owner_account_type = 'ADMIN')", authUser.id())
                 )
             );
             return;
         }
-        if ("TEACHER".equals(authUser.role())) {
+        if (authUser.teacherAccount()) {
             if (userId != null) {
                 wrapper.eq("user_id", userId);
             }
-            wrapper.inSql(
-                "user_id",
-                "SELECT cm.user_id FROM class_members cm WHERE cm.class_id IN "
-                    + "(SELECT id FROM classes WHERE teacher_id = " + authUser.id() + ")"
+            wrapper.apply(
+                "user_id IN (SELECT cm.user_id FROM class_members cm "
+                    + "WHERE cm.class_id IN (SELECT id FROM classes WHERE teacher_id = {0}))",
+                authUser.id()
             );
             return;
         }
@@ -746,14 +892,23 @@ public class SubmissionService {
     }
 
     private void ensureCanManageContest(AuthUser authUser, Long contestId) {
-        if (authUser == null || (!authUser.adminAccount() && !"TEACHER".equals(authUser.role()))) {
+        if (authUser == null || (!authUser.adminAccount() && !authUser.teacherAccount())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权查看该比赛提交");
         }
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
         if (!contestAccessPolicy.can(authUser, com.qoj.security.policy.Permission.MANAGE_SCOREBOARD, contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权查看该比赛提交");
         }
     }
@@ -775,7 +930,7 @@ public class SubmissionService {
                 .eq("submission_id", submission.id)
                 .eq("status", SubmissionStatus.AC.name())
         );
-        Map<Integer, ProblemTestCase> testCaseMap = includeCases ? buildTestCaseMap(submission.problemId) : Map.of();
+        Map<Integer, TestCasePreview> testCaseMap = includeCases ? buildTestCaseMap(submission) : Map.of();
         List<SubmissionCaseVO> cases = includeCases
             ? submissionCaseResultMapper
                 .selectList(new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id).orderByAsc("case_no"))
@@ -806,7 +961,6 @@ public class SubmissionService {
             submission.memoryUsed,
             submission.identityType,
             submission.identityId,
-            submission.domjudgeSubmissionId,
             submission.judgeServer,
             submission.priority,
             submission.retryCount,
@@ -835,7 +989,7 @@ public class SubmissionService {
                 .eq("submission_id", submission.id)
                 .eq("status", SubmissionStatus.AC.name())
         );
-        Map<Integer, ProblemTestCase> testCaseMap = includeCases ? buildTestCaseMap(submission.problemId) : Map.of();
+        Map<Integer, TestCasePreview> testCaseMap = includeCases ? buildTestCaseMap(submission) : Map.of();
         List<SubmissionCaseVO> cases = includeCases
             ? submissionCaseResultMapper
                 .selectList(new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id).orderByAsc("case_no"))
@@ -867,7 +1021,6 @@ public class SubmissionService {
             memoryUsed,
             submission.identityType,
             submission.identityId,
-            submission.domjudgeSubmissionId,
             submission.submitTime == null ? submission.createdAt : submission.submitTime,
             submission.createdAt,
             Math.toIntExact(passedCaseCount),
@@ -948,21 +1101,18 @@ public class SubmissionService {
         return problem == null ? String.valueOf(submission.problemId) : problem.title;
     }
 
-    private SubmissionCaseVO toCaseVO(SubmissionCaseResult item, Map<Integer, ProblemTestCase> testCaseMap) {
+    private SubmissionCaseVO toCaseVO(SubmissionCaseResult item, Map<Integer, TestCasePreview> testCaseMap) {
         String inputPreview = item.inputPreview;
         String outputPreview = item.outputPreview;
         String expectedPreview = item.expectedPreview;
         if (testCaseMap != null) {
-            ProblemTestCase tc = testCaseMap.get(item.caseNo);
+            TestCasePreview tc = testCaseMap.get(item.caseNo);
             if (tc != null) {
                 if (inputPreview == null || inputPreview.isBlank()) {
-                    inputPreview = preview(tc.inputData);
-                }
-                if (outputPreview == null || outputPreview.isBlank()) {
-                    outputPreview = preview(tc.outputData);
+                    inputPreview = preview(tc.input());
                 }
                 if (expectedPreview == null || expectedPreview.isBlank()) {
-                    expectedPreview = preview(tc.outputData);
+                    expectedPreview = preview(tc.expectedOutput());
                 }
             }
         }
@@ -983,14 +1133,28 @@ public class SubmissionService {
         );
     }
 
-    private Map<Integer, ProblemTestCase> buildTestCaseMap(Long problemId) {
-        Map<Integer, ProblemTestCase> map = new HashMap<>();
-        if (problemId != null) {
-            for (ProblemTestCase tc : problemTestCaseMapper.selectByProblemId(problemId)) {
-                map.put(tc.caseNo, tc);
+    private Map<Integer, TestCasePreview> buildTestCaseMap(Submission submission) {
+        Map<Integer, TestCasePreview> map = new HashMap<>();
+        if (submission.contestProblemId != null) {
+            List<ContestProblemTestCase> cases = contestProblemTestCaseMapper.selectList(
+                new QueryWrapper<ContestProblemTestCase>()
+                    .eq("contest_problem_id", submission.contestProblemId)
+                    .eq("sample", false)
+            );
+            for (ContestProblemTestCase testCase : cases) {
+                map.put(testCase.caseNo, new TestCasePreview(testCase.inputData, testCase.outputData));
+            }
+            return map;
+        }
+        if (submission.problemId != null) {
+            for (ProblemTestCase testCase : problemTestCaseMapper.selectByProblemId(submission.problemId)) {
+                map.put(testCase.caseNo, new TestCasePreview(testCase.inputData, testCase.outputData));
             }
         }
         return map;
+    }
+
+    private record TestCasePreview(String input, String expectedOutput) {
     }
 
     private String preview(String text) {
@@ -1056,66 +1220,19 @@ public class SubmissionService {
         if (contest == null || contest.ownerId == null) {
             return false;
         }
-        String ownerType = contest.ownerAccountType == null ? "USER" : contest.ownerAccountType;
+        String ownerType = contest.ownerAccountType == null ? "UNKNOWN" : contest.ownerAccountType;
         return contest.ownerId.equals(authUser.id())
-            && ((authUser.adminAccount() && "ADMIN".equals(ownerType))
-                || (!authUser.adminAccount() && "USER".equals(ownerType)));
+            && authUser.accountType().equals(ownerType);
     }
 
     /**
      * 验证 Practice 提交的合法性
      */
     private void validatePracticeSubmission(SubmissionCreateRequest request, AuthUser user) {
-        // 1. 验证 practice 是否存在
-        com.qoj.module.practice.entity.Practice practice = practiceMapper.selectById(request.practiceId());
-        if (practice == null) {
-            throw new BizException(ErrorCode.NOT_FOUND, "练习不存在");
-        }
-
-        // 2. 验证 practice 是否已发布
-        if (!Boolean.TRUE.equals(practice.published)) {
-            throw new BizException(ErrorCode.FORBIDDEN, "练习未发布");
-        }
-
-        // 3. 验证 audience 权限。PracticeAccessPolicy 对非公开题单会先拒绝，
-        // 班级题单需要在这里按成员关系放行。
-        if (!"ALL".equals(practice.audience)) {
-            validatePracticeAudience(practice, user);
-        }
-
-        // 4. 验证 problem 是否属于 practice
-        Long problemInPracticeCount = practiceProblemMapper.selectCount(
-            new QueryWrapper<com.qoj.module.practice.entity.PracticeProblem>()
-                .eq("practice_id", request.practiceId())
-                .eq("problem_id", request.problemId())
-        );
-        if (problemInPracticeCount == null || problemInPracticeCount == 0) {
-            throw new BizException(ErrorCode.BAD_REQUEST, "该题目不属于该练习");
+        if (!"USER".equals(user.accountType())
+            || !practicePublicationService.canSubmit(request.practiceId(), user.id(), request.problemId())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "题单不可访问或题目已隐藏");
         }
     }
 
-    /**
-     * 验证 Practice 的 audience 权限
-     */
-    private void validatePracticeAudience(com.qoj.module.practice.entity.Practice practice, AuthUser user) {
-        // 超级管理员和创建者跳过检查
-        if ("SUPER_ADMIN".equals(user.role()) || practice.ownerId.equals(user.id())) {
-            return;
-        }
-
-        if ("CLASS".equals(practice.audience) && practice.audienceId != null) {
-            User entity = userMapper.selectById(user.id());
-            if (entity != null && practice.audienceId.equals(entity.classId)) {
-                return;
-            }
-            Long memberCount = classMemberMapper.selectCount(
-                new QueryWrapper<ClassMember>()
-                    .eq("class_id", practice.audienceId)
-                    .eq("user_id", user.id())
-            );
-            if (memberCount == null || memberCount == 0) {
-                throw new BizException(ErrorCode.FORBIDDEN, "该题单仅限指定班级成员");
-            }
-        }
-    }
 }
