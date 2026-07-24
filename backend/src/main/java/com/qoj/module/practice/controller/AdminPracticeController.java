@@ -89,6 +89,11 @@ public class AdminPracticeController {
         return ApiResponse.ok(publicationService.myPublications());
     }
 
+    @GetMapping("/publications")
+    public ApiResponse<java.util.List<PracticePublicationVO>> publications() {
+        return ApiResponse.ok(publicationService.allPublications());
+    }
+
     @GetMapping("/publications/{publicationId}")
     public ApiResponse<PracticePublicationVO> publication(@PathVariable long publicationId) {
         return ApiResponse.ok(publicationService.managementDetail(publicationId));
@@ -100,5 +105,11 @@ public class AdminPracticeController {
         @Valid @RequestBody PracticePublicationRequest request
     ) {
         return ApiResponse.ok(publicationService.update(publicationId, request));
+    }
+
+    @DeleteMapping("/publications/{publicationId}")
+    public ApiResponse<Void> deletePublication(@PathVariable long publicationId) {
+        publicationService.delete(publicationId);
+        return ApiResponse.ok();
     }
 }

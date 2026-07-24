@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.module.setting.entity.SystemSetting;
 import com.qoj.module.setting.mapper.SystemSettingMapper;
 import com.qoj.module.setting.vo.AgentSettingsVO;
+import com.qoj.module.setting.vo.CodeTemplateSettingsVO;
 import com.qoj.module.setting.vo.JudgeSettingsVO;
 import com.qoj.module.setting.vo.OssSettingsVO;
 import com.qoj.security.AuthUser;
@@ -100,6 +101,46 @@ class SystemSettingServiceTest {
         assertEquals("", settings.publicBaseUrl);
         assertEquals("avatars/", settings.dir);
         assertEquals(5, settings.maxSizeMb);
+    }
+
+    /**
+     * 读取CodeTemplatesMissingRowShouldReturnDefaults并返回给调用方。从持久化层读取数据。
+     */
+    @Test
+    @DisplayName("Code templates fall back to the bundled language defaults")
+    void getCodeTemplateSettings_MissingRow_ShouldReturnDefaults() {
+        when(settingMapper.selectById("system.code_templates")).thenReturn(null);
+
+        CodeTemplateSettingsVO settings = settingService.getCodeTemplateSettings();
+
+        assertTrue(settings.c.contains("int main(void)"));
+        assertTrue(settings.cpp.contains("ios::sync_with_stdio"));
+        assertTrue(settings.python.contains("def solve"));
+        assertTrue(settings.java.contains("class Main"));
+        assertTrue(settings.csharp.contains("static class Program"));
+    }
+
+    /**
+     * 更新CodeTemplatesShouldPersistAllLanguages。调用前会结合当前登录身份执行权限判断；执行持久化写入。
+     */
+    @Test
+    @DisplayName("Code template updates persist every language in one setting")
+    void updateCodeTemplateSettings_ShouldPersistAllLanguages() {
+        when(settingMapper.selectById("system.code_templates")).thenReturn(null);
+        CodeTemplateSettingsVO request = new CodeTemplateSettingsVO();
+        request.c = "int main(void) { return 0; }";
+        request.cpp = "int main() { return 0; }";
+        request.python = "print('ok')";
+        request.java = "class Main {}";
+        request.csharp = "class Program {}";
+
+        settingService.updateCodeTemplateSettings(request, adminAuthUser());
+
+        verify(settingMapper).insert(org.mockito.ArgumentMatchers.<SystemSetting>argThat(setting ->
+            "system.code_templates".equals(setting.settingKey)
+                && setting.settingValue.contains("int main(void)")
+                && setting.settingValue.contains("class Program")
+        ));
     }
 
     /**

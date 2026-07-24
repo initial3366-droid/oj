@@ -18,11 +18,10 @@ import {
   Tag,
   Upload,
 } from '@arco-design/web-react';
-import { IconDelete, IconEdit, IconPlus, IconUpload } from '@arco-design/web-react/icon';
-import { teacherGet, teacherPost, teacherPut } from '../teacherApi';
+import { IconDelete, IconPlus, IconUpload } from '@arco-design/web-react/icon';
+import { TeacherApiError, teacherGet, teacherPost, teacherPut } from '../teacherApi';
 import { decryptIdFromUrl } from '../../utils/cipher';
-import { MarkdownInsertModal } from '../../admin/components/MarkdownInsertModal';
-import { CodeInsertModal } from '../../admin/components/CodeInsertModal';
+import { HtmlMathEditor } from '../../admin/components/HtmlMathEditor';
 
 const FormItem = Form.Item;
 const TextArea = Input.TextArea;
@@ -164,6 +163,35 @@ function normalizeLoadedTestCases(testCases: RawTestCase[]) {
     .sort((left, right) => left.caseNo - right.caseNo);
 }
 
+function problemErrorSource(error: unknown) {
+  if (!(error instanceof TeacherApiError)) {
+    return '前端校验';
+  }
+  if (error.status === 0) return '网络连接';
+  if (error.status === 400) return '后端校验';
+  if (error.status === 401 || error.status === 403) return '登录与权限';
+  if (error.status === 404) return '题目草稿';
+  if (error.status === 409) return '数据冲突';
+  if (error.status >= 500) return '后端服务';
+  return '后端请求';
+}
+
+function problemErrorReason(error: unknown, source: string) {
+  const message = error instanceof Error ? error.message.trim() : '';
+  if (message && /[\u3400-\u9fff]/.test(message)) {
+    return message;
+  }
+  if (source === '网络连接') {
+    return '无法连接后端服务，请确认服务已启动后重试';
+  }
+  return '请求未能完成，请检查填写内容或稍后重试';
+}
+
+function showProblemActionError(action: string, error: unknown) {
+  const source = problemErrorSource(error);
+  Message.error(`${action}失败（${source}）：${problemErrorReason(error, source)}`);
+}
+
 /**
  * 渲染教师题目Create页面，并协调其数据加载、状态和交互。
  */
@@ -183,10 +211,6 @@ export function TeacherProblemCreatePage() {
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [folders, setFolders] = useState<Array<{ id: number; name: string; canEdit: boolean }>>([]);
-  const [codeModalVisible, setCodeModalVisible] = useState(false);
-  const [statementModalVisible, setStatementModalVisible] = useState(false);
-  const [inputFormatModalVisible, setInputFormatModalVisible] = useState(false);
-  const [outputFormatModalVisible, setOutputFormatModalVisible] = useState(false);
   const [importZipFile, setImportZipFile] = useState<File | null>(null);
   const [importZipVisible, setImportZipVisible] = useState(false);
 
@@ -253,7 +277,7 @@ export function TeacherProblemCreatePage() {
       const result = await teacherPost<DraftData>('/api/admin/v1/problem-drafts');
       setDraftId(result.draftId);
     } catch (error) {
-      Message.error('创建草稿失败');
+      showProblemActionError('创建题目草稿', error);
     }
   }
 
@@ -273,7 +297,7 @@ export function TeacherProblemCreatePage() {
       Message.success('基本信息已保存');
     } catch (error) {
       if (error instanceof Error) {
-        Message.error(error.message);
+        showProblemActionError('保存题目基本信息', error);
       }
     } finally {
       setLoading(false);
@@ -297,7 +321,7 @@ export function TeacherProblemCreatePage() {
       setCurrentStep(1);
     } catch (error) {
       if (error instanceof Error) {
-        Message.error(error.message);
+        showProblemActionError('保存题目基本信息', error);
       }
     } finally {
       setLoading(false);
@@ -318,10 +342,6 @@ export function TeacherProblemCreatePage() {
 
       const seenCaseNos = new Set<number>();
       for (const testCase of normalized) {
-        if (!testCase.input) {
-          Message.warning(`测试点 ${testCase.caseNo} 的输入数据不能为空`);
-          return false;
-        }
         if (!testCase.output) {
           Message.warning(`测试点 ${testCase.caseNo} 的输出数据不能为空`);
           return false;
@@ -347,7 +367,7 @@ export function TeacherProblemCreatePage() {
       }
       return true;
     } catch (error) {
-      if (error instanceof Error) Message.error(error.message);
+      if (error instanceof Error) showProblemActionError('保存测试点', error);
       return false;
     } finally {
       setLoading(false);
@@ -368,7 +388,7 @@ export function TeacherProblemCreatePage() {
       Message.success('题目已创建');
       navigate('/teacher/problems');
     } catch (error) {
-      if (error instanceof Error) Message.error(error.message);
+      if (error instanceof Error) showProblemActionError('创建题目', error);
     } finally {
       setLoading(false);
     }
@@ -394,7 +414,7 @@ export function TeacherProblemCreatePage() {
       Message.success('题目已创建');
       navigate('/teacher/problems');
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '创建失败');
+      showProblemActionError('创建题目', error);
     } finally {
       setLoading(false);
     }
@@ -422,7 +442,7 @@ export function TeacherProblemCreatePage() {
       Message.success('导入成功');
       return true;
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '导入失败');
+      showProblemActionError('导入测试点', error);
       return false;
     } finally {
       setLoading(false);
@@ -450,47 +470,6 @@ export function TeacherProblemCreatePage() {
     const updated = [...testCases];
     updated[index] = { ...updated[index], [field]: value };
     setTestCases(updated);
-  }
-
-  /**
-   * 封装appendWithBlankLine相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
-   */
-  function appendWithBlankLine(current: string | undefined, content: string): string {
-    const base = (current ?? '').replace(/\s+$/g, '');
-    if (!base) return content.replace(/^\s+/, '');
-    return `${base}\n\n${content.replace(/^\s+/, '')}`;
-  }
-
-  /**
-   * 处理Insert编码。会更新 React 状态并触发重新渲染。
-   */
-  function handleInsertCode(code: string) {
-    form.setFieldValue('statement', appendWithBlankLine(form.getFieldValue('statement') as string | undefined, code));
-    setCodeModalVisible(false);
-  }
-
-  /**
-   * 处理InsertStatement。会更新 React 状态并触发重新渲染。
-   */
-  function handleInsertStatement(markdown: string) {
-    form.setFieldValue('statement', appendWithBlankLine(form.getFieldValue('statement') as string | undefined, markdown));
-    setStatementModalVisible(false);
-  }
-
-  /**
-   * 处理InsertInputFormat。会更新 React 状态并触发重新渲染。
-   */
-  function handleInsertInputFormat(markdown: string) {
-    form.setFieldValue('inputFormat', appendWithBlankLine(form.getFieldValue('inputFormat') as string | undefined, markdown));
-    setInputFormatModalVisible(false);
-  }
-
-  /**
-   * 处理InsertOutputFormat。会更新 React 状态并触发重新渲染。
-   */
-  function handleInsertOutputFormat(markdown: string) {
-    form.setFieldValue('outputFormat', appendWithBlankLine(form.getFieldValue('outputFormat') as string | undefined, markdown));
-    setOutputFormatModalVisible(false);
   }
 
   return (
@@ -574,37 +553,19 @@ export function TeacherProblemCreatePage() {
                 }}>添加</Button>
               </Space>
             </FormItem>
-            <FormItem label="题目描述" field="statement" rules={[{ required: true, message: '请输入题目描述' }]} triggerPropName="value">
-              <TextArea placeholder="支持 Markdown 和 LaTeX 格式" rows={10} style={{ fontFamily: 'monospace' }} />
+            <FormItem label="题目描述" field="statement" rules={[{ required: true, message: '请输入题目描述' }]} triggerPropName="value" style={{ marginBottom: '20px' }}>
+              <HtmlMathEditor placeholder="支持 HTML 标签与 LaTeX 公式" rows={10} />
             </FormItem>
-            <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
-              <Space>
-                <Button size="small" icon={<IconEdit />} onClick={() => setStatementModalVisible(true)}>
-                  插入 Markdown
-                </Button>
-                <Button size="small" icon={<IconEdit />} onClick={() => setCodeModalVisible(true)}>
-                  插入代码块
-                </Button>
-              </Space>
-            </div>
-            <FormItem label="输入格式" field="inputFormat">
-              <TextArea placeholder="输入格式说明" rows={3} style={{ fontFamily: 'monospace' }} />
+            <FormItem label="输入格式" field="inputFormat" style={{ marginBottom: '20px' }}>
+              <HtmlMathEditor placeholder="输入格式说明（支持 HTML 与 LaTeX）" rows={3} />
             </FormItem>
-            <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
-              <Button size="small" icon={<IconEdit />} onClick={() => setInputFormatModalVisible(true)}>
-                插入 Markdown
-              </Button>
-            </div>
-            <FormItem label="输出格式" field="outputFormat">
-              <TextArea placeholder="输出格式说明" rows={3} style={{ fontFamily: 'monospace' }} />
+            <FormItem label="输出格式" field="outputFormat" style={{ marginBottom: '20px' }}>
+              <HtmlMathEditor placeholder="输出格式说明（支持 HTML 与 LaTeX）" rows={3} />
             </FormItem>
-            <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
-              <Button size="small" icon={<IconEdit />} onClick={() => setOutputFormatModalVisible(true)}>
-                插入 Markdown
-              </Button>
-            </div>
-            <FormItem label="样例" required>
-              <Form.List field="samples">
+            <FormItem label="样例">
+              <Form.List
+                field="samples"
+              >
                 {(fields, { add, remove }) => (
                   <>
                     {fields.map((field, index) => (
@@ -710,36 +671,6 @@ export function TeacherProblemCreatePage() {
             </Space>
           </div>
       </div>
-
-      <CodeInsertModal
-        visible={codeModalVisible}
-        onClose={() => setCodeModalVisible(false)}
-        onInsert={handleInsertCode}
-      />
-
-      <MarkdownInsertModal
-        visible={statementModalVisible}
-        onClose={() => setStatementModalVisible(false)}
-        onInsert={handleInsertStatement}
-        title="插入题目描述"
-        initialValue=""
-      />
-
-      <MarkdownInsertModal
-        visible={inputFormatModalVisible}
-        onClose={() => setInputFormatModalVisible(false)}
-        onInsert={handleInsertInputFormat}
-        title="插入输入格式"
-        initialValue=""
-      />
-
-      <MarkdownInsertModal
-        visible={outputFormatModalVisible}
-        onClose={() => setOutputFormatModalVisible(false)}
-        onInsert={handleInsertOutputFormat}
-        title="插入输出格式"
-        initialValue=""
-      />
 
       <Modal
         title="导入测试点"

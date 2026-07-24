@@ -5,6 +5,7 @@ import com.qoj.module.setting.dto.EmailConfigRequest;
 import com.qoj.module.setting.dto.PasswordChangeRequest;
 import com.qoj.module.setting.service.SystemSettingService;
 import com.qoj.module.setting.vo.AgentSettingsVO;
+import com.qoj.module.setting.vo.CodeTemplateSettingsVO;
 import com.qoj.module.setting.vo.FrontendSettingsVO;
 import com.qoj.module.setting.vo.JudgeSettingsVO;
 import com.qoj.module.setting.vo.OssSettingsVO;
@@ -82,6 +83,24 @@ public class AdminSettingController {
     public ApiResponse<Void> updateOssSettings(@RequestBody OssSettingsVO request) {
         AuthUser authUser = CurrentUser.required();
         settingService.updateOssSettings(request, authUser);
+        return ApiResponse.ok();
+    }
+
+    /**
+     * 获取各语言默认代码模板。
+     */
+    @GetMapping("/system/code-templates")
+    public ApiResponse<CodeTemplateSettingsVO> getCodeTemplateSettings() {
+        return ApiResponse.ok(settingService.getCodeTemplateSettings());
+    }
+
+    /**
+     * 更新各语言默认代码模板。
+     */
+    @PutMapping("/system/code-templates")
+    public ApiResponse<Void> updateCodeTemplateSettings(@RequestBody CodeTemplateSettingsVO request) {
+        AuthUser authUser = CurrentUser.required();
+        settingService.updateCodeTemplateSettings(request, authUser);
         return ApiResponse.ok();
     }
 

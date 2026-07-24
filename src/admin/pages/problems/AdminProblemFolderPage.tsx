@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Button,
-  Card,
   Form,
   Grid,
   Input,
@@ -363,14 +362,14 @@ export function AdminProblemFolderPage() {
           </Space>
         }
       >
-        <Form form={form} layout="vertical" style={{ maxWidth: 600 }}>
+        <Form form={form} layout="vertical" requiredSymbol={false} style={{ maxWidth: 600 }}>
           <FormItem label="文件夹名称" field="name" rules={[{ required: true, message: '请输入名称' }]}>
             <Input placeholder="例如：动态规划、图论" maxLength={100} />
           </FormItem>
           <FormItem label="文件夹介绍" field="description">
             <TextArea placeholder="文件夹描述（可选）" autoSize={{ minRows: 3, maxRows: 6 }} maxLength={500} showWordLimit />
           </FormItem>
-          <FormItem label="教师开放范围" field="accessScope" initialValue="ALL" rules={[{ required: true }]}>
+          <FormItem label="教师开放范围" field="accessScope" initialValue="ALL" rules={[{ required: true, message: '请选择教师开放范围' }]}>
             <Select onChange={(value) => setAccessScope(value as 'ALL' | 'MAJOR' | 'PRIVATE')}>
               <Select.Option value="ALL">所有人</Select.Option><Select.Option value="MAJOR">本专业</Select.Option><Select.Option value="PRIVATE">私有</Select.Option>
             </Select>
@@ -395,7 +394,7 @@ export function AdminProblemFolderPage() {
           </Button>
         }
       >
-        <Form form={form} layout="vertical" style={{ maxWidth: 800 }}>
+        <Form form={form} layout="vertical" requiredSymbol={false} style={{ maxWidth: 800 }}>
           <Row gutter={24}>
             <Col span={12}>
               <FormItem label="文件夹名称" field="name" rules={[{ required: true, message: '请输入名称' }]}>
@@ -415,7 +414,7 @@ export function AdminProblemFolderPage() {
               </FormItem>
             </Col>
             <Col span={12}>
-              <FormItem label="教师开放范围" field="accessScope" rules={[{ required: true }]}>
+              <FormItem label="教师开放范围" field="accessScope" rules={[{ required: true, message: '请选择教师开放范围' }]}>
                 <Select onChange={(value) => setAccessScope(value as 'ALL' | 'MAJOR' | 'PRIVATE')}>
                   <Select.Option value="ALL">所有人</Select.Option><Select.Option value="MAJOR">本专业</Select.Option><Select.Option value="PRIVATE">私有</Select.Option>
                 </Select>

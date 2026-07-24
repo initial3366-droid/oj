@@ -151,7 +151,7 @@ export interface AdminUser {
   avatarUrl?: string;
   studentNo?: string;
   email?: string;
-  role: "SUPER_ADMIN" | "STUDENT" | "GUEST";
+  role: "SUPER_ADMIN" | "STUDENT";
   createdAt: string;
   updatedAt: string;
 }
@@ -344,6 +344,7 @@ export interface ContestDraftPayload {
   allowAfterEndSubmit?: boolean;
   allowAfterEndViewProblem?: boolean;
   allowAfterEndViewCode?: boolean;
+  enableCodeTemplates?: boolean;
   publicScoreboardEnabled?: boolean;
   showClassOnScoreboard?: boolean;
   allowStarRegistration?: boolean;
@@ -379,6 +380,7 @@ export interface ContestPayload {
   allowAfterEndSubmit?: boolean;
   allowAfterEndViewProblem?: boolean;
   allowAfterEndViewCode?: boolean;
+  enableCodeTemplates?: boolean;
   publicScoreboardEnabled?: boolean;
   showClassOnScoreboard?: boolean;
   allowStarRegistration?: boolean;
@@ -414,6 +416,7 @@ export interface AdminContest {
   allowAfterEndSubmit: boolean;
   allowAfterEndViewProblem: boolean;
   allowAfterEndViewCode: boolean;
+  enableCodeTemplates: boolean;
   publicScoreboardEnabled: boolean;
   showClassOnScoreboard: boolean;
   allowStarRegistration: boolean;
@@ -458,6 +461,7 @@ export interface PublicContest {
   allowAfterEndSubmit: boolean;
   allowAfterEndViewProblem: boolean;
   allowAfterEndViewCode: boolean;
+  enableCodeTemplates: boolean;
   publicScoreboardEnabled: boolean;
   showClassOnScoreboard: boolean;
   allowStarRegistration: boolean;
@@ -855,7 +859,7 @@ interface BackendUserMe {
   avatarUrl?: string;
   studentNo?: string;
   email?: string;
-  role: "STUDENT" | "GUEST";
+  role: "STUDENT";
   totalSolved?: number;
   totalSubmissions?: number;
   classId?: number | null;
@@ -888,6 +892,7 @@ interface BackendContest {
   allowAfterEndSubmit?: boolean;
   allowAfterEndViewProblem?: boolean;
   allowAfterEndViewCode?: boolean;
+  enableCodeTemplates?: boolean;
   publicScoreboardEnabled?: boolean;
   showClassOnScoreboard?: boolean;
   allowStarRegistration?: boolean;
@@ -1103,6 +1108,7 @@ function mapAdminContest(contest: BackendContest): AdminContest {
     allowAfterEndSubmit: Boolean(contest.allowAfterEndSubmit),
     allowAfterEndViewProblem: contest.allowAfterEndViewProblem ?? true,
     allowAfterEndViewCode: Boolean(contest.allowAfterEndViewCode),
+    enableCodeTemplates: Boolean(contest.enableCodeTemplates),
     publicScoreboardEnabled: contest.publicScoreboardEnabled ?? true,
     showClassOnScoreboard: Boolean(contest.showClassOnScoreboard),
     allowViewAllSubmissions: contest.allowViewAllSubmissions ?? true,
@@ -1149,6 +1155,7 @@ function mapPublicContest(contest: BackendContest): PublicContest {
     allowAfterEndSubmit: Boolean(contest.allowAfterEndSubmit),
     allowAfterEndViewProblem: contest.allowAfterEndViewProblem ?? true,
     allowAfterEndViewCode: Boolean(contest.allowAfterEndViewCode),
+    enableCodeTemplates: Boolean(contest.enableCodeTemplates),
     publicScoreboardEnabled: contest.publicScoreboardEnabled ?? true,
     showClassOnScoreboard: Boolean(contest.showClassOnScoreboard),
     allowViewAllSubmissions: contest.allowViewAllSubmissions ?? true,
@@ -1455,7 +1462,7 @@ function _buildMeResult(user: BackendUserMe) {
     name: user.displayName || user.username,
     studentNo: user.studentNo || "",
     email: user.email || "",
-    role: user.role === "GUEST" ? "STUDENT" : user.role,
+    role: user.role,
     totalSolved: user.totalSolved ?? 0,
     totalSubmissions: user.totalSubmissions ?? 0,
     favoriteLanguage: "暂无",
@@ -2627,6 +2634,50 @@ export interface JudgeSettings {
 }
 
 /**
+ * 各语言默认代码模板接口，明确练习页与后台配置页使用的数据结构。
+ */
+export interface CodeTemplateSettings {
+  c: string;
+  cpp: string;
+  python: string;
+  java: string;
+  csharp: string;
+}
+
+const CODE_TEMPLATE_RESPONSE_PREFIX = 'base64:type15:';
+
+/**
+ * 将响应保护层包装的代码模板还原为 UTF-8 源代码。
+ */
+function decodeCodeTemplateValue(value: string | undefined): string {
+  const template = value ?? '';
+  if (!template.startsWith(CODE_TEMPLATE_RESPONSE_PREFIX)) {
+    return template;
+  }
+
+  try {
+    const binary = globalThis.atob(template.slice(CODE_TEMPLATE_RESPONSE_PREFIX.length).replace(/\s/g, ''));
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return template;
+  }
+}
+
+/**
+ * 标准化代码模板接口响应，兼容已启用的响应保护格式。
+ */
+export function decodeCodeTemplateSettings(settings: Partial<CodeTemplateSettings>): CodeTemplateSettings {
+  return {
+    c: decodeCodeTemplateValue(settings.c),
+    cpp: decodeCodeTemplateValue(settings.cpp),
+    python: decodeCodeTemplateValue(settings.python),
+    java: decodeCodeTemplateValue(settings.java),
+    csharp: decodeCodeTemplateValue(settings.csharp),
+  };
+}
+
+/**
  * PasswordChange请求接口，明确该模块内部及 API 边界使用的数据结构。
  */
 export interface PasswordChangeRequest {
@@ -2671,6 +2722,14 @@ export async function fetchRegisterSettings() {
  */
 export async function fetchJudgeSettings() {
   return get<JudgeSettings>(`/api/v1/settings/judge`);
+}
+
+/**
+ * 读取各语言默认代码模板并返回给练习页。
+ */
+export async function fetchCodeTemplateSettings() {
+  const settings = await get<CodeTemplateSettings>(`/api/v1/settings/code-templates`);
+  return decodeCodeTemplateSettings(settings);
 }
 
 // Admin APIs

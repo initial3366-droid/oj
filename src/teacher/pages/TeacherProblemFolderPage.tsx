@@ -357,14 +357,14 @@ export function TeacherProblemFolderPage() {
           </Space>
         }
       >
-        <Form form={form} layout="vertical" style={{ maxWidth: 600 }}>
-          <FormItem label="文件夹名称" field="name" rules={[{ required: true, message: '请输入名称' }]}>
+        <Form form={form} layout="vertical" requiredSymbol={false} style={{ maxWidth: 600 }}>
+          <FormItem label="文件夹名称" field="name" rules={[{ required: true, message: '请输入文件夹名称' }]}>
             <Input placeholder="例如：动态规划、图论" maxLength={100} />
           </FormItem>
           <FormItem label="文件夹介绍" field="description">
             <TextArea placeholder="文件夹描述（可选）" autoSize={{ minRows: 3, maxRows: 6 }} maxLength={500} showWordLimit />
           </FormItem>
-          <FormItem label="教师开放范围" field="accessScope" initialValue="ALL" rules={[{ required: true }]}>
+          <FormItem label="教师开放范围" field="accessScope" initialValue="ALL" rules={[{ required: true, message: '请选择教师开放范围' }]}>
             <Select><Select.Option value="ALL">所有人</Select.Option><Select.Option value="MAJOR">本专业</Select.Option><Select.Option value="PRIVATE">私有</Select.Option></Select>
           </FormItem>
         </Form>
@@ -380,10 +380,10 @@ export function TeacherProblemFolderPage() {
         title={`${currentFolder?.canEdit ? '编辑' : '查看'}文件夹：${currentFolder?.name ?? ''}`}
         extra={<Button icon={<IconLeft />} onClick={() => navigate('/teacher/problem-folders')}>返回列表</Button>}
       >
-        <Form form={form} layout="vertical" style={{ maxWidth: 800 }}>
+        <Form form={form} layout="vertical" requiredSymbol={false} style={{ maxWidth: 800 }}>
           <Row gutter={24}>
             <Col span={12}>
-              <FormItem label="文件夹名称" field="name" rules={[{ required: true }]}>
+              <FormItem label="文件夹名称" field="name" rules={[{ required: true, message: '请输入文件夹名称' }]}>
                 <Input maxLength={100} disabled={!currentFolder?.canEdit} />
               </FormItem>
             </Col>

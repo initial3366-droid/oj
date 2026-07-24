@@ -135,7 +135,7 @@ export function TeacherProfilePage() {
           </div>
         </div>
 
-        <Form form={profileForm} layout="vertical">
+        <Form form={profileForm} layout="vertical" requiredSymbol={false}>
           <FormItem label="用户名">
             <Input value={me?.username} disabled />
           </FormItem>
@@ -163,7 +163,7 @@ export function TeacherProfilePage() {
       </Card>
 
       <Card title="修改密码" bordered={false}>
-        <Form form={passwordForm} layout="vertical">
+        <Form form={passwordForm} layout="vertical" requiredSymbol={false}>
           <FormItem
             label="当前密码"
             field="oldPassword"

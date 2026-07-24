@@ -33,6 +33,7 @@ public record ContestVO(
     Boolean allowAfterEndSubmit,
     Boolean allowAfterEndViewProblem,
     Boolean allowAfterEndViewCode,
+    Boolean enableCodeTemplates,
     Boolean publicScoreboardEnabled,
     Boolean showClassOnScoreboard,
     Boolean allowViewAllSubmissions,

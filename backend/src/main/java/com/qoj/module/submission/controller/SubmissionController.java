@@ -5,7 +5,6 @@ import com.qoj.common.PageResult;
 import com.qoj.module.submission.dto.SubmissionCreateRequest;
 import com.qoj.module.submission.service.SubmissionService;
 import com.qoj.module.submission.vo.SubmissionVO;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,11 +33,8 @@ public class SubmissionController {
      * 创建或提交目标数据。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
     @PostMapping
-    public ApiResponse<SubmissionVO> submit(
-        @Valid @RequestBody SubmissionCreateRequest request,
-        HttpServletRequest servletRequest
-    ) {
-        return ApiResponse.ok(submissionService.submit(request, servletRequest.getRemoteAddr()));
+    public ApiResponse<SubmissionVO> submit(@Valid @RequestBody SubmissionCreateRequest request) {
+        return ApiResponse.ok(submissionService.submit(request));
     }
 
     @GetMapping

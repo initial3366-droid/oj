@@ -628,7 +628,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
             labelCol={{ span: 5 }}
             wrapperCol={{ span: 16 }}
             labelAlign="right"
-            requiredSymbol={{ position: 'end' }}
+            requiredSymbol={false}
           >
             <FormItem
               label="站点标题"
@@ -733,7 +733,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
           confirmLoading={carouselSubmitting}
           style={{ width: 640 }}
         >
-          <Form form={carouselForm} layout="vertical" autoComplete="off">
+          <Form form={carouselForm} layout="vertical" autoComplete="off" requiredSymbol={false}>
             <FormItem
               label="标题"
               field="title"
@@ -794,7 +794,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
             labelCol={{ span: 5 }}
             wrapperCol={{ span: 12 }}
             labelAlign="right"
-            requiredSymbol={{ position: 'end' }}
+            requiredSymbol={false}
           >
             <FormItem
               label="判题开关"
@@ -953,7 +953,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
             form={registerForm}
             onSubmit={handleSaveRegister}
             layout="vertical"
-            requiredSymbol={{ position: 'end' }}
+            requiredSymbol={false}
           >
             <FormItem
               label="开放注册"
@@ -1054,7 +1054,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
             form={passwordForm}
             onSubmit={handleChangePassword}
             layout="vertical"
-            requiredSymbol={{ position: 'end' }}
+            requiredSymbol={false}
           >
             <Title heading={6} style={{ marginBottom: 16 }}>
               修改管理员密码
@@ -1130,7 +1130,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
             labelCol={{ span: 5 }}
             wrapperCol={{ span: 16 }}
             labelAlign="right"
-            requiredSymbol={{ position: 'end' }}
+            requiredSymbol={false}
           >
             <FormItem label="启用助手" field="enabled" triggerPropName="checked">
               <Switch />
@@ -1168,7 +1168,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
             labelCol={{ span: 5 }}
             wrapperCol={{ span: 16 }}
             labelAlign="right"
-            requiredSymbol={{ position: 'end' }}
+            requiredSymbol={false}
           >
             <FormItem label="启用 COS" field="enabled" triggerPropName="checked">
               <Switch />

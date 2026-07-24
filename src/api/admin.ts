@@ -59,7 +59,7 @@ export interface AdminUser {
   avatarUrl?: string;
   studentNo?: string;
   email?: string;
-  role: "SUPER_ADMIN" | "STUDENT" | "GUEST";
+  role: "SUPER_ADMIN" | "STUDENT";
   createdAt: string;
   updatedAt: string;
 }

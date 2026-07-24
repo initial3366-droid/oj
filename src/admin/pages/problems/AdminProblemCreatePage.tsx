@@ -19,10 +19,9 @@ import {
   Select,
   Tag,
 } from '@arco-design/web-react';
-import { IconPlus, IconDelete, IconEdit, IconUpload } from '@arco-design/web-react/icon';
+import { IconPlus, IconDelete, IconUpload } from '@arco-design/web-react/icon';
 import { adminGet, adminPost, adminPut } from '../../api/adminClient';
-import { MarkdownInsertModal } from '../../components/MarkdownInsertModal';
-import { CodeInsertModal } from '../../components/CodeInsertModal';
+import { HtmlMathEditor } from '../../components/HtmlMathEditor';
 import { decryptIdFromUrl } from '../../../utils/cipher';
 
 const FormItem = Form.Item;
@@ -181,10 +180,6 @@ export function AdminProblemCreatePage() {
   const [draftId, setDraftId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [basicForm] = Form.useForm<BasicFormData>();
-  const [codeModalVisible, setCodeModalVisible] = useState(false);
-  const [statementModalVisible, setStatementModalVisible] = useState(false);
-  const [inputFormatModalVisible, setInputFormatModalVisible] = useState(false);
-  const [outputFormatModalVisible, setOutputFormatModalVisible] = useState(false);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [autoSaving, setAutoSaving] = useState(false);
   const [tagInput, setTagInput] = useState('');
@@ -300,19 +295,6 @@ export function AdminProblemCreatePage() {
   }
 
   /**
-   * 把新内容追加到文本框末尾，二者之间恰好保留「一个」空行（不重复累计）。
-   * 之前用 current + '\n\n' + content，当 current 本身以换行结尾时，
-   * 会拼出 3 个换行符 => 文本框里显示成「两个空行」。
-   * 这里先把 current 末尾的空行/换行去掉，再以「换行 + 空行 + content」拼接，
-   * 保证无论之前末尾是什么，结果都只有一个空行。
-   */
-  function appendWithBlankLine(current: string | undefined, content: string): string {
-    const base = (current ?? '').replace(/\s+$/g, '');
-    if (!base) return content.replace(/^\s+/, '');
-    return `${base}\n\n${content.replace(/^\s+/, '')}`;
-  }
-
-  /**
    * 封装autoSaveBasicInfo相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
    */
   async function autoSaveBasicInfo() {
@@ -342,8 +324,8 @@ export function AdminProblemCreatePage() {
   async function autoSaveTestCases() {
     if (autoSaving || testCases.length === 0) return;
 
-    // 过滤掉空的测试点（输入或输出为空）
-    const validTestCases = testCases.filter(tc => tc.input?.trim() && tc.output?.trim());
+    // 过滤掉空的测试点（输出为空视为无效；输入可以为空）
+    const validTestCases = testCases.filter(tc => tc.output?.trim());
     if (validTestCases.length === 0) return;
 
     try {
@@ -351,7 +333,7 @@ export function AdminProblemCreatePage() {
       await adminPut(`/api/admin/v1/problem-drafts/${draftId}/test-cases`, {
         testCases: validTestCases.map(tc => ({
           caseNo: tc.caseNo,
-          input: tc.input.trim(),
+          input: tc.input?.trim() || '',
           output: tc.output.trim(),
         })),
       });
@@ -401,40 +383,6 @@ export function AdminProblemCreatePage() {
     } finally {
       setLoading(false);
     }
-  }
-
-  /**
-   * 处理Insert编码。会更新 React 状态并触发重新渲染。
-   */
-  function handleInsertCode(code: string) {
-    // CodeInsertModal 传过来的 code 已经是完整的 ```lang\n...\n``` 代码块，
-    // 这里不再二次包裹围栏，直接作为 Markdown 段落拼到末尾。
-    basicForm.setFieldValue('statement', appendWithBlankLine(basicForm.getFieldValue('statement') as string | undefined, code));
-    setCodeModalVisible(false);
-  }
-
-  /**
-   * 处理InsertStatement。会更新 React 状态并触发重新渲染。
-   */
-  function handleInsertStatement(markdown: string) {
-    basicForm.setFieldValue('statement', appendWithBlankLine(basicForm.getFieldValue('statement') as string | undefined, markdown));
-    setStatementModalVisible(false);
-  }
-
-  /**
-   * 处理InsertInputFormat。会更新 React 状态并触发重新渲染。
-   */
-  function handleInsertInputFormat(markdown: string) {
-    basicForm.setFieldValue('inputFormat', appendWithBlankLine(basicForm.getFieldValue('inputFormat') as string | undefined, markdown));
-    setInputFormatModalVisible(false);
-  }
-
-  /**
-   * 处理InsertOutputFormat。会更新 React 状态并触发重新渲染。
-   */
-  function handleInsertOutputFormat(markdown: string) {
-    basicForm.setFieldValue('outputFormat', appendWithBlankLine(basicForm.getFieldValue('outputFormat') as string | undefined, markdown));
-    setOutputFormatModalVisible(false);
   }
 
   /**
@@ -511,10 +459,6 @@ export function AdminProblemCreatePage() {
 
       const seenCaseNos = new Set<number>();
       for (const tc of normalized) {
-        if (!tc.input) {
-          Message.warning(`测试点 ${tc.caseNo} 的输入数据不能为空`);
-          return false;
-        }
         if (!tc.output) {
           Message.warning(`测试点 ${tc.caseNo} 的输出数据不能为空`);
           return false;
@@ -723,59 +667,20 @@ export function AdminProblemCreatePage() {
             field="statement"
             rules={[{ required: true, message: '请输入题目描述' }]}
             triggerPropName="value"
+            style={{ marginBottom: '20px' }}
           >
-            <Textarea
-              placeholder="支持 Markdown 和 LaTeX 格式"
-              rows={10}
-              style={{ fontFamily: 'monospace' }}
-            />
+            <HtmlMathEditor placeholder="支持 HTML 标签与 LaTeX 公式" rows={10} />
           </FormItem>
-          <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
-            <Space>
-              <Button
-                size="small"
-                icon={<IconEdit />}
-                onClick={() => setStatementModalVisible(true)}
-              >
-                插入 Markdown
-              </Button>
-              <Button
-                size="small"
-                icon={<IconEdit />}
-                onClick={() => setCodeModalVisible(true)}
-              >
-                插入代码块
-              </Button>
-            </Space>
-          </div>
 
-          <FormItem label="输入格式" field="inputFormat">
-            <Textarea placeholder="输入格式说明" rows={3} style={{ fontFamily: 'monospace' }} />
+          <FormItem label="输入格式" field="inputFormat" style={{ marginBottom: '20px' }}>
+            <HtmlMathEditor placeholder="输入格式说明（支持 HTML 与 LaTeX）" rows={3} />
           </FormItem>
-          <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
-            <Button
-              size="small"
-              icon={<IconEdit />}
-              onClick={() => setInputFormatModalVisible(true)}
-            >
-              插入 Markdown
-            </Button>
-          </div>
 
-          <FormItem label="输出格式" field="outputFormat">
-            <Textarea placeholder="输出格式说明" rows={3} style={{ fontFamily: 'monospace' }} />
+          <FormItem label="输出格式" field="outputFormat" style={{ marginBottom: '20px' }}>
+            <HtmlMathEditor placeholder="输出格式说明（支持 HTML 与 LaTeX）" rows={3} />
           </FormItem>
-          <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
-            <Button
-              size="small"
-              icon={<IconEdit />}
-              onClick={() => setOutputFormatModalVisible(true)}
-            >
-              插入 Markdown
-            </Button>
-          </div>
 
-          <FormItem label="样例" required>
+          <FormItem label="样例">
             <Form.List field="samples">
               {(fields, { add, remove }) => (
                 <>
@@ -903,36 +808,6 @@ export function AdminProblemCreatePage() {
             </Space>
           </div>
       </div>
-
-      <CodeInsertModal
-        visible={codeModalVisible}
-        onClose={() => setCodeModalVisible(false)}
-        onInsert={handleInsertCode}
-      />
-
-      <MarkdownInsertModal
-        visible={statementModalVisible}
-        onClose={() => setStatementModalVisible(false)}
-        onInsert={handleInsertStatement}
-        title="插入题目描述"
-        initialValue=""
-      />
-
-      <MarkdownInsertModal
-        visible={inputFormatModalVisible}
-        onClose={() => setInputFormatModalVisible(false)}
-        onInsert={handleInsertInputFormat}
-        title="插入输入格式"
-        initialValue=""
-      />
-
-      <MarkdownInsertModal
-        visible={outputFormatModalVisible}
-        onClose={() => setOutputFormatModalVisible(false)}
-        onInsert={handleInsertOutputFormat}
-        title="插入输出格式"
-        initialValue=""
-      />
 
       <Modal
         title="导入测试点"

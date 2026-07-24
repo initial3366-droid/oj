@@ -45,6 +45,17 @@ interface PageResult {
   list: Practice[];
 }
 
+interface PracticePublication {
+  id: number;
+  sourcePracticeId: number;
+  title: string;
+  status: string;
+  studentAccessMode: 'ALL' | 'SELECTED_CLASSES';
+  classIds: number[];
+  problems: Array<{ id: number; title: string }>;
+  createdAt: string;
+}
+
 function scopeTag(practice: Practice) {
   if (practice.accessScope === 'ALL') return <Tag color="green">所有人</Tag>;
   if (practice.accessScope === 'MAJOR') return <Tag color="arcoblue">本专业{practice.majorName ? `：${practice.majorName}` : ''}</Tag>;
@@ -55,6 +66,7 @@ export function TeacherPracticeListPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [practices, setPractices] = useState<Practice[]>([]);
+  const [publications, setPublications] = useState<PracticePublication[]>([]);
   const [keyword, setKeyword] = useState('');
 
   useEffect(() => { void loadPractices(); }, []);
@@ -62,8 +74,12 @@ export function TeacherPracticeListPage() {
   async function loadPractices() {
     setLoading(true);
     try {
-      const result = await teacherGet<PageResult>('/api/admin/v1/practices?page=1&pageSize=200');
+      const [result, publicationResult] = await Promise.all([
+        teacherGet<PageResult>('/api/admin/v1/practices?page=1&pageSize=200'),
+        teacherGet<PracticePublication[]>('/api/admin/v1/practices/publications/mine'),
+      ]);
       setPractices(result.list);
+      setPublications(publicationResult);
     } catch (error) {
       Message.error(error instanceof Error ? error.message : '题单列表加载失败');
     } finally {
@@ -91,41 +107,52 @@ export function TeacherPracticeListPage() {
     }
   }
 
+  async function handleDeletePublication(id: number) {
+    try {
+      await teacherDelete(`/api/admin/v1/practices/publications/${id}`);
+      Message.success('发布实例已删除');
+      void loadPractices();
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '删除失败');
+    }
+  }
+
   const filteredPractices = keyword.trim()
     ? practices.filter((item) => item.title.toLowerCase().includes(keyword.trim().toLowerCase()))
     : practices;
 
   return (
-    <Card
-      bordered={false}
-      title="题单列表"
-      extra={(
-        <Space>
-          <Input
-            style={{ width: 240 }}
-            placeholder="搜索题单"
-            prefix={<IconSearch />}
-            value={keyword}
-            onChange={setKeyword}
-          />
-          <Button icon={<IconRefresh />} onClick={loadPractices}>刷新</Button>
-          <Button type="primary" icon={<IconPlus />} onClick={() => navigate('/teacher/practices/new')}>添加题单</Button>
-        </Space>
-      )}
-    >
-      <Table
-        rowKey="id"
-        data={filteredPractices}
-        loading={loading}
-        pagination={{ pageSize: 20, showTotal: true }}
-        expandedRowRender={(record: Practice) => (
-          <Space wrap>
-            {(record.problems ?? []).map((problem, index) => (
-              <Tag key={problem.id}>{index + 1}. {problem.title}</Tag>
-            ))}
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Card
+        bordered={false}
+        title="题单列表"
+        extra={(
+          <Space>
+            <Input
+              style={{ width: 240 }}
+              placeholder="搜索题单"
+              prefix={<IconSearch />}
+              value={keyword}
+              onChange={setKeyword}
+            />
+            <Button icon={<IconRefresh />} onClick={loadPractices}>刷新</Button>
+            <Button type="primary" icon={<IconPlus />} onClick={() => navigate('/teacher/practices/new')}>添加题单</Button>
           </Space>
         )}
-        columns={[
+      >
+        <Table
+          rowKey="id"
+          data={filteredPractices}
+          loading={loading}
+          pagination={{ pageSize: 20, showTotal: true }}
+          expandedRowRender={(record: Practice) => (
+            <Space wrap>
+              {(record.problems ?? []).map((problem, index) => (
+                <Tag key={problem.id}>{index + 1}. {problem.title}</Tag>
+              ))}
+            </Space>
+          )}
+          columns={[
           { title: 'ID', dataIndex: 'id', width: 70, align: 'center' as const },
           {
             title: '题单名称',
@@ -168,8 +195,45 @@ export function TeacherPracticeListPage() {
               </Space>
             ),
           },
-        ]}
-      />
-    </Card>
+          ]}
+        />
+      </Card>
+
+      <Card bordered={false} title={`我的发布（${publications.length}）`}>
+        <Table
+          rowKey="id"
+          data={publications}
+          loading={loading}
+          pagination={{ pageSize: 20, showTotal: true }}
+          columns={[
+            { title: '发布ID', dataIndex: 'id', width: 80 },
+            { title: '发布标题', dataIndex: 'title', width: 200, ellipsis: true, render: (value: string) => <Typography.Text bold ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{value}</Typography.Text> },
+            { title: '来源题单', dataIndex: 'sourcePracticeId', width: 90, render: (value: number) => `#${value}` },
+            { title: '题目数', width: 80, align: 'center' as const, render: (_: unknown, item: PracticePublication) => item.problems.length },
+            {
+              title: '学生范围',
+              width: 150,
+              render: (_: unknown, item: PracticePublication) => item.studentAccessMode === 'ALL'
+                ? <Tag color="green">所有学生</Tag>
+                : <Tag color="arcoblue">指定班级（{item.classIds.length}）</Tag>,
+            },
+            { title: '状态', dataIndex: 'status', width: 90, render: (value: string) => <Tag color="green">{value === 'PUBLISHED' ? '已发布' : value}</Tag> },
+            { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (value: string) => value ? new Date(value).toLocaleString('zh-CN') : '-' },
+            {
+              title: '操作',
+              width: 150,
+              render: (_: unknown, item: PracticePublication) => (
+                <Space>
+                  <Button type="text" size="small" icon={<IconEdit />} onClick={() => navigate(`/teacher/practices/publications/${item.id}/edit`)}>编辑</Button>
+                  <Popconfirm title="确定删除该发布实例吗？删除后学生将无法访问。" onOk={() => handleDeletePublication(item.id)}>
+                    <Button type="text" size="small" status="danger" icon={<IconDelete />}>删除</Button>
+                  </Popconfirm>
+                </Space>
+              ),
+            },
+          ]}
+        />
+      </Card>
+    </Space>
   );
 }

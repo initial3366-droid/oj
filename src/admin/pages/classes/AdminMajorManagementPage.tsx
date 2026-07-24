@@ -87,7 +87,7 @@ export function AdminMajorManagementPage() {
         </Space> },
       ]} />
       <Modal title={editing ? '编辑专业' : '新增专业'} visible={visible} onCancel={() => setVisible(false)} onOk={() => form.submit()}>
-        <Form form={form} layout="vertical" onSubmit={submit}>
+        <Form form={form} layout="vertical" requiredSymbol={false} onSubmit={submit}>
           <FormItem label="专业编码" field="code" rules={[{ required: true, message: '请输入专业编码' }]}><Input maxLength={64} /></FormItem>
           <FormItem label="专业名称" field="name" rules={[{ required: true, message: '请输入专业名称' }]}><Input maxLength={120} /></FormItem>
           <FormItem label="状态" field="status"><Select><Select.Option value="ACTIVE">启用</Select.Option><Select.Option value="DISABLED">停用</Select.Option></Select></FormItem>

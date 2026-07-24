@@ -5,6 +5,7 @@
  * - FrontLayout（前台）：首页、题库、练习、比赛、榜单、用户中心、登录注册
  * - AdminRoutes（/admin/*）：后台管理独立路由树
  * - ContestPublicScoreboardPage：公开榜单独立页面（无 FrontLayout）
+ * - DataStructureLabPage：数据结构实验室独立页面（无 FrontLayout）
  * - NotFoundPage：404 兜底
  */
 import { lazy, Suspense } from "react";
@@ -18,6 +19,7 @@ const ContestsPage = lazy(() => import("./pages/ContestsPage").then((module) => 
 const ContestDetailPage = lazy(() => import("./pages/ContestDetailPage").then((module) => ({ default: module.ContestDetailPage })));
 const ContestScoreboardPage = lazy(() => import("./pages/ContestScoreboardPage").then((module) => ({ default: module.ContestScoreboardPage })));
 const ContestPublicScoreboardPage = lazy(() => import("./pages/ContestPublicScoreboardPage").then((module) => ({ default: module.ContestPublicScoreboardPage })));
+const DataStructureLabPage = lazy(() => import("./pages/DataStructureLabPage").then((module) => ({ default: module.DataStructureLabPage })));
 const HomePage = lazy(() => import("./pages/HomePage").then((module) => ({ default: module.HomePage })));
 const LeaderboardPage = lazy(() => import("./pages/LeaderboardPage").then((module) => ({ default: module.LeaderboardPage })));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage").then((module) => ({ default: module.NotFoundPage })));
@@ -52,6 +54,7 @@ export function App() {
         {/* 外榜路由 - 独立页面，不使用 FrontLayout */}
         <Route path="/contests/:contestId/public-scoreboard" element={<ContestPublicScoreboardPage />} />
         <Route path="/practice/problem/:problemId" element={<PracticePage />} />
+        <Route path="/data-structures" element={<DataStructureLabPage />} />
 
         <Route element={<FrontLayout />}>
           <Route path="/" element={<HomePage />} />

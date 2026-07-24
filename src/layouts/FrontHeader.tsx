@@ -3,7 +3,7 @@
  */
 import { Avatar, Button, ConfigProvider, Dropdown, Flex, Grid, Layout, Menu, Space, Typography, theme } from 'antd';
 import type { MenuProps } from 'antd';
-import { LogoutOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
+import { LogoutOutlined, MenuOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useOjData } from '../data/OjDataProvider';
@@ -23,6 +23,7 @@ export function FrontHeader() {
   const screens = Grid.useBreakpoint();
   const isLoggedIn = state.activeUser !== null;
   const isCompact = !screens.lg;
+  const isNarrow = !screens.md;
   const headerHeight = 64;
 
   const [siteTitle, setSiteTitle] = useState('QOJ 在线评测系统');
@@ -48,6 +49,7 @@ export function FrontHeader() {
     { key: 'contests', label: '比赛', path: '/contests' },
     { key: 'submission-queue', label: '提交队列', path: '/submission-queue' },
     { key: 'leaderboard', label: '排行榜', path: '/leaderboard' },
+    { key: 'data-structures', label: '数据结构', path: '/data-structures', newTab: true },
   ];
 
   /**
@@ -70,6 +72,10 @@ export function FrontHeader() {
   const handleNavClick: MenuProps['onClick'] = ({ key }) => {
     const item = navItems.find(item => item.key === key);
     if (item) {
+      if (item.newTab) {
+        window.open(item.path, '_blank', 'noopener,noreferrer');
+        return;
+      }
       navigate(item.path);
     }
   };
@@ -162,36 +168,52 @@ export function FrontHeader() {
           </Space>
         </Button>
 
-        <ConfigProvider
-          theme={{
-            components: {
-              Menu: {
-                activeBarHeight: 3,
-                activeBarBorderWidth: 0,
-                horizontalItemHoverBg: 'transparent',
-                horizontalItemSelectedBg: 'transparent',
-                itemPaddingInline: 24,
+        {isNarrow ? (
+          <Flex justify="center" style={{ flex: 1, minWidth: 0 }}>
+            <Dropdown
+              menu={{
+                items: navItems.map(({ key, label }) => ({ key, label })),
+                selectedKeys: [getActiveKey()],
+                onClick: handleNavClick,
+              }}
+              trigger={['click']}
+              placement="bottom"
+            >
+              <Button type="text" size="large" icon={<MenuOutlined />} aria-label="打开导航菜单" />
+            </Dropdown>
+          </Flex>
+        ) : (
+          <ConfigProvider
+            theme={{
+              components: {
+                Menu: {
+                  activeBarHeight: 3,
+                  activeBarBorderWidth: 0,
+                  horizontalItemHoverBg: 'transparent',
+                  horizontalItemSelectedBg: 'transparent',
+                  itemPaddingInline: 24,
+                },
               },
-            },
-          }}
-        >
-          <Menu
-            mode="horizontal"
-            selectedKeys={[getActiveKey()]}
-            onClick={handleNavClick}
-            items={navItems.map(({ key, label }) => ({ key, label }))}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              height: headerHeight,
-              lineHeight: `${headerHeight}px`,
-              justifyContent: 'center',
-              borderBottom: 'none',
-              fontSize: 16,
-              fontWeight: 500,
             }}
-          />
-        </ConfigProvider>
+          >
+            <Menu
+              mode="horizontal"
+              selectedKeys={[getActiveKey()]}
+              onClick={handleNavClick}
+              items={navItems.map(({ key, label }) => ({ key, label }))}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                height: headerHeight,
+                lineHeight: `${headerHeight}px`,
+                justifyContent: 'center',
+                borderBottom: 'none',
+                fontSize: 16,
+                fontWeight: 500,
+              }}
+            />
+          </ConfigProvider>
+        )}
 
         <Flex justify="flex-end" style={{ flex: '0 0 auto' }}>
           {isLoggedIn ? (

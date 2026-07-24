@@ -2,7 +2,7 @@
  * DataTable组件。封装可复用的界面结构、展示规则及交互行为。
  */
 import { Table, TableColumnProps, Space, Button, Input } from '@arco-design/web-react';
-import { IconSearch, IconRefresh } from '@arco-design/web-react/icon';
+import { IconRefresh } from '@arco-design/web-react/icon';
 import { useState, ReactNode } from 'react';
 
 /**

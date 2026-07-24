@@ -73,8 +73,15 @@ export function DashboardPage() {
   }
 
   const ts = data?.totalStats;
+  const roleLabels: Record<string, string> = {
+    STUDENT: '学生',
+    TEACHER: '教师',
+  };
   const roleBreakdown = ts?.userByRole
-    ? Object.entries(ts.userByRole).map(([k, v]) => `${k === 'STUDENT' ? '学生' : k === 'TEACHER' ? '教师' : k === 'GUEST' ? '访客' : k} ${v}`).join(' / ')
+    ? Object.entries(ts.userByRole)
+      .filter(([role]) => role in roleLabels)
+      .map(([role, count]) => `${roleLabels[role]} ${count}`)
+      .join(' / ')
     : '';
   const diffBreakdown = ts?.problemByDifficulty
     ? Object.entries(ts.problemByDifficulty).map(([k, v]) => `${DIFFICULTY_NAMES[Number(k)] || k} ${v}`).join(' / ')

@@ -11,7 +11,6 @@ import {
   Space,
   Table,
   Tag,
-  Typography,
 } from '@arco-design/web-react';
 import { IconDelete, IconEdit, IconEye, IconPlus, IconRefresh } from '@arco-design/web-react/icon';
 import { teacherGet, teacherDelete } from '../teacherApi';

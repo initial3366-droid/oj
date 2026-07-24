@@ -3,16 +3,17 @@
  */
 import Editor, { type OnMount } from "@monaco-editor/react";
 import "../utils/monacoSetup";
-import { Alert, Button, ConfigProvider, Input, Select, theme as antTheme } from "antd";
+import { Alert, Button, Card, ConfigProvider, Empty, Flex, Input, Result, Select, Space, Spin, Typography, theme as antTheme } from "antd";
 import { Tag } from "@douyinfe/semi-ui";
-import { IconBulb, IconClose, IconCode, IconFile, IconMinus, IconPlus, IconSend } from "@douyinfe/semi-icons";
+import { IconClose, IconCode, IconFile, IconMinus, IconPlus, IconSend } from "@douyinfe/semi-icons";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { MarkdownMath } from "../components/MarkdownMath";
+import { HtmlMath } from "../components/HtmlMath";
 import { useOjData } from "../data/OjDataProvider";
 import { chatWithAgent, fetchAgentQuota, type AgentQuota } from "../api/agent";
 import { fetchContestProblemDetail, fetchProblemDetail } from "../api/problem";
-import { fetchPracticeDetail } from "../data/apiClient";
+import { fetchCodeTemplateSettings, fetchContest, fetchPracticeDetail, type CodeTemplateSettings } from "../data/apiClient";
 import { fetchSubmissionDetail, runCodeInSandbox, submitCode, type SubmissionRecord } from "../api/submission";
 import type { Problem } from "../data/types";
 import { wsClient } from "../utils/websocket";
@@ -78,44 +79,12 @@ const monacoLanguages: Record<PracticeLanguage, string> = {
   "C#": "csharp",
 };
 
-const templates: Record<PracticeLanguage, string> = {
-  C: `#include <stdio.h>
-
-int main(void) {
-    return 0;
-}`,
-  "C++": `#include <bits/stdc++.h>
-using namespace std;
-
-int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-
-    return 0;
-}`,
-  Python: `import sys
-
-def solve():
-    pass
-
-if __name__ == "__main__":
-    solve()
-`,
-  Java: `import java.io.*;
-import java.util.*;
-
-public class Main {
-    public static void main(String[] args) throws Exception {
-    }
-}`,
-  "C#": `using System;
-
-public static class Program
-{
-    public static void Main()
-    {
-    }
-}`,
+const templateSettingKeys: Record<PracticeLanguage, keyof CodeTemplateSettings> = {
+  C: "c",
+  "C++": "cpp",
+  Python: "python",
+  Java: "java",
+  "C#": "csharp",
 };
 
 /**
@@ -299,6 +268,10 @@ export function PracticePage() {
   const [searchParams] = useSearchParams();
   const { state } = useOjData();
   const [remoteProblem, setRemoteProblem] = useState<Problem | null>(null);
+  const [problemLoadStatus, setProblemLoadStatus] = useState<"loading" | "ready" | "not-found">("loading");
+  const [codeTemplates, setCodeTemplates] = useState<CodeTemplateSettings | null>(null);
+  const [codeTemplatesReady, setCodeTemplatesReady] = useState(false);
+  const [contestCodeTemplatesEnabled, setContestCodeTemplatesEnabled] = useState(false);
   /**
    * 封装numeric题目标识相关逻辑。对原始数据进行派生或聚合。
    */
@@ -344,6 +317,10 @@ export function PracticePage() {
   const practiceId = searchParams.get("practiceId");
   const contestId = searchParams.get("contestId");
   const isContestMode = Boolean(contestId);
+  const canUseDefaultCodeTemplates = !isContestMode || contestCodeTemplatesEnabled;
+  const defaultCodeTemplate = canUseDefaultCodeTemplates && codeTemplates
+    ? codeTemplates[templateSettingKeys[language]]
+    : "";
   const samples = problem?.samples ?? [];
   const selectedSample = typeof sampleIndex === "number" ? samples[sampleIndex] : null;
   const sampleSelectValue = typeof sampleIndex === "number" ? String(sampleIndex) : "custom";
@@ -377,9 +354,15 @@ export function PracticePage() {
 
   useEffect(() => {
     setRemoteProblem(null);
-    if (!numericProblemId || hasLocalProblem) {
+    if (!numericProblemId) {
+      setProblemLoadStatus("not-found");
       return;
     }
+    if (hasLocalProblem) {
+      setProblemLoadStatus("ready");
+      return;
+    }
+    setProblemLoadStatus("loading");
     let cancelled = false;
     const loader = contestId
       ? fetchContestProblemDetail(Number(contestId), numericProblemId)
@@ -394,11 +377,13 @@ export function PracticePage() {
       .then((data) => {
         if (!cancelled) {
           setRemoteProblem(data);
+          setProblemLoadStatus("ready");
         }
       })
       .catch(() => {
         if (!cancelled) {
           setRemoteProblem(null);
+          setProblemLoadStatus("not-found");
         }
       });
     return () => {
@@ -407,11 +392,75 @@ export function PracticePage() {
   }, [contestId, practiceId, hasLocalProblem, numericProblemId]);
 
   useEffect(() => {
-    if (!problem?.id) {
+    let cancelled = false;
+    const markReadyWithoutTemplates = () => {
+      if (cancelled) return;
+      setCodeTemplates(null);
+      setContestCodeTemplatesEnabled(false);
+      setCodeTemplatesReady(true);
+    };
+    const loadTemplates = () => {
+      fetchCodeTemplateSettings()
+        .then((settings) => {
+          if (!cancelled) {
+            setCodeTemplates(settings);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setCodeTemplates(null);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setCodeTemplatesReady(true);
+          }
+        });
+    };
+
+    setCodeTemplates(null);
+    setCodeTemplatesReady(false);
+    setContestCodeTemplatesEnabled(false);
+    setCode("");
+
+    if (!isContestMode) {
+      loadTemplates();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const numericContestId = Number(contestId);
+    if (!Number.isSafeInteger(numericContestId) || numericContestId <= 0) {
+      markReadyWithoutTemplates();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    fetchContest(numericContestId)
+      .then((contest) => {
+        if (cancelled) return;
+        if (!contest.enableCodeTemplates) {
+          markReadyWithoutTemplates();
+          return;
+        }
+        setContestCodeTemplatesEnabled(true);
+        loadTemplates();
+      })
+      .catch(markReadyWithoutTemplates);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contestId, isContestMode]);
+
+  useEffect(() => {
+    if (!problem?.id || !codeTemplatesReady) {
       return;
     }
-    setCode(window.localStorage.getItem(codeStorageKey(problem.id, language)) ?? templates[language]);
-  }, [language, problem?.id]);
+    setCode(window.localStorage.getItem(codeStorageKey(problem.id, language)) ?? defaultCodeTemplate);
+  }, [language, problem?.id, codeTemplatesReady, defaultCodeTemplate]);
 
   useEffect(() => {
     if (typeof sampleIndex === "number" && !samples[sampleIndex]) {
@@ -1185,8 +1234,24 @@ export function PracticePage() {
     }
   };
 
-  // 如果没有题目数据，显示加载状态
+  // 题目不存在、被隐藏或无权访问时显示统一的不可用页面。
   if (!problem) {
+    if (problemLoadStatus === "not-found") {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+          <Result
+            status="404"
+            title="题目不存在"
+            subTitle="该题目不存在、已被隐藏，或你没有访问权限。"
+            extra={(
+              <Button type="primary" onClick={() => navigate("/problems")}>
+                返回题库
+              </Button>
+            )}
+          />
+        </div>
+      );
+    }
     return (
       <div className="flex h-[calc(100vh-200px)] items-center justify-center">
         <div className="text-center">
@@ -1229,37 +1294,35 @@ export function PracticePage() {
           <article className="practice-problem-content min-w-0 space-y-6 text-sm leading-8 text-slate-700">
             <section className="practice-problem-section">
               <h2 className="practice-problem-heading mb-3 text-lg font-bold text-slate-800">题目描述</h2>
-              <MarkdownMath className="practice-description-body pl-7" value={problem.statement || problem.summary} />
+              <HtmlMath className="practice-description-body pl-7" value={problem.statement || problem.summary} />
             </section>
 
             <section className="practice-problem-section">
               <h2 className="practice-problem-heading mb-3 text-base font-bold text-slate-700">输入描述：</h2>
-              <div className="practice-io-block border-l-4 border-emerald-500 bg-slate-50 px-7 py-4">
-                <MarkdownMath value={problem.inputFormat || "输入数据。"} />
+              <div className="practice-io-block border-l-4 border-blue-500 bg-slate-50 px-7 py-4">
+                <HtmlMath value={problem.inputFormat || "输入数据。"} />
               </div>
             </section>
 
             <section className="practice-problem-section">
               <h2 className="practice-problem-heading mb-3 text-base font-bold text-slate-700">输出描述：</h2>
-              <div className="practice-io-block border-l-4 border-emerald-500 bg-slate-50 px-7 py-4">
-                <MarkdownMath value={problem.outputFormat || "输出答案。"} />
+              <div className="practice-io-block border-l-4 border-blue-500 bg-slate-50 px-7 py-4">
+                <HtmlMath value={problem.outputFormat || "输出答案。"} />
               </div>
             </section>
 
             <fieldset className="practice-judge-fieldset rounded-md border border-slate-200 bg-white px-5 pb-5">
               <legend className="practice-judge-legend px-2 text-base font-bold text-slate-700">评测信息</legend>
-              <div className="practice-judge-grid mt-2 grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
-                <div>
-                  <p className="text-xs text-slate-500">运行时间</p>
-                  <p className="mt-1 font-semibold">{problem.timeLimit} ms</p>
+              <div className="practice-judge-grid mt-2 grid gap-3 text-sm text-slate-700">
+                <div className="grid items-center gap-x-6 gap-y-1 border-b border-slate-100 pb-3 sm:grid-cols-[96px_1fr_1fr]">
+                  <p className="font-semibold text-slate-700">C/C++</p>
+                  <p>时间限制：<span className="font-semibold">{problem.timeLimit / 1000} 秒</span></p>
+                  <p>空间限制：<span className="font-semibold">{problem.memoryLimit} MB</span></p>
                 </div>
-                <div>
-                  <p className="text-xs text-slate-500">运行内存</p>
-                  <p className="mt-1 font-semibold">{problem.memoryLimit} MB</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">64bit IO Format</p>
-                  <p className="mt-1 font-semibold">%lld</p>
+                <div className="grid items-center gap-x-6 gap-y-1 sm:grid-cols-[96px_1fr_1fr]">
+                  <p className="font-semibold text-slate-700">其他语言</p>
+                  <p>时间限制：<span className="font-semibold">{(problem.timeLimit * 2) / 1000} 秒</span></p>
+                  <p>空间限制：<span className="font-semibold">{problem.memoryLimit * 2} MB</span></p>
                 </div>
               </div>
             </fieldset>
@@ -1269,11 +1332,11 @@ export function PracticePage() {
                 <h2 className="practice-problem-heading mb-3 text-base font-bold text-slate-700">示例{index + 1}</h2>
                 <div className="practice-sample-card overflow-hidden rounded-md border border-slate-200 bg-slate-100">
                   <div className="practice-sample-label px-4 py-3 font-semibold text-slate-600">输入</div>
-                  <pre className="practice-sample-value overflow-x-auto whitespace-pre-wrap border-l-4 border-emerald-500 bg-white px-7 py-4 font-mono text-slate-700">
+                  <pre className="practice-sample-value overflow-x-auto whitespace-pre-wrap border-l-4 border-blue-500 bg-white px-7 py-4 font-mono text-slate-700">
                     {sample.input}
                   </pre>
                   <div className="practice-sample-label px-4 py-3 font-semibold text-slate-600">输出</div>
-                  <pre className="practice-sample-value overflow-x-auto whitespace-pre-wrap border-l-4 border-emerald-500 bg-white px-7 py-4 font-mono text-slate-700">
+                  <pre className="practice-sample-value overflow-x-auto whitespace-pre-wrap border-l-4 border-blue-500 bg-white px-7 py-4 font-mono text-slate-700">
                     {sample.output}
                   </pre>
                   {sample.explanation ? (
@@ -1342,8 +1405,8 @@ export function PracticePage() {
           <div className="flex shrink-0 items-center gap-3">
             {!isContestMode && (
               <Button
-                className={`${agentOpen ? "!bg-blue-500 !text-white hover:!bg-blue-600" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"} ${agentLoading ? 'opacity-70' : ''}`}
-                icon={<IconBulb />}
+                aria-expanded={agentOpen}
+                loading={agentLoading}
                 onClick={() => !agentLoading && setAgentOpen((open) => !open)}
               >
                 {agentLoading ? "思考中..." : `AI 助手${agentQuota ? ` (${agentQuota.remaining})` : ''}`}
@@ -1412,110 +1475,116 @@ export function PracticePage() {
             </div>
 
             {agentOpen ? (
-              <aside className={`flex h-full w-[460px] max-w-[52%] shrink-0 flex-col border-l ${isEditorDark ? "border-slate-800 bg-slate-950 text-slate-100" : "border-slate-200 bg-white text-slate-800"}`}>
-                <div className={`flex h-12 shrink-0 items-center justify-between border-b px-4 ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
-                  <h2 className="text-sm font-semibold">AI 助手</h2>
-                  <Button
-                    aria-label="关闭 AI 助手"
-                    icon={<IconClose />}
-                    size="small"
-                    type="text"
-                    className={isEditorDark ? "!text-slate-200 hover:!bg-white/10" : "!text-slate-600 hover:!bg-slate-100"}
-                    onClick={() => setAgentOpen(false)}
-                  />
-                </div>
-
-                <div className={`grid shrink-0 grid-cols-2 gap-2 border-b p-3 ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
-                  <Button
-                    size="small"
-                    className={`min-w-0 ${isEditorDark ? "!bg-white/10 !text-slate-100 hover:!bg-white/15" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"}`}
-                    onClick={() => sendAgentMessage("请解释这道题的题意和核心思路，不要给完整代码。")}
-                  >
-                    解释题目
-                  </Button>
-                  <Button
-                    size="small"
-                    className={`min-w-0 ${isEditorDark ? "!bg-white/10 !text-slate-100 hover:!bg-white/15" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"}`}
-                    onClick={() => sendAgentMessage("请分析我当前代码中可能的问题，不要直接给完整 AC 代码。")}
-                  >
-                    分析代码
-                  </Button>
-                  <Button
-                    size="small"
-                    className={`min-w-0 ${isEditorDark ? "!bg-white/10 !text-slate-100 hover:!bg-white/15" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"}`}
-                    onClick={() => sendAgentMessage(`请根据下面的调试或提交信息给出排查方向：\n${latestDebugText()}`)}
-                  >
-                    解释报错
-                  </Button>
-                  <Button
-                    size="small"
-                    className={`min-w-0 ${isEditorDark ? "!bg-white/10 !text-slate-100 hover:!bg-white/15" : "!bg-slate-100 !text-slate-700 hover:!bg-slate-200"}`}
-                    onClick={() => sendAgentMessage("请提醒这道题常见边界情况和自测数据方向。")}
-                  >
-                    边界提醒
-                  </Button>
-                </div>
-
-                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-                  {agentMessages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={[
-                        "rounded-md border px-3 py-2 text-sm leading-6",
-                        message.role === "user"
-                          ? isEditorDark
-                            ? "ml-6 border-blue-400/30 bg-blue-500/15 text-blue-50"
-                            : "ml-6 border-blue-200 bg-blue-50 text-blue-900"
-                          : isEditorDark
-                            ? "mr-6 border-slate-700 bg-slate-900 text-slate-100"
-                            : "mr-6 border-slate-200 bg-slate-50 text-slate-800",
-                      ].join(" ")}
-                    >
-                      {message.role === "assistant" ? (
-                        <MarkdownMath
-                          className="agent-markdown"
-                          value={message.content}
-                          convertInlineCodeToMath
-                        />
-                      ) : (
-                        <pre className="whitespace-pre-wrap break-words font-sans">{message.content}</pre>
-                      )}
-                    </div>
-                  ))}
-                  {agentLoading ? (
-                    <div className={`mr-6 rounded-md border px-3 py-2 text-sm ${isEditorDark ? "border-slate-700 bg-slate-900 text-slate-300" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
-                      正在思考...
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className={`shrink-0 border-t p-3 ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
-                  <Input.TextArea
-                    className={`h-24 w-full resize-none text-sm leading-6 ${isEditorDark ? "!border-slate-700 !bg-slate-900 !text-slate-100 placeholder:!text-slate-500" : "!border-slate-200 !bg-white !text-slate-800 placeholder:!text-slate-400"}`}
-                    placeholder="输入你的问题"
-                    value={agentInput}
-                    autoSize={false}
-                    onChange={(event) => setAgentInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        sendAgentMessage();
-                      }
+              <ConfigProvider theme={{ algorithm: isEditorDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm }}>
+                <aside className={`h-full w-[460px] max-w-[52%] shrink-0 border-l ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
+                  <Card
+                    bordered={false}
+                    className="rounded-none"
+                    style={{ display: "flex", height: "100%", flexDirection: "column" }}
+                    title={<Typography.Text strong>AI 助手</Typography.Text>}
+                    extra={(
+                      <Button size="small" onClick={() => setAgentOpen(false)}>
+                        关闭
+                      </Button>
+                    )}
+                    styles={{
+                      body: {
+                        display: "flex",
+                        flex: 1,
+                        flexDirection: "column",
+                        minHeight: 0,
+                        padding: 0,
+                      },
                     }}
-                  />
-                  <Button
-                    block
-                    loading={agentLoading}
-                    disabled={agentLoading || !agentInput.trim()}
-                    type="primary"
-                    icon={agentLoading ? undefined : <IconSend />}
-                    className="mt-2"
-                    onClick={() => sendAgentMessage()}
                   >
-                    {agentLoading ? "发送中" : "发送"}
-                  </Button>
-                </div>
-              </aside>
+                    <div className={`shrink-0 border-y p-3 ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
+                      <Space wrap size={[8, 8]}>
+                        <Button size="small" onClick={() => sendAgentMessage("请解释这道题的题意和核心思路，不要给完整代码。")}>
+                          解释题目
+                        </Button>
+                        <Button size="small" onClick={() => sendAgentMessage("请分析我当前代码中可能的问题，不要直接给完整 AC 代码。")}>
+                          分析代码
+                        </Button>
+                        <Button size="small" onClick={() => sendAgentMessage(`请根据下面的调试或提交信息给出排查方向：\n${latestDebugText()}`)}>
+                          解释报错
+                        </Button>
+                        <Button size="small" onClick={() => sendAgentMessage("请提醒这道题常见边界情况和自测数据方向。") }>
+                          边界提醒
+                        </Button>
+                      </Space>
+                    </div>
+
+                    <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                      <Flex vertical gap={12}>
+                        {agentMessages.length === 0 && !agentLoading ? (
+                          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择快捷问题或直接输入提问" />
+                        ) : null}
+                        {agentMessages.map((message) => (
+                          <Card
+                            key={message.id}
+                            size="small"
+                            className={message.role === "user" ? "ml-6" : "mr-6"}
+                            style={message.role === "user"
+                              ? {
+                                  backgroundColor: isEditorDark ? "#111a2c" : "#e6f4ff",
+                                  borderColor: isEditorDark ? "#1668dc" : "#91caff",
+                                }
+                              : undefined}
+                            styles={{ body: { padding: "8px 12px" } }}
+                          >
+                            {message.role === "assistant" ? (
+                              <MarkdownMath
+                                className="agent-markdown"
+                                value={message.content}
+                                convertInlineCodeToMath
+                              />
+                            ) : (
+                              <Typography.Paragraph style={{ margin: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
+                                {message.content}
+                              </Typography.Paragraph>
+                            )}
+                          </Card>
+                        ))}
+                        {agentLoading ? (
+                          <Card size="small" className="mr-6" styles={{ body: { padding: "8px 12px" } }}>
+                            <Space size="small">
+                              <Spin size="small" />
+                              <Typography.Text type="secondary">正在思考...</Typography.Text>
+                            </Space>
+                          </Card>
+                        ) : null}
+                      </Flex>
+                    </div>
+
+                    <div className={`shrink-0 border-t p-3 ${isEditorDark ? "border-slate-800" : "border-slate-200"}`}>
+                      <Flex vertical gap={8}>
+                        <Input.TextArea
+                          placeholder="输入你的问题"
+                          value={agentInput}
+                          autoSize={{ minRows: 4, maxRows: 4 }}
+                          onChange={(event) => setAgentInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              sendAgentMessage();
+                            }
+                          }}
+                        />
+                        <Flex justify="flex-end">
+                          <Button
+                            loading={agentLoading}
+                            disabled={agentLoading || !agentInput.trim()}
+                            type="primary"
+                            onClick={() => sendAgentMessage()}
+                          >
+                            {agentLoading ? "发送中" : "发送"}
+                          </Button>
+                        </Flex>
+                      </Flex>
+                    </div>
+                  </Card>
+                </aside>
+              </ConfigProvider>
             ) : null}
           </div>
         </div>

@@ -269,9 +269,6 @@ public class UserAdminService {
     }
 
     private List<String> activeFrontendRoles() {
-        return List.of(
-            UserRole.STUDENT.name(),
-            UserRole.GUEST.name()
-        );
+        return List.of(UserRole.STUDENT.name());
     }
 }

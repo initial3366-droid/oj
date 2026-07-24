@@ -39,6 +39,7 @@ public class Contest {
     public Boolean allowAfterEndSubmit;
     public Boolean allowAfterEndViewProblem;
     public Boolean allowAfterEndViewCode;
+    public Boolean enableCodeTemplates;
     public Boolean publicScoreboardEnabled;
     public Boolean showClassOnScoreboard;
     public Boolean allowStarRegistration;

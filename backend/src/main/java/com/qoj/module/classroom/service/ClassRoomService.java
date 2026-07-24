@@ -597,6 +597,10 @@ public class ClassRoomService {
             user.email = request.email().trim();
         }
         if (request.password() != null && !request.password().isBlank()) {
+            int passwordLength = request.password().length();
+            if (passwordLength < 6 || passwordLength > 64) {
+                throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "密码长度必须在6-64个字符之间");
+            }
             user.passwordHash = passwordEncoder.encode(request.password());
         }
         userMapper.updateById(user);
@@ -659,7 +663,7 @@ public class ClassRoomService {
             userMapper.insert(user);
             ensureScore(user.id);
         } else {
-            if (!UserRole.STUDENT.name().equals(user.role) && !UserRole.GUEST.name().equals(user.role)) {
+            if (!UserRole.STUDENT.name().equals(user.role)) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */

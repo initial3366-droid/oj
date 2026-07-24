@@ -5,7 +5,7 @@ import { Button, Card, Table, Tag, Typography, Banner, Modal } from '@douyinfe/s
 import { IconChevronLeft } from '@douyinfe/semi-icons';
 import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useEffect, useMemo, useState } from 'react';
-import { NavLink, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   fetchMyProblemSubmissions,
   fetchProblemDetail,

@@ -10,6 +10,7 @@ import com.qoj.module.setting.dto.PasswordChangeRequest;
 import com.qoj.module.setting.entity.SystemSetting;
 import com.qoj.module.setting.mapper.SystemSettingMapper;
 import com.qoj.module.setting.vo.AgentSettingsVO;
+import com.qoj.module.setting.vo.CodeTemplateSettingsVO;
 import com.qoj.module.setting.vo.FrontendSettingsVO;
 import com.qoj.module.setting.vo.JudgeSettingsVO;
 import com.qoj.module.setting.vo.PublicJudgeSettingsVO;
@@ -25,7 +26,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -38,6 +41,9 @@ public class SystemSettingService {
     private static final String DEFAULT_EMAIL_CONTENT = "您好，\n\n您的验证码是: {{code}}\n\n验证码将在10分钟后过期，请勿泄露给他人。\n\nQOJ Online Judge System";
     private static final String AGENT_CONFIG_KEY = "system.agent_config";
     private static final String OSS_CONFIG_KEY = "system.oss_config";
+    private static final String CODE_TEMPLATE_CONFIG_KEY = "system.code_templates";
+    private static final int MAX_CODE_TEMPLATE_CHARS = 50000;
+    private static final int MAX_CODE_TEMPLATE_CONFIG_BYTES = 60000;
     private static final int DEFAULT_JUDGE_CONCURRENCY = 2;
     private static final int DEFAULT_JUDGE_THREAD_POOL_SIZE = 2;
     private static final int DEFAULT_JUDGE_QUEUE_BATCH_SIZE = 2;
@@ -67,6 +73,13 @@ public class SystemSettingService {
         "publicBaseUrl", "",
         "dir", "avatars/",
         "maxSizeMb", 5
+    );
+    private static final Map<String, Object> DEFAULT_CODE_TEMPLATE_CONFIG = Map.of(
+        "c", "#include <stdio.h>\n\nint main(void) {\n    return 0;\n}",
+        "cpp", "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    return 0;\n}",
+        "python", "import sys\n\ndef solve():\n    pass\n\nif __name__ == \"__main__\":\n    solve()\n",
+        "java", "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    public static void main(String[] args) throws Exception {\n    }\n}",
+        "csharp", "using System;\n\npublic static class Program\n{\n    public static void Main()\n    {\n    }\n}"
     );
 
     private final SystemSettingMapper settingMapper;
@@ -249,6 +262,20 @@ public class SystemSettingService {
         vo.publicBaseUrl = stringValue(config.get("publicBaseUrl"));
         vo.dir = defaultText(config.get("dir"), "avatars/");
         vo.maxSizeMb = intValue(config.get("maxSizeMb"), 5);
+        return vo;
+    }
+
+    /**
+     * 获取各语言默认代码模板。
+     */
+    public CodeTemplateSettingsVO getCodeTemplateSettings() {
+        Map<String, Object> config = getJsonSetting(CODE_TEMPLATE_CONFIG_KEY, DEFAULT_CODE_TEMPLATE_CONFIG);
+        CodeTemplateSettingsVO vo = new CodeTemplateSettingsVO();
+        vo.c = codeTemplateValue(config, "c");
+        vo.cpp = codeTemplateValue(config, "cpp");
+        vo.python = codeTemplateValue(config, "python");
+        vo.java = codeTemplateValue(config, "java");
+        vo.csharp = codeTemplateValue(config, "csharp");
         return vo;
     }
 
@@ -493,6 +520,27 @@ public class SystemSettingService {
             "maxSizeMb", next.maxSizeMb
         );
         updateSetting(OSS_CONFIG_KEY, toJson(config), authUser.getUsername());
+    }
+
+    /**
+     * 更新各语言默认代码模板。
+     */
+    @Transactional
+    public void updateCodeTemplateSettings(CodeTemplateSettingsVO request, AuthUser authUser) {
+        if (request == null) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "代码模板不能为空");
+        }
+        Map<String, Object> config = new LinkedHashMap<>();
+        config.put("c", validateCodeTemplate(request.c, "C"));
+        config.put("cpp", validateCodeTemplate(request.cpp, "C++"));
+        config.put("python", validateCodeTemplate(request.python, "Python"));
+        config.put("java", validateCodeTemplate(request.java, "Java"));
+        config.put("csharp", validateCodeTemplate(request.csharp, "C#"));
+        String serialized = toJson(config);
+        if (serialized.getBytes(StandardCharsets.UTF_8).length > MAX_CODE_TEMPLATE_CONFIG_BYTES) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "全部默认代码合计不能超过 60000 字节");
+        }
+        updateSetting(CODE_TEMPLATE_CONFIG_KEY, serialized, authUser.getUsername());
     }
 
     private void validateHttpsBaseUrl(String value, String label) {
@@ -747,6 +795,7 @@ public class SystemSettingService {
             case "judge.ccpcoj_stale_task_minutes" -> "CCPCOJ 任务失联重取时间";
             case AGENT_CONFIG_KEY -> "AI助手配置";
             case OSS_CONFIG_KEY -> "OSS配置";
+            case CODE_TEMPLATE_CONFIG_KEY -> "各语言默认代码模板";
             default -> key;
         };
     }
@@ -840,6 +889,22 @@ public class SystemSettingService {
 
     private String stringValue(Object value) {
         return value == null ? "" : String.valueOf(value);
+    }
+
+    private String codeTemplateValue(Map<String, Object> config, String language) {
+        if (config.containsKey(language)) {
+            return stringValue(config.get(language));
+        }
+        return stringValue(DEFAULT_CODE_TEMPLATE_CONFIG.get(language));
+    }
+
+    private String validateCodeTemplate(String value, String language) {
+        String template = value == null ? "" : value;
+        if (template.length() > MAX_CODE_TEMPLATE_CHARS) {
+            throw new BizException(ErrorCode.BAD_REQUEST,
+                language + " 默认代码不能超过 " + MAX_CODE_TEMPLATE_CHARS + " 个字符");
+        }
+        return template;
     }
 
     private String defaultText(Object value, String defaultValue) {

@@ -14,7 +14,7 @@ interface UserInfo {
   id: number;
   username: string;
   displayName: string;
-  role: 'SUPER_ADMIN' | 'STUDENT' | 'GUEST';
+  role: string;
 }
 
 /**
@@ -82,8 +82,7 @@ export function PermissionGuard({ children, requiredRoles }: PermissionGuardProp
     return <Navigate to={adminPath('/login')} replace />;
   }
 
-  // 学生角色不允许进入后台
-  if (user.role === 'STUDENT' || user.role === 'GUEST') {
+  if (user.role !== 'SUPER_ADMIN') {
     return (
       <Result
         status="403"

@@ -96,13 +96,34 @@ public class PracticePublicationService {
             throw new BizException(400, "至少公开一道题目后才能发布");
         }
         List<Long> classIds = normalizeClasses(publisher, request.studentAccessMode(), request.classIds());
+        String publicationTitle = hasText(request.title()) ? request.title().trim() : source.title;
+        String publicationDescription = request.description() == null ? source.description : request.description().trim();
+
+        List<PracticeProblem> publishedProblems = sourceProblems.stream()
+            .filter(item -> "VISIBLE".equals(requestedVisibility.get(item.problemId)))
+            .toList();
+        Map<Long, String> publicationVisibility = requestedVisibility;
+        boolean sourceOwnedByPublisher = resourceAccessService.isOwner(
+            publisher, source.ownerAccountType, source.ownerId
+        );
+        if (publisher.teacherAccount()
+            && (!sourceOwnedByPublisher || publishedProblems.size() != sourceProblems.size())) {
+            source = createPublicationCopy(
+                publisher, publicationTitle, publicationDescription, publishedProblems
+            );
+            sourceProblems = practiceProblems(source.id);
+            publicationVisibility = sourceProblems.stream().collect(java.util.stream.Collectors.toMap(
+                item -> item.problemId,
+                item -> "VISIBLE"
+            ));
+        }
 
         PracticePublication publication = new PracticePublication();
         publication.sourcePracticeId = source.id;
         publication.publisherAccountType = publisher.accountType();
         publication.publisherId = publisher.id();
-        publication.title = hasText(request.title()) ? request.title().trim() : source.title;
-        publication.description = request.description() == null ? source.description : request.description().trim();
+        publication.title = publicationTitle;
+        publication.description = publicationDescription;
         publication.status = "PUBLISHED";
         publication.studentAccessMode = normalizeStudentAccessMode(request.studentAccessMode());
         publication.passwordHash = hasText(request.password()) ? passwordEncoder.encode(request.password()) : null;
@@ -121,7 +142,7 @@ public class PracticePublicationService {
             item.problemId = sourceProblem.problemId;
             item.displayOrder = sourceProblem.displayOrder;
             item.score = sourceProblem.score;
-            item.visibility = requestedVisibility.get(sourceProblem.problemId);
+            item.visibility = publicationVisibility.get(sourceProblem.problemId);
             publicationProblemMapper.insert(item);
         }
         return managementDetail(publication.id);
@@ -164,6 +185,18 @@ public class PracticePublicationService {
             );
         }
         return managementDetail(publicationId);
+    }
+
+    @Transactional
+    public void delete(long publicationId) {
+        PracticePublication publication = requireManaged(publicationId);
+        publicationProblemMapper.delete(
+            new QueryWrapper<PracticePublicationProblem>().eq("publication_id", publication.id)
+        );
+        publicationClassMapper.delete(
+            new QueryWrapper<PracticePublicationClass>().eq("publication_id", publication.id)
+        );
+        publicationMapper.deleteById(publication.id);
     }
 
     public PageResult<PracticePublicationVO> publicList(int page, int pageSize, String scope) {
@@ -237,6 +270,18 @@ public class PracticePublicationService {
         ).stream().map(item -> toVO(item, true)).toList();
     }
 
+    public List<PracticePublicationVO> allPublications() {
+        AuthUser user = requirePublisher();
+        if (!resourceAccessService.isSuperAdmin(user)) {
+            throw new BizException(403, "仅超级管理员可以查看全部发布实例");
+        }
+        return publicationMapper.selectList(
+            new QueryWrapper<PracticePublication>()
+                .orderByDesc("published_at")
+                .orderByDesc("id")
+        ).stream().map(item -> toVO(item, true)).toList();
+    }
+
     public boolean canSubmit(Long publicationId, Long userId, Long problemId) {
         PracticePublication publication = publicationMapper.selectById(publicationId);
         if (publication == null || !studentCanAccess(userId, publication)) {
@@ -285,6 +330,37 @@ public class PracticePublicationService {
             throw new BizException(404, "题单不存在");
         }
         return practice;
+    }
+
+    private Practice createPublicationCopy(
+        AuthUser publisher,
+        String publicationTitle,
+        String publicationDescription,
+        List<PracticeProblem> publishedProblems
+    ) {
+        Practice copy = new Practice();
+        copy.title = publicationTitle + "（发布副本）";
+        copy.description = publicationDescription;
+        copy.ownerId = publisher.id();
+        copy.ownerAccountType = publisher.accountType();
+        copy.accessScope = "PRIVATE";
+        copy.majorId = publisher.teacher().majorId;
+        copy.audience = "ALL";
+        copy.audienceId = null;
+        copy.passwordHash = null;
+        copy.published = false;
+        practiceMapper.insert(copy);
+
+        int displayOrder = 1;
+        for (PracticeProblem sourceProblem : publishedProblems) {
+            PracticeProblem item = new PracticeProblem();
+            item.practiceId = copy.id;
+            item.problemId = sourceProblem.problemId;
+            item.displayOrder = displayOrder++;
+            item.score = sourceProblem.score;
+            practiceProblemMapper.insert(item);
+        }
+        return copy;
     }
 
     private List<Long> normalizeClasses(AuthUser publisher, String modeValue, List<Long> requested) {

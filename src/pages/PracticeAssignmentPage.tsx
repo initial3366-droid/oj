@@ -73,34 +73,40 @@ export function PracticeAssignmentPage() {
           className="w-full max-w-md border border-slate-200 shadow-soft"
           bodyStyle={{ padding: 0 }}
         >
-          <div className="px-6 py-5">
-            <div className="mb-4 grid h-11 w-11 place-items-center rounded-lg bg-primary/10 text-primary">
+          <div style={{ padding: "24px 28px" }}>
+            <div
+              className="grid place-items-center rounded-lg bg-primary/10 text-primary"
+              style={{ height: 44, width: 44, marginBottom: 16 }}
+            >
               <IconLock style={{ fontSize: 22 }} />
             </div>
             <Typography.Title heading={4} style={{ margin: 0 }}>
               题单访问
             </Typography.Title>
-            <Typography.Text type="tertiary" style={{ marginTop: 8, display: "block", fontSize: 14 }}>
+            <Typography.Text type="tertiary" style={{ marginTop: 10, display: "block", fontSize: 14, lineHeight: 1.6 }}>
               {message}
             </Typography.Text>
           </div>
-          <Divider />
-          <div className="px-6 py-5">
-            <form className="grid gap-4" onSubmit={unlock}>
-              <label className="grid gap-2">
+          <Divider style={{ margin: 0 }} />
+          <div style={{ padding: "24px 28px" }}>
+            <form onSubmit={unlock} style={{ display: "grid", gap: 18 }}>
+              <label style={{ display: "grid", gap: 8 }}>
                 <Typography.Text strong>题单密码</Typography.Text>
                 <Input
                   type="password"
                   value={password}
                   onChange={setPassword}
+                  placeholder="请输入题单密码"
                 />
               </label>
-              <Button type="primary" theme="solid" htmlType="submit" block>
-                进入题单
-              </Button>
-              <Button theme="light" block onClick={() => navigate("/practice")}>
-                返回题单列表
-              </Button>
+              <div style={{ display: "grid", gap: 10 }}>
+                <Button type="primary" theme="solid" htmlType="submit" block>
+                  进入题单
+                </Button>
+                <Button theme="light" block onClick={() => navigate("/practice")}>
+                  返回题单列表
+                </Button>
+              </div>
             </form>
           </div>
         </Card>

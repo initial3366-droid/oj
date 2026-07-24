@@ -13,7 +13,6 @@ import {
   Statistic,
   Table,
   Tag,
-  Typography,
 } from '@arco-design/web-react';
 import { IconDownload, IconEye, IconLeft } from '@arco-design/web-react/icon';
 import { teacherGet } from '../teacherApi';

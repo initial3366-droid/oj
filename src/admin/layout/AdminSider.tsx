@@ -51,6 +51,7 @@ const PATHS = {
   settingsFrontend: adminPath('/settings/frontend'),
   settingsRegister: adminPath('/settings/register'),
   settingsSystem: adminPath('/settings/system'),
+  settingsCodeTemplates: adminPath('/settings/code-templates'),
   settingsAnnouncements: adminPath('/settings/announcements'),
 };
 
@@ -78,6 +79,11 @@ export function AdminSider({ userRole }: AdminSiderProps) {
 
   useEffect(() => {
     const path = location.pathname;
+    if (path.startsWith(PATHS.settingsCodeTemplates)) {
+      setOpenKeys([]);
+      return;
+    }
+
     const openKeysMap: Record<string, string> = {
       [PATHS.users]: 'users-menu',
       [PATHS.problems]: 'problems-menu',
@@ -94,10 +100,11 @@ export function AdminSider({ userRole }: AdminSiderProps) {
     for (const [prefix, key] of Object.entries(openKeysMap)) {
       if (path.includes(prefix)) {
         setOpenKeys([key]);
-        break;
+        return;
       }
     }
-  }, []);
+    setOpenKeys([]);
+  }, [location.pathname]);
 
   /**
    * 处理MenuClick。可能改变当前路由或查询参数。
@@ -170,6 +177,13 @@ export function AdminSider({ userRole }: AdminSiderProps) {
           <MenuItem key={PATHS.judgeQueue}>判题队列</MenuItem>
           <MenuItem key={PATHS.judgeConfig}>判题配置</MenuItem>
         </SubMenu>
+      )}
+
+      {isMenuVisible('code-template-settings') && (
+        <MenuItem key={PATHS.settingsCodeTemplates}>
+          <IconCode />
+          代码配置
+        </MenuItem>
       )}
 
       {isMenuVisible('leaderboard') && (

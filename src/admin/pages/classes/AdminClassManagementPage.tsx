@@ -380,7 +380,7 @@ export function AdminClassManagementPage() {
         onOk={() => form.submit()}
         style={{ width: 620 }}
       >
-        <Form form={form} labelCol={{ span: 6 }} wrapperCol={{ span: 18 }} onSubmit={submit}>
+        <Form form={form} labelCol={{ span: 6 }} wrapperCol={{ span: 18 }} requiredSymbol={false} onSubmit={submit}>
           <FormItem label="班级名称" field="name" rules={[{ required: true, message: '请输入班级名称' }]}>
             <Input placeholder="班级名称" />
           </FormItem>
@@ -437,7 +437,7 @@ export function AdminClassManagementPage() {
           showIcon
           style={{ marginBottom: 16 }}
         />
-        <Form form={importForm} layout="vertical" onSubmit={submitImport}>
+        <Form form={importForm} layout="vertical" requiredSymbol={false} onSubmit={submitImport}>
           <FormItem field="classId" label="目标班级" rules={[{ required: true, message: '请选择班级' }]}>
             <Select placeholder="选择班级">
               {classes.map((item) => <Option key={item.id} value={item.id}>{item.name}（{item.id}）</Option>)}

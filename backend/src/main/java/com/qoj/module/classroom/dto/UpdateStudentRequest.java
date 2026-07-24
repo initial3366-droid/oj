@@ -9,6 +9,6 @@ public record UpdateStudentRequest(
     @Size(max = 50) String displayName,
     @Size(max = 50) String studentNo,
     @Size(max = 100) String email,
-    @Size(min = 6, max = 64) String password
+    @Size(max = 64, message = "密码长度不能超过64个字符") String password
 ) {
 }

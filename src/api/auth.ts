@@ -36,7 +36,7 @@ export interface UserMe {
   displayName: string;
   studentNo?: string;
   email?: string;
-  role: "STUDENT" | "GUEST";
+  role: "STUDENT";
   totalSolved?: number;
   totalSubmissions?: number;
 }

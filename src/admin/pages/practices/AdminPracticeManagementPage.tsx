@@ -62,6 +62,19 @@ interface Practice {
   createdAt: string;
 }
 
+interface PracticePublication {
+  id: number;
+  sourcePracticeId: number;
+  title: string;
+  publisherAccountType: string;
+  ownerId: number;
+  status: string;
+  studentAccessMode: 'ALL' | 'SELECTED_CLASSES';
+  classIds: number[];
+  problems: Problem[];
+  createdAt: string;
+}
+
 interface Major {
   id: number;
   name: string;
@@ -115,6 +128,7 @@ export function AdminPracticeManagementPage() {
   const [submitting, setSubmitting] = useState(false);
   const [practices, setPractices] = useState<Practice[]>([]);
   const [practiceTotal, setPracticeTotal] = useState(0);
+  const [publications, setPublications] = useState<PracticePublication[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
   const [majors, setMajors] = useState<Major[]>([]);
   const [keyword, setKeyword] = useState('');
@@ -148,9 +162,13 @@ export function AdminPracticeManagementPage() {
   async function loadPractices() {
     setLoading(true);
     try {
-      const result = await adminGet<PageResult<Practice>>('/api/admin/v1/practices?page=1&pageSize=200');
+      const [result, publicationResult] = await Promise.all([
+        adminGet<PageResult<Practice>>('/api/admin/v1/practices?page=1&pageSize=200'),
+        adminGet<PracticePublication[]>('/api/admin/v1/practices/publications'),
+      ]);
       setPractices(result.list);
       setPracticeTotal(result.total);
+      setPublications(publicationResult);
     } catch (error) {
       Message.error(error instanceof Error ? error.message : '题单列表加载失败');
     } finally {
@@ -249,6 +267,16 @@ export function AdminPracticeManagementPage() {
     }
   }
 
+  async function removePublication(id: number) {
+    try {
+      await adminDelete(`/api/admin/v1/practices/publications/${id}`);
+      Message.success('发布实例已删除');
+      void loadPractices();
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '删除失败');
+    }
+  }
+
   function toggleProblem(id: number) {
     setSelectedProblemIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   }
@@ -269,6 +297,7 @@ export function AdminPracticeManagementPage() {
           <Form
             form={form}
             layout="vertical"
+            requiredSymbol={false}
             initialValues={{ accessScope: 'ALL' }}
             onValuesChange={(_, values) => setAccessScope(values.accessScope ?? 'ALL')}
           >
@@ -378,6 +407,40 @@ export function AdminPracticeManagementPage() {
                   {practice.canCopy && <Button type="text" size="small" icon={<IconCopy />} onClick={() => copy(practice.id)}>复制</Button>}
                   {practice.canPublish && <Button type="text" size="small" icon={<IconSend />} onClick={() => navigate(adminPath(`/practices/${practice.id}/publish`))}>发布</Button>}
                   {practice.canEdit && <Popconfirm title="确定要删除该题单吗？" onOk={() => remove(practice.id)}><Button type="text" size="small" status="danger" icon={<IconDelete />}>删除</Button></Popconfirm>}
+                </Space>
+              ),
+            },
+          ]}
+        />
+      </AdminPageContainer>
+      <AdminPageContainer title={`发布实例（${publications.length}）`} loading={loading}>
+        <Table
+          rowKey="id"
+          data={publications}
+          pagination={{ pageSize: 20, showTotal: true }}
+          columns={[
+            { title: '发布ID', dataIndex: 'id', width: 80 },
+            { title: '发布标题', dataIndex: 'title', width: 200, ellipsis: true, render: (value: string) => <Typography.Text bold ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{value}</Typography.Text> },
+            { title: '来源题单', dataIndex: 'sourcePracticeId', width: 90, render: (value: number) => `#${value}` },
+            { title: '题目数', width: 80, align: 'center' as const, render: (_: unknown, item: PracticePublication) => item.problems.length },
+            {
+              title: '学生范围',
+              width: 150,
+              render: (_: unknown, item: PracticePublication) => item.studentAccessMode === 'ALL'
+                ? <Tag color="green">所有学生</Tag>
+                : <Tag color="arcoblue">指定班级（{item.classIds.length}）</Tag>,
+            },
+            { title: '状态', dataIndex: 'status', width: 90, render: (value: string) => <Tag color="green">{value === 'PUBLISHED' ? '已发布' : value}</Tag> },
+            { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (value: string) => value ? new Date(value).toLocaleString('zh-CN') : '-' },
+            {
+              title: '操作',
+              width: 150,
+              render: (_: unknown, item: PracticePublication) => (
+                <Space>
+                  <Button type="text" size="small" icon={<IconEdit />} onClick={() => navigate(adminPath(`/practices/publications/${item.id}/edit`))}>编辑</Button>
+                  <Popconfirm title="确定删除该发布实例吗？删除后学生将无法访问。" onOk={() => removePublication(item.id)}>
+                    <Button type="text" size="small" status="danger" icon={<IconDelete />}>删除</Button>
+                  </Popconfirm>
                 </Space>
               ),
             },

@@ -44,7 +44,6 @@ import {
   fetchAdminContest,
   fetchAdminContests,
   fetchAdminProblemTestCases,
-  fetchAdminProblems,
   fetchContestDraft,
   saveContestDraft,
   updateAdminContest,
@@ -116,6 +115,7 @@ const emptyDraft: ContestDraftPayload = {
   allowAfterEndSubmit: false,
   allowAfterEndViewProblem: true,
   allowAfterEndViewCode: false,
+  enableCodeTemplates: false,
   publicScoreboardEnabled: true,
   showClassOnScoreboard: false,
   allowStarRegistration: false,
@@ -556,6 +556,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
           allowAfterEndSubmit: contest.allowAfterEndSubmit,
           allowAfterEndViewProblem: contest.allowAfterEndViewProblem,
           allowAfterEndViewCode: contest.allowAfterEndViewCode ?? false,
+          enableCodeTemplates: contest.enableCodeTemplates ?? false,
           publicScoreboardEnabled: contest.publicScoreboardEnabled,
           showClassOnScoreboard: contest.showClassOnScoreboard ?? false,
           allowStarRegistration: contest.allowStarRegistration,
@@ -722,6 +723,22 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
     }
     if (!Number(draft.durationMinutes)) {
       Message.warning('请填写比赛时长');
+      return false;
+    }
+    if (draft.type !== 'ACM' && draft.type !== 'OI') {
+      Message.warning('请选择比赛赛制');
+      return false;
+    }
+    if (draft.judgeMode !== 'GO_JUDGE' && draft.judgeMode !== 'CCPCOJ') {
+      Message.warning('请选择判题服务');
+      return false;
+    }
+    if (selectedAudienceTypes.length === 0) {
+      Message.warning('请选择比赛面向群体');
+      return false;
+    }
+    if (selectedAudienceTypes.includes('CLASS') && !(draft.classIds?.length)) {
+      Message.warning('请选择至少一个参赛班级');
       return false;
     }
     const start = new Date(draft.startTime);
@@ -916,6 +933,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
         allowAfterEndSubmit: Boolean(draft.allowAfterEndSubmit),
         allowAfterEndViewProblem: draft.allowAfterEndViewProblem !== false,
         allowAfterEndViewCode: Boolean(draft.allowAfterEndViewCode),
+        enableCodeTemplates: Boolean(draft.enableCodeTemplates),
         publicScoreboardEnabled: draft.publicScoreboardEnabled !== false,
         showClassOnScoreboard: Boolean(draft.showClassOnScoreboard),
         allowStarRegistration: Boolean(draft.allowStarRegistration),
@@ -1494,6 +1512,19 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
                         />
                         <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
                           比赛结束后可查看他人代码
+                        </div>
+                      </FormItem>
+                    </Col>
+                    <Col xs={24} md={8}>
+                      <FormItem label="启用默认代码模板">
+                        <Switch
+                          checked={Boolean(draft.enableCodeTemplates)}
+                          checkedText="启用"
+                          uncheckedText="关闭"
+                          onChange={(checked) => updateDraft({ ...draft, enableCodeTemplates: checked })}
+                        />
+                        <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
+                          开启后，比赛答题页会填充后台配置的语言初始代码
                         </div>
                       </FormItem>
                     </Col>

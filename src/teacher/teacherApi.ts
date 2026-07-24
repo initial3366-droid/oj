@@ -13,6 +13,44 @@ const API_TIMEOUT_MS = 15000;
 let teacherRefreshPromise: Promise<string | null> | null = null;
 
 /**
+ * 教师接口异常。保留 HTTP 与业务错误码，供页面展示错误来源。
+ */
+export class TeacherApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code?: number,
+  ) {
+    super(message);
+    this.name = 'TeacherApiError';
+  }
+}
+
+function defaultRequestErrorMessage(status: number) {
+  switch (status) {
+    case 0:
+      return '无法连接后端服务，请检查网络和后端服务状态';
+    case 400:
+      return '请求参数不符合要求';
+    case 401:
+      return '未登录或登录已过期';
+    case 403:
+      return '当前账号无权执行此操作';
+    case 404:
+      return '请求的资源不存在或已失效';
+    case 409:
+      return '数据状态已变化，请刷新后重试';
+    default:
+      return status >= 500 ? '后端服务异常，请稍后重试' : '请求处理失败，请稍后重试';
+  }
+}
+
+function responseErrorMessage<T>(body: ApiResponse<T> | null, status: number) {
+  const message = body?.message?.trim();
+  return message || defaultRequestErrorMessage(status);
+}
+
+/**
  * 教师当前用户接口，明确该模块内部及 API 边界使用的数据结构。
  */
 export interface TeacherMe {
@@ -168,9 +206,9 @@ async function fetchWithTimeout(url: string, init: RequestInit) {
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('请求超时，请检查后端服务');
+      throw new TeacherApiError('请求超时，请检查后端服务', 0);
     }
-    throw error;
+    throw new TeacherApiError('无法连接后端服务，请检查网络和后端服务状态', 0);
   } finally {
     window.clearTimeout(timeout);
   }
@@ -201,10 +239,10 @@ async function refreshTeacherAccessToken() {
         return null;
       }
       if (!response.ok) {
-        throw new Error(body?.message || `刷新登录状态失败：${response.status}`);
+        throw new TeacherApiError(responseErrorMessage(body, response.status), response.status, body?.code);
       }
       if (!body || body.code !== 200 || !body.data?.accessToken || !body.data?.refreshToken) {
-        throw new Error(body?.message || '刷新登录状态返回格式错误');
+        throw new TeacherApiError(responseErrorMessage(body, response.status), response.status, body?.code);
       }
       setTeacherTokens(body.data.accessToken, body.data.refreshToken);
       return body.data.accessToken;
@@ -226,7 +264,7 @@ async function teacherFetchWithAuth(url: string, init: RequestInit = {}, allowRe
   }
   if (!token) {
     window.location.href = '/teacher/login';
-    throw new Error('请先登录教师端');
+    throw new TeacherApiError('未登录或登录已过期', 401);
   }
 
   const response = await fetchWithTimeout(url, {
@@ -262,10 +300,10 @@ async function parse<T>(response: Response, requireAuth = true): Promise<T> {
     if (!window.location.pathname.startsWith('/teacher/login')) {
       window.location.href = '/teacher/login';
     }
-    throw new Error('未登录或登录已过期');
+    throw new TeacherApiError('未登录或登录已过期', response.status, body?.code);
   }
   if (!response.ok || !body || body.code !== 200) {
-    throw new Error(body?.message || `请求失败：${response.status}`);
+    throw new TeacherApiError(responseErrorMessage(body, response.status), response.status, body?.code);
   }
   return body.data;
 }

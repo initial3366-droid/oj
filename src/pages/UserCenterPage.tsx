@@ -1,8 +1,7 @@
 /**
  * 用户Center页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Avatar, Button, Card, Progress, Typography, Tabs, TabPane, Table, Tag, Input, Modal, Toast, Space, TextArea, Spin, Select } from '@douyinfe/semi-ui';
-import { IconTreeTriangleDown, IconChecklistStroked, IconCode } from '@douyinfe/semi-icons';
+import { Avatar, Button, Progress, Typography, Tabs, TabPane, Table, Tag, Input, Modal, Toast, TextArea, Spin, Select } from '@douyinfe/semi-ui';
 import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';

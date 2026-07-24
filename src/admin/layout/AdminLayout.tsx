@@ -20,7 +20,7 @@ interface UserInfo {
   id: number;
   username: string;
   displayName: string;
-  role: 'SUPER_ADMIN' | 'STUDENT' | 'GUEST';
+  role: string;
 }
 
 /**
@@ -69,8 +69,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       const user = await adminGet<UserInfo>('/api/admin/v1/me', true);
       setUserInfo(user);
 
-      // 学生和访客不允许访问后台
-      if (user.role === 'STUDENT' || user.role === 'GUEST') {
+      if (user.role !== 'SUPER_ADMIN') {
         navigate('/', { replace: true });
       }
     } catch (error) {
@@ -170,7 +169,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           <AdminHeader
             username={userInfo.username}
             displayName={userInfo.displayName}
-            role={userInfo.role}
             onLogout={() => { void handleLogout(); }}
           />
         </Header>

@@ -18,7 +18,6 @@ import {
   Popconfirm,
   Select,
   Space,
-  Statistic,
   Switch,
   Table,
   Tag,
@@ -32,10 +31,8 @@ import {
   IconDashboard,
   IconDelete,
   IconEdit,
-  IconExport,
   IconFile,
   IconImport,
-  IconList,
   IconPlus,
   IconRefresh,
   IconSave,
@@ -113,9 +110,8 @@ function roleText(role?: string | null) {
     SUPER_ADMIN: '系统管理员',
     TEACHER: '教师',
     STUDENT: '学生',
-    GUEST: '访客',
   };
-  return role ? (map[role] || role) : '-';
+  return role ? (map[role] || '-') : '-';
 }
 
 /**
@@ -657,6 +653,7 @@ function TeacherLayout() {
             <Route path="/practices" element={<TeacherPracticeListPage />} />
             <Route path="/practices/new" element={<TeacherPracticeCreatePage />} />
             <Route path="/practices/:practiceId/publish" element={<PracticePublishPage variant="teacher" />} />
+            <Route path="/practices/publications/:publicationId/edit" element={<PracticePublishPage variant="teacher" />} />
             <Route path="/practices/:practiceId/edit" element={<TeacherPracticeCreatePage />} />
             <Route path="/practices/:practiceId/report" element={<TeacherPracticeReportPage />} />
             <Route path="/contests" element={<TeacherContestListPage />} />
@@ -790,7 +787,7 @@ function TeacherClasses() {
         ]}
       />
       <Modal title={editing ? '编辑班级' : '创建班级'} visible={modalVisible} onCancel={() => setModalVisible(false)} onOk={() => form.submit()}>
-        <Form form={form} onSubmit={submit} labelCol={{ span: 6 }} wrapperCol={{ span: 18 }}>
+        <Form form={form} onSubmit={submit} labelCol={{ span: 6 }} wrapperCol={{ span: 18 }} requiredSymbol={false}>
           <FormItem field="name" label="班级名称" rules={[{ required: true, message: '请输入班级名称' }]}><Input /></FormItem>
           <FormItem field="description" label="介绍"><Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} /></FormItem>
           <FormItem field="joinEnabled" label="允许加入" triggerPropName="checked"><Switch checkedText="开启" uncheckedText="关闭" /></FormItem>
@@ -909,7 +906,7 @@ function TeacherStudents() {
       if (values.displayName.trim()) body.displayName = values.displayName.trim();
       if (values.studentNo.trim()) body.studentNo = values.studentNo.trim();
       if (values.email.trim()) body.email = values.email.trim();
-      if (values.password) body.password = values.password;
+      if (values.password?.trim()) body.password = values.password;
       await teacherPut(`/api/teacher/v1/students/${editStudent.userId}`, body);
       Message.success('学生信息已更新');
       setEditStudent(null);
@@ -1065,7 +1062,7 @@ function TeacherStudents() {
         onOk={() => editForm.submit()}
         confirmLoading={updating}
       >
-        <Form form={editForm} layout="vertical" onSubmit={submitEdit}>
+        <Form form={editForm} layout="vertical" onSubmit={submitEdit} requiredSymbol={false}>
           <FormItem label="姓名" field="displayName">
             <Input placeholder="留空不修改" maxLength={50} />
           </FormItem>
@@ -1075,7 +1072,11 @@ function TeacherStudents() {
           <FormItem label="邮箱" field="email">
             <Input placeholder="留空不修改" maxLength={100} />
           </FormItem>
-          <FormItem label="密码" field="password">
+          <FormItem
+            label="密码"
+            field="password"
+            rules={[{ minLength: 6, message: '密码长度至少 6 位' }]}
+          >
             <Input.Password placeholder="留空不修改密码" maxLength={64} />
           </FormItem>
         </Form>
@@ -1221,7 +1222,7 @@ function TeacherImport() {
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Card title="导入学生">
-        <Form form={form} onSubmit={submit} layout="vertical">
+        <Form form={form} onSubmit={submit} layout="vertical" requiredSymbol={false}>
           <Alert
             type="info"
             showIcon
@@ -1238,8 +1239,8 @@ function TeacherImport() {
             </Space>
           </FormItem>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <FormItem field="studentNoField" label="学号字段" rules={[{ required: true }]}><Input /></FormItem>
-            <FormItem field="nameField" label="姓名字段" rules={[{ required: true }]}><Input /></FormItem>
+            <FormItem field="studentNoField" label="学号字段" rules={[{ required: true, message: '请输入学号字段' }]}><Input /></FormItem>
+            <FormItem field="nameField" label="姓名字段" rules={[{ required: true, message: '请输入姓名字段' }]}><Input /></FormItem>
           </div>
           <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
             示例表头：学号,姓名,专业,备注
@@ -1899,7 +1900,7 @@ function TeacherProblems() {
         okButtonProps={{ loading: submitting }}
         style={{ width: 760 }}
       >
-        <Form form={form} layout="vertical" onSubmit={create}>
+        <Form form={form} layout="vertical" onSubmit={create} requiredSymbol={false}>
           <FormItem field="title" label="题目名称" rules={[{ required: true, message: '请输入题目名称' }]}>
             <Input />
           </FormItem>
@@ -1911,10 +1912,10 @@ function TeacherProblems() {
             <FormItem field="outputFormat" label="输出格式"><TextArea autoSize={{ minRows: 3, maxRows: 6 }} /></FormItem>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-            <FormItem field="timeLimit" label="时间限制(ms)" rules={[{ required: true }]}>
+            <FormItem field="timeLimit" label="时间限制(ms)" rules={[{ required: true, message: '请输入时间限制' }]}>
               <InputNumber min={100} max={10000} style={{ width: '100%' }} />
             </FormItem>
-            <FormItem field="memoryLimit" label="内存限制(MB)" rules={[{ required: true }]}>
+            <FormItem field="memoryLimit" label="内存限制(MB)" rules={[{ required: true, message: '请输入内存限制' }]}>
               <InputNumber min={16} max={2048} style={{ width: '100%' }} />
             </FormItem>
             <FormItem field="isPublic" label="可见性" triggerPropName="checked">
@@ -2116,12 +2117,12 @@ function TeacherPractices() {
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Card title={editingId ? '编辑题单' : '创建题单'}>
-        <Form form={form} layout="vertical" onSubmit={editingId ? handleUpdate : create}>
+        <Form form={form} layout="vertical" onSubmit={editingId ? handleUpdate : create} requiredSymbol={false}>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 16 }}>
             <FormItem field="title" label="题单名称" rules={[{ required: true, message: '请输入题单名称' }]}>
               <Input />
             </FormItem>
-            <FormItem field="audience" label="可见范围" rules={[{ required: true }]}>
+            <FormItem field="audience" label="可见范围" rules={[{ required: true, message: '请选择可见范围' }]}>
               <Select onChange={(value) => setAudience(value as TeacherAudience)}>
                 <Option value="ALL">公开</Option>
                 <Option value="CLASS">班级</Option>
@@ -2316,18 +2317,18 @@ function TeacherContests() {
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Card title="创建比赛">
-        <Form form={form} layout="vertical" onSubmit={submitContest}>
+        <Form form={form} layout="vertical" onSubmit={submitContest} requiredSymbol={false}>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 16 }}>
             <FormItem field="title" label="比赛名称" rules={[{ required: true, message: '请输入比赛名称' }]}>
               <Input />
             </FormItem>
-            <FormItem field="type" label="赛制" rules={[{ required: true }]}>
+            <FormItem field="type" label="赛制" rules={[{ required: true, message: '请选择赛制' }]}>
               <Select>
                 <Option value="ACM">ACM</Option>
                 <Option value="OI">OI</Option>
               </Select>
             </FormItem>
-            <FormItem field="audience" label="可见范围" rules={[{ required: true }]}>
+            <FormItem field="audience" label="可见范围" rules={[{ required: true, message: '请选择可见范围' }]}>
               <Select onChange={(value) => setAudience(value as TeacherAudience)}>
                 <Option value="ALL">公开</Option>
                 <Option value="CLASS">班级</Option>
@@ -2338,13 +2339,13 @@ function TeacherContests() {
                 <Select placeholder="选择班级">{classes.map((item) => <Option key={item.id} value={item.id}>{item.name}（{item.id}）</Option>)}</Select>
               </FormItem>
             ) : (
-              <FormItem field="durationMinutes" label="时长(分钟)" rules={[{ required: true }]}>
+              <FormItem field="durationMinutes" label="时长(分钟)" rules={[{ required: true, message: '请输入比赛时长' }]}>
                 <InputNumber min={1} max={10080} style={{ width: '100%' }} />
               </FormItem>
             )}
           </div>
           {audience === 'CLASS' && (
-            <FormItem field="durationMinutes" label="时长(分钟)" rules={[{ required: true }]}>
+            <FormItem field="durationMinutes" label="时长(分钟)" rules={[{ required: true, message: '请输入比赛时长' }]}>
               <InputNumber min={1} max={10080} style={{ width: '100%' }} />
             </FormItem>
           )}

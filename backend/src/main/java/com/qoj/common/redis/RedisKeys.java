@@ -141,10 +141,10 @@ public final class RedisKeys {
     }
 
     /**
-     * 创建或提交Rate。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     * Per-user fixed-window counter for code submissions.
      */
-    public static String submitRate(String ip) {
-        return "oj:rate:" + ip + ":submit";
+    public static String submitRate(long userId) {
+        return "oj:rate:user:" + userId + ":submit";
     }
 
     /** Per-user fixed-window counter for resource-intensive sandbox runs. */

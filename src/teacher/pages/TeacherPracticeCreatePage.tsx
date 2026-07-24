@@ -227,7 +227,7 @@ export function TeacherPracticeCreatePage() {
           </Space>
         }
       >
-        <Form form={form} layout="vertical" style={{ maxWidth: 800 }} initialValues={{ accessScope: 'ALL' }}>
+        <Form form={form} layout="vertical" requiredSymbol={false} style={{ maxWidth: 800 }} initialValues={{ accessScope: 'ALL' }}>
           <Row gutter={24}>
             <Col span={12}>
               <FormItem label="题单名称" field="title" rules={[{ required: true, message: '请输入题单名称' }]}>

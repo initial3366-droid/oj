@@ -11,6 +11,7 @@ import { AnnouncementManagementPage } from '../pages/announcement/AnnouncementMa
 import { AdminUserManagementPage } from '../pages/users/AdminUserManagementPage';
 import { AdminContestManagementPage } from '../pages/contests/AdminContestManagementPage';
 import { AdminContestDetailPage } from '../pages/contests/AdminContestDetailPage';
+import { AdminCodeTemplateSettingsPage } from '../pages/settings/AdminCodeTemplateSettingsPage';
 import { AdminSystemSettingsPage } from '../pages/settings/AdminSystemSettingsPage';
 import { AdminProblemListPage } from '../pages/problems/AdminProblemListPage';
 import { AdminProblemCreatePage } from '../pages/problems/AdminProblemCreatePage';
@@ -68,6 +69,7 @@ export function AdminRoutes() {
                 <Route path="/practices" element={<AdminPracticeManagementPage />} />
                 <Route path="/practices/new" element={<AdminPracticeManagementPage />} />
                 <Route path="/practices/:practiceId/publish" element={<PracticePublishPage variant="admin" />} />
+                <Route path="/practices/publications/:publicationId/edit" element={<PracticePublishPage variant="admin" />} />
                 <Route path="/practices/:practiceId/edit" element={<AdminPracticeManagementPage />} />
 
                 {/* 比赛管理 */}
@@ -99,6 +101,7 @@ export function AdminRoutes() {
                 <Route path="/settings/frontend" element={<AdminSystemSettingsPage section="frontend" />} />
                 <Route path="/settings/register" element={<AdminSystemSettingsPage section="register" />} />
                 <Route path="/settings/system" element={<AdminSystemSettingsPage section="system" />} />
+                <Route path="/settings/code-templates" element={<AdminCodeTemplateSettingsPage />} />
                 <Route path="/settings/announcements" element={<AnnouncementManagementPage />} />
 
                 {/* 个人信息 */}

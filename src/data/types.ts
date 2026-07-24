@@ -108,7 +108,7 @@ export interface UserProfile {
   name: string;
   studentNo: string;
   email: string;
-  role: "STUDENT" | "GUEST";
+  role: "STUDENT";
   totalSolved: number;
   totalSubmissions: number;
   favoriteLanguage: string;

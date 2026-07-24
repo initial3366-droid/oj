@@ -16,8 +16,8 @@ import {
   Typography,
 } from '@arco-design/web-react';
 import { IconLeft, IconSend } from '@arco-design/web-react/icon';
-import { adminGet, adminPost } from '../../admin/api/adminClient';
-import { teacherGet, teacherPost } from '../../teacher/teacherApi';
+import { adminGet, adminPost, adminPut } from '../../admin/api/adminClient';
+import { teacherGet, teacherPost, teacherPut } from '../../teacher/teacherApi';
 import { adminPath } from '../../utils/adminPath';
 
 const { Row, Col } = Grid;
@@ -39,6 +39,20 @@ interface Practice {
   description?: string;
   problems: Problem[];
   canPublish: boolean;
+}
+
+interface PublicationDetail {
+  id: number;
+  title: string;
+  description?: string;
+  studentAccessMode: 'ALL' | 'SELECTED_CLASSES';
+  classIds: number[];
+  publicationProblems: Array<{
+    problemId: number;
+    title?: string;
+    visibility: string;
+    displayOrder?: number;
+  }>;
 }
 
 interface ClassOption {
@@ -69,8 +83,10 @@ const difficultyText: Record<number, string> = {
 
 export function PracticePublishPage({ variant }: { variant: Variant }) {
   const navigate = useNavigate();
-  const { practiceId } = useParams();
+  const { practiceId, publicationId } = useParams();
   const sourceId = Number(practiceId);
+  const editId = Number(publicationId);
+  const isEdit = Boolean(publicationId);
   const [form] = Form.useForm<PublishForm>();
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -80,26 +96,51 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
   const [visibility, setVisibility] = useState<Record<number, boolean>>({});
 
   const listPath = variant === 'teacher' ? '/teacher/practices' : adminPath('/practices');
+  const getRequest = variant === 'teacher' ? teacherGet : adminGet;
 
   useEffect(() => {
-    if (!Number.isFinite(sourceId)) {
+    if (isEdit ? !Number.isFinite(editId) : !Number.isFinite(sourceId)) {
       Message.error('题单参数无效');
       navigate(listPath, { replace: true });
       return;
     }
     void load();
-  }, [sourceId, variant]);
+  }, [sourceId, editId, isEdit, variant]);
+
+  async function loadClasses() {
+    return variant === 'teacher'
+      ? teacherGet<ClassOption[]>('/api/teacher/v1/classes')
+      : adminGet<ClassOption[]>('/api/admin/v1/classes');
+  }
 
   async function load() {
     setLoading(true);
     try {
-      const practiceRequest = variant === 'teacher'
-        ? teacherGet<PageResult<Practice>>('/api/admin/v1/practices?page=1&pageSize=200')
-        : adminGet<PageResult<Practice>>('/api/admin/v1/practices?page=1&pageSize=200');
-      const classRequest = variant === 'teacher'
-        ? teacherGet<ClassOption[]>('/api/teacher/v1/classes')
-        : adminGet<ClassOption[]>('/api/admin/v1/classes');
-      const [practiceResult, classResult] = await Promise.all([practiceRequest, classRequest]);
+      if (isEdit) {
+        const [detail, classResult] = await Promise.all([
+          getRequest<PublicationDetail>(`/api/admin/v1/practices/publications/${editId}`),
+          loadClasses(),
+        ]);
+        setClasses(classResult);
+        const problems: Problem[] = (detail.publicationProblems ?? []).map((item) => ({
+          id: item.problemId,
+          title: item.title ?? `#${item.problemId}`,
+        }));
+        setPractice({ id: detail.id, title: detail.title, description: detail.description, problems, canPublish: true });
+        setVisibility(Object.fromEntries((detail.publicationProblems ?? []).map((item) => [item.problemId, item.visibility === 'VISIBLE'])));
+        const mode = detail.studentAccessMode === 'SELECTED_CLASSES' ? 'SELECTED_CLASSES' : 'ALL';
+        setStudentAccessMode(mode);
+        form.setFieldsValue({
+          title: detail.title,
+          description: detail.description ?? '',
+          studentAccessMode: mode,
+          classIds: detail.classIds ?? [],
+          password: '',
+        });
+        return;
+      }
+      const practiceRequest = getRequest<PageResult<Practice>>('/api/admin/v1/practices?page=1&pageSize=200');
+      const [practiceResult, classResult] = await Promise.all([practiceRequest, loadClasses()]);
       const source = practiceResult.list.find((item) => item.id === sourceId);
       if (!source || !source.canPublish) {
         throw new Error('题单不存在或无权发布');
@@ -146,12 +187,17 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
           visibility: visibility[problem.id] ? 'VISIBLE' : 'HIDDEN',
         })),
       };
-      if (variant === 'teacher') {
+      if (isEdit) {
+        const putRequest = variant === 'teacher' ? teacherPut : adminPut;
+        await putRequest(`/api/admin/v1/practices/publications/${editId}`, payload);
+        Message.success('发布实例已更新');
+      } else if (variant === 'teacher') {
         await teacherPost(`/api/admin/v1/practices/${practice.id}/publications`, payload);
+        Message.success('题单已发布');
       } else {
         await adminPost(`/api/admin/v1/practices/${practice.id}/publications`, payload);
+        Message.success('题单已发布');
       }
-      Message.success('题单已发布');
       navigate(listPath);
     } catch (error) {
       if (error instanceof Error) Message.error(error.message);
@@ -169,18 +215,19 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Card
         bordered={false}
-        title="发布题单"
+        title={isEdit ? '编辑发布实例' : '发布题单'}
         loading={loading}
         extra={(
           <Space>
             <Button icon={<IconLeft />} onClick={() => navigate(listPath)}>返回列表</Button>
-            <Button type="primary" icon={<IconSend />} loading={submitting} onClick={submit}>确认发布</Button>
+            <Button type="primary" icon={<IconSend />} loading={submitting} onClick={submit}>{isEdit ? '保存修改' : '确认发布'}</Button>
           </Space>
         )}
       >
         <Form
           form={form}
           layout="vertical"
+          requiredSymbol={false}
           initialValues={{ studentAccessMode: 'ALL' }}
           onValuesChange={(_, values) => setStudentAccessMode(values.studentAccessMode ?? 'ALL')}
         >

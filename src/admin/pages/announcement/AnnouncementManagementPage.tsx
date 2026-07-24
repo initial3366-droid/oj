@@ -384,6 +384,7 @@ export function AnnouncementManagementPage() {
           form={form}
           layout="vertical"
           autoComplete="off"
+          requiredSymbol={false}
           onValuesChange={(changedValues) => {
             if (typeof changedValues.title === 'string') {
               setPreviewTitle(changedValues.title);

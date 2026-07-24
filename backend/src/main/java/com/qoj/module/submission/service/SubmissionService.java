@@ -163,7 +163,7 @@ public class SubmissionService {
      * 创建或提交目标数据。调用前会结合当前登录身份执行权限判断；不满足业务约束时直接抛出明确异常；执行持久化写入；读写 Redis 中的缓存、锁或限流状态；在状态变化后发布异步消息；可能调用外部判题或网关服务；结果依赖当前时间；整个过程位于同一数据库事务中。
      */
     @Transactional
-    public SubmissionVO submit(SubmissionCreateRequest request, String ip) {
+    public SubmissionVO submit(SubmissionCreateRequest request) {
         AuthUser user = CurrentUser.required();
         if (!"USER".equals(user.accountType())) {
             /**
@@ -234,7 +234,7 @@ public class SubmissionService {
              */
             throw new BizException(429, "重复提交过快");
         }
-        String rateKey = RedisKeys.submitRate(ip == null ? "unknown" : ip);
+        String rateKey = RedisKeys.submitRate(user.id());
         Long count = redisTemplate.opsForValue().increment(rateKey);
         redisTemplate.expire(rateKey, Duration.ofSeconds(60));
         if (count != null && count > 10) {

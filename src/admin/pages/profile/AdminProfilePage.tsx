@@ -24,7 +24,6 @@ const roleNames: Record<string, string> = {
   SUPER_ADMIN: '超级管理员',
   TEACHER: '教师',
   STUDENT: '学生',
-  GUEST: '访客',
 };
 
 /**
@@ -108,7 +107,7 @@ export function AdminProfilePage() {
           </div>
         </div>
 
-        <Form form={form} layout="vertical">
+        <Form form={form} layout="vertical" requiredSymbol={false}>
           <FormItem label="用户名">
             <Input value={user?.username} disabled />
           </FormItem>

@@ -398,6 +398,7 @@ public class ContestService {
         contest.allowAfterEndSubmit = Boolean.TRUE.equals(request.allowAfterEndSubmit());
         contest.allowAfterEndViewProblem = request.allowAfterEndViewProblem() == null || Boolean.TRUE.equals(request.allowAfterEndViewProblem());
         contest.allowAfterEndViewCode = Boolean.TRUE.equals(request.allowAfterEndViewCode());
+        contest.enableCodeTemplates = Boolean.TRUE.equals(request.enableCodeTemplates());
         contest.publicScoreboardEnabled = request.publicScoreboardEnabled() == null || Boolean.TRUE.equals(request.publicScoreboardEnabled());
         contest.showClassOnScoreboard = Boolean.TRUE.equals(request.showClassOnScoreboard());
         contest.allowStarRegistration = Boolean.TRUE.equals(request.allowStarRegistration());
@@ -520,6 +521,9 @@ public class ContestService {
         }
         if (request.allowAfterEndViewCode() != null) {
             contest.allowAfterEndViewCode = request.allowAfterEndViewCode();
+        }
+        if (request.enableCodeTemplates() != null) {
+            contest.enableCodeTemplates = request.enableCodeTemplates();
         }
         if (request.publicScoreboardEnabled() != null) {
             contest.publicScoreboardEnabled = request.publicScoreboardEnabled();
@@ -1453,6 +1457,7 @@ public class ContestService {
             Boolean.TRUE.equals(contest.allowAfterEndSubmit),
             contest.allowAfterEndViewProblem == null || Boolean.TRUE.equals(contest.allowAfterEndViewProblem),
             Boolean.TRUE.equals(contest.allowAfterEndViewCode),
+            Boolean.TRUE.equals(contest.enableCodeTemplates),
             contest.publicScoreboardEnabled == null || Boolean.TRUE.equals(contest.publicScoreboardEnabled),
             Boolean.TRUE.equals(contest.showClassOnScoreboard),
             contest.allowViewAllSubmissions == null || Boolean.TRUE.equals(contest.allowViewAllSubmissions),

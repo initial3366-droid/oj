@@ -7,7 +7,7 @@ import jakarta.validation.constraints.NotBlank;
  */
 public record ProblemTestCaseRequest(
     Integer caseNo,
-    @NotBlank String input,
-    @NotBlank String output
+    String input,
+    @NotBlank(message = "测试点输出数据不能为空") String output
 ) {
 }

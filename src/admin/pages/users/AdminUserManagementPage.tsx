@@ -56,7 +56,6 @@ interface UserFormData {
   displayName: string;
   studentNo?: string;
   email: string;
-  role: string;
   password?: string;
 }
 
@@ -81,7 +80,7 @@ interface AdminSubmission {
   createdAt: string | null;
 }
 
-const ACTIVE_USER_ROLES = new Set(['STUDENT', 'GUEST']);
+const ACTIVE_USER_ROLES = new Set(['STUDENT']);
 const DETAIL_SUBMISSION_PAGE_SIZE = 10;
 
 /**
@@ -108,7 +107,6 @@ function roleText(role?: string | null) {
   const map: Record<string, string> = {
     SUPER_ADMIN: '系统管理员',
     STUDENT: '学生',
-    GUEST: '访客',
   };
   return role ? (map[role] || role) : '-';
 }
@@ -224,7 +222,7 @@ export function AdminUserManagementPage() {
       displayName: user.displayName,
       studentNo: user.studentNo || '',
       email: user.email,
-      role: user.role,
+      password: '',
     });
     setModalVisible(true);
   }
@@ -367,11 +365,17 @@ export function AdminUserManagementPage() {
    */
   async function handleSubmit(values: UserFormData) {
     try {
+      const { password, ...userValues } = values;
+      const normalizedPassword = password?.trim();
+      const payload = normalizedPassword
+        ? { ...userValues, password: normalizedPassword }
+        : userValues;
+
       if (editingUser) {
-        await adminPut(`/api/admin/v1/users/${editingUser.id}`, values);
+        await adminPut(`/api/admin/v1/users/${editingUser.id}`, payload);
         Message.success('更新成功');
       } else {
-        await adminPost('/api/admin/v1/users', values);
+        await adminPost('/api/admin/v1/users', { ...payload, role: 'STUDENT' });
         Message.success('创建成功');
       }
       setModalVisible(false);
@@ -445,7 +449,6 @@ export function AdminUserManagementPage() {
         const colorMap: Record<string, string> = {
           SUPER_ADMIN: 'red',
           STUDENT: 'green',
-          GUEST: 'gray',
         };
         return <Tag color={colorMap[role] || 'gray'}>{role}</Tag>;
       },
@@ -527,7 +530,6 @@ export function AdminUserManagementPage() {
             disabled={location.pathname !== adminPath('/users/all')}
           >
             <Option value="STUDENT">学生</Option>
-            <Option value="GUEST">访客</Option>
           </Select>
           <Button type="primary" icon={<IconSearch />} onClick={handleSearch}>
             搜索
@@ -571,6 +573,7 @@ export function AdminUserManagementPage() {
           onSubmit={handleSubmit}
           labelCol={{ span: 6 }}
           wrapperCol={{ span: 18 }}
+          requiredSymbol={false}
         >
           {editingUser && (
             <FormItem label="头像">
@@ -628,25 +631,28 @@ export function AdminUserManagementPage() {
           </FormItem>
 
           <FormItem
-            label="角色"
-            field="role"
-            rules={[{ required: true, message: '请选择角色' }]}
+            label="密码"
+            field="password"
+            rules={[
+              ...(editingUser ? [] : [{ required: true, message: '请输入密码' }]),
+              {
+                validator: (value, callback) => {
+                  const password = String(value ?? '').trim();
+                  if (!password) {
+                    if (!editingUser) callback('请输入密码');
+                    return;
+                  }
+                  if (password.length < 6) {
+                    callback('密码长度至少6位');
+                  } else if (password.length > 80) {
+                    callback('密码长度不能超过80位');
+                  }
+                },
+              },
+            ]}
           >
-            <Select placeholder="选择角色">
-              <Option value="STUDENT">学生</Option>
-              <Option value="GUEST">访客</Option>
-            </Select>
+            <Input.Password placeholder={editingUser ? '留空则不修改密码' : '密码'} maxLength={80} />
           </FormItem>
-
-          {!editingUser && (
-            <FormItem
-              label="密码"
-              field="password"
-              rules={[{ required: true, message: '请输入密码' }]}
-            >
-              <Input.Password placeholder="密码" />
-            </FormItem>
-          )}
         </Form>
       </Modal>
 

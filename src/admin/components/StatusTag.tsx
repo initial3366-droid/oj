@@ -37,7 +37,6 @@ const defaultColorMap: Record<string, string> = {
   // 用户角色
   SUPER_ADMIN: 'red',
   STUDENT: 'green',
-  GUEST: 'gray',
 };
 
 /**

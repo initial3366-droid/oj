@@ -208,7 +208,7 @@ export function AdminTeacherManagementPage() {
         onOk={() => form.submit()}
         style={{ width: 560 }}
       >
-        <Form form={form} labelCol={{ span: 6 }} wrapperCol={{ span: 18 }} onSubmit={submit}>
+        <Form form={form} labelCol={{ span: 6 }} wrapperCol={{ span: 18 }} requiredSymbol={false} onSubmit={submit}>
           <FormItem label="用户名" field="username" rules={[{ required: true, message: '请输入用户名' }]}>
             <Input placeholder="教师登录用户名" />
           </FormItem>

@@ -34,6 +34,7 @@ public record ContestUpdateRequest(
     Boolean allowAfterEndSubmit,
     Boolean allowAfterEndViewProblem,
     Boolean allowAfterEndViewCode,
+    Boolean enableCodeTemplates,
     Boolean publicScoreboardEnabled,
     Boolean showClassOnScoreboard,
     Boolean allowStarRegistration,

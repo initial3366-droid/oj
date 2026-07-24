@@ -417,11 +417,11 @@ public class ProblemService {
                  */
                 throw new BizException(400, "测试点编号必须大于 0");
             }
-            if (item.inputData == null || item.inputData.isBlank()) {
+            if (sample && (item.inputData == null || item.inputData.isBlank())) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */
-                throw new BizException(400, (sample ? "样例" : "测试点") + " " + caseNo + " 的输入数据不能为空");
+                throw new BizException(400, "样例 " + caseNo + " 的输入数据不能为空");
             }
             if (item.outputData == null || item.outputData.isBlank()) {
                 /**
@@ -437,7 +437,7 @@ public class ProblemService {
             testCase.problemId = problemId;
             testCase.sample = sample;
             testCase.caseNo = caseNo;
-            testCase.inputData = item.inputData;
+            testCase.inputData = item.inputData == null ? "" : item.inputData;
             testCase.outputData = item.outputData;
             testCase.explanation = item.explanation;
             normalized.add(testCase);
@@ -500,7 +500,7 @@ public class ProblemService {
         ProblemTestCase testCase = new ProblemTestCase();
         testCase.problemId = problem.id;
         testCase.caseNo = request.caseNo() == null ? nextHiddenCaseNo(problem.id) : request.caseNo();
-        testCase.inputData = request.input();
+        testCase.inputData = request.input() == null ? "" : request.input();
         testCase.outputData = request.output();
         testCase.sample = false;
         problemTestCaseMapper.insert(testCase);
@@ -522,7 +522,7 @@ public class ProblemService {
             throw new BizException(404, "测试点不存在");
         }
         testCase.caseNo = request.caseNo();
-        testCase.inputData = request.input();
+        testCase.inputData = request.input() == null ? "" : request.input();
         testCase.outputData = request.output();
         problemTestCaseMapper.updateById(testCase);
         redisTemplate.delete(RedisKeys.problem(problemId));

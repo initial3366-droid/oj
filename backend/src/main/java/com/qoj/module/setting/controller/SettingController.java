@@ -2,6 +2,7 @@ package com.qoj.module.setting.controller;
 
 import com.qoj.common.ApiResponse;
 import com.qoj.module.setting.service.SystemSettingService;
+import com.qoj.module.setting.vo.CodeTemplateSettingsVO;
 import com.qoj.module.setting.vo.FrontendSettingsVO;
 import com.qoj.module.setting.vo.PublicJudgeSettingsVO;
 import com.qoj.module.setting.vo.RegisterSettingsVO;
@@ -63,5 +64,13 @@ public class SettingController {
     @GetMapping("/judge")
     public ApiResponse<PublicJudgeSettingsVO> getJudgeSettings() {
         return ApiResponse.ok(settingService.getPublicJudgeSettings());
+    }
+
+    /**
+     * 获取练习页使用的各语言默认代码模板。
+     */
+    @GetMapping("/code-templates")
+    public ApiResponse<CodeTemplateSettingsVO> getCodeTemplateSettings() {
+        return ApiResponse.ok(settingService.getCodeTemplateSettings());
     }
 }

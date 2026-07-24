@@ -4,7 +4,7 @@
 import { Card, Tag, Typography, Spin, Banner, Button } from '@douyinfe/semi-ui';
 import { IconChevronLeft, IconTreeTriangleDown } from '@douyinfe/semi-icons';
 import { useEffect, useState } from 'react';
-import { NavLink, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { fetchContestScoreboard, type ContestScoreboard } from '../data/apiClient';
 
 /**

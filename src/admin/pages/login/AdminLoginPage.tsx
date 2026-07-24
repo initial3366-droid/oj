@@ -116,6 +116,7 @@ export function AdminLoginPage() {
           onSubmit={handleSubmit}
           autoComplete="off"
           layout="vertical"
+          requiredSymbol={false}
           className="admin-login__form"
         >
           <FormItem
