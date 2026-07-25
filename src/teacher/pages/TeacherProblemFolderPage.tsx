@@ -15,7 +15,6 @@ import {
   Space,
   Table,
   Tag,
-  Typography,
 } from '@arco-design/web-react';
 import { IconDelete, IconLeft, IconPlus, IconSave, IconSearch } from '@arco-design/web-react/icon';
 import {
@@ -103,7 +102,15 @@ function difficultyTag(value?: number) {
 function formatDate(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
 }
 
 /**
@@ -299,39 +306,43 @@ export function TeacherProblemFolderPage() {
           style={{ width: '100%' }}
           pagination={{ pageSize: 10, showTotal: true }}
           columns={[
-            { title: 'ID', dataIndex: 'id', width: 64, align: 'center' },
-            { title: '文件夹名称', dataIndex: 'name', width: 150, ellipsis: true },
-            { title: '介绍', dataIndex: 'description', ellipsis: true, render: (value: string) => value || '暂无介绍' },
+            { title: 'ID', dataIndex: 'id', width: '5%', align: 'center' },
+            { title: '文件夹名称', dataIndex: 'name', width: '14%', ellipsis: true },
+            { title: '介绍', dataIndex: 'description', width: '20%', ellipsis: true, render: (value: string) => value || '暂无介绍' },
             {
               title: '题目数量',
               dataIndex: 'problemCount',
-              width: 100,
+              width: '11%',
               align: 'center',
               render: (value: number) => <Tag color="blue">{value || 0} 道题目</Tag>,
             },
             {
-              title: '开放范围', dataIndex: 'accessScope', width: 110,
-              render: (_: unknown, item: ProblemFolder) => <Tag style={{ display: 'block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.accessScope === 'ALL' ? '所有人' : item.accessScope === 'MAJOR' ? item.majorName || '本专业' : '私有'}</Tag>,
+              title: '开放范围', dataIndex: 'accessScope', width: '12%', align: 'center', ellipsis: true,
+              render: (_: unknown, item: ProblemFolder) => (
+                <Tag style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {item.accessScope === 'ALL' ? '所有人' : item.accessScope === 'MAJOR' ? item.majorName || '本专业' : '私有'}
+                </Tag>
+              ),
             },
             {
-              title: '创建时间', dataIndex: 'createdAt', width: 155,
-              render: (value: string) => <Typography.Text ellipsis style={{ display: 'block', overflow: 'hidden', whiteSpace: 'nowrap' }}>{formatDate(value)}</Typography.Text>,
+              title: '创建时间', dataIndex: 'createdAt', width: '13%', ellipsis: true,
+              render: (value: string) => formatDate(value),
             },
             {
-              title: '更新时间', dataIndex: 'updatedAt', width: 155,
-              render: (value: string) => <Typography.Text ellipsis style={{ display: 'block', overflow: 'hidden', whiteSpace: 'nowrap' }}>{formatDate(value)}</Typography.Text>,
+              title: '更新时间', dataIndex: 'updatedAt', width: '13%', ellipsis: true,
+              render: (value: string) => formatDate(value),
             },
             {
               title: '操作',
-              width: 130,
+              width: '12%',
               align: 'center',
               render: (_: unknown, folder: ProblemFolder) => (
-                <Space size={4}>
-                  <Button type="text" size="small" onClick={() => navigate(`/teacher/problem-folders/${folder.id}`)}>
+                <Space size={0} style={{ flexWrap: 'nowrap', justifyContent: 'center' }}>
+                  <Button type="text" size="mini" onClick={() => navigate(`/teacher/problem-folders/${folder.id}`)}>
                     {folder.canEdit ? '编辑' : '查看'}
                   </Button>
                   {folder.canEdit && <Popconfirm title="确定删除？文件夹中的题目会保留" onOk={() => handleDelete(folder.id)}>
-                    <Button type="text" size="small" status="danger" icon={<IconDelete />}>
+                    <Button type="text" size="mini" status="danger">
                       删除
                     </Button>
                   </Popconfirm>}

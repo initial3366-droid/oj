@@ -99,6 +99,11 @@ public class AdminPracticeController {
         return ApiResponse.ok(publicationService.managementDetail(publicationId));
     }
 
+    @GetMapping("/publications/{publicationId}/report")
+    public ApiResponse<PracticeReportVO> publicationReport(@PathVariable long publicationId) {
+        return ApiResponse.ok(publicationService.publicationReport(publicationId));
+    }
+
     @PutMapping("/publications/{publicationId}")
     public ApiResponse<PracticePublicationVO> updatePublication(
         @PathVariable long publicationId,

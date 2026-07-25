@@ -11,16 +11,7 @@ import {
   Tag,
   Typography,
 } from '@arco-design/web-react';
-import {
-  IconCopy,
-  IconDelete,
-  IconEdit,
-  IconEye,
-  IconPlus,
-  IconRefresh,
-  IconSearch,
-  IconSend,
-} from '@arco-design/web-react/icon';
+import { IconPlus, IconRefresh, IconSearch } from '@arco-design/web-react/icon';
 import { teacherDelete, teacherGet, teacherPost } from '../teacherApi';
 
 type AccessScope = 'ALL' | 'MAJOR' | 'PRIVATE';
@@ -142,6 +133,7 @@ export function TeacherPracticeListPage() {
       >
         <Table
           rowKey="id"
+          tableLayoutFixed
           data={filteredPractices}
           loading={loading}
           pagination={{ pageSize: 20, showTotal: true }}
@@ -153,43 +145,41 @@ export function TeacherPracticeListPage() {
             </Space>
           )}
           columns={[
-          { title: 'ID', dataIndex: 'id', width: 70, align: 'center' as const },
+          { title: 'ID', dataIndex: 'id', width: '6%', align: 'center' as const },
           {
             title: '题单名称',
             dataIndex: 'title',
-            width: 260,
+            width: '24%',
+            ellipsis: true,
             render: (title: string, record: Practice) => (
               <div>
-                <Space><Typography.Text bold>{title}</Typography.Text>{!record.owner && <Tag color="orange">共享</Tag>}</Space>
-                {record.description && <Typography.Text type="secondary" ellipsis style={{ display: 'block', maxWidth: 320 }}>{record.description}</Typography.Text>}
+                <Space><Typography.Text bold ellipsis={{ showTooltip: true }} style={{ marginBottom: 0 }}>{title}</Typography.Text>{!record.owner && <Tag color="orange">共享</Tag>}</Space>
+                {record.description && <Typography.Text type="secondary" ellipsis={{ showTooltip: true }} style={{ display: 'block', marginBottom: 0 }}>{record.description}</Typography.Text>}
               </div>
             ),
           },
-          { title: '教师开放范围', width: 180, render: (_: unknown, record: Practice) => scopeTag(record) },
-          { title: '题目数', width: 90, align: 'center' as const, render: (_: unknown, record: Practice) => record.problems?.length ?? 0 },
-          { title: '创建者类型', dataIndex: 'ownerAccountType', width: 110, render: (value: string) => value === 'ADMIN' ? '管理员' : '教师' },
-          { title: '创建时间', dataIndex: 'createdAt', width: 170, render: (value: string) => value ? new Date(value).toLocaleString('zh-CN') : '-' },
+          { title: '开放范围', width: '13%', align: 'center' as const, ellipsis: true, render: (_: unknown, record: Practice) => scopeTag(record) },
+          { title: '题目数', width: '8%', align: 'center' as const, render: (_: unknown, record: Practice) => record.problems?.length ?? 0 },
+          { title: '创建者', dataIndex: 'ownerAccountType', width: '9%', align: 'center' as const, render: (value: string) => value === 'ADMIN' ? '管理员' : '教师' },
+          { title: '创建时间', dataIndex: 'createdAt', width: '15%', ellipsis: true, render: (value: string) => value ? new Date(value).toLocaleString('zh-CN') : '-' },
           {
             title: '操作',
-            width: 360,
+            width: '25%',
             align: 'center' as const,
             render: (_: unknown, record: Practice) => (
-              <Space wrap>
-                {record.owner && (
-                  <Button type="text" size="small" icon={<IconEye />} onClick={() => navigate(`/teacher/practices/${record.id}/report`)}>做题信息</Button>
-                )}
+              <Space size={0} style={{ flexWrap: 'nowrap', justifyContent: 'center' }}>
                 {record.canEdit && (
-                  <Button type="text" size="small" icon={<IconEdit />} onClick={() => navigate(`/teacher/practices/${record.id}/edit`)}>编辑</Button>
+                  <Button type="text" size="mini" onClick={() => navigate(`/teacher/practices/${record.id}/edit`)}>编辑</Button>
                 )}
                 {record.canCopy && (
-                  <Button type="text" size="small" icon={<IconCopy />} onClick={() => handleCopy(record.id)}>复制</Button>
+                  <Button type="text" size="mini" onClick={() => handleCopy(record.id)}>复制</Button>
                 )}
                 {record.canPublish && (
-                  <Button type="text" size="small" icon={<IconSend />} onClick={() => navigate(`/teacher/practices/${record.id}/publish`)}>发布</Button>
+                  <Button type="text" size="mini" onClick={() => navigate(`/teacher/practices/${record.id}/publish`)}>发布</Button>
                 )}
                 {record.owner && (
                   <Popconfirm title="确定删除该题单吗？" onOk={() => handleDelete(record.id)}>
-                    <Button type="text" size="small" status="danger" icon={<IconDelete />}>删除</Button>
+                    <Button type="text" size="mini" status="danger">删除</Button>
                   </Popconfirm>
                 )}
               </Space>
@@ -202,31 +192,36 @@ export function TeacherPracticeListPage() {
       <Card bordered={false} title={`我的发布（${publications.length}）`}>
         <Table
           rowKey="id"
+          tableLayoutFixed
           data={publications}
           loading={loading}
           pagination={{ pageSize: 20, showTotal: true }}
           columns={[
-            { title: '发布ID', dataIndex: 'id', width: 80 },
-            { title: '发布标题', dataIndex: 'title', width: 200, ellipsis: true, render: (value: string) => <Typography.Text bold ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{value}</Typography.Text> },
-            { title: '来源题单', dataIndex: 'sourcePracticeId', width: 90, render: (value: number) => `#${value}` },
-            { title: '题目数', width: 80, align: 'center' as const, render: (_: unknown, item: PracticePublication) => item.problems.length },
+            { title: '发布ID', dataIndex: 'id', width: '7%', align: 'center' as const },
+            { title: '发布标题', dataIndex: 'title', width: '20%', ellipsis: true, render: (value: string) => <Typography.Text bold ellipsis={{ showTooltip: true }} style={{ display: 'block', marginBottom: 0 }}>{value}</Typography.Text> },
+            { title: '来源题单', dataIndex: 'sourcePracticeId', width: '9%', align: 'center' as const, render: (value: number) => `#${value}` },
+            { title: '题目数', width: '8%', align: 'center' as const, render: (_: unknown, item: PracticePublication) => item.problems.length },
             {
               title: '学生范围',
-              width: 150,
+              width: '13%',
+              align: 'center' as const,
+              ellipsis: true,
               render: (_: unknown, item: PracticePublication) => item.studentAccessMode === 'ALL'
                 ? <Tag color="green">所有学生</Tag>
                 : <Tag color="arcoblue">指定班级（{item.classIds.length}）</Tag>,
             },
-            { title: '状态', dataIndex: 'status', width: 90, render: (value: string) => <Tag color="green">{value === 'PUBLISHED' ? '已发布' : value}</Tag> },
-            { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (value: string) => value ? new Date(value).toLocaleString('zh-CN') : '-' },
+            { title: '状态', dataIndex: 'status', width: '9%', align: 'center' as const, render: (value: string) => <Tag color="green">{value === 'PUBLISHED' ? '已发布' : value}</Tag> },
+            { title: '创建时间', dataIndex: 'createdAt', width: '14%', ellipsis: true, render: (value: string) => value ? new Date(value).toLocaleString('zh-CN') : '-' },
             {
               title: '操作',
-              width: 150,
+              width: '20%',
+              align: 'center' as const,
               render: (_: unknown, item: PracticePublication) => (
-                <Space>
-                  <Button type="text" size="small" icon={<IconEdit />} onClick={() => navigate(`/teacher/practices/publications/${item.id}/edit`)}>编辑</Button>
+                <Space size={0} style={{ flexWrap: 'nowrap', justifyContent: 'center' }}>
+                  <Button type="text" size="mini" onClick={() => navigate(`/teacher/practices/publications/${item.id}/report`)}>做题信息</Button>
+                  <Button type="text" size="mini" onClick={() => navigate(`/teacher/practices/publications/${item.id}/edit`)}>编辑</Button>
                   <Popconfirm title="确定删除该发布实例吗？删除后学生将无法访问。" onOk={() => handleDeletePublication(item.id)}>
-                    <Button type="text" size="small" status="danger" icon={<IconDelete />}>删除</Button>
+                    <Button type="text" size="mini" status="danger">删除</Button>
                   </Popconfirm>
                 </Space>
               ),

@@ -15,7 +15,7 @@ import {
   Tag,
   Typography,
 } from '@arco-design/web-react';
-import { IconLeft, IconSend } from '@arco-design/web-react/icon';
+import { IconDelete, IconLeft, IconPlus, IconSend } from '@arco-design/web-react/icon';
 import { adminGet, adminPost, adminPut } from '../../admin/api/adminClient';
 import { teacherGet, teacherPost, teacherPut } from '../../teacher/teacherApi';
 import { adminPath } from '../../utils/adminPath';
@@ -94,6 +94,10 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [studentAccessMode, setStudentAccessMode] = useState<StudentAccessMode>('ALL');
   const [visibility, setVisibility] = useState<Record<number, boolean>>({});
+  // 编辑发布实例时的题目全集（支持增删）；发布新实例时保持源题单题目不变。
+  const [problems, setProblems] = useState<Problem[]>([]);
+  const [pool, setPool] = useState<Problem[]>([]);
+  const [addProblemId, setAddProblemId] = useState<number | undefined>();
 
   const listPath = variant === 'teacher' ? '/teacher/practices' : adminPath('/practices');
   const getRequest = variant === 'teacher' ? teacherGet : adminGet;
@@ -117,16 +121,19 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
     setLoading(true);
     try {
       if (isEdit) {
-        const [detail, classResult] = await Promise.all([
+        const [detail, classResult, poolResult] = await Promise.all([
           getRequest<PublicationDetail>(`/api/admin/v1/practices/publications/${editId}`),
           loadClasses(),
+          getRequest<PageResult<Problem>>('/api/admin/v1/problems?page=1&pageSize=500'),
         ]);
         setClasses(classResult);
-        const problems: Problem[] = (detail.publicationProblems ?? []).map((item) => ({
+        setPool(poolResult.list);
+        const publicationProblems: Problem[] = (detail.publicationProblems ?? []).map((item) => ({
           id: item.problemId,
           title: item.title ?? `#${item.problemId}`,
         }));
-        setPractice({ id: detail.id, title: detail.title, description: detail.description, problems, canPublish: true });
+        setProblems(publicationProblems);
+        setPractice({ id: detail.id, title: detail.title, description: detail.description, problems: publicationProblems, canPublish: true });
         setVisibility(Object.fromEntries((detail.publicationProblems ?? []).map((item) => [item.problemId, item.visibility === 'VISIBLE'])));
         const mode = detail.studentAccessMode === 'SELECTED_CLASSES' ? 'SELECTED_CLASSES' : 'ALL';
         setStudentAccessMode(mode);
@@ -146,6 +153,7 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
         throw new Error('题单不存在或无权发布');
       }
       setPractice(source);
+      setProblems(source.problems ?? []);
       setClasses(classResult);
       setVisibility(Object.fromEntries((source.problems ?? []).map((problem) => [problem.id, true])));
       form.setFieldsValue({
@@ -171,7 +179,11 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
         Message.warning('请选择至少一个班级');
         return;
       }
-      if (!Object.values(visibility).some(Boolean)) {
+      if (problems.length === 0) {
+        Message.warning('请至少添加一道题目');
+        return;
+      }
+      if (!problems.some((problem) => visibility[problem.id])) {
         Message.warning('至少公开一道题目后才能发布');
         return;
       }
@@ -182,7 +194,7 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
         studentAccessMode: values.studentAccessMode,
         classIds: values.studentAccessMode === 'SELECTED_CLASSES' ? values.classIds : [],
         password: values.password?.trim() || undefined,
-        problems: practice.problems.map((problem) => ({
+        problems: problems.map((problem) => ({
           problemId: problem.id,
           visibility: visibility[problem.id] ? 'VISIBLE' : 'HIDDEN',
         })),
@@ -207,9 +219,32 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
   }
 
   const visibleCount = useMemo(
-    () => Object.values(visibility).filter(Boolean).length,
-    [visibility],
+    () => problems.filter((problem) => visibility[problem.id]).length,
+    [problems, visibility],
   );
+
+  const addableProblems = useMemo(() => {
+    const existing = new Set(problems.map((problem) => problem.id));
+    return pool.filter((problem) => !existing.has(problem.id));
+  }, [pool, problems]);
+
+  function addProblem() {
+    if (addProblemId == null) return;
+    const picked = pool.find((problem) => problem.id === addProblemId);
+    if (!picked || problems.some((problem) => problem.id === picked.id)) return;
+    setProblems((current) => [...current, picked]);
+    setVisibility((current) => ({ ...current, [picked.id]: true }));
+    setAddProblemId(undefined);
+  }
+
+  function removeProblem(id: number) {
+    setProblems((current) => current.filter((problem) => problem.id !== id));
+    setVisibility((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -273,12 +308,29 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
       <Card
         bordered={false}
         title="题目公开设置"
-        extra={<Tag color="arcoblue">公开 {visibleCount} / {practice?.problems.length ?? 0}</Tag>}
+        extra={<Tag color="arcoblue">公开 {visibleCount} / {problems.length}</Tag>}
       >
+        {isEdit && (
+          <Space style={{ marginBottom: 16 }}>
+            <Select
+              showSearch
+              allowClear
+              placeholder="选择要添加的题目"
+              style={{ width: 320 }}
+              value={addProblemId}
+              onChange={(value) => setAddProblemId(value)}
+            >
+              {addableProblems.map((problem) => (
+                <Select.Option key={problem.id} value={problem.id}>{problem.id}. {problem.title}</Select.Option>
+              ))}
+            </Select>
+            <Button type="primary" icon={<IconPlus />} disabled={addProblemId == null} onClick={addProblem}>添加题目</Button>
+          </Space>
+        )}
         <Table
           rowKey="id"
           pagination={false}
-          data={practice?.problems ?? []}
+          data={problems}
           columns={[
             { title: '顺序', width: 80, align: 'center' as const, render: (_: unknown, __: Problem, index: number) => index + 1 },
             { title: '题目', render: (_: unknown, problem: Problem) => <Space><Typography.Text code>#{problem.id}</Typography.Text><Typography.Text>{problem.title}</Typography.Text></Space> },
@@ -296,6 +348,14 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
                 />
               ),
             },
+            ...(isEdit ? [{
+              title: '操作',
+              width: 100,
+              align: 'center' as const,
+              render: (_: unknown, problem: Problem) => (
+                <Button type="text" size="small" status="danger" icon={<IconDelete />} onClick={() => removeProblem(problem.id)}>移除</Button>
+              ),
+            }] : []),
           ]}
         />
       </Card>

@@ -19,16 +19,26 @@ import com.qoj.module.practice.mapper.PracticeProblemMapper;
 import com.qoj.module.practice.mapper.PracticePublicationClassMapper;
 import com.qoj.module.practice.mapper.PracticePublicationMapper;
 import com.qoj.module.practice.mapper.PracticePublicationProblemMapper;
+import com.qoj.common.enums.SubmissionStatus;
 import com.qoj.module.practice.vo.PracticePublicationVO;
+import com.qoj.module.practice.vo.PracticeRankVO;
+import com.qoj.module.practice.vo.PracticeReportVO;
+import com.qoj.module.practice.vo.PracticeSubmissionVO;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.service.ProblemService;
+import com.qoj.module.submission.entity.Submission;
+import com.qoj.module.submission.mapper.SubmissionMapper;
+import com.qoj.module.user.entity.User;
+import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
 import com.qoj.security.policy.ResourceAccessService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +62,8 @@ public class PracticePublicationService {
     private final ResourceAccessService resourceAccessService;
     private final PasswordEncoder passwordEncoder;
     private final StringRedisTemplate redisTemplate;
+    private final SubmissionMapper submissionMapper;
+    private final UserMapper userMapper;
 
     public PracticePublicationService(
         PracticePublicationMapper publicationMapper,
@@ -65,7 +77,9 @@ public class PracticePublicationService {
         ProblemService problemService,
         ResourceAccessService resourceAccessService,
         PasswordEncoder passwordEncoder,
-        StringRedisTemplate redisTemplate
+        StringRedisTemplate redisTemplate,
+        SubmissionMapper submissionMapper,
+        UserMapper userMapper
     ) {
         this.publicationMapper = publicationMapper;
         this.publicationClassMapper = publicationClassMapper;
@@ -79,6 +93,8 @@ public class PracticePublicationService {
         this.resourceAccessService = resourceAccessService;
         this.passwordEncoder = passwordEncoder;
         this.redisTemplate = redisTemplate;
+        this.submissionMapper = submissionMapper;
+        this.userMapper = userMapper;
     }
 
     @Transactional
@@ -153,11 +169,18 @@ public class PracticePublicationService {
         PracticePublication publication = requireManaged(publicationId);
         AuthUser publisher = CurrentUser.required();
         List<PracticePublicationProblem> currentItems = publicationProblems(publicationId);
-        Set<Long> problemIds = currentItems.stream().map(item -> item.problemId).collect(java.util.stream.Collectors.toSet());
-        Map<Long, String> requestedVisibility = normalizeVisibility(request.problems(), problemIds);
+        Map<Long, PracticePublicationProblem> currentByProblem = new LinkedHashMap<>();
+        currentItems.forEach(item -> currentByProblem.put(item.problemId, item));
+        // 编辑发布实例时，请求内的题目列表即为发布实例的题目全集与顺序，支持增删。
+        LinkedHashMap<Long, String> requestedVisibility = resolveRequestedVisibility(request.problems());
         if (requestedVisibility.values().stream().noneMatch("VISIBLE"::equals)) {
             throw new BizException(400, "至少公开一道题目后才能发布");
         }
+        List<Long> addedProblemIds = requestedVisibility.keySet().stream()
+            .filter(problemId -> !currentByProblem.containsKey(problemId))
+            .toList();
+        Map<Long, Problem> addedProblems = requireUsableProblems(publisher, addedProblemIds);
+
         List<Long> classIds = normalizeClasses(publisher, request.studentAccessMode(), request.classIds());
         publication.title = hasText(request.title()) ? request.title().trim() : publication.title;
         publication.description = request.description() == null ? publication.description : request.description().trim();
@@ -175,16 +198,116 @@ public class PracticePublicationService {
             grant.classId = classId;
             publicationClassMapper.insert(grant);
         }
-        for (PracticePublicationProblem item : currentItems) {
-            item.visibility = requestedVisibility.get(item.problemId);
-            publicationProblemMapper.update(
-                item,
-                new QueryWrapper<PracticePublicationProblem>()
-                    .eq("publication_id", publicationId)
-                    .eq("problem_id", item.problemId)
-            );
+
+        // 删除请求中不再包含的题目
+        for (PracticePublicationProblem existing : currentItems) {
+            if (!requestedVisibility.containsKey(existing.problemId)) {
+                publicationProblemMapper.delete(
+                    new QueryWrapper<PracticePublicationProblem>()
+                        .eq("publication_id", publicationId)
+                        .eq("problem_id", existing.problemId)
+                );
+            }
+        }
+        // 按请求顺序写入题目全集（下标即展示顺序），已有的更新可见性，新增的插入
+        int displayOrder = 1;
+        for (Map.Entry<Long, String> entry : requestedVisibility.entrySet()) {
+            Long problemId = entry.getKey();
+            String visibility = entry.getValue();
+            PracticePublicationProblem existing = currentByProblem.get(problemId);
+            if (existing != null) {
+                existing.displayOrder = displayOrder;
+                existing.visibility = visibility;
+                publicationProblemMapper.update(
+                    existing,
+                    new QueryWrapper<PracticePublicationProblem>()
+                        .eq("publication_id", publicationId)
+                        .eq("problem_id", problemId)
+                );
+            } else {
+                PracticePublicationProblem item = new PracticePublicationProblem();
+                item.publicationId = publicationId;
+                item.problemId = problemId;
+                item.displayOrder = displayOrder;
+                item.score = 0;
+                item.visibility = visibility;
+                publicationProblemMapper.insert(item);
+            }
+            displayOrder++;
         }
         return managementDetail(publicationId);
+    }
+
+    public PracticeReportVO publicationReport(long publicationId) {
+        PracticePublication publication = requireManaged(publicationId);
+        List<PracticePublicationProblem> items = publicationProblems(publicationId);
+        Map<Long, Integer> scoreByProblem = new HashMap<>();
+        items.forEach(item -> scoreByProblem.put(item.problemId, item.score == null ? 0 : item.score));
+        List<Long> problemIds = items.stream().map(item -> item.problemId).toList();
+        Map<Long, Problem> problems = problemIds.isEmpty()
+            ? Map.of()
+            : problemMapper.selectBatchIds(problemIds).stream()
+                .collect(java.util.stream.Collectors.toMap(item -> item.id, item -> item));
+
+        List<Submission> submissions = submissionMapper.selectList(
+            new QueryWrapper<Submission>()
+                .eq("practice_publication_id", publication.id)
+                .orderByDesc("created_at")
+        );
+        Map<Long, User> users = submissions.isEmpty()
+            ? Map.of()
+            : userMapper.selectBatchIds(submissions.stream().map(item -> item.userId).distinct().toList()).stream()
+                .collect(java.util.stream.Collectors.toMap(item -> item.id, item -> item));
+
+        Map<Long, RankAccumulator> ranks = new LinkedHashMap<>();
+        for (Submission submission : submissions) {
+            RankAccumulator rank = ranks.computeIfAbsent(submission.userId, userId -> new RankAccumulator());
+            rank.submissionCount += 1;
+            if (SubmissionStatus.AC.name().equals(submission.status) && scoreByProblem.containsKey(submission.problemId)) {
+                int score = scoreByProblem.get(submission.problemId);
+                if (rank.acceptedProblems.putIfAbsent(submission.problemId, score) == null) {
+                    rank.score += score;
+                    rank.solved += 1;
+                }
+            }
+        }
+
+        List<PracticeRankVO> rankings = new ArrayList<>();
+        for (Map.Entry<Long, RankAccumulator> entry : ranks.entrySet()) {
+            User user = users.get(entry.getKey());
+            RankAccumulator rank = entry.getValue();
+            rankings.add(new PracticeRankVO(
+                entry.getKey(),
+                user == null ? String.valueOf(entry.getKey()) : user.displayName,
+                rank.score,
+                rank.solved,
+                rank.submissionCount
+            ));
+        }
+        rankings.sort(
+            Comparator.comparing(PracticeRankVO::score).reversed()
+                .thenComparing(PracticeRankVO::submissionCount)
+                .thenComparing(PracticeRankVO::userId)
+        );
+
+        List<PracticeSubmissionVO> submissionVOs = submissions.stream().map(submission -> {
+            User user = users.get(submission.userId);
+            Problem problem = problems.get(submission.problemId);
+            return new PracticeSubmissionVO(
+                submission.id,
+                submission.userId,
+                user == null ? String.valueOf(submission.userId) : user.displayName,
+                submission.problemId,
+                problem == null ? String.valueOf(submission.problemId) : problem.title,
+                submission.language,
+                submission.status,
+                submission.timeUsed,
+                submission.memoryUsed,
+                submission.createdAt
+            );
+        }).toList();
+
+        return new PracticeReportVO(publication.id, rankings.size(), submissions.size(), rankings, submissionVOs);
     }
 
     @Transactional
@@ -392,6 +515,40 @@ public class PracticePublicationService {
         return mode;
     }
 
+    private LinkedHashMap<Long, String> resolveRequestedVisibility(
+        List<PracticePublicationRequest.ProblemVisibilityRequest> requested
+    ) {
+        LinkedHashMap<Long, String> result = new LinkedHashMap<>();
+        for (PracticePublicationRequest.ProblemVisibilityRequest item : requested) {
+            if (item.problemId() == null || result.containsKey(item.problemId())) {
+                throw new BizException(400, "发布题目存在重复或缺失");
+            }
+            String visibility = item.visibility().trim().toUpperCase();
+            if (!Set.of("VISIBLE", "HIDDEN").contains(visibility)) {
+                throw new BizException(400, "题目状态仅支持公开或隐藏");
+            }
+            result.put(item.problemId(), visibility);
+        }
+        if (result.isEmpty()) {
+            throw new BizException(400, "题单至少包含一道题目");
+        }
+        return result;
+    }
+
+    private Map<Long, Problem> requireUsableProblems(AuthUser publisher, List<Long> problemIds) {
+        if (problemIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Problem> problems = problemMapper.selectBatchIds(problemIds);
+        if (problems.size() != problemIds.stream().distinct().count()) {
+            throw new BizException(404, "新增题目不存在");
+        }
+        if (problems.stream().anyMatch(problem -> !resourceAccessService.canUseProblem(publisher, problem))) {
+            throw new BizException(403, "包含无权使用的题目");
+        }
+        return problems.stream().collect(java.util.stream.Collectors.toMap(item -> item.id, item -> item));
+    }
+
     private Map<Long, String> normalizeVisibility(
         List<PracticePublicationRequest.ProblemVisibilityRequest> requested,
         Set<Long> expectedProblemIds
@@ -493,5 +650,12 @@ public class PracticePublicationService {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private static class RankAccumulator {
+        int score;
+        int solved;
+        int submissionCount;
+        Map<Long, Integer> acceptedProblems = new HashMap<>();
     }
 }

@@ -56,6 +56,8 @@ class PracticePublicationServiceTest {
     @Mock private ResourceAccessService resourceAccessService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private StringRedisTemplate redisTemplate;
+    @Mock private com.qoj.module.submission.mapper.SubmissionMapper submissionMapper;
+    @Mock private com.qoj.module.user.mapper.UserMapper userMapper;
     private PracticePublicationService service;
 
     @BeforeEach
@@ -64,7 +66,7 @@ class PracticePublicationServiceTest {
             publicationMapper, publicationClassMapper, publicationProblemMapper,
             practiceMapper, practiceProblemMapper, problemMapper, classRoomMapper,
             classMemberMapper, problemService, resourceAccessService, passwordEncoder,
-            redisTemplate
+            redisTemplate, submissionMapper, userMapper
         );
     }
 

@@ -14,9 +14,10 @@ import {
   Table,
   Tag,
 } from '@arco-design/web-react';
-import { IconDelete, IconEdit, IconFile, IconPlus, IconSearch } from '@arco-design/web-react/icon';
+import { IconDelete, IconEdit, IconEye, IconFile, IconPlus, IconSearch } from '@arco-design/web-react/icon';
 import { teacherGet, teacherDelete } from '../teacherApi';
 import { encryptId } from '../../utils/cipher';
+import { ProblemPreviewModal } from '../../components/problems/ProblemPreviewModal';
 
 /**
  * 题目接口，明确该模块内部及 API 边界使用的数据结构。
@@ -88,6 +89,7 @@ export function TeacherProblemListPage() {
   const [filterFolderId, setFilterFolderId] = useState<number | undefined>();
   const [filterOwnerName, setFilterOwnerName] = useState('');
   const [folders, setFolders] = useState<FolderOption[]>([]);
+  const [previewId, setPreviewId] = useState<number | null>(null);
 
   /**
    * 读取Folders并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
@@ -178,20 +180,19 @@ export function TeacherProblemListPage() {
     {
       title: '题目名称',
       dataIndex: 'title',
-      width: 180,
       ellipsis: true,
     },
     {
       title: '创建者',
       dataIndex: 'ownerName',
-      width: 90,
+      width: 130,
       ellipsis: true,
       render: (value: string) => value || '-',
     },
     {
       title: '难度',
       dataIndex: 'difficulty',
-      width: 72,
+      width: 90,
       align: 'center' as const,
       render: (value: number) => {
         const info = difficultyMap[value] || { text: '未知', color: 'gray' };
@@ -201,62 +202,59 @@ export function TeacherProblemListPage() {
     {
       title: '所属文件夹',
       dataIndex: 'folderName',
-      width: 110,
+      width: 150,
       ellipsis: true,
       render: (value: string) => value || '-',
     },
     {
-      title: '通过率',
-      dataIndex: 'acRate',
-      width: 72,
-      align: 'center' as const,
-      render: (value: number) => `${value}%`,
-    },
-    {
-      title: '测试点',
-      dataIndex: 'testCaseCount',
-      width: 70,
-      align: 'center' as const,
-      render: (value: number) => value ?? 0,
-    },
-    {
-      title: '开放范围',
-      dataIndex: 'accessScope',
+      title: '学生题库',
+      dataIndex: 'studentPublishStatus',
       width: 100,
       align: 'center' as const,
-      render: (_: unknown, record: Problem) => (
-        <Tag>{record.accessScope === 'ALL' ? '所有人' : record.accessScope === 'MAJOR' ? record.majorName || '本专业' : '私有'}</Tag>
-      ),
+      render: (value: Problem['studentPublishStatus']) => <Tag color={value === 'PUBLISHED' ? 'green' : 'gray'}>{value === 'PUBLISHED' ? '已发布' : '未发布'}</Tag>,
     },
-    { title: '学生题库', dataIndex: 'studentPublishStatus', width: 90, render: (value: Problem['studentPublishStatus']) => <Tag color={value === 'PUBLISHED' ? 'green' : 'gray'}>{value === 'PUBLISHED' ? '已发布' : '未发布'}</Tag> },
     {
       title: '操作',
-      width: 180,
+      width: 210,
       align: 'center' as const,
       render: (_: unknown, record: Problem) => (
-        record.canEdit ? <Space size={2} wrap={false}>
+        <Space size={2} wrap={false}>
           <Button
             type="text"
             size="small"
-            icon={<IconEdit />}
-            onClick={() => handleEdit(record.id)}
+            icon={<IconEye />}
+            onClick={() => setPreviewId(record.id)}
           >
-            编辑
+            查看
           </Button>
-          <Button
-            type="text"
-            size="small"
-            icon={<IconFile />}
-            onClick={() => handleTestCases(record.id)}
-          >
-            测试点
-          </Button>
-          <Popconfirm title="确定删除该题目吗？" onOk={() => handleDelete(record.id)}>
-            <Button type="text" size="small" status="danger" icon={<IconDelete />}>
-              删除
-            </Button>
-          </Popconfirm>
-        </Space> : <Tag color="blue">可组题</Tag>
+          {record.canEdit ? (
+            <>
+              <Button
+                type="text"
+                size="small"
+                icon={<IconEdit />}
+                onClick={() => handleEdit(record.id)}
+              >
+                编辑
+              </Button>
+              <Button
+                type="text"
+                size="small"
+                icon={<IconFile />}
+                onClick={() => handleTestCases(record.id)}
+              >
+                测试点
+              </Button>
+              <Popconfirm title="确定删除该题目吗？" onOk={() => handleDelete(record.id)}>
+                <Button type="text" size="small" status="danger" icon={<IconDelete />}>
+                  删除
+                </Button>
+              </Popconfirm>
+            </>
+          ) : (
+            <Tag color="blue">可组题</Tag>
+          )}
+        </Space>
       ),
     },
   ];
@@ -334,6 +332,13 @@ export function TeacherProblemListPage() {
           showTotal: true,
           onChange: setPage,
         }}
+      />
+
+      <ProblemPreviewModal
+        visible={previewId != null}
+        problemId={previewId}
+        onClose={() => setPreviewId(null)}
+        get={teacherGet}
       />
     </Card>
   );

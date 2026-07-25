@@ -18,6 +18,7 @@ import { AdminProblemCreatePage } from '../pages/problems/AdminProblemCreatePage
 import { AdminProblemFolderPage } from '../pages/problems/AdminProblemFolderPage';
 import { AdminPracticeManagementPage } from '../pages/practices/AdminPracticeManagementPage';
 import { PracticePublishPage } from '../../components/practices/PracticePublishPage';
+import { PracticePublicationReportPage } from '../../components/practices/PracticePublicationReportPage';
 import { AdminSubmissionQueuePage } from '../pages/judge/AdminSubmissionQueuePage';
 import { AdminSubmissionListPage } from '../pages/submissions/AdminSubmissionListPage';
 import { AdminSubmissionStatisticsPage } from '../pages/submissions/AdminSubmissionStatisticsPage';
@@ -70,6 +71,7 @@ export function AdminRoutes() {
                 <Route path="/practices/new" element={<AdminPracticeManagementPage />} />
                 <Route path="/practices/:practiceId/publish" element={<PracticePublishPage variant="admin" />} />
                 <Route path="/practices/publications/:publicationId/edit" element={<PracticePublishPage variant="admin" />} />
+                <Route path="/practices/publications/:publicationId/report" element={<PracticePublicationReportPage variant="admin" />} />
                 <Route path="/practices/:practiceId/edit" element={<AdminPracticeManagementPage />} />
 
                 {/* 比赛管理 */}
