@@ -28,7 +28,6 @@ import {
 import {
   IconCode,
   IconDelete,
-  IconEdit,
   IconFile,
   IconLeft,
   IconPlus,
@@ -1006,11 +1005,14 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
       {
         title: '比赛名称',
         dataIndex: 'title',
-        width: '22%',
+        width: '16%',
+        ellipsis: true,
         render: (_: unknown, record: AdminContest) => (
-          <Space direction="vertical" size={2}>
-            <Typography.Text bold>{record.title}</Typography.Text>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Space direction="vertical" size={2} style={{ width: '100%' }}>
+            <Typography.Text bold ellipsis={{ showTooltip: true }} style={{ display: 'block', marginBottom: 0 }}>
+              {record.title}
+            </Typography.Text>
+            <Typography.Text type="secondary" ellipsis={{ showTooltip: true }} style={{ display: 'block', marginBottom: 0, fontSize: 12 }}>
               {record.ownerName || `用户 ${record.ownerId}`}
             </Typography.Text>
           </Space>
@@ -1047,6 +1049,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
         title: '开始时间',
         dataIndex: 'startTime',
         width: '15%',
+        ellipsis: true,
         render: (value: string, record: AdminContest) => (
           <Space direction="vertical" size={2}>
             <Typography.Text>{value ? value.replace('T', ' ').slice(0, 16) : '-'}</Typography.Text>
@@ -1064,36 +1067,26 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
       },
       {
         title: '操作',
-        width: '17%',
+        width: '23%',
         align: 'center' as const,
         render: (_: unknown, record: AdminContest) => (
-          <Space size={2} wrap>
+          <Space size={0} style={{ flexWrap: 'nowrap', justifyContent: 'center' }}>
             {mode === 'list' ? (
               <>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<IconFile />}
-                  onClick={() => navigate(`/admin/contests/${record.id}`)}
-                >
+                <Button type="text" size="mini" onClick={() => navigate(`/admin/contests/${record.id}`)}>
                   查看
                 </Button>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<IconEdit />}
-                  onClick={() => navigate(`/admin/contests/${record.id}/edit`)}
-                >
+                <Button type="text" size="mini" onClick={() => navigate(`/admin/contests/${record.id}/edit`)}>
                   编辑
                 </Button>
               </>
             ) : null}
-            <Button type="text" size="small" onClick={() => openPublicScoreboard(record.id)}>
+            <Button type="text" size="mini" onClick={() => openPublicScoreboard(record.id)}>
               外榜
             </Button>
             {mode === 'list' ? (
               <Popconfirm title="确定要删除该比赛吗？" onOk={() => removeContest(record.id)}>
-                <Button type="text" size="small" status="danger" icon={<IconDelete />}>
+                <Button type="text" size="mini" status="danger">
                   删除
                 </Button>
               </Popconfirm>

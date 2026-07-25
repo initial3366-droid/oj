@@ -69,6 +69,7 @@ import { TeacherPracticeListPage } from './pages/TeacherPracticeListPage';
 import { TeacherPracticeCreatePage } from './pages/TeacherPracticeCreatePage';
 import { TeacherPracticeReportPage } from './pages/TeacherPracticeReportPage';
 import { PracticePublishPage } from '../components/practices/PracticePublishPage';
+import { PracticePublicationReportPage } from '../components/practices/PracticePublicationReportPage';
 import { TeacherProfilePage } from './pages/TeacherProfilePage';
 import { TeacherDashboardPage } from './TeacherDashboardPage';
 
@@ -654,6 +655,7 @@ function TeacherLayout() {
             <Route path="/practices/new" element={<TeacherPracticeCreatePage />} />
             <Route path="/practices/:practiceId/publish" element={<PracticePublishPage variant="teacher" />} />
             <Route path="/practices/publications/:publicationId/edit" element={<PracticePublishPage variant="teacher" />} />
+            <Route path="/practices/publications/:publicationId/report" element={<PracticePublicationReportPage variant="teacher" />} />
             <Route path="/practices/:practiceId/edit" element={<TeacherPracticeCreatePage />} />
             <Route path="/practices/:practiceId/report" element={<TeacherPracticeReportPage />} />
             <Route path="/contests" element={<TeacherContestListPage />} />
