@@ -150,4 +150,4 @@ MIT License
 ## 联系方式
 
 - 问题反馈: 提交 GitHub Issue
-- 开发团队: QOJ Team
+- 开发团队: 人生若只如初见
