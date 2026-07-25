@@ -16,15 +16,12 @@ import {
   Typography,
 } from '@arco-design/web-react';
 import {
-  IconCopy,
   IconDelete,
-  IconEdit,
   IconLeft,
   IconPlus,
   IconRefresh,
   IconSave,
   IconSearch,
-  IconSend,
 } from '@arco-design/web-react/icon';
 import { adminDelete, adminGet, adminPost, adminPut } from '../../api/adminClient';
 import { AdminPageContainer } from '../../layout/AdminPageContainer';
@@ -390,23 +387,24 @@ export function AdminPracticeManagementPage() {
       >
         <Table
           rowKey="id"
+          tableLayoutFixed
           data={filteredPractices}
           pagination={{ pageSize: 20, showTotal: true }}
           expandedRowRender={(record: Practice) => <Space wrap>{record.problems.map((problem, index) => <Tag key={problem.id}>{index + 1}. {problem.title}</Tag>)}</Space>}
           columns={[
-            { title: 'ID', dataIndex: 'id', width: 80 },
-            { title: '题单名称', dataIndex: 'title', render: (title: string, practice: Practice) => <div><Typography.Text bold>{title}</Typography.Text>{practice.description && <Typography.Text type="secondary" ellipsis style={{ display: 'block', maxWidth: 360 }}>{practice.description}</Typography.Text>}</div> },
-            { title: '教师开放范围', width: 190, render: (_: unknown, practice: Practice) => scopeTag(practice) },
-            { title: '题目数', width: 90, align: 'center' as const, render: (_: unknown, practice: Practice) => practice.problems.length },
-            { title: '创建者类型', dataIndex: 'ownerAccountType', width: 110, render: (value: string) => value === 'ADMIN' ? '管理员' : '教师' },
-            { title: '创建时间', dataIndex: 'createdAt', width: 170, render: (value: string) => new Date(value).toLocaleString('zh-CN') },
+            { title: 'ID', dataIndex: 'id', width: '6%', align: 'center' as const },
+            { title: '题单名称', dataIndex: 'title', width: '22%', ellipsis: true, render: (title: string, practice: Practice) => <div><Typography.Text bold ellipsis={{ showTooltip: true }} style={{ display: 'block', marginBottom: 0 }}>{title}</Typography.Text>{practice.description && <Typography.Text type="secondary" ellipsis={{ showTooltip: true }} style={{ display: 'block', marginBottom: 0 }}>{practice.description}</Typography.Text>}</div> },
+            { title: '开放范围', width: '14%', ellipsis: true, render: (_: unknown, practice: Practice) => scopeTag(practice) },
+            { title: '题目数', width: '8%', align: 'center' as const, render: (_: unknown, practice: Practice) => practice.problems.length },
+            { title: '创建者', dataIndex: 'ownerAccountType', width: '9%', align: 'center' as const, render: (value: string) => value === 'ADMIN' ? '管理员' : '教师' },
+            { title: '创建时间', dataIndex: 'createdAt', width: '15%', ellipsis: true, render: (value: string) => new Date(value).toLocaleString('zh-CN') },
             {
-              title: '操作', width: 300, render: (_: unknown, practice: Practice) => (
-                <Space wrap>
-                  {practice.canEdit && <Button type="text" size="small" icon={<IconEdit />} onClick={() => navigate(adminPath(`/practices/${practice.id}/edit`))}>编辑</Button>}
-                  {practice.canCopy && <Button type="text" size="small" icon={<IconCopy />} onClick={() => copy(practice.id)}>复制</Button>}
-                  {practice.canPublish && <Button type="text" size="small" icon={<IconSend />} onClick={() => navigate(adminPath(`/practices/${practice.id}/publish`))}>发布</Button>}
-                  {practice.canEdit && <Popconfirm title="确定要删除该题单吗？" onOk={() => remove(practice.id)}><Button type="text" size="small" status="danger" icon={<IconDelete />}>删除</Button></Popconfirm>}
+              title: '操作', width: '18%', align: 'center' as const, render: (_: unknown, practice: Practice) => (
+                <Space size={0} style={{ flexWrap: 'nowrap', justifyContent: 'center' }}>
+                  {practice.canEdit && <Button type="text" size="mini" onClick={() => navigate(adminPath(`/practices/${practice.id}/edit`))}>编辑</Button>}
+                  {practice.canCopy && <Button type="text" size="mini" onClick={() => copy(practice.id)}>复制</Button>}
+                  {practice.canPublish && <Button type="text" size="mini" onClick={() => navigate(adminPath(`/practices/${practice.id}/publish`))}>发布</Button>}
+                  {practice.canEdit && <Popconfirm title="确定要删除该题单吗？" onOk={() => remove(practice.id)}><Button type="text" size="mini" status="danger">删除</Button></Popconfirm>}
                 </Space>
               ),
             },
@@ -416,30 +414,34 @@ export function AdminPracticeManagementPage() {
       <AdminPageContainer title={`发布实例（${publications.length}）`} loading={loading}>
         <Table
           rowKey="id"
+          tableLayoutFixed
           data={publications}
           pagination={{ pageSize: 20, showTotal: true }}
           columns={[
-            { title: '发布ID', dataIndex: 'id', width: 80 },
-            { title: '发布标题', dataIndex: 'title', width: 200, ellipsis: true, render: (value: string) => <Typography.Text bold ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{value}</Typography.Text> },
-            { title: '来源题单', dataIndex: 'sourcePracticeId', width: 90, render: (value: number) => `#${value}` },
-            { title: '题目数', width: 80, align: 'center' as const, render: (_: unknown, item: PracticePublication) => item.problems.length },
+            { title: '发布ID', dataIndex: 'id', width: '7%', align: 'center' as const },
+            { title: '发布标题', dataIndex: 'title', width: '20%', ellipsis: true, render: (value: string) => <Typography.Text bold ellipsis={{ showTooltip: true }} style={{ display: 'block', marginBottom: 0 }}>{value}</Typography.Text> },
+            { title: '来源题单', dataIndex: 'sourcePracticeId', width: '9%', align: 'center' as const, render: (value: number) => `#${value}` },
+            { title: '题目数', width: '8%', align: 'center' as const, render: (_: unknown, item: PracticePublication) => item.problems.length },
             {
               title: '学生范围',
-              width: 150,
+              width: '13%',
+              ellipsis: true,
               render: (_: unknown, item: PracticePublication) => item.studentAccessMode === 'ALL'
                 ? <Tag color="green">所有学生</Tag>
                 : <Tag color="arcoblue">指定班级（{item.classIds.length}）</Tag>,
             },
-            { title: '状态', dataIndex: 'status', width: 90, render: (value: string) => <Tag color="green">{value === 'PUBLISHED' ? '已发布' : value}</Tag> },
-            { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (value: string) => value ? new Date(value).toLocaleString('zh-CN') : '-' },
+            { title: '状态', dataIndex: 'status', width: '9%', align: 'center' as const, render: (value: string) => <Tag color="green">{value === 'PUBLISHED' ? '已发布' : value}</Tag> },
+            { title: '创建时间', dataIndex: 'createdAt', width: '14%', ellipsis: true, render: (value: string) => value ? new Date(value).toLocaleString('zh-CN') : '-' },
             {
               title: '操作',
-              width: 150,
+              width: '20%',
+              align: 'center' as const,
               render: (_: unknown, item: PracticePublication) => (
-                <Space>
-                  <Button type="text" size="small" icon={<IconEdit />} onClick={() => navigate(adminPath(`/practices/publications/${item.id}/edit`))}>编辑</Button>
+                <Space size={0} style={{ flexWrap: 'nowrap', justifyContent: 'center' }}>
+                  <Button type="text" size="mini" onClick={() => navigate(adminPath(`/practices/publications/${item.id}/report`))}>做题信息</Button>
+                  <Button type="text" size="mini" onClick={() => navigate(adminPath(`/practices/publications/${item.id}/edit`))}>编辑</Button>
                   <Popconfirm title="确定删除该发布实例吗？删除后学生将无法访问。" onOk={() => removePublication(item.id)}>
-                    <Button type="text" size="small" status="danger" icon={<IconDelete />}>删除</Button>
+                    <Button type="text" size="mini" status="danger">删除</Button>
                   </Popconfirm>
                 </Space>
               ),

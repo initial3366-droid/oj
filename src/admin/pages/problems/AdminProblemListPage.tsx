@@ -14,11 +14,11 @@ import {
   Message,
   Popconfirm,
   Tag,
-  Tooltip,
 } from '@arco-design/web-react';
-import { IconPlus, IconSearch, IconEdit, IconDelete, IconFile } from '@arco-design/web-react/icon';
+import { IconPlus, IconSearch } from '@arco-design/web-react/icon';
 import { adminGet, adminDelete } from '../../api/adminClient';
 import { encryptId } from '../../../utils/cipher';
+import { ProblemPreviewModal } from '../../../components/problems/ProblemPreviewModal';
 
 /**
  * 题目接口，明确该模块内部及 API 边界使用的数据结构。
@@ -86,6 +86,7 @@ export function AdminProblemListPage() {
   const [filterFolderId, setFilterFolderId] = useState<number | undefined>();
   const [filterOwnerName, setFilterOwnerName] = useState('');
   const [folders, setFolders] = useState<FolderOption[]>([]);
+  const [previewId, setPreviewId] = useState<number | null>(null);
 
   /**
    * 读取Folders并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
@@ -179,26 +180,26 @@ export function AdminProblemListPage() {
     {
       title: 'ID',
       dataIndex: 'id',
-      width: 60,
+      width: '6%',
       align: 'center' as const,
     },
     {
       title: '题目名称',
       dataIndex: 'title',
-      width: 180,
+      width: '24%',
       ellipsis: true,
     },
     {
       title: '创建者',
       dataIndex: 'ownerName',
-      width: 90,
+      width: '12%',
       ellipsis: true,
       render: (value: string) => value || '-',
     },
     {
       title: '难度',
       dataIndex: 'difficulty',
-      width: 72,
+      width: '9%',
       align: 'center' as const,
       render: (value: number) => {
         const info = difficultyMap[value] || { text: '未知', color: 'gray' };
@@ -208,64 +209,39 @@ export function AdminProblemListPage() {
     {
       title: '所属文件夹',
       dataIndex: 'folderName',
-      width: 100,
+      width: '16%',
       ellipsis: true,
       render: (value: string) => value || '-',
     },
     {
-      title: '通过率',
-      dataIndex: 'acRate',
-      width: 70,
+      title: '学生题库',
+      dataIndex: 'studentPublishStatus',
+      width: '11%',
       align: 'center' as const,
-      render: (value: number) => `${value}%`,
+      render: (value: Problem['studentPublishStatus']) => <Tag color={value === 'PUBLISHED' ? 'green' : 'gray'}>{value === 'PUBLISHED' ? '已发布' : '未发布'}</Tag>,
     },
-    {
-      title: '测试点',
-      dataIndex: 'testCaseCount',
-      width: 64,
-      align: 'center' as const,
-    },
-    {
-      title: '状态',
-      dataIndex: 'accessScope',
-      width: 100,
-      align: 'center' as const,
-      render: (_: unknown, record: Problem) => (
-        <Tag>{record.accessScope === 'ALL' ? '所有人' : record.accessScope === 'MAJOR' ? record.majorName || '本专业' : '私有'}</Tag>
-      ),
-    },
-    { title: '学生题库', dataIndex: 'studentPublishStatus', width: 86, render: (value: Problem['studentPublishStatus']) => <Tag color={value === 'PUBLISHED' ? 'green' : 'gray'}>{value === 'PUBLISHED' ? '已发布' : '未发布'}</Tag> },
     {
       title: '操作',
-      width: 132,
+      width: '22%',
       align: 'center' as const,
       render: (_: any, record: Problem) => (
-        <Space>
-          <Tooltip content="编辑题目">
-            <Button
-              type="text"
-              size="small"
-              aria-label="编辑题目"
-              icon={<IconEdit />}
-              onClick={() => handleEdit(record.id)}
-            />
-          </Tooltip>
-          <Tooltip content="管理测试点">
-            <Button
-              type="text"
-              size="small"
-              aria-label="管理测试点"
-              icon={<IconFile />}
-              onClick={() => handleTestCases(record.id)}
-            />
-          </Tooltip>
+        <Space size={0} style={{ flexWrap: 'nowrap', justifyContent: 'center' }}>
+          <Button type="text" size="mini" onClick={() => setPreviewId(record.id)}>
+            查看
+          </Button>
+          <Button type="text" size="mini" onClick={() => handleEdit(record.id)}>
+            编辑
+          </Button>
+          <Button type="text" size="mini" onClick={() => handleTestCases(record.id)}>
+            测试点
+          </Button>
           <Popconfirm
             title="确定要删除该题目吗？"
             onOk={() => handleDelete(record.id)}
           >
-            <Tooltip content="删除题目">
-              <Button type="text" size="small" status="danger" aria-label="删除题目" icon={<IconDelete />} />
-            </Tooltip>
+            <Button type="text" size="mini" status="danger">
+              删除
+            </Button>
           </Popconfirm>
         </Space>
       ),
@@ -321,6 +297,8 @@ export function AdminProblemListPage() {
       </Space>
 
       <Table
+        rowKey="id"
+        tableLayoutFixed
         loading={loading}
         columns={columns}
         data={problems}
@@ -331,6 +309,13 @@ export function AdminProblemListPage() {
           onChange: setPage,
           showTotal: true,
         }}
+      />
+
+      <ProblemPreviewModal
+        visible={previewId != null}
+        problemId={previewId}
+        onClose={() => setPreviewId(null)}
+        get={adminGet}
       />
     </Card>
   );
