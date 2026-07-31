@@ -39,7 +39,7 @@ export interface AnnouncementUpdateRequest {
 }
 
 /**
- * 获取公告列表
+ * 获取普通公告列表
  */
 export async function fetchAnnouncementList(
   page: number = 1,

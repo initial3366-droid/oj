@@ -185,7 +185,7 @@ box(
     draw,
     (1430, 1230, 1850, 1515),
     "外部服务",
-    "SMTP 邮件验证码\nDOMjudge 或 Docker Judge\nXCPCIO/CLICS 赛事同步\nDeepSeek/Agent 可选接入",
+    "SMTP 邮件验证码\nCCPCOJ 或 Docker Judge\nXCPCIO/CLICS 赛事同步\nDeepSeek/Agent 可选接入",
     PURPLE,
     18,
 )
