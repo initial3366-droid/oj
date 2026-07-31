@@ -1,3 +1,6 @@
+/**
+ * 教师仪表盘页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useState, useEffect } from 'react';
 import { Card, Grid, Spin } from '@arco-design/web-react';
 import { IconCode, IconCheck, IconFire, IconCalendar, IconUser, IconBook, IconPen, IconTrophy } from '@arco-design/web-react/icon';
@@ -10,6 +13,9 @@ import {
 const Row = Grid.Row;
 const Col = Grid.Col;
 
+/**
+ * 渲染MiniStatCard组件，并协调其数据加载、状态和交互。
+ */
 function MiniStatCard({ title, value, icon, color }: { title: string; value: number | string; icon: React.ReactNode; color: string }) {
   return (
     <Col span={6}>
@@ -28,6 +34,9 @@ function MiniStatCard({ title, value, icon, color }: { title: string; value: num
   );
 }
 
+/**
+ * 渲染ChartCard组件，并协调其数据加载、状态和交互。
+ */
 function ChartCard({ title, children, span }: { title: string; children: React.ReactNode; span?: number }) {
   return (
     <Col span={span || 24}>
@@ -38,6 +47,9 @@ function ChartCard({ title, children, span }: { title: string; children: React.R
   );
 }
 
+/**
+ * 渲染教师仪表盘页面，并协调其数据加载、状态和交互。
+ */
 export function TeacherDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<TeacherDashboard | null>(null);

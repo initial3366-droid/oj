@@ -1,3 +1,6 @@
+/**
+ * MarkdownInsertModal组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Modal, Input } from '@arco-design/web-react';
 import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -7,6 +10,9 @@ import 'katex/dist/katex.min.css';
 
 const { TextArea } = Input;
 
+/**
+ * MarkdownInsertModalProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface MarkdownInsertModalProps {
   visible: boolean;
   onClose: () => void;
@@ -15,6 +21,9 @@ interface MarkdownInsertModalProps {
   initialValue?: string;
 }
 
+/**
+ * 渲染MarkdownInsertModal组件，并协调其数据加载、状态和交互。
+ */
 export function MarkdownInsertModal({
   visible,
   onClose,
@@ -31,6 +40,9 @@ export function MarkdownInsertModal({
     }
   }, [visible, initialValue]);
 
+  /**
+   * 处理Insert。会更新 React 状态并触发重新渲染。
+   */
   function handleInsert() {
     console.log('MarkdownInsertModal - Inserting content:', content);
     onInsert(content);
@@ -38,6 +50,9 @@ export function MarkdownInsertModal({
     onClose();
   }
 
+  /**
+   * 处理Cancel。会更新 React 状态并触发重新渲染。
+   */
   function handleCancel() {
     setContent(''); // 取消时清空
     onClose();

@@ -1,3 +1,6 @@
+/**
+ * 教师练习Create页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -7,22 +10,27 @@ import {
   Grid,
   Input,
   Message,
-  Popconfirm,
   Select,
   Space,
   Table,
   Tag,
   Typography,
 } from '@arco-design/web-react';
-import { IconDelete, IconLeft, IconPlus, IconSave, IconSearch } from '@arco-design/web-react/icon';
+import { IconDelete, IconLeft, IconSave, IconSearch } from '@arco-design/web-react/icon';
 import { teacherGet, teacherPost, teacherPut } from '../teacherApi';
 
 const { Row, Col } = Grid;
 const FormItem = Form.Item;
 const TextArea = Input.TextArea;
 
-type Audience = 'ALL' | 'CLASS';
+/**
+ * Audience类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
+type AccessScope = 'ALL' | 'MAJOR' | 'PRIVATE';
 
+/**
+ * 题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Problem {
   id: number;
   title: string;
@@ -35,6 +43,9 @@ interface Problem {
   testCaseCount?: number;
 }
 
+/**
+ * 文件夹接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Folder {
   id: number;
   name: string;
@@ -43,11 +54,22 @@ interface Folder {
   problems: Problem[];
 }
 
-interface ClassOption {
-  id: number;
-  name: string;
+interface PageResult<T> {
+  total: number;
+  list: T[];
 }
 
+interface PracticeTemplate {
+  id: number;
+  title: string;
+  description?: string;
+  accessScope: AccessScope;
+  problems: Problem[];
+}
+
+/**
+ * 班级Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 const difficultyMap: Record<number, { text: string; color: string }> = {
   1: { text: '入门', color: 'arcoblue' },
   2: { text: '简单', color: 'green' },
@@ -56,6 +78,9 @@ const difficultyMap: Record<number, { text: string; color: string }> = {
   5: { text: '地狱', color: 'purple' },
 };
 
+/**
+ * 渲染教师练习Create页面，并协调其数据加载、状态和交互。
+ */
 export function TeacherPracticeCreatePage() {
   const navigate = useNavigate();
   const { practiceId } = useParams();
@@ -65,13 +90,14 @@ export function TeacherPracticeCreatePage() {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [audience, setAudience] = useState<Audience>('ALL');
-  const [classes, setClasses] = useState<ClassOption[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<number>>(new Set());
   const [selectedProblemIds, setSelectedProblemIds] = useState<number[]>([]);
   const [problemKeyword, setProblemKeyword] = useState('');
 
+  /**
+   * 封装selectedProblems相关逻辑。对原始数据进行派生或聚合。
+   */
   const selectedProblems = useMemo(() => {
     const allProblems = folders.flatMap((f) => f.problems);
     const map = new Map(allProblems.map((p) => [p.id, p]));
@@ -82,30 +108,52 @@ export function TeacherPracticeCreatePage() {
     loadData();
   }, []);
 
+  /**
+   * 读取Data并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadData() {
     setLoading(true);
     try {
-      const [classResult, folderResult] = await Promise.all([
-        teacherGet<ClassOption[]>('/api/teacher/v1/classes').catch(() => []),
-        teacherGet<Folder[]>('/api/admin/v1/problem-folders').catch(() => []),
+      const [folderResult, problemResult, practiceResult] = await Promise.all([
+        teacherGet<Folder[]>('/api/admin/v1/problem-folders'),
+        teacherGet<PageResult<Problem>>('/api/admin/v1/problems?page=1&pageSize=500'),
+        isEditing
+          ? teacherGet<PageResult<PracticeTemplate>>('/api/admin/v1/practices?page=1&pageSize=200')
+          : Promise.resolve<PageResult<PracticeTemplate>>({ total: 0, list: [] }),
       ]);
-      setClasses(classResult);
-      setFolders(folderResult);
+      const practice = isEditing
+        ? practiceResult.list.find((item) => item.id === numericPracticeId)
+        : undefined;
+      const folderProblemIds = new Set(folderResult.flatMap((folder) => folder.problems.map((problem) => problem.id)));
+      const extraProblems = new Map<number, Problem>();
+      problemResult.list
+        .filter((problem) => !folderProblemIds.has(problem.id))
+        .forEach((problem) => extraProblems.set(problem.id, problem));
+      (practice?.problems ?? [])
+        .filter((problem) => !folderProblemIds.has(problem.id))
+        .forEach((problem) => extraProblems.set(problem.id, problem));
+      const nextFolders = [...folderResult];
+      if (extraProblems.size > 0) {
+        nextFolders.push({
+          id: -1,
+          name: '其他可用题目',
+          description: '未归入当前可见文件夹的开放题目',
+          problemCount: extraProblems.size,
+          problems: [...extraProblems.values()],
+        });
+      }
+      setFolders(nextFolders);
 
       if (isEditing && numericPracticeId) {
-        const practice = await teacherGet<any>(`/api/admin/v1/practices?page=1&pageSize=200`).then(
-          (res) => (res.list ?? []).find((p: any) => p.id === numericPracticeId)
-        );
         if (practice) {
           form.setFieldsValue({
             title: practice.title,
             description: practice.description || '',
-            audience: practice.audience || 'ALL',
-            audienceId: practice.audienceId ?? undefined,
-            password: '',
+            accessScope: practice.accessScope || 'PRIVATE',
           });
-          setAudience(practice.audience || 'ALL');
-          setSelectedProblemIds((practice.problems ?? []).map((p: any) => p.id));
+          setSelectedProblemIds((practice.problems ?? []).map((problem) => problem.id));
+        } else {
+          throw new Error('题单不存在或无权编辑');
         }
       }
     } catch (error) {
@@ -115,12 +163,18 @@ export function TeacherPracticeCreatePage() {
     }
   }
 
+  /**
+   * 构造或转换ggle题目。会更新 React 状态并触发重新渲染。
+   */
   function toggleProblem(problemId: number) {
     setSelectedProblemIds((prev) =>
       prev.includes(problemId) ? prev.filter((id) => id !== problemId) : [...prev, problemId]
     );
   }
 
+  /**
+   * 处理Submit。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function handleSubmit() {
     try {
       const values = await form.validate();
@@ -128,18 +182,11 @@ export function TeacherPracticeCreatePage() {
         Message.warning('请至少选择一道题目');
         return;
       }
-      if (values.audience === 'CLASS' && !values.audienceId) {
-        Message.warning('请选择班级');
-        return;
-      }
-
       setSubmitting(true);
       const payload = {
         title: values.title.trim(),
         description: values.description?.trim() || '',
-        audience: values.audience,
-        audienceId: values.audience === 'CLASS' ? values.audienceId : null,
-        password: values.password?.trim() || undefined,
+        accessScope: values.accessScope as AccessScope,
         problemIds: selectedProblemIds,
       };
 
@@ -180,7 +227,7 @@ export function TeacherPracticeCreatePage() {
           </Space>
         }
       >
-        <Form form={form} layout="vertical" style={{ maxWidth: 800 }} initialValues={{ audience: 'ALL' }}>
+        <Form form={form} layout="vertical" requiredSymbol={false} style={{ maxWidth: 800 }} initialValues={{ accessScope: 'ALL' }}>
           <Row gutter={24}>
             <Col span={12}>
               <FormItem label="题单名称" field="title" rules={[{ required: true, message: '请输入题单名称' }]}>
@@ -188,27 +235,12 @@ export function TeacherPracticeCreatePage() {
               </FormItem>
             </Col>
             <Col span={12}>
-              <FormItem label="访问范围" field="audience">
-                <Select onChange={(val) => setAudience(val as Audience)}>
+              <FormItem label="教师开放范围" field="accessScope">
+                <Select>
                   <Select.Option value="ALL">所有人</Select.Option>
-                  <Select.Option value="CLASS">指定班级</Select.Option>
+                  <Select.Option value="MAJOR">本专业</Select.Option>
+                  <Select.Option value="PRIVATE">私有</Select.Option>
                 </Select>
-              </FormItem>
-            </Col>
-            {audience === 'CLASS' && (
-              <Col span={12}>
-                <FormItem label="可访问班级" field="audienceId" rules={[{ required: true, message: '请选择班级' }]}>
-                  <Select placeholder="选择班级" allowClear>
-                    {classes.map((item) => (
-                      <Select.Option key={item.id} value={item.id}>{item.name}（{item.id}）</Select.Option>
-                    ))}
-                  </Select>
-                </FormItem>
-              </Col>
-            )}
-            <Col span={12}>
-              <FormItem label="访问密码" field="password">
-                <Input.Password placeholder={isEditing ? '留空则不修改密码' : '不填写则无需密码'} />
               </FormItem>
             </Col>
             <Col span={24}>

@@ -28,6 +28,9 @@ import java.util.stream.Collectors;
 
 import static org.springframework.util.StringUtils.hasText;
 
+/**
+ * AgentChat业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class AgentChatService {
     private static final int DAILY_QUOTA = 5;
@@ -42,6 +45,9 @@ public class AgentChatService {
     private final StringRedisTemplate redisTemplate;
     private final ClassMemberMapper classMemberMapper;
 
+    /**
+     * 构造 AgentChatService 实例并保存其必要依赖或初始状态。从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
+     */
     public AgentChatService(
         ProblemService problemService,
         ContestService contestService,
@@ -63,9 +69,15 @@ public class AgentChatService {
     public AgentChatResponse chat(AgentChatRequest request) {
         AuthUser user = CurrentUser.required();
         if (user.adminAccount()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(403, "后台账号不能使用前台编程助手");
         }
         if (request.contestId() != null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(403, "比赛期间禁止使用 AI 助手");
         }
 
@@ -75,6 +87,9 @@ public class AgentChatService {
         // 检查配额
         int used = getUsedCount(user.id());
         if (used >= DAILY_QUOTA) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(429, "今日 AI 对话额度已用完（每日 " + DAILY_QUOTA + " 次）");
         }
 
@@ -90,12 +105,18 @@ public class AgentChatService {
         // 成功后增加计数
         incrementUsedCount(user.id());
 
+        /**
+         * 封装AgentChat响应相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new AgentChatResponse(reply, agent.model, requestId);
     }
 
     public AgentQuotaVO getQuota(long userId) {
         int used = getUsedCount(userId);
         int remaining = Math.max(0, DAILY_QUOTA - used);
+        /**
+         * 封装AgentQuotaVO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new AgentQuotaVO(DAILY_QUOTA, used, remaining);
     }
 
@@ -145,9 +166,15 @@ public class AgentChatService {
 
     private void ensureAgentAvailable(AgentSettingsVO agent) {
         if (agent == null || !Boolean.TRUE.equals(agent.enabled)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(503, "AI 助手未启用");
         }
         if (!hasText(agent.baseUrl) || !hasText(agent.apiKey) || !hasText(agent.model)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(503, "AI 助手配置不完整");
         }
     }

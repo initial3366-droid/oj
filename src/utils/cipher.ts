@@ -5,6 +5,9 @@
 
 const SECRET = "QOJ_CIPHER_2026_SALT";
 
+/**
+ * 读取Key并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function getKey(): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < SECRET.length; i++) {

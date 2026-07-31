@@ -3,6 +3,9 @@
  */
 import { apiGet } from "./client";
 
+/**
+ * CarouselSlide接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface CarouselSlide {
   id: number;
   title: string;
@@ -11,6 +14,9 @@ export interface CarouselSlide {
   targetUrl: string;
 }
 
+/**
+ * 首页比赛接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface HomeContest {
   id: number;
   title: string;
@@ -24,6 +30,9 @@ export interface HomeContest {
   participantCount?: number;
 }
 
+/**
+ * 首页Data接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface HomeData {
   carouselSlides: CarouselSlide[];
   recentContests: HomeContest[];

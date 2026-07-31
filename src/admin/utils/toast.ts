@@ -1,6 +1,12 @@
+/**
+ * toast工具模块。提供无页面依赖的通用处理能力。
+ */
 // 简单的 Toast 工具，避免 Arco Design 在 React 18 中的兼容性问题
 type ToastType = 'success' | 'error' | 'info';
 
+/**
+ * 封装showToast相关逻辑。会更新 React 状态并触发重新渲染。
+ */
 function showToast(message: string, type: ToastType) {
   const toast = document.createElement('div');
   toast.textContent = message;

@@ -18,6 +18,8 @@ import com.qoj.module.user.entity.User;
 import com.qoj.module.user.entity.UserScore;
 import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.module.user.mapper.UserScoreMapper;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import jakarta.annotation.PostConstruct;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -31,6 +33,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+/**
+ * 排行榜业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class LeaderboardService {
     private static final int DAILY_LIMIT = 10;
@@ -42,7 +47,11 @@ public class LeaderboardService {
     private final SubmissionMapper submissionMapper;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final TeacherMapper teacherMapper;
 
+    /**
+     * 构造 排行榜Service 实例并保存其必要依赖或初始状态。从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
+     */
     public LeaderboardService(
         UserScoreMapper userScoreMapper,
         UserMapper userMapper,
@@ -50,7 +59,8 @@ public class LeaderboardService {
         ClassMemberMapper classMemberMapper,
         SubmissionMapper submissionMapper,
         StringRedisTemplate redisTemplate,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        TeacherMapper teacherMapper
     ) {
         this.userScoreMapper = userScoreMapper;
         this.userMapper = userMapper;
@@ -59,6 +69,7 @@ public class LeaderboardService {
         this.submissionMapper = submissionMapper;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
+        this.teacherMapper = teacherMapper;
     }
 
     public List<RatingUserVO> global(int limit) {
@@ -69,12 +80,18 @@ public class LeaderboardService {
                 return cached.subList(0, Math.min(normalizedLimit, cached.size()));
             }
         }
+        /**
+         * 计算Global。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return computeGlobal(normalizedLimit);
     }
 
     public List<UserRankVO> userRank(long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "用户不存在");
         }
         if (!UserRole.STUDENT.name().equals(user.role)) {
@@ -93,7 +110,16 @@ public class LeaderboardService {
         Integer streak = trainingStreak(userId);
         Integer weekAcCount = weekAcCount(userId);
         String className = getClassName(userId);
-        return List.of(new UserRankVO(userId, user.displayName, className, acCount, streak, weekAcCount, rank == null ? 1L : rank + 1));
+        return List.of(new UserRankVO(
+            userId,
+            user.displayName,
+            user.avatarUrl,
+            className,
+            acCount,
+            streak,
+            weekAcCount,
+            rank == null ? 1L : rank + 1
+        ));
     }
 
     public List<ClassRankVO> classRanking(int limit) {
@@ -105,6 +131,9 @@ public class LeaderboardService {
                 return cached.subList(0, Math.min(normalizedLimit, cached.size()));
             }
         }
+        /**
+         * 计算班级Ranking。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return computeClassRanking(normalizedLimit);
     }
 
@@ -139,7 +168,7 @@ public class LeaderboardService {
     private List<RatingUserVO> cachedGlobal() {
         try {
             String json = redisTemplate.opsForValue().get(RedisKeys.leaderboardGlobal());
-            if (json == null || json.isBlank()) {
+            if (json == null || json.isBlank() || !json.contains("\"avatarUrl\"")) {
                 return List.of();
             }
             return objectMapper.readValue(json, new TypeReference<>() {});
@@ -175,7 +204,11 @@ public class LeaderboardService {
                 Integer acCount = score.acCount == null ? 0 : score.acCount.intValue();
                 Integer streak = trainingStreak(score.userId);
                 Integer weekAcCount = weekAcCount(score.userId);
-                return new RatingUserVO(score.userId, name, className, acCount, streak, weekAcCount);
+                /**
+                 * 封装Rating用户VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                 */
+                String avatarUrl = user == null ? null : user.avatarUrl;
+                return new RatingUserVO(score.userId, name, avatarUrl, className, acCount, streak, weekAcCount);
             })
             .limit(limit)
             .toList();
@@ -206,7 +239,7 @@ public class LeaderboardService {
 
             String teacherName = "";
             if (classRoom.teacherId != null) {
-                User teacher = userMapper.selectById(classRoom.teacherId);
+                Teacher teacher = teacherMapper.selectById(classRoom.teacherId);
                 teacherName = teacher != null && teacher.displayName != null ? teacher.displayName : "";
             }
 

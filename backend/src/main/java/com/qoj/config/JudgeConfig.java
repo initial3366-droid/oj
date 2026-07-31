@@ -23,10 +23,16 @@ public class JudgeConfig {
 
     private final SystemSettingService settingService;
 
+    /**
+     * 构造 判题配置 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     public JudgeConfig(SystemSettingService settingService) {
         this.settingService = settingService;
     }
 
+    /**
+     * 封装判题TaskExecutor相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @Bean(name = "judgeTaskExecutor")
     public ThreadPoolTaskExecutor judgeTaskExecutor() {
         JudgeSettingsVO judgeSettings = settingService.getJudgeSettings();
@@ -40,7 +46,9 @@ public class JudgeConfig {
         executor.setMaxPoolSize(poolSize);  // 固定大小，不允许超过
         executor.setQueueCapacity(100);     // 等待队列容量
         executor.setThreadNamePrefix("judge-worker-");
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        // Surface shutdown/saturation rejection so the scheduler can atomically
+        // return a claimed submission to its original waiting state.
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);
         executor.initialize();

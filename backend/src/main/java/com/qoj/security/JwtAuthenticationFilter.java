@@ -6,6 +6,8 @@ import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.module.user.mapper.UserMapper;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -45,17 +47,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final StringRedisTemplate redisTemplate;
     private final UserMapper userMapper;
     private final AdminUserMapper adminUserMapper;
+    private final TeacherMapper teacherMapper;
 
+    /**
+     * 构造 JwtAuthenticationFilter 实例并保存其必要依赖或初始状态。从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
+     */
     public JwtAuthenticationFilter(
         JwtService jwtService,
         StringRedisTemplate redisTemplate,
         UserMapper userMapper,
-        AdminUserMapper adminUserMapper
+        AdminUserMapper adminUserMapper,
+        TeacherMapper teacherMapper
     ) {
         this.jwtService = jwtService;
         this.redisTemplate = redisTemplate;
         this.userMapper = userMapper;
         this.adminUserMapper = adminUserMapper;
+        this.teacherMapper = teacherMapper;
     }
 
     /**
@@ -73,6 +81,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             authenticate(authorization.substring(7)); // 剥离 "Bearer " 前缀
         }
         filterChain.doFilter(request, response); // 无论如何都放行，权限由 SecurityConfig 配合处理
+    }
+
+    /**
+     * The CCPCOJ gateway has an isolated worker-cookie authentication protocol.
+     * Skipping JWT parsing avoids mixing user credentials into that trust boundary.
+     */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path != null && path.startsWith("/ojtool/judge/");
     }
 
     /**
@@ -95,11 +113,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             }
             UsernamePasswordAuthenticationToken authentication =
+                /**
+                 * 封装rnamePasswordAuthentication令牌相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                 */
                 new UsernamePasswordAuthenticationToken(authUser, token, authUser.getAuthorities());
             SecurityContextHolder.getContext().setAuthentication(authentication);
             // 后台管理员不记录在线状态，避免混入前台在线用户统计
             if (!authUser.adminAccount()) {
-                redisTemplate.opsForValue().set(RedisKeys.onlineUser(userId), "1", ONLINE_USER_TTL);
+                redisTemplate.opsForValue().set(
+                    RedisKeys.onlineAccount(authUser.accountType(), userId), "1", ONLINE_USER_TTL
+                );
             }
         } catch (RuntimeException ignored) {
             // Token 解析失败或数据库查询异常时，静默清空上下文，不阻止请求继续
@@ -118,6 +141,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if ("ADMIN".equals(accountType)) {
             AdminUser adminUser = adminUserMapper.selectById(userId);
             return adminUser == null ? null : new AuthUser(adminUser);
+        }
+        if ("TEACHER".equals(accountType)) {
+            Teacher teacher = teacherMapper.selectById(userId);
+            return teacher == null || !"ACTIVE".equals(teacher.status) ? null : new AuthUser(teacher);
         }
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("id", userId));
         return user == null ? null : new AuthUser(user);

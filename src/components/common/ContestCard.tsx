@@ -1,8 +1,14 @@
+/**
+ * 比赛Card组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Card, Typography, Tag, Space } from '@douyinfe/semi-ui';
 import { IconUser, IconCalendar, IconClock } from '@douyinfe/semi-icons';
 import { ContestStatusTag } from './ContestStatusTag';
 import type { CSSProperties } from 'react';
 
+/**
+ * 比赛CardProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ContestCardProps {
   id: number;
   title: string;
@@ -34,6 +40,9 @@ export function ContestCard({
   onClick,
   style,
 }: ContestCardProps) {
+  /**
+   * 格式化DateTime。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const formatDateTime = (dateTime: string): string => {
     const date = new Date(dateTime);
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -43,6 +52,9 @@ export function ContestCard({
     return `${month}-${day} ${hours}:${minutes}`;
   };
 
+  /**
+   * 读取Duration并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const getDuration = (): string => {
     const start = new Date(startTime);
     const end = new Date(endTime);

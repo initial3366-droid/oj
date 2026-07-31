@@ -1,23 +1,24 @@
+/**
+ * 管理员Header组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Dropdown, Menu, Avatar, Space } from '@arco-design/web-react';
-import { IconPoweroff, IconUser, IconSettings, IconIdcard } from '@arco-design/web-react/icon';
+import { IconPoweroff, IconSettings, IconIdcard } from '@arco-design/web-react/icon';
 import { useNavigate } from 'react-router-dom';
 import { adminPath } from '../../utils/adminPath';
 
+/**
+ * 管理员HeaderProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface AdminHeaderProps {
   username: string;
   displayName: string;
-  role: string;
   onLogout: () => void;
 }
 
-const roleNames: Record<string, string> = {
-  SUPER_ADMIN: '超级管理员',
-  TEACHER: '教师',
-  STUDENT: '学生',
-  GUEST: '访客',
-};
-
-export function AdminHeader({ username, displayName, role, onLogout }: AdminHeaderProps) {
+/**
+ * 渲染管理员Header组件，并协调其数据加载、状态和交互。
+ */
+export function AdminHeader({ username, displayName, onLogout }: AdminHeaderProps) {
   const navigate = useNavigate();
 
   const droplist = (

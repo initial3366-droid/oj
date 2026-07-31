@@ -11,16 +11,25 @@ import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 
+/**
+ * 用户分数业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class UserScoreService {
     private final UserScoreMapper userScoreMapper;
     private final SubmissionMapper submissionMapper;
 
+    /**
+     * 构造 用户分数Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public UserScoreService(UserScoreMapper userScoreMapper, SubmissionMapper submissionMapper) {
         this.userScoreMapper = userScoreMapper;
         this.submissionMapper = submissionMapper;
     }
 
+    /**
+     * 封装recompute相关逻辑。执行持久化写入。
+     */
     public void recompute(Long userId) {
         if (userId == null) {
             return;
@@ -49,6 +58,9 @@ public class UserScoreService {
         }
     }
 
+    /**
+     * 计算TrainingStreak。从持久化层读取数据。
+     */
     private int computeTrainingStreak(Long userId) {
         List<LocalDate> dates = submissionMapper.selectFirstAcceptedProblemDatesByUserId(userId);
         if (dates == null || dates.isEmpty()) {

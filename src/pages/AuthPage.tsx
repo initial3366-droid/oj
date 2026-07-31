@@ -1,11 +1,18 @@
-import { Button, Card, Typography, Input, Toast, Modal } from '@douyinfe/semi-ui';
+/**
+ * 认证页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
+import { Alert, Button, Card, Input, Modal, Typography, message as antdMessage } from 'antd';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { NavLink, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { bindEmail, fetchMe, loginWithoutPersist, register, resetPassword, saveFrontendAuthTokens } from '../data/apiClient';
 import { useOjData } from '../data/OjDataProvider';
 import type { AuthTokenResponse } from '../data/apiClient';
+import { safeSameOriginPath } from '../utils/safeRedirect';
 import './AuthPage.css';
 
+/**
+ * 渲染认证页面，并协调其数据加载、状态和交互。
+ */
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -51,20 +58,23 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   });
   const isRegister = mode === 'register';
 
+  /**
+   * 封装标题相关逻辑。对原始数据进行派生或聚合。
+   */
   const title = useMemo(() => (isRegister ? '注册账号' : '登录账号'), [isRegister]);
-  const redirectPath = useMemo(() => {
-    const redirect = searchParams.get('redirect');
-    if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) {
-      return redirect;
-    }
-    return '/user-center';
-  }, [searchParams]);
+  /**
+   * 封装redirectPath相关逻辑。对原始数据进行派生或聚合。
+   */
+  const redirectPath = useMemo(
+    () => safeSameOriginPath(searchParams.get('redirect'), '/user-center'),
+    [searchParams],
+  );
   const redirectQuery = redirectPath === '/user-center' ? '' : `?redirect=${encodeURIComponent(redirectPath)}`;
 
   // 如果已登录，重定向到用户中心
   useEffect(() => {
     if (state.activeUser !== null) {
-      Toast.info('您已登录');
+      antdMessage.info('您已登录');
       navigate(redirectPath);
     }
   }, [state.activeUser, navigate, redirectPath]);
@@ -100,6 +110,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   }, [resetEmailCountdown]);
 
+  /**
+   * 校验EmailRemaining。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const checkEmailRemaining = async () => {
     if (!form.email) return;
     try {
@@ -113,6 +126,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 读取Captcha并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const fetchCaptcha = async () => {
     try {
       const response = await fetch('/api/v1/captcha/image');
@@ -126,6 +142,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 读取BindCaptcha并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const fetchBindCaptcha = async () => {
     try {
       const response = await fetch('/api/v1/captcha/image');
@@ -139,6 +158,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 发送BindEmail编码。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const sendBindEmailCode = async () => {
     setBindMessage('');
     if (!bindForm.email) {
@@ -174,6 +196,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 读取ResetCaptcha并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const fetchResetCaptcha = async () => {
     try {
       const response = await fetch('/api/v1/captcha/image');
@@ -187,6 +212,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 发送ResetEmail编码。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const sendResetEmailCode = async () => {
     setResetMessage('');
     if (!resetForm.email) {
@@ -222,6 +250,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 创建或提交ResetPassword。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const submitResetPassword = async () => {
     setResetMessage('');
     if (!resetForm.email || !resetForm.emailVerificationCode) {
@@ -257,6 +288,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 创建或提交BindEmail。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   const submitBindEmail = async () => {
     setBindMessage('');
     if (!pendingToken) return;
@@ -273,7 +307,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       if (pendingAuth) {
         saveFrontendAuthTokens(pendingAuth);
       }
-      Toast.success('邮箱绑定成功');
+      antdMessage.success('邮箱绑定成功');
       setBindModalVisible(false);
       window.location.href = redirectPath;
     } catch (error) {
@@ -284,6 +318,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 发送Email编码。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const sendEmailCode = async () => {
     if (!form.email) {
       setMessage('请先输入邮箱');
@@ -320,6 +357,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     }
   };
 
+  /**
+   * 创建或提交目标数据。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数；会读写浏览器本地会话信息。
+   */
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     try {
@@ -350,9 +390,14 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         });
         window.localStorage.setItem('qoj.accessToken', auth.accessToken);
         window.localStorage.setItem('qoj.refreshToken', auth.refreshToken);
-        Toast.success('注册成功');
+        antdMessage.success('注册成功');
       } else {
         const auth = await loginWithoutPersist(form.username, form.password);
+        if (auth.portal === 'TEACHER') {
+          antdMessage.info('已切换到教师端登录');
+          navigate(`/teacher/login?username=${encodeURIComponent(form.username.trim())}`, { replace: true });
+          return;
+        }
         const me = await fetchMe(auth.accessToken);
         if (!me.email) {
           window.localStorage.removeItem('qoj.accessToken');
@@ -366,12 +411,17 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           return;
         }
         saveFrontendAuthTokens(auth);
-        Toast.success('登录成功');
+        antdMessage.success('登录成功');
       }
       // 刷新页面以重新加载用户状态
       window.location.href = redirectPath;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '操作失败';
+      if (!isRegister && errorMessage.includes('教师账号请使用教师端登录')) {
+        antdMessage.info('已切换到教师端登录');
+        navigate(`/teacher/login?username=${encodeURIComponent(form.username.trim())}`, { replace: true });
+        return;
+      }
       if (errorMessage.includes('后台账号')) {
         window.localStorage.removeItem('qoj.accessToken');
         window.localStorage.removeItem('qoj.refreshToken');
@@ -385,28 +435,24 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
 
   return (
     <div className={`auth-page ${isRegister ? 'auth-page--register' : 'auth-page--login'}`}>
-      <div className="auth-card">
-        {/* Gradient header */}
+      <Card className="auth-card" bordered={false}>
         <div className="auth-header">
           <div className="auth-header-title">{title}</div>
         </div>
 
-        {/* Form body */}
         <div className="auth-body">
           <form onSubmit={submit} className="auth-form">
-            {/* Username */}
             <div className="auth-field">
               <label className="auth-label">
                 用户名 <span className="auth-required">*</span>
               </label>
               <Input
-                placeholder={isRegister ? "请输入用户名（3-15个字符）" : "请输入用户名"}
+                placeholder={isRegister ? '请输入用户名（3-15个字符）' : '请输入用户名'}
                 value={form.username}
-                onChange={(username) => setForm({ ...form, username })}
+                onChange={(event) => setForm({ ...form, username: event.target.value })}
               />
             </div>
 
-            {/* Register-only: student number + email */}
             {isRegister && (
               <div className="auth-register-section">
                 <div className="auth-field">
@@ -414,7 +460,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                   <Input
                     placeholder="请输入学号"
                     value={form.studentNo}
-                    onChange={(studentNo) => setForm({ ...form, studentNo })}
+                    onChange={(event) => setForm({ ...form, studentNo: event.target.value })}
                   />
                 </div>
                 <div className="auth-field">
@@ -422,38 +468,32 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                   <Input
                     placeholder="请输入邮箱"
                     value={form.email}
-                    onChange={(email) => setForm({ ...form, email })}
+                    onChange={(event) => setForm({ ...form, email: event.target.value })}
                     onBlur={checkEmailRemaining}
                   />
                 </div>
               </div>
             )}
 
-            {/* Password */}
             <div className="auth-field">
               <label className="auth-label">
                 密码 <span className="auth-required">*</span>
               </label>
-              <Input
-                type="password"
-                mode="password"
-                placeholder={isRegister ? "请输入密码（6-20个字符）" : "请输入密码"}
+              <Input.Password
+                placeholder={isRegister ? '请输入密码（6-20个字符）' : '请输入密码'}
                 value={form.password}
-                onChange={(password) => setForm({ ...form, password })}
+                onChange={(event) => setForm({ ...form, password: event.target.value })}
               />
             </div>
 
-            {/* Register-only: confirm password + captcha + email code */}
             {isRegister && (
               <div className="auth-register-section">
                 <div className="auth-field">
                   <label className="auth-label">确认密码</label>
-                  <Input
-                    type="password"
-                    mode="password"
+                  <Input.Password
                     placeholder="请确认密码"
                     value={form.confirmPassword}
-                    onChange={(confirmPassword) => setForm({ ...form, confirmPassword })}
+                    onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })}
                   />
                 </div>
 
@@ -463,7 +503,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                     <Input
                       placeholder="请输入验证码"
                       value={form.captcha}
-                      onChange={(value) => setForm({ ...form, captcha: value })}
+                      onChange={(event) => setForm({ ...form, captcha: event.target.value })}
                     />
                   </div>
                   {captchaImage && (
@@ -484,11 +524,12 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                     <Input
                       placeholder="请输入邮箱验证码"
                       value={form.emailVerificationCode}
-                      onChange={(value) => setForm({ ...form, emailVerificationCode: value })}
+                      onChange={(event) => setForm({ ...form, emailVerificationCode: event.target.value })}
                     />
                   </div>
                   <Button
                     type="primary"
+                    htmlType="button"
                     className="auth-btn-send-code"
                     onClick={sendEmailCode}
                     disabled={emailCountdown > 0}
@@ -499,38 +540,25 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
               </div>
             )}
 
-            {/* Error / success message */}
             {message && (
-              <div className={`auth-message ${message.includes('已发送') ? 'auth-message--success' : 'auth-message--error'}`}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  {message.includes('已发送') ? (
-                    <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>
-                  ) : (
-                    <><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></>
-                  )}
-                </svg>
-                {message}
-              </div>
+              <Alert
+                className="auth-message"
+                message={message}
+                showIcon
+                type={message.includes('已发送') ? 'success' : 'error'}
+              />
             )}
 
-            {/* Submit button */}
-            <Button
-              type="primary"
-              htmlType="submit"
-              block
-              className="auth-btn-primary"
-            >
+            <Button type="primary" htmlType="submit" block className="auth-btn-primary">
               {title}
             </Button>
 
-            {/* Forgot password link (login mode only) */}
             {!isRegister && (
-              <div style={{ textAlign: 'center', marginTop: 4 }}>
+              <div className="auth-recovery-action">
                 <Button
-                  type="tertiary"
-                  theme="borderless"
-                  size="small"
-                  style={{ color: '#86909c', fontSize: 13 }}
+                  type="link"
+                  htmlType="button"
+                  className="auth-forgot-password"
                   onClick={() => {
                     setResetForm({ email: '', captcha: '', emailVerificationCode: '', newPassword: '', confirmPassword: '' });
                     setResetMessage('');
@@ -543,9 +571,8 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
               </div>
             )}
 
-            {/* Toggle between login / register */}
             <Button
-              type="primary"
+              htmlType="button"
               block
               className="auth-btn-toggle"
               onClick={() => {
@@ -556,12 +583,12 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             </Button>
           </form>
         </div>
-      </div>
+      </Card>
 
       {/* Bind email modal */}
       <Modal
         title="绑定邮箱"
-        visible={bindModalVisible}
+        open={bindModalVisible}
         closable={false}
         maskClosable={false}
         okText="绑定"
@@ -577,13 +604,13 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           <Input
             placeholder="请输入邮箱"
             value={bindForm.email}
-            onChange={(email) => setBindForm({ ...bindForm, email })}
+            onChange={(event) => setBindForm({ ...bindForm, email: event.target.value })}
           />
           <div className="auth-bind-modal-grid-captcha">
             <Input
               placeholder="请输入图形验证码"
               value={bindForm.captcha}
-              onChange={(captcha) => setBindForm({ ...bindForm, captcha })}
+              onChange={(event) => setBindForm({ ...bindForm, captcha: event.target.value })}
             />
             {bindCaptchaImage && (
               <img
@@ -598,9 +625,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             <Input
               placeholder="请输入邮箱验证码"
               value={bindForm.emailVerificationCode}
-              onChange={(emailVerificationCode) => setBindForm({ ...bindForm, emailVerificationCode })}
+              onChange={(event) => setBindForm({ ...bindForm, emailVerificationCode: event.target.value })}
             />
-            <Button type="primary" onClick={sendBindEmailCode} disabled={bindEmailCountdown > 0}>
+            <Button type="primary" htmlType="button" onClick={sendBindEmailCode} disabled={bindEmailCountdown > 0}>
               {bindEmailCountdown > 0 ? `${bindEmailCountdown}秒后重试` : '发送验证码'}
             </Button>
           </div>
@@ -615,13 +642,14 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       {/* Reset password modal */}
       <Modal
         title="找回密码"
-        visible={resetModalVisible}
+        open={resetModalVisible}
+        width={520}
         onCancel={() => setResetModalVisible(false)}
         okText="重置密码"
         confirmLoading={resetLoading}
         onOk={submitResetPassword}
         cancelButtonProps={{ style: { display: 'none' } }}
-        className="auth-bind-modal"
+        className="auth-bind-modal auth-reset-modal"
       >
         <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
           请输入注册时使用的邮箱，通过邮箱验证码验证身份后重置密码。
@@ -630,13 +658,13 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           <Input
             placeholder="请输入注册邮箱"
             value={resetForm.email}
-            onChange={(email) => setResetForm({ ...resetForm, email })}
+            onChange={(event) => setResetForm({ ...resetForm, email: event.target.value })}
           />
           <div className="auth-bind-modal-grid-captcha">
             <Input
               placeholder="请输入图形验证码"
               value={resetForm.captcha}
-              onChange={(captcha) => setResetForm({ ...resetForm, captcha })}
+              onChange={(event) => setResetForm({ ...resetForm, captcha: event.target.value })}
             />
             {resetCaptchaImage && (
               <img
@@ -651,25 +679,27 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             <Input
               placeholder="请输入邮箱验证码"
               value={resetForm.emailVerificationCode}
-              onChange={(emailVerificationCode) => setResetForm({ ...resetForm, emailVerificationCode })}
+              onChange={(event) => setResetForm({ ...resetForm, emailVerificationCode: event.target.value })}
             />
-            <Button type="primary" onClick={sendResetEmailCode} disabled={resetEmailCountdown > 0}>
+            <Button
+              type="primary"
+              htmlType="button"
+              className="auth-modal-send-code"
+              onClick={sendResetEmailCode}
+              disabled={resetEmailCountdown > 0}
+            >
               {resetEmailCountdown > 0 ? `${resetEmailCountdown}秒后重试` : '发送验证码'}
             </Button>
           </div>
-          <Input
-            type="password"
-            mode="password"
+          <Input.Password
             placeholder="请输入新密码（6-20个字符）"
             value={resetForm.newPassword}
-            onChange={(newPassword) => setResetForm({ ...resetForm, newPassword })}
+            onChange={(event) => setResetForm({ ...resetForm, newPassword: event.target.value })}
           />
-          <Input
-            type="password"
-            mode="password"
+          <Input.Password
             placeholder="请确认新密码"
             value={resetForm.confirmPassword}
-            onChange={(confirmPassword) => setResetForm({ ...resetForm, confirmPassword })}
+            onChange={(event) => setResetForm({ ...resetForm, confirmPassword: event.target.value })}
           />
           {resetMessage && (
             <Typography.Text type={resetMessage.includes('已发送') || resetMessage.includes('成功') ? 'success' : 'danger'} style={{ fontSize: 14 }}>

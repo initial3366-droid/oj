@@ -1,3 +1,6 @@
+/**
+ * 管理员提交统计页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
@@ -16,11 +19,17 @@ import { adminDownload, adminGet } from '../../api/adminClient';
 const { Row, Col } = Grid;
 const Option = Select.Option;
 
+/**
+ * 页面结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PageResult<T> {
   total: number;
   list: T[];
 }
 
+/**
+ * 管理员提交接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface AdminSubmission {
   id: number;
   userId: number;
@@ -54,22 +63,34 @@ interface AdminSubmission {
   errorMessage?: string | null;
 }
 
+/**
+ * 班级Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ClassOption {
   id: number;
   name: string;
 }
 
+/**
+ * 用户Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface UserOption {
   id: number;
   username?: string | null;
   displayName?: string | null;
 }
 
+/**
+ * 题目Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ProblemOption {
   id: number;
   title: string;
 }
 
+/**
+ * 比赛Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ContestOption {
   id: number;
   title: string;
@@ -78,22 +99,34 @@ interface ContestOption {
 const statusOptions = ['PENDING', 'JUDGING', 'COMPILING', 'RUNNING', 'AC', 'WA', 'TLE', 'MLE', 'RE', 'CE', 'SE', 'FAILED', 'REJUDGE_PENDING'];
 const languageOptions = ['C', 'C++', 'Python', 'Java'];
 
+/**
+ * 格式化Date。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatDate(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
 }
 
+/**
+ * 封装dash相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function dash(value: unknown) {
   if (value === null || value === undefined || value === '') return '-';
   return String(value);
 }
 
+/**
+ * 封装boolText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function boolText(value?: boolean | null) {
   if (value === null || value === undefined) return '-';
   return value ? '是' : '否';
 }
 
+/**
+ * 封装状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusColor(status?: string | null) {
   const normalized = (status || '').toUpperCase();
   if (normalized === 'AC' || normalized === 'ACCEPTED') return 'green';
@@ -103,6 +136,9 @@ function statusColor(status?: string | null) {
   return 'red';
 }
 
+/**
+ * 封装测试点Count相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function caseCount(record: AdminSubmission) {
   const passed = record.passedCaseCount ?? 0;
   const total = record.totalCaseCount ?? 0;
@@ -112,6 +148,9 @@ function caseCount(record: AdminSubmission) {
 // 默认语言全量集合（含后端可能存在的变体），与题目/提交实际录入一致
 const ALL_LANGUAGES = ['C', 'C++', 'Python', 'Python3', 'Java', 'Go', 'Rust', 'Kotlin', 'JavaScript', 'TypeScript'];
 
+/**
+ * 渲染管理员提交统计页面，并协调其数据加载、状态和交互。
+ */
 export function AdminSubmissionStatisticsPage() {
   const [rows, setRows] = useState<AdminSubmission[]>([]);
   const [total, setTotal] = useState(0);
@@ -187,6 +226,9 @@ export function AdminSubmissionStatisticsPage() {
     }, 300);
   }, []);
 
+  /**
+   * 构造或转换Query。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const buildQuery = useCallback(() => {
     const params = new URLSearchParams({
       page: String(page),
@@ -202,6 +244,9 @@ export function AdminSubmissionStatisticsPage() {
     return params.toString();
   }, [filters, page, pageSize]);
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -219,11 +264,17 @@ export function AdminSubmissionStatisticsPage() {
     load();
   }, [load]);
 
+  /**
+   * 更新Filter。会更新 React 状态并触发重新渲染。
+   */
   function updateFilter(key: keyof typeof filters, value: string) {
     setFilters((current) => ({ ...current, [key]: value }));
     setPage(1);
   }
 
+  /**
+   * 重置Filters。会更新 React 状态并触发重新渲染。
+   */
   function resetFilters() {
     setFilters({
       id: '', userId: '', classId: '', problemId: '', contestId: '',
@@ -233,6 +284,9 @@ export function AdminSubmissionStatisticsPage() {
     setPage(1);
   }
 
+  /**
+   * 封装导出Csv相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function exportCsv() {
     if (exporting) return;
     setExporting(true);

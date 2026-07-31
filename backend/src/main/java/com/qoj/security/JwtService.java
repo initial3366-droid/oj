@@ -24,6 +24,9 @@ public class JwtService {
     // HMAC-SHA 签名密钥，由配置的 jwt.secret 派生，长度决定算法强度
     private final SecretKey key;
 
+    /**
+     * 构造 JwtService 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     public JwtService(QojProperties properties) {
         this.properties = properties;
         this.key = Keys.hmacShaKeyFor(properties.getJwt().getSecret().getBytes(StandardCharsets.UTF_8));
@@ -32,6 +35,9 @@ public class JwtService {
     /** 签发全新令牌对（access + refresh），生成新的 familyId */
     public TokenPair issueTokens(AuthUser user) {
         String familyId = UUID.randomUUID().toString();
+        /**
+         * 构造 令牌Pair 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new TokenPair(
             issueToken(user, properties.getJwt().getAccessTokenTtlSeconds(), "access", null),
             issueToken(user, properties.getJwt().getRefreshTokenTtlSeconds(), "refresh", familyId),
@@ -41,11 +47,17 @@ public class JwtService {
 
     /** 仅签发 Access Token，用于 refresh 续期流程 */
     public String issueAccessToken(AuthUser user) {
+        /**
+         * 判断sue令牌是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return issueToken(user, properties.getJwt().getAccessTokenTtlSeconds(), "access", null);
     }
 
     /** 在已有 family 中签发新 Refresh Token，实现令牌轮换 */
     public String issueRefreshToken(AuthUser user, String familyId) {
+        /**
+         * 判断sue令牌是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return issueToken(user, properties.getJwt().getRefreshTokenTtlSeconds(), "refresh", familyId);
     }
 
@@ -68,7 +80,7 @@ public class JwtService {
             .claim("displayName", user.displayName())
             .claim("role", user.role())
             .claim("typ", tokenType)
-            .claim("accountType", user.adminAccount() ? "ADMIN" : "USER")
+            .claim("accountType", user.accountType())
             .claim("userId", user.id())
             .issuedAt(Date.from(now))
             .expiration(Date.from(now.plusSeconds(ttlSeconds)))
@@ -100,6 +112,9 @@ public class JwtService {
         return Math.max(seconds, 1);
     }
 
+    /**
+     * 封装refresh令牌TtlSeconds相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     public long refreshTokenTtlSeconds() {
         return properties.getJwt().getRefreshTokenTtlSeconds();
     }

@@ -1,7 +1,13 @@
+/**
+ * DataTable组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Table, TableColumnProps, Space, Button, Input } from '@arco-design/web-react';
-import { IconSearch, IconRefresh } from '@arco-design/web-react/icon';
+import { IconRefresh } from '@arco-design/web-react/icon';
 import { useState, ReactNode } from 'react';
 
+/**
+ * DataTableProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface DataTableProps<T> {
   columns: TableColumnProps[];
   data: T[];
@@ -16,6 +22,9 @@ interface DataTableProps<T> {
   rowSelection?: object;
 }
 
+/**
+ * 渲染DataTable组件，并协调其数据加载、状态和交互。
+ */
 export function DataTable<T extends Record<string, any>>({
   columns,
   data,
@@ -31,6 +40,9 @@ export function DataTable<T extends Record<string, any>>({
 }: DataTableProps<T>) {
   const [searchValue, setSearchValue] = useState('');
 
+  /**
+   * 处理Search。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const handleSearch = () => {
     if (onSearch) {
       onSearch(searchValue);

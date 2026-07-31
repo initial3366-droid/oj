@@ -1,3 +1,6 @@
+/**
+ * 管理员排行榜页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useCallback, useEffect, useState } from 'react';
 import { Card, Grid, Message, Statistic, Table, Tag } from '@arco-design/web-react';
 import { IconTrophy } from '@arco-design/web-react/icon';
@@ -5,6 +8,9 @@ import { adminGet } from '../../api/adminClient';
 
 const { Row, Col } = Grid;
 
+/**
+ * Global排名接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface GlobalRank {
   userId: number;
   name: string;
@@ -13,6 +19,9 @@ interface GlobalRank {
   streak: number;
 }
 
+/**
+ * 班级排名接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ClassRank {
   classId: number;
   className: string;
@@ -20,11 +29,17 @@ interface ClassRank {
   acCount: number;
 }
 
+/**
+ * 渲染管理员排行榜页面，并协调其数据加载、状态和交互。
+ */
 export function AdminLeaderboardPage() {
   const [globalRows, setGlobalRows] = useState<GlobalRank[]>([]);
   const [classRows, setClassRows] = useState<ClassRank[]>([]);
   const [loading, setLoading] = useState(false);
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const load = useCallback(async () => {
     setLoading(true);
     try {

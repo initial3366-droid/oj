@@ -1,3 +1,6 @@
+/**
+ * index组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 export { PageContainer } from './PageContainer';
 export { EmptyState } from './EmptyState';
 export { LoadingState } from './LoadingState';

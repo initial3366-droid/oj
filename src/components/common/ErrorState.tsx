@@ -1,6 +1,12 @@
+/**
+ * ErrorState组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Empty, Button } from '@douyinfe/semi-ui';
 import { IllustrationFailure } from '@douyinfe/semi-illustrations';
 
+/**
+ * ErrorStateProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ErrorStateProps {
   title?: string;
   message?: string;

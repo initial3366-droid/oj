@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 
+/**
+ * 比赛Acm排名题目持久化实体。字段与数据库记录对应，用于在数据访问层和业务层之间传递状态。
+ */
 @TableName("contest_acm_rank_problems")
 public class ContestAcmRankProblem {
     @TableId(type = IdType.AUTO)

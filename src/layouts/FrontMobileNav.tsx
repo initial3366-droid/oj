@@ -1,25 +1,28 @@
+/**
+ * FrontMobileNav组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { SideSheet, Nav, Button, Space, Divider } from '@douyinfe/semi-ui';
 import { IconHome, IconList, IconTreeTriangleDown, IconUser, IconClose } from '@douyinfe/semi-icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useOjData } from '../data/OjDataProvider';
+import { logout as logoutFrontend } from '../api/auth';
 
+/**
+ * FrontMobileNavProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface FrontMobileNavProps {
   visible: boolean;
   onClose: () => void;
 }
 
+/**
+ * 渲染FrontMobileNav组件，并协调其数据加载、状态和交互。
+ */
 export function FrontMobileNav({ visible, onClose }: FrontMobileNavProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { state } = useOjData();
   const isLoggedIn = state.activeUser !== null;
-
-  const logout = () => {
-    window.localStorage.removeItem('qoj.accessToken');
-    window.localStorage.removeItem('qoj.refreshToken');
-    window.dispatchEvent(new Event('qoj:auth-cleared'));
-    window.location.href = '/login';
-  };
 
   const navItems = [
     { itemKey: 'home', text: '首页', icon: <IconHome />, path: '/' },
@@ -30,6 +33,9 @@ export function FrontMobileNav({ visible, onClose }: FrontMobileNavProps) {
     { itemKey: 'leaderboard', text: '排行榜', icon: <IconTreeTriangleDown />, path: '/leaderboard' },
   ];
 
+  /**
+   * 读取有效Key并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const getActiveKey = () => {
     const path = location.pathname;
     if (path === '/') return 'home';
@@ -41,6 +47,9 @@ export function FrontMobileNav({ visible, onClose }: FrontMobileNavProps) {
     return '';
   };
 
+  /**
+   * 处理NavClick。可能改变当前路由或查询参数。
+   */
   const handleNavClick = (data: any) => {
     const item = navItems.find(item => item.itemKey === data.itemKey);
     if (item) {
@@ -49,24 +58,36 @@ export function FrontMobileNav({ visible, onClose }: FrontMobileNavProps) {
     }
   };
 
+  /**
+   * 处理登录。可能改变当前路由或查询参数。
+   */
   const handleLogin = () => {
     navigate('/login');
     onClose();
   };
 
+  /**
+   * 处理注册。可能改变当前路由或查询参数。
+   */
   const handleRegister = () => {
     navigate('/register');
     onClose();
   };
 
+  /**
+   * 处理资料。可能改变当前路由或查询参数。
+   */
   const handleProfile = () => {
     navigate('/user-center');
     onClose();
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  /**
+   * 处理退出登录。包含异步流程并由调用方处理完成或失败状态；可能改变当前路由或查询参数。
+   */
+  const handleLogout = async () => {
+    await logoutFrontend().catch(() => undefined);
+    navigate('/login', { replace: true });
     onClose();
   };
 
@@ -166,7 +187,7 @@ export function FrontMobileNav({ visible, onClose }: FrontMobileNavProps) {
             <Button
               block
               type="danger"
-              onClick={handleLogout}
+                onClick={() => { void handleLogout(); }}
             >
               退出登录
             </Button>

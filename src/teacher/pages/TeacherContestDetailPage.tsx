@@ -1,3 +1,6 @@
+/**
+ * 教师比赛详情页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -23,11 +26,15 @@ import {
 const { Row, Col } = Grid;
 const TabPane = Tabs.TabPane;
 
+/**
+ * 比赛详情接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ContestDetail {
   id: number;
   title: string;
   description: string;
   type: string;
+  judgeMode?: 'GO_JUDGE' | 'CCPCOJ';
   status: string;
   startTime: string;
   endTime: string;
@@ -54,6 +61,9 @@ interface ContestDetail {
   updatedAt?: string;
 }
 
+/**
+ * 比赛题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ContestProblem {
   id: number;
   contestProblemId: number;
@@ -64,6 +74,9 @@ interface ContestProblem {
   displayOrder: number;
 }
 
+/**
+ * 报名接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Registration {
   id: number;
   userId: number;
@@ -75,6 +88,9 @@ interface Registration {
   registeredAt: string;
 }
 
+/**
+ * RollingStep接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface RollingStep {
   step: number;
   displayName: string;
@@ -87,6 +103,9 @@ interface RollingStep {
   rankDelta?: number | null;
 }
 
+/**
+ * RollingState接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface RollingState {
   contestId: number;
   status: 'NOT_STARTED' | 'ROLLING' | 'FINISHED' | 'PUBLISHED';
@@ -99,18 +118,27 @@ interface RollingState {
   updatedAt?: string | null;
 }
 
+/**
+ * 封装状态Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusText(status: string) {
   if (status === 'RUNNING') return '进行中';
   if (status === 'ENDED') return '已结束';
   return '未开始';
 }
 
+/**
+ * 封装状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusColor(status: string) {
   if (status === 'RUNNING') return 'green';
   if (status === 'ENDED') return 'red';
   return 'gray';
 }
 
+/**
+ * 封装audienceText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function audienceText(contest: ContestDetail) {
   if (contest.audiences?.length) {
     const names = contest.audiences.map((a) => a.name).filter(Boolean);
@@ -120,6 +148,9 @@ function audienceText(contest: ContestDetail) {
   return '所有人';
 }
 
+/**
+ * 渲染教师比赛详情页面，并协调其数据加载、状态和交互。
+ */
 export function TeacherContestDetailPage() {
   const navigate = useNavigate();
   const { contestId } = useParams();
@@ -141,6 +172,9 @@ export function TeacherContestDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numericId]);
 
+  /**
+   * 读取比赛详情并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadContestDetail() {
     if (!numericId) return;
     setLoading(true);
@@ -163,6 +197,9 @@ export function TeacherContestDetailPage() {
     }
   }
 
+  /**
+   * 封装导出榜单相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function exportScoreboard() {
     if (!numericId) return;
     setScoreboardExporting(true);
@@ -179,6 +216,9 @@ export function TeacherContestDetailPage() {
     }
   }
 
+  /**
+   * 封装导出Submissions相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function exportSubmissions() {
     if (!numericId) return;
     setSubmissionsExporting(true);
@@ -195,6 +235,9 @@ export function TeacherContestDetailPage() {
     }
   }
 
+  /**
+   * 封装runRollingAction相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function runRollingAction(path: string, successMessage: string) {
     if (!numericId) return;
     setRollingLoading(true);
@@ -331,6 +374,9 @@ export function TeacherContestDetailPage() {
           column={2}
           data={[
             { label: '比赛类型', value: <Tag color={contest.type === 'ACM' ? 'blue' : 'orange'}>{contest.type}</Tag> },
+            { label: '判题服务', value: contest.judgeMode === 'CCPCOJ'
+              ? <Tag color="purple">CCPCOJ</Tag>
+              : <Tag color="green">go-judge</Tag> },
             { label: '比赛状态', value: <Tag color={statusColor(contest.status)}>{statusText(contest.status)}</Tag> },
             { label: '开始时间', value: contest.startTime ? new Date(contest.startTime).toLocaleString('zh-CN') : '-' },
             { label: '结束时间', value: contest.endTime ? new Date(contest.endTime).toLocaleString('zh-CN') : '-' },

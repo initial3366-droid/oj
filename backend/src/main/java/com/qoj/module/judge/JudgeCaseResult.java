@@ -10,5 +10,8 @@ public record JudgeCaseResult(
     SubmissionStatus status,
     Integer timeMs,
     Integer memoryKb,
+    String inputPreview,
+    String outputPreview,
+    String expectedPreview,
     String message
 ) {}

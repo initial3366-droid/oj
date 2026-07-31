@@ -1,4 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+/**
+ * 教师题目列表页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button,
@@ -11,10 +14,14 @@ import {
   Table,
   Tag,
 } from '@arco-design/web-react';
-import { IconDelete, IconEdit, IconFile, IconPlus, IconSearch } from '@arco-design/web-react/icon';
+import { IconDelete, IconEdit, IconEye, IconFile, IconPlus, IconSearch } from '@arco-design/web-react/icon';
 import { teacherGet, teacherDelete } from '../teacherApi';
 import { encryptId } from '../../utils/cipher';
+import { ProblemPreviewModal } from '../../components/problems/ProblemPreviewModal';
 
+/**
+ * 题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Problem {
   id: number;
   title: string;
@@ -27,13 +34,23 @@ interface Problem {
   isPublic: boolean;
   createdAt: string;
   testCaseCount: number;
+  accessScope: 'ALL' | 'MAJOR' | 'PRIVATE';
+  majorName?: string | null;
+  studentPublishStatus: 'DRAFT' | 'PUBLISHED';
+  canEdit: boolean;
 }
 
+/**
+ * 文件夹Option接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface FolderOption {
   id: number;
   name: string;
 }
 
+/**
+ * 页面结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PageResult {
   list: Problem[];
   total: number;
@@ -55,7 +72,11 @@ const difficultyMap: Record<number, { text: string; color: string }> = {
   5: { text: '地狱', color: 'purple' },
 };
 
+/**
+ * 渲染教师题目列表页面，并协调其数据加载、状态和交互。
+ */
 export function TeacherProblemListPage() {
+  const requestSequence = useRef(0);
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -68,7 +89,11 @@ export function TeacherProblemListPage() {
   const [filterFolderId, setFilterFolderId] = useState<number | undefined>();
   const [filterOwnerName, setFilterOwnerName] = useState('');
   const [folders, setFolders] = useState<FolderOption[]>([]);
+  const [previewId, setPreviewId] = useState<number | null>(null);
 
+  /**
+   * 读取Folders并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const loadFolders = useCallback(async () => {
     try {
       const result = await teacherGet<FolderOption[]>('/api/admin/v1/problem-folders');
@@ -82,7 +107,11 @@ export function TeacherProblemListPage() {
     loadProblems();
   }, [page, keyword, filterDifficulty, filterTag, filterFolderId, filterOwnerName]);
 
+  /**
+   * 读取Problems并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadProblems() {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -95,28 +124,42 @@ export function TeacherProblemListPage() {
       if (filterFolderId != null) params.append('folderId', String(filterFolderId));
       if (filterOwnerName) params.append('ownerName', filterOwnerName);
       const result = await teacherGet<PageResult>(`/api/admin/v1/problems?${params.toString()}`);
+      if (sequence !== requestSequence.current) return;
       setProblems(result.list);
       setTotal(result.total);
     } catch (error) {
+      if (sequence !== requestSequence.current) return;
       Message.error(error instanceof Error ? error.message : '题目列表加载失败');
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }
 
+  /**
+   * 处理Search。会更新 React 状态并触发重新渲染。
+   */
   function handleSearch(value: string) {
     setKeyword(value);
     setPage(1);
   }
 
+  /**
+   * 处理Edit。可能改变当前路由或查询参数。
+   */
   function handleEdit(id: number) {
     navigate(`/teacher/problems/${encryptId(id)}/edit`);
   }
 
+  /**
+   * 处理TestCases。可能改变当前路由或查询参数。
+   */
   function handleTestCases(id: number) {
     navigate(`/teacher/problems/${encryptId(id)}/test-cases`);
   }
 
+  /**
+   * 处理Delete。包含异步流程并由调用方处理完成或失败状态。
+   */
   async function handleDelete(id: number) {
     try {
       await teacherDelete(`/api/admin/v1/problems/${id}`);
@@ -137,20 +180,19 @@ export function TeacherProblemListPage() {
     {
       title: '题目名称',
       dataIndex: 'title',
-      width: 180,
       ellipsis: true,
     },
     {
       title: '创建者',
       dataIndex: 'ownerName',
-      width: 90,
+      width: 130,
       ellipsis: true,
       render: (value: string) => value || '-',
     },
     {
       title: '难度',
       dataIndex: 'difficulty',
-      width: 72,
+      width: 90,
       align: 'center' as const,
       render: (value: number) => {
         const info = difficultyMap[value] || { text: '未知', color: 'gray' };
@@ -160,62 +202,58 @@ export function TeacherProblemListPage() {
     {
       title: '所属文件夹',
       dataIndex: 'folderName',
-      width: 110,
+      width: 150,
       ellipsis: true,
       render: (value: string) => value || '-',
     },
     {
-      title: '通过率',
-      dataIndex: 'acRate',
-      width: 72,
+      title: '学生题库',
+      dataIndex: 'studentPublishStatus',
+      width: 100,
       align: 'center' as const,
-      render: (value: number) => `${value}%`,
-    },
-    {
-      title: '测试点',
-      dataIndex: 'testCaseCount',
-      width: 70,
-      align: 'center' as const,
-      render: (value: number) => value ?? 0,
-    },
-    {
-      title: '状态',
-      dataIndex: 'isPublic',
-      width: 72,
-      align: 'center' as const,
-      render: (isPublic: boolean) => (
-        <Tag color={isPublic ? 'green' : 'red'}>
-          {isPublic ? '公开' : '隐藏'}
-        </Tag>
-      ),
+      render: (value: Problem['studentPublishStatus']) => <Tag color={value === 'PUBLISHED' ? 'green' : 'gray'}>{value === 'PUBLISHED' ? '已发布' : '未发布'}</Tag>,
     },
     {
       title: '操作',
-      width: 180,
+      width: 210,
       align: 'center' as const,
       render: (_: unknown, record: Problem) => (
         <Space size={2} wrap={false}>
           <Button
             type="text"
             size="small"
-            icon={<IconEdit />}
-            onClick={() => handleEdit(record.id)}
+            icon={<IconEye />}
+            onClick={() => setPreviewId(record.id)}
           >
-            编辑
+            查看
           </Button>
-          <Button
-            type="text"
-            size="small"
-            icon={<IconFile />}
-            onClick={() => handleTestCases(record.id)}
-          >
-            测试点
-          </Button>
-          <Popconfirm title="确定删除该题目吗？" onOk={() => handleDelete(record.id)}>
-            <Button type="text" size="small" status="danger" icon={<IconDelete />}>
-              删除
-            </Button>
-          </Popconfirm>
+          {record.canEdit ? (
+            <>
+              <Button
+                type="text"
+                size="small"
+                icon={<IconEdit />}
+                onClick={() => handleEdit(record.id)}
+              >
+                编辑
+              </Button>
+              <Button
+                type="text"
+                size="small"
+                icon={<IconFile />}
+                onClick={() => handleTestCases(record.id)}
+              >
+                测试点
+              </Button>
+              <Popconfirm title="确定删除该题目吗？" onOk={() => handleDelete(record.id)}>
+                <Button type="text" size="small" status="danger" icon={<IconDelete />}>
+                  删除
+                </Button>
+              </Popconfirm>
+            </>
+          ) : (
+            <Tag color="blue">可组题</Tag>
+          )}
         </Space>
       ),
     },
@@ -294,6 +332,13 @@ export function TeacherProblemListPage() {
           showTotal: true,
           onChange: setPage,
         }}
+      />
+
+      <ProblemPreviewModal
+        visible={previewId != null}
+        problemId={previewId}
+        onClose={() => setPreviewId(null)}
+        get={teacherGet}
       />
     </Card>
   );

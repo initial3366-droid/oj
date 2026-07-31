@@ -32,8 +32,13 @@ import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.module.user.mapper.UserMapper;
+import com.qoj.module.teacher.entity.Major;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.MajorMapper;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
+import com.qoj.security.policy.ResourceAccessService;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -53,6 +58,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 题目业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class ProblemService {
     private static final int MAX_ZIP_TEST_CASES = 200;
@@ -70,7 +78,14 @@ public class ProblemService {
     private final StringRedisTemplate redisTemplate;
     private final com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy;
     private final ProblemFolderMapper problemFolderMapper;
+    private final TeacherMapper teacherMapper;
+    private final MajorMapper majorMapper;
+    private final ResourceAccessService resourceAccessService;
+    private final ProblemFolderService problemFolderService;
 
+    /**
+     * 构造 题目Service 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断；从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
+     */
     public ProblemService(
         ProblemMapper problemMapper,
         ProblemTestCaseMapper problemTestCaseMapper,
@@ -81,7 +96,11 @@ public class ProblemService {
         ObjectMapper objectMapper,
         StringRedisTemplate redisTemplate,
         com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy,
-        ProblemFolderMapper problemFolderMapper
+        ProblemFolderMapper problemFolderMapper,
+        TeacherMapper teacherMapper,
+        MajorMapper majorMapper,
+        ResourceAccessService resourceAccessService,
+        ProblemFolderService problemFolderService
     ) {
         this.problemMapper = problemMapper;
         this.problemTestCaseMapper = problemTestCaseMapper;
@@ -93,12 +112,16 @@ public class ProblemService {
         this.redisTemplate = redisTemplate;
         this.problemAccessPolicy = problemAccessPolicy;
         this.problemFolderMapper = problemFolderMapper;
+        this.teacherMapper = teacherMapper;
+        this.majorMapper = majorMapper;
+        this.resourceAccessService = resourceAccessService;
+        this.problemFolderService = problemFolderService;
     }
 
     public PageResult<PublicProblemVO> list(int page, int pageSize, String keyword, Integer difficulty, String tag) {
         QueryWrapper<Problem> wrapper = new QueryWrapper<>();
         wrapper.eq("is_deleted", false);
-        wrapper.eq("is_public", true);
+        wrapper.eq("student_publish_status", "PUBLISHED");
         if (keyword != null && !keyword.isBlank()) {
             wrapper.and(w -> w.like("title", keyword).or().like("statement", keyword));
         }
@@ -120,7 +143,23 @@ public class ProblemService {
         QueryWrapper<Problem> wrapper = new QueryWrapper<>();
         wrapper.eq("is_deleted", false);
         if (!"SUPER_ADMIN".equals(user.role())) {
-            wrapper.eq("owner_id", user.id());
+            Teacher teacher = user.teacherAccount() ? teacherMapper.selectById(user.id()) : null;
+            wrapper.and(visible -> {
+                visible.and(owner -> owner.eq("owner_id", user.id()).eq("owner_account_type", user.accountType()))
+                    .or().eq("access_scope", "ALL");
+                if (teacher != null && teacher.majorId != null) {
+                        visible.or(major -> major.eq("access_scope", "MAJOR").eq("major_id", teacher.majorId))
+                        .or().apply(
+                            "id IN (SELECT pfi.problem_id FROM problem_folder_items pfi JOIN problem_folders pf ON pf.id = pfi.folder_id WHERE pfi.relation_type = 'GRANT' AND (pf.access_scope = 'ALL' OR (pf.access_scope = 'MAJOR' AND pf.major_id = {0}) OR (pf.owner_account_type = 'TEACHER' AND pf.owner_id = {1})))",
+                            teacher.majorId,
+                            teacher.id
+                        );
+                } else {
+                    visible.or().apply(
+                        "id IN (SELECT pfi.problem_id FROM problem_folder_items pfi JOIN problem_folders pf ON pf.id = pfi.folder_id WHERE pfi.relation_type = 'GRANT' AND pf.access_scope = 'ALL')"
+                    );
+                }
+            });
         }
         if (keyword != null && !keyword.isBlank()) {
             wrapper.and(w -> w.like("title", keyword).or().like("statement", keyword));
@@ -132,14 +171,19 @@ public class ProblemService {
             wrapper.like("tags", tag);
         }
         if (folderId != null) {
-            wrapper.eq("folder_id", folderId);
+            wrapper.apply(
+                "id IN (SELECT problem_id FROM problem_folder_items WHERE folder_id = {0})",
+                folderId
+            );
         }
         if (ownerName != null && !ownerName.isBlank()) {
             String normalizedOwnerName = ownerName.trim();
             wrapper.and(w -> w
-                .apply("owner_id IN (SELECT id FROM users WHERE display_name LIKE CONCAT('%', {0}, '%'))", normalizedOwnerName)
+                .apply("(owner_account_type = 'USER' AND owner_id IN (SELECT id FROM users WHERE display_name LIKE CONCAT('%', {0}, '%')))", normalizedOwnerName)
                 .or()
-                .apply("owner_id IN (SELECT id FROM admin_users WHERE display_name LIKE CONCAT('%', {0}, '%'))", normalizedOwnerName)
+                .apply("(owner_account_type = 'TEACHER' AND owner_id IN (SELECT id FROM teachers WHERE display_name LIKE CONCAT('%', {0}, '%')))", normalizedOwnerName)
+                .or()
+                .apply("(owner_account_type = 'ADMIN' AND owner_id IN (SELECT id FROM admin_users WHERE display_name LIKE CONCAT('%', {0}, '%')))", normalizedOwnerName)
             );
         }
         wrapper.orderByDesc("created_at");
@@ -150,6 +194,9 @@ public class ProblemService {
     public Object detail(long id) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
@@ -157,13 +204,19 @@ public class ProblemService {
         AuthUser user = CurrentUser.get();
         if (Boolean.TRUE.equals(problem.isDeleted)) {
             // 只有SUPER_ADMIN和创建者可以查看已删除的题目
-            if (user == null || (!"SUPER_ADMIN".equals(user.role()) && !problem.ownerId.equals(user.id()))) {
+            if (user == null || (!"SUPER_ADMIN".equals(user.role()) && !isOwner(problem, user))) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
             }
         }
 
         // 使用Policy检查查看权限
         if (!problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
@@ -171,8 +224,14 @@ public class ProblemService {
         boolean isAdmin = user != null && problemAccessPolicy.can(user, com.qoj.security.policy.Permission.UPDATE, problem);
 
         if (isAdmin) {
+            /**
+             * 封装with管理员Attempt状态相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return withAdminAttemptStatus(toAdminVO(problem), attemptStatus(currentUserId(), problem.id));
         } else {
+            /**
+             * 封装withPublicAttempt状态相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return withPublicAttemptStatus(toPublicVO(problem), attemptStatus(currentUserId(), problem.id));
         }
     }
@@ -180,20 +239,32 @@ public class ProblemService {
     public PublicProblemVO publicDetail(long id) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
         // 检查软删除状态
         if (Boolean.TRUE.equals(problem.isDeleted)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
         // 只返回公开题目或用户有权限的题目
         AuthUser user = CurrentUser.get();
         if (!problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
+        /**
+         * 封装withPublicAttempt状态相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return withPublicAttemptStatus(toPublicVO(problem), attemptStatus(currentUserId(), problem.id));
     }
 
@@ -204,6 +275,9 @@ public class ProblemService {
     public ProblemVO detailAsVO(long id) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
@@ -211,24 +285,39 @@ public class ProblemService {
         AuthUser user = CurrentUser.get();
         if (Boolean.TRUE.equals(problem.isDeleted)) {
             // 只有SUPER_ADMIN和创建者可以查看已删除的题目
-            if (user == null || (!"SUPER_ADMIN".equals(user.role()) && !problem.ownerId.equals(user.id()))) {
+            if (user == null || (!"SUPER_ADMIN".equals(user.role()) && !isOwner(problem, user))) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
             }
         }
 
         // 使用Policy检查查看权限
         if (!problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
+        /**
+         * 封装withAttempt状态相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return withAttemptStatus(toVO(problem), attemptStatus(currentUserId(), problem.id));
     }
 
     public ProblemVO detailAsVOUnchecked(long id) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null || Boolean.TRUE.equals(problem.isDeleted)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
+        /**
+         * 封装withAttempt状态相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return withAttemptStatus(toVO(problem), attemptStatus(currentUserId(), problem.id));
     }
 
@@ -250,11 +339,32 @@ public class ProblemService {
         if (request.folderId() != null) {
             problem.folderId = request.folderId();
         }
-        problem.isPublic = !Boolean.FALSE.equals(request.isPublic());
+        AuthUser user = CurrentUser.required();
+        var scope = resourceAccessService.resolveScope(user, request.accessScope(), request.majorId());
+        problem.accessScope = scope.accessScope();
+        problem.majorId = scope.majorId();
+        String publishStatus = normalizePublishStatus(request.studentPublishStatus(), request.isPublic());
+        problem.studentPublishStatus = publishStatus;
+        problem.isPublic = "PUBLISHED".equals(publishStatus);
+        if (problem.isPublic) {
+            problem.publishedByAccountType = user.accountType();
+            problem.publishedById = user.id();
+            problem.publishedAt = java.time.LocalDateTime.now();
+        } else {
+            problem.publishedByAccountType = null;
+            problem.publishedById = null;
+            problem.publishedAt = null;
+        }
         problemMapper.updateById(problem);
+        if (request.folderId() != null) {
+            problemFolderService.assignOwnedProblem(request.folderId(), problem);
+        }
         replaceTestCases(problem.id, sampleEntities(samples), true);
         redisTemplate.delete(RedisKeys.problem(problem.id));
         Problem updated = problemMapper.selectById(problem.id);
+        /**
+         * 构造或转换管理员VOForUpdate。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toAdminVOForUpdate(updated == null ? problem : updated);
     }
 
@@ -294,17 +404,29 @@ public class ProblemService {
             int caseNo = item.caseNo == null ? nextCaseNo : item.caseNo;
             while (usedCaseNos.contains(caseNo)) {
                 if (item.caseNo != null) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(400, "测试点编号 " + item.caseNo + " 重复");
                 }
                 caseNo++;
             }
             if (caseNo <= 0) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "测试点编号必须大于 0");
             }
-            if (item.inputData == null || item.inputData.isBlank()) {
-                throw new BizException(400, (sample ? "样例" : "测试点") + " " + caseNo + " 的输入数据不能为空");
+            if (sample && (item.inputData == null || item.inputData.isBlank())) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
+                throw new BizException(400, "样例 " + caseNo + " 的输入数据不能为空");
             }
             if (item.outputData == null || item.outputData.isBlank()) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, (sample ? "样例" : "测试点") + " " + caseNo + " 的输出数据不能为空");
             }
             usedCaseNos.add(caseNo);
@@ -315,7 +437,7 @@ public class ProblemService {
             testCase.problemId = problemId;
             testCase.sample = sample;
             testCase.caseNo = caseNo;
-            testCase.inputData = item.inputData;
+            testCase.inputData = item.inputData == null ? "" : item.inputData;
             testCase.outputData = item.outputData;
             testCase.explanation = item.explanation;
             normalized.add(testCase);
@@ -326,10 +448,16 @@ public class ProblemService {
     public List<ProblemTestCaseVO> testCases(long problemId) {
         Problem problem = problemMapper.selectById(problemId);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "题目不存在");
         }
         AuthUser user = CurrentUser.required();
         if (!problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW_HIDDEN_CASE, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权查看该题目测试点");
         }
         return problemTestCaseMapper
@@ -360,6 +488,9 @@ public class ProblemService {
             index++;
         }
         replaceTestCases(problem.id, entities, false);
+        /**
+         * 封装testCases相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return testCases(problem.id);
     }
 
@@ -369,11 +500,14 @@ public class ProblemService {
         ProblemTestCase testCase = new ProblemTestCase();
         testCase.problemId = problem.id;
         testCase.caseNo = request.caseNo() == null ? nextHiddenCaseNo(problem.id) : request.caseNo();
-        testCase.inputData = request.input();
+        testCase.inputData = request.input() == null ? "" : request.input();
         testCase.outputData = request.output();
         testCase.sample = false;
         problemTestCaseMapper.insert(testCase);
         redisTemplate.delete(RedisKeys.problem(problemId));
+        /**
+         * 构造或转换Test测试点VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toTestCaseVO(testCase);
     }
 
@@ -382,13 +516,19 @@ public class ProblemService {
         requireOwnerOrSuperAdmin(problemId);
         ProblemTestCase testCase = problemTestCaseMapper.selectById(testCaseId);
         if (testCase == null || !Long.valueOf(problemId).equals(testCase.problemId) || Boolean.TRUE.equals(testCase.sample)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "测试点不存在");
         }
         testCase.caseNo = request.caseNo();
-        testCase.inputData = request.input();
+        testCase.inputData = request.input() == null ? "" : request.input();
         testCase.outputData = request.output();
         problemTestCaseMapper.updateById(testCase);
         redisTemplate.delete(RedisKeys.problem(problemId));
+        /**
+         * 构造或转换Test测试点VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toTestCaseVO(testCase);
     }
 
@@ -397,6 +537,9 @@ public class ProblemService {
         requireOwnerOrSuperAdmin(problemId);
         ProblemTestCase testCase = problemTestCaseMapper.selectById(testCaseId);
         if (testCase == null || !Long.valueOf(problemId).equals(testCase.problemId) || Boolean.TRUE.equals(testCase.sample)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(404, "测试点不存在");
         }
         problemTestCaseMapper.deleteById(testCaseId);
@@ -428,10 +571,16 @@ public class ProblemService {
     private Problem requireOwnerOrSuperAdmin(long id) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
         var authUser = CurrentUser.required();
         if (!problemAccessPolicy.can(authUser, com.qoj.security.policy.Permission.UPDATE, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无访问权限");
         }
         return problem;
@@ -439,8 +588,11 @@ public class ProblemService {
 
     private Problem requirePublicManageOwner(long id) {
         Problem problem = requireOwnerOrSuperAdmin(id);
-        String role = CurrentUser.required().role();
-        if (!"SUPER_ADMIN".equals(role) && !"TEACHER".equals(role)) {
+        AuthUser user = CurrentUser.required();
+        if (!user.adminAccount() && !user.teacherAccount()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无公开题目权限");
         }
         return problem;
@@ -467,7 +619,7 @@ public class ProblemService {
             problemTestCaseMapper.selectCount(
                 new QueryWrapper<ProblemTestCase>().eq("problem_id", problem.id).eq("sample", false)
             ),
-            ownerName(problem.ownerId),
+            ownerName(problem.ownerId, problem.ownerAccountType),
             null
         );
     }
@@ -492,12 +644,14 @@ public class ProblemService {
             problemTestCaseMapper.selectCount(
                 new QueryWrapper<ProblemTestCase>().eq("problem_id", problem.id).eq("sample", false)
             ),
-            ownerName(problem.ownerId),
+            ownerName(problem.ownerId, problem.ownerAccountType),
             null
         );
     }
 
     private AdminProblemVO toAdminVO(Problem problem) {
+        AuthUser user = CurrentUser.get();
+        boolean owner = user != null && resourceAccessService.isOwner(user, problem.ownerAccountType, problem.ownerId);
         return new AdminProblemVO(
             problem.id,
             problem.title,
@@ -517,15 +671,24 @@ public class ProblemService {
             problemTestCaseMapper.selectCount(
                 new QueryWrapper<ProblemTestCase>().eq("problem_id", problem.id).eq("sample", false)
             ),
-            ownerName(problem.ownerId),
+            ownerName(problem.ownerId, problem.ownerAccountType),
             null,
             problem.ownerId,
             problem.isPublic,
-            problem.updatedAt
+            problem.updatedAt,
+            problem.ownerAccountType,
+            problem.accessScope,
+            problem.majorId,
+            majorName(problem.majorId),
+            problem.studentPublishStatus,
+            owner,
+            owner || resourceAccessService.isSuperAdmin(user)
         );
     }
 
     private AdminProblemVO toAdminVOForUpdate(Problem problem) {
+        AuthUser user = CurrentUser.get();
+        boolean owner = user != null && resourceAccessService.isOwner(user, problem.ownerAccountType, problem.ownerId);
         return new AdminProblemVO(
             problem.id,
             problem.title,
@@ -549,7 +712,14 @@ public class ProblemService {
             null,
             problem.ownerId,
             problem.isPublic,
-            problem.updatedAt
+            problem.updatedAt,
+            problem.ownerAccountType,
+            problem.accessScope,
+            problem.majorId,
+            majorName(problem.majorId),
+            problem.studentPublishStatus,
+            owner,
+            owner || resourceAccessService.isSuperAdmin(user)
         );
     }
 
@@ -615,7 +785,14 @@ public class ProblemService {
             attemptStatus,
             vo.ownerId(),
             vo.isPublic(),
-            vo.updatedAt()
+            vo.updatedAt(),
+            vo.ownerAccountType(),
+            vo.accessScope(),
+            vo.majorId(),
+            vo.majorName(),
+            vo.studentPublishStatus(),
+            vo.owner(),
+            vo.canEdit()
         );
     }
 
@@ -648,6 +825,9 @@ public class ProblemService {
         if (status != null && status.bestStatus != null && !status.bestStatus.isBlank()) {
             return status.bestStatus;
         }
+        /**
+         * 封装attempt状态FromSubmissions相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return attemptStatusFromSubmissions(userId, problemId);
     }
 
@@ -730,7 +910,7 @@ public class ProblemService {
     private Long currentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.getPrincipal() instanceof AuthUser authUser) {
-            if (authUser.adminAccount()) {
+            if (!"USER".equals(authUser.accountType())) {
                 return null;
             }
             return authUser.id();
@@ -742,6 +922,9 @@ public class ProblemService {
         try {
             return objectMapper.writeValueAsString(tags == null ? List.of() : tags);
         } catch (JsonProcessingException ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "标签格式错误");
         }
     }
@@ -778,6 +961,9 @@ public class ProblemService {
         try {
             samples = objectMapper.readValue(sampleCases, new TypeReference<List<ProblemSampleCaseRequest>>() {});
         } catch (Exception ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "样例格式错误");
         }
         List<ProblemTestCase> result = new java.util.ArrayList<>();
@@ -789,6 +975,9 @@ public class ProblemService {
                 continue;
             }
             if (!hasInput || !hasOutput) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "样例输入输出必须同时填写");
             }
             ProblemTestCase testCase = new ProblemTestCase();
@@ -811,6 +1000,9 @@ public class ProblemService {
         try {
             return objectMapper.readValue(request.sampleCases(), new TypeReference<List<ProblemSampleCaseRequest>>() {});
         } catch (Exception ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "样例格式错误");
         }
     }
@@ -819,6 +1011,9 @@ public class ProblemService {
         try {
             return objectMapper.writeValueAsString(samples == null ? List.of() : samples);
         } catch (JsonProcessingException ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "样例格式错误");
         }
     }
@@ -839,6 +1034,9 @@ public class ProblemService {
                 continue;
             }
             if (!hasInput || !hasOutput) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "样例输入输出必须同时填写");
             }
             ProblemTestCase testCase = new ProblemTestCase();
@@ -852,6 +1050,9 @@ public class ProblemService {
     }
 
     private ProblemTestCaseVO toTestCaseVO(ProblemTestCase item) {
+        /**
+         * 封装题目Test测试点VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new ProblemTestCaseVO(
             item.id,
             item.caseNo,
@@ -862,16 +1063,51 @@ public class ProblemService {
         );
     }
 
-    private String ownerName(Long ownerId) {
+    private String ownerName(Long ownerId, String ownerAccountType) {
         if (ownerId == null) {
             return "";
         }
-        User user = userMapper.selectById(ownerId);
-        if (user != null) {
-            return user.displayName;
+        String type = resourceAccessService.normalizeOwnerType(ownerAccountType);
+        if ("ADMIN".equals(type)) {
+            AdminUser adminUser = adminUserMapper.selectById(ownerId);
+            return adminUser == null ? "" : adminUser.displayName;
         }
-        AdminUser adminUser = adminUserMapper.selectById(ownerId);
-        return adminUser == null ? "" : adminUser.displayName;
+        if ("TEACHER".equals(type)) {
+            Teacher teacher = teacherMapper.selectById(ownerId);
+            return teacher == null ? "" : teacher.displayName;
+        }
+        User user = userMapper.selectById(ownerId);
+        return user == null ? "" : user.displayName;
+    }
+
+    private boolean isOwner(Problem problem, AuthUser user) {
+        return resourceAccessService.isOwner(user, problem.ownerAccountType, problem.ownerId);
+    }
+
+    private String accountType(AuthUser user) {
+        return user.accountType();
+    }
+
+    private String normalizeAccountType(String value) {
+        return resourceAccessService.normalizeOwnerType(value);
+    }
+
+    private String normalizePublishStatus(String value, Boolean legacyPublic) {
+        String status = value == null
+            ? (Boolean.FALSE.equals(legacyPublic) ? "DRAFT" : "PUBLISHED")
+            : value.trim().toUpperCase();
+        if (!Set.of("DRAFT", "PUBLISHED").contains(status)) {
+            throw new BizException(400, "题目发布状态无效");
+        }
+        return status;
+    }
+
+    private String majorName(Long majorId) {
+        if (majorId == null) {
+            return null;
+        }
+        Major major = majorMapper.selectById(majorId);
+        return major == null ? null : major.name;
     }
 
     private String folderName(Long folderId) {
@@ -905,6 +1141,9 @@ public class ProblemService {
                     continue;
                 }
                 if (++counters[0] > MAX_ZIP_ENTRIES) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(400, "测试点 ZIP 文件数量过多");
                 }
                 String name = safeZipEntryName(entry.getName());
@@ -913,6 +1152,9 @@ public class ProblemService {
                     continue;
                 }
                 if (inputs.size() + outputs.size() >= MAX_ZIP_TEST_CASES * 2) {
+                    /**
+                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                     */
                     throw new BizException(400, "测试点数量过多");
                 }
                 String content = readZipEntryText(zip, counters);
@@ -925,10 +1167,16 @@ public class ProblemService {
         } catch (BizException ex) {
             throw ex;
         } catch (Exception ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "测试点 ZIP 解析失败");
         }
         TreeSet<Integer> caseNos = new TreeSet<>(inputs.keySet());
         if (caseNos.isEmpty()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "ZIP 中未找到测试点");
         }
         List<ProblemTestCase> testCases = new java.util.ArrayList<>();
@@ -936,6 +1184,9 @@ public class ProblemService {
             String input = inputs.get(caseNo);
             String output = outputs.get(caseNo);
             if (output == null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, caseNo + ".out 缺失");
             }
             ProblemTestCase testCase = new ProblemTestCase();
@@ -950,6 +1201,9 @@ public class ProblemService {
     private String safeZipEntryName(String rawName) {
         String name = rawName == null ? "" : rawName.replace('\\', '/');
         if (name.contains("../") || name.startsWith("/")) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "测试点 ZIP 包含非法路径");
         }
         int slash = name.lastIndexOf('/');
@@ -968,9 +1222,15 @@ public class ProblemService {
             entryBytes += read;
             counters[1] += read;
             if (entryBytes > MAX_ZIP_ENTRY_BYTES) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "单个测试点文件过大");
             }
             if (counters[1] > MAX_ZIP_TOTAL_BYTES) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "测试点 ZIP 解压后过大");
             }
             out.write(buffer, 0, read);

@@ -19,6 +19,7 @@ import com.qoj.common.enums.UserRole;
 import com.qoj.common.redis.RedisKeys;
 import com.qoj.module.auth.dto.AuthTokenResponse;
 import com.qoj.module.auth.dto.BindEmailRequest;
+import com.qoj.module.auth.dto.FrontendLoginResponse;
 import com.qoj.module.auth.dto.LoginRequest;
 import com.qoj.module.auth.dto.RefreshTokenRequest;
 import com.qoj.module.auth.dto.RegisterRequest;
@@ -29,6 +30,11 @@ import com.qoj.module.classroom.entity.ClassMember;
 import com.qoj.module.classroom.entity.ClassRoom;
 import com.qoj.module.classroom.mapper.ClassMemberMapper;
 import com.qoj.module.classroom.mapper.ClassRoomMapper;
+import com.qoj.module.teacher.entity.Major;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.MajorMapper;
+import com.qoj.module.teacher.mapper.TeacherMapper;
+import com.qoj.module.teacher.vo.TeacherMeVO;
 import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.entity.UserScore;
@@ -48,6 +54,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 
+/**
+ * 认证业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class AuthService {
     private static final Duration ONLINE_USER_TTL = Duration.ofDays(7);
@@ -56,6 +65,8 @@ public class AuthService {
 
     private final UserMapper userMapper;
     private final AdminUserMapper adminUserMapper;
+    private final TeacherMapper teacherMapper;
+    private final MajorMapper majorMapper;
     private final UserScoreMapper userScoreMapper;
     private final ClassRoomMapper classRoomMapper;
     private final ClassMemberMapper classMemberMapper;
@@ -63,9 +74,14 @@ public class AuthService {
     private final JwtService jwtService;
     private final StringRedisTemplate redisTemplate;
 
+    /**
+     * 构造 认证Service 实例并保存其必要依赖或初始状态。从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
+     */
     public AuthService(
         UserMapper userMapper,
         AdminUserMapper adminUserMapper,
+        TeacherMapper teacherMapper,
+        MajorMapper majorMapper,
         UserScoreMapper userScoreMapper,
         ClassRoomMapper classRoomMapper,
         ClassMemberMapper classMemberMapper,
@@ -75,6 +91,8 @@ public class AuthService {
     ) {
         this.userMapper = userMapper;
         this.adminUserMapper = adminUserMapper;
+        this.teacherMapper = teacherMapper;
+        this.majorMapper = majorMapper;
         this.userScoreMapper = userScoreMapper;
         this.classRoomMapper = classRoomMapper;
         this.classMemberMapper = classMemberMapper;
@@ -83,50 +101,76 @@ public class AuthService {
         this.redisTemplate = redisTemplate;
     }
 
-    public AuthTokenResponse login(LoginRequest request) {
+    public FrontendLoginResponse login(LoginRequest request) {
+        /**
+         * 封装登录用户相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return loginUser(request);
     }
 
     @Transactional
-    public AuthTokenResponse loginUser(LoginRequest request) {
+    public FrontendLoginResponse loginUser(LoginRequest request) {
         String username = normalizeLoginName(request.username());
         assertLoginNotLocked("front", username);
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", request.username()));
         if (user != null && passwordEncoder.matches(request.password(), user.passwordHash)) {
             if (!UserRole.isActiveFrontendRole(user.role)) {
                 recordLoginFailure("front", username);
+                /**
+                 * 封装BadCredentialsException相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                 */
                 throw new BadCredentialsException("bad credentials");
             }
             resetLoginFailures("front", username);
-            return issueFrontendTokens(user);
+            /**
+             * 判断sueFrontendTokens是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
+            return FrontendLoginResponse.user(issueFrontendTokens(user));
         }
 
-        AdminUser adminUser = adminUserMapper.selectOne(new QueryWrapper<AdminUser>().eq("username", request.username()));
-        if (adminUser != null && passwordEncoder.matches(request.password(), adminUser.passwordHash)) {
-            if ("TEACHER".equals(adminUser.role)) {
-                resetLoginFailures("front", username);
-                return issueFrontendTokens(syncFrontendAccount(adminUser));
-            }
-            throw new BizException(403, "后台账号请从后台入口登录");
+        Teacher teacher = teacherMapper.selectOne(
+            new QueryWrapper<Teacher>().eq("username", request.username()).eq("status", "ACTIVE")
+        );
+        if (teacher != null && passwordEncoder.matches(request.password(), teacher.passwordHash)) {
+            resetLoginFailures("front", username);
+            return FrontendLoginResponse.teacherPortal();
         }
 
         recordLoginFailure("front", username);
+        /**
+         * 封装BadCredentialsException相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         throw new BadCredentialsException("bad credentials");
     }
 
     private AuthTokenResponse issueFrontendTokens(User user) {
-        JwtService.TokenPair pair = jwtService.issueTokens(new AuthUser(user));
+        return issueAccountTokens(new AuthUser(user), true);
+    }
 
-        // 保存在线状态
-        redisTemplate.opsForValue().set(RedisKeys.onlineUser(user.id), "1", ONLINE_USER_TTL);
-
-        // 保存 refresh token family 到 Redis
-        redisTemplate.opsForValue().set(
-            RedisKeys.refreshTokenFamily(pair.familyId()),
-            pair.refreshToken(),
-            refreshTokenTtl()
+    public AuthTokenResponse loginTeacher(LoginRequest request) {
+        String username = normalizeLoginName(request.username());
+        assertLoginNotLocked("teacher", username);
+        Teacher teacher = teacherMapper.selectOne(
+            new QueryWrapper<Teacher>().eq("username", request.username()).eq("status", "ACTIVE")
         );
+        if (teacher == null || !passwordEncoder.matches(request.password(), teacher.passwordHash)) {
+            recordLoginFailure("teacher", username);
+            throw new BadCredentialsException("bad credentials");
+        }
+        resetLoginFailures("teacher", username);
+        return issueAccountTokens(new AuthUser(teacher), true);
+    }
 
+    private AuthTokenResponse issueAccountTokens(AuthUser authUser, boolean recordOnline) {
+        JwtService.TokenPair pair = jwtService.issueTokens(authUser);
+        if (recordOnline) {
+            redisTemplate.opsForValue().set(
+                RedisKeys.onlineAccount(authUser.accountType(), authUser.id()), "1", ONLINE_USER_TTL
+            );
+        }
+        redisTemplate.opsForValue().set(
+            RedisKeys.refreshTokenFamily(pair.familyId()), pair.refreshToken(), refreshTokenTtl()
+        );
         return new AuthTokenResponse(pair.accessToken(), pair.refreshToken());
     }
 
@@ -149,6 +193,9 @@ public class AuthService {
         if (failures >= MAX_LOGIN_FAILURES) {
             Long ttl = redisTemplate.getExpire(key);
             long seconds = ttl == null || ttl < 0 ? LOGIN_LOCK_TTL.toSeconds() : ttl;
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(429, "登录失败次数过多，请 " + seconds + " 秒后再试");
         }
     }
@@ -171,40 +218,6 @@ public class AuthService {
         } catch (NumberFormatException ex) {
             return fallback;
         }
-    }
-
-    private User syncFrontendAccount(AdminUser adminUser) {
-        User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", adminUser.username));
-        if (user == null) {
-            user = new User();
-            user.username = adminUser.username;
-            user.studentNo = null;
-            user.email = availableUserEmail(adminUser.email);
-        }
-        user.passwordHash = adminUser.passwordHash;
-        user.role = switch (adminUser.role) {
-            case "TEACHER" -> UserRole.TEACHER.name();
-            default -> UserRole.STUDENT.name();
-        };
-        user.displayName = adminUser.displayName == null || adminUser.displayName.isBlank()
-            ? adminUser.username
-            : adminUser.displayName;
-
-        if (user.id == null) {
-            userMapper.insert(user);
-        } else {
-            userMapper.updateById(user);
-        }
-        ensureScore(user.id);
-        return user;
-    }
-
-    private String availableUserEmail(String email) {
-        if (email == null || email.isBlank()) {
-            return null;
-        }
-        Long count = userMapper.selectCount(new QueryWrapper<User>().eq("email", email));
-        return count != null && count > 0 ? null : email;
     }
 
     private void ensureScore(Long userId) {
@@ -236,16 +249,30 @@ public class AuthService {
                 refreshTokenTtl()
             );
 
+            /**
+             * 封装认证令牌响应相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return new AuthTokenResponse(pair.accessToken(), pair.refreshToken());
         }
 
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", request.username()));
         if (user != null && passwordEncoder.matches(request.password(), user.passwordHash)) {
             recordLoginFailure("admin", username);
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
+            throw new BizException(403, "用户名或密码错误");
+        }
+        Teacher teacher = teacherMapper.selectOne(new QueryWrapper<Teacher>().eq("username", request.username()));
+        if (teacher != null && passwordEncoder.matches(request.password(), teacher.passwordHash)) {
+            recordLoginFailure("admin", username);
             throw new BizException(403, "用户名或密码错误");
         }
 
         recordLoginFailure("admin", username);
+        /**
+         * 封装BadCredentialsException相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         throw new BadCredentialsException("bad credentials");
     }
 
@@ -254,9 +281,15 @@ public class AuthService {
         String emailCodeKey = RedisKeys.emailVerificationCode(request.email());
         String storedEmailCode = redisTemplate.opsForValue().get(emailCodeKey);
         if (storedEmailCode == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "邮箱验证码已过期，请重新获取");
         }
         if (!storedEmailCode.equals(request.emailVerificationCode())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "邮箱验证码错误");
         }
 
@@ -297,6 +330,9 @@ public class AuthService {
             refreshTokenTtl()
         );
 
+        /**
+         * 封装认证令牌响应相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new AuthTokenResponse(pair.accessToken(), pair.refreshToken());
     }
 
@@ -305,10 +341,16 @@ public class AuthService {
         try {
             claims = jwtService.parse(request.refreshToken());
         } catch (Exception e) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(401, "Refresh Token 无效或已过期");
         }
 
         if (!"refresh".equals(claims.get("typ", String.class))) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(401, "Token 类型错误");
         }
 
@@ -317,6 +359,9 @@ public class AuthService {
 
         // 检查 refresh token 是否在黑名单
         if (Boolean.TRUE.equals(redisTemplate.hasKey(RedisKeys.refreshTokenBlacklist(jti)))) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(401, "Refresh Token 已失效");
         }
 
@@ -324,11 +369,17 @@ public class AuthService {
         if (familyId != null) {
             String storedToken = redisTemplate.opsForValue().get(RedisKeys.refreshTokenFamily(familyId));
             if (storedToken == null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(401, "Refresh Token 家族已失效");
             }
             if (!request.refreshToken().equals(storedToken)) {
                 // 检测到 refresh token 重用，撤销整个 family
                 redisTemplate.delete(RedisKeys.refreshTokenFamily(familyId));
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(401, "检测到 Token 重用，已撤销所有 Token");
             }
         }
@@ -340,12 +391,24 @@ public class AuthService {
         if ("ADMIN".equals(accountType)) {
             AdminUser adminUser = adminUserMapper.selectById(accountId);
             if (adminUser == null) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(401, "用户不存在");
             }
             authUser = new AuthUser(adminUser);
+        } else if ("TEACHER".equals(accountType)) {
+            Teacher teacher = teacherMapper.selectById(accountId);
+            if (teacher == null || !"ACTIVE".equals(teacher.status)) {
+                throw new BizException(401, "教师账号不存在或已停用");
+            }
+            authUser = new AuthUser(teacher);
         } else {
             User user = userMapper.selectOne(new QueryWrapper<User>().eq("id", accountId));
             if (user == null || !UserRole.isActiveFrontendRole(user.role)) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(401, "用户不存在");
             }
             authUser = new AuthUser(user);
@@ -373,59 +436,82 @@ public class AuthService {
             );
         }
 
+        /**
+         * 封装认证令牌响应相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new AuthTokenResponse(newAccessToken, newRefreshToken);
     }
 
     public void logout(String authorization) {
-        if (authorization == null || !authorization.startsWith("Bearer ")) {
-            return;
-        }
+        logout(authorization, null);
+    }
 
-        String token = authorization.substring(7);
-        Claims claims;
-        try {
-            claims = jwtService.parse(token);
-        } catch (Exception e) {
-            return; // Token 已过期或无效，直接返回
-        }
-
-        String jti = claims.getId();
-        String tokenType = claims.get("typ", String.class);
-
-        // 将 access token 加入黑名单
-        redisTemplate.opsForValue().set(
-            RedisKeys.tokenBlacklist(jti),
-            "1",
-            Duration.ofSeconds(jwtService.remainingSeconds(claims))
-        );
-
-        // 如果是 refresh token，撤销整个 family
-        if ("refresh".equals(tokenType)) {
-            String familyId = claims.get("familyId", String.class);
-            if (familyId != null) {
-                redisTemplate.delete(RedisKeys.refreshTokenFamily(familyId));
-            }
-
-            // 也将 refresh token 自己加入黑名单
+    public void logout(String authorization, String refreshToken) {
+        Claims accessClaims = parseAuthorizationClaims(authorization);
+        if (accessClaims != null) {
             redisTemplate.opsForValue().set(
-                RedisKeys.refreshTokenBlacklist(jti),
+                RedisKeys.tokenBlacklist(accessClaims.getId()),
                 "1",
-                Duration.ofSeconds(jwtService.remainingSeconds(claims))
+                Duration.ofSeconds(jwtService.remainingSeconds(accessClaims))
             );
         }
 
-        // 清除在线状态
-        if (!"ADMIN".equals(claims.get("accountType", String.class))) {
-            redisTemplate.delete(RedisKeys.onlineUser(Long.valueOf(claims.getSubject())));
+        Claims refreshClaims = parseTokenClaims(refreshToken);
+        if (refreshClaims != null && "refresh".equals(refreshClaims.get("typ", String.class))) {
+            String familyId = refreshClaims.get("familyId", String.class);
+            if (familyId != null) {
+                redisTemplate.delete(RedisKeys.refreshTokenFamily(familyId));
+            }
+            redisTemplate.opsForValue().set(
+                RedisKeys.refreshTokenBlacklist(refreshClaims.getId()),
+                "1",
+                Duration.ofSeconds(jwtService.remainingSeconds(refreshClaims))
+            );
+        }
+
+        Claims userClaims = accessClaims != null ? accessClaims : refreshClaims;
+        if (userClaims != null && !"ADMIN".equals(userClaims.get("accountType", String.class))) {
+            String accountType = userClaims.get("accountType", String.class);
+            redisTemplate.delete(RedisKeys.onlineAccount(
+                accountType == null ? "USER" : accountType,
+                Long.valueOf(userClaims.getSubject())
+            ));
+        }
+    }
+
+    private Claims parseAuthorizationClaims(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            return null;
+        }
+        /**
+         * 解析并规范化令牌Claims。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
+        return parseTokenClaims(authorization.substring(7));
+    }
+
+    private Claims parseTokenClaims(String token) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        try {
+            return jwtService.parse(token);
+        } catch (Exception ignored) {
+            return null;
         }
     }
 
     public UserMeVO adminMe() {
         AuthUser authUser = CurrentUser.required();
         if (!authUser.adminAccount()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(403, "权限不足");
         }
         AdminUser admin = authUser.adminUser();
+        /**
+         * 封装r当前用户VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new UserMeVO(
             admin.id,
             admin.username,
@@ -444,6 +530,9 @@ public class AuthService {
     public UserMeVO me() {
         AuthUser authUser = CurrentUser.required();
         if (authUser.adminAccount() || !UserRole.isActiveFrontendRole(authUser.role())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(403, "后台账号不能访问前台用户中心");
         }
         User user = authUser.user();
@@ -464,6 +553,9 @@ public class AuthService {
                 className = classRoom.name;
             }
         }
+        /**
+         * 封装r当前用户VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new UserMeVO(
             user.id,
             user.username,
@@ -479,11 +571,52 @@ public class AuthService {
         );
     }
 
+    public TeacherMeVO teacherMe() {
+        Teacher teacher = CurrentUser.required().teacher();
+        Major major = teacher.majorId == null ? null : majorMapper.selectById(teacher.majorId);
+        return new TeacherMeVO(
+            teacher.id,
+            teacher.username,
+            teacher.displayName,
+            teacher.avatarUrl,
+            teacher.teacherNo,
+            teacher.email,
+            "TEACHER",
+            teacher.majorId,
+            major == null ? null : major.name
+        );
+    }
+
+    public void updateTeacherProfile(UpdateProfileRequest request) {
+        Teacher teacher = CurrentUser.required().teacher();
+        if (request.displayName() == null || request.displayName().trim().isEmpty()) {
+            throw new BizException(400, "姓名不能为空");
+        }
+        teacher.displayName = request.displayName().trim();
+        teacherMapper.updateById(teacher);
+    }
+
+    public void updateTeacherPassword(UpdatePasswordRequest request) {
+        Teacher teacher = CurrentUser.required().teacher();
+        if (!passwordEncoder.matches(request.oldPassword(), teacher.passwordHash)) {
+            throw new BizException(400, "旧密码错误");
+        }
+        teacher.passwordHash = passwordEncoder.encode(request.newPassword());
+        teacherMapper.updateById(teacher);
+    }
+
     private void ensureUnique(String column, String value, String message) {
         boolean existsInUsers = userMapper.selectCount(new QueryWrapper<User>().eq(column, value)) > 0;
         boolean existsInAdmins = ("username".equals(column) || "email".equals(column))
             && adminUserMapper.selectCount(new QueryWrapper<AdminUser>().eq(column, value)) > 0;
-        if (existsInUsers || existsInAdmins) {
+        String teacherColumn = "student_no".equals(column) ? "teacher_no" : column;
+        boolean existsInTeachers = teacherMapper.selectCount(
+            new QueryWrapper<Teacher>().eq(teacherColumn, value)
+        ) > 0;
+        if (existsInUsers || existsInAdmins || existsInTeachers) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, message);
         }
     }
@@ -491,6 +624,9 @@ public class AuthService {
     public void updateProfile(UpdateProfileRequest request) {
         AuthUser authUser = CurrentUser.required();
         if (authUser.adminAccount()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(403, "后台账号无法修改个人信息");
         }
 
@@ -498,15 +634,24 @@ public class AuthService {
 
         // 验证邮箱验证码
         if (request.emailVerificationCode() == null || request.emailVerificationCode().isEmpty()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "请输入邮箱验证码");
         }
 
         String emailCodeKey = RedisKeys.emailVerificationCode(user.email);
         String storedEmailCode = redisTemplate.opsForValue().get(emailCodeKey);
         if (storedEmailCode == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "邮箱验证码已过期，请重新获取");
         }
         if (!storedEmailCode.equals(request.emailVerificationCode())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "邮箱验证码错误");
         }
 
@@ -521,6 +666,9 @@ public class AuthService {
                 new QueryWrapper<AdminUser>().eq("username", request.username())
             ) > 0;
             if (existsInUsers || existsInAdmins) {
+                /**
+                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+                 */
                 throw new BizException(400, "用户名已存在");
             }
             user.username = request.username();
@@ -539,6 +687,9 @@ public class AuthService {
     public void bindEmail(BindEmailRequest request) {
         AuthUser authUser = CurrentUser.required();
         if (authUser.adminAccount()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(403, "后台账号无法绑定邮箱");
         }
 
@@ -551,15 +702,24 @@ public class AuthService {
         ) > 0;
         boolean existsInAdmins = adminUserMapper.selectCount(new QueryWrapper<AdminUser>().eq("email", email)) > 0;
         if (existsInUsers || existsInAdmins) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "邮箱已存在");
         }
 
         String emailCodeKey = RedisKeys.emailVerificationCode(email);
         String storedEmailCode = redisTemplate.opsForValue().get(emailCodeKey);
         if (storedEmailCode == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "邮箱验证码已过期，请重新获取");
         }
         if (!storedEmailCode.equals(request.emailVerificationCode())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "邮箱验证码错误");
         }
 
@@ -571,6 +731,9 @@ public class AuthService {
     public void updatePassword(UpdatePasswordRequest request) {
         AuthUser authUser = CurrentUser.required();
         if (authUser.adminAccount()) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(403, "后台账号无法修改密码");
         }
 
@@ -578,6 +741,9 @@ public class AuthService {
 
         // 验证旧密码
         if (!passwordEncoder.matches(request.oldPassword(), user.passwordHash)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "旧密码错误");
         }
 
@@ -591,15 +757,24 @@ public class AuthService {
         String emailCodeKey = RedisKeys.emailVerificationCode(request.email());
         String storedEmailCode = redisTemplate.opsForValue().get(emailCodeKey);
         if (storedEmailCode == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "邮箱验证码已过期，请重新获取");
         }
         if (!storedEmailCode.equals(request.emailVerificationCode())) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "邮箱验证码错误");
         }
 
         // 查找用户
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("email", request.email()));
         if (user == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(400, "该邮箱未注册");
         }
 

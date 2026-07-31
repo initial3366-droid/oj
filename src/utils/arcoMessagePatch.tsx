@@ -12,8 +12,14 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Message } from '@arco-design/web-react';
 
+/**
+ * 消息类型类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type MessageType = 'info' | 'success' | 'error' | 'warning' | 'loading';
 
+/**
+ * 消息配置接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface MessageConfig {
   content?: React.ReactNode;
   duration?: number;
@@ -25,6 +31,9 @@ interface MessageConfig {
 
 const DEFAULT_DURATION = 3000;
 
+/**
+ * 封装show消息相关逻辑。会更新 React 状态并触发重新渲染。
+ */
 function showMessage(type: MessageType, config: string | MessageConfig) {
   const opts: MessageConfig =
     typeof config === 'string' ? { content: config } : config;
@@ -43,6 +52,9 @@ function showMessage(type: MessageType, config: string | MessageConfig) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let unmounted = false;
 
+  /**
+   * 封装close相关逻辑。会更新 React 状态并触发重新渲染。
+   */
   const close = () => {
     if (unmounted) return;
     unmounted = true;

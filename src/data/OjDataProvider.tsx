@@ -36,9 +36,12 @@ const defaultOjState: OjState = {
   ratings: [],
   submissions: [],
   carouselSlides: [],
-  judgeSettings: { enabled: true, maxConcurrent: 2, threadPoolSize: 2 },
+  judgeSettings: { enabled: true, enableSandbox: false },
 };
 
+/**
+ * OjDataContext值接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface OjDataContextValue {
   state: OjState;
   updateState: (updater: (current: OjState) => OjState) => void;
@@ -50,12 +53,18 @@ interface OjDataContextValue {
 
 const OjDataContext = createContext<OjDataContextValue | null>(null);
 
+/**
+ * 创建或提交标识。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function createId(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random()
     .toString(36)
     .slice(2, 7)}`;
 }
 
+/**
+ * 读取InitialState并返回给调用方。会读写浏览器本地会话信息。
+ */
 function getInitialState(): OjState {
   if (typeof window === "undefined") {
     return defaultOjState;
@@ -73,6 +82,9 @@ function getInitialState(): OjState {
   }
 }
 
+/**
+ * 渲染OjDataProvider组件，并协调其数据加载、状态和交互。
+ */
 export function OjDataProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<OjState>(getInitialState);
 
@@ -89,6 +101,9 @@ export function OjDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    /**
+     * 重置有效用户。会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+     */
     const clearActiveUser = () => {
       setState((current) => {
         const next = { ...current, activeUser: null };
@@ -100,6 +115,9 @@ export function OjDataProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("qoj:auth-cleared", clearActiveUser);
   }, []);
 
+  /**
+   * 更新State。会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+   */
   const updateState = (updater: (current: OjState) => OjState) => {
     setState((current) => {
       const next = updater(current);
@@ -108,6 +126,9 @@ export function OjDataProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  /**
+   * 封装值相关逻辑。对原始数据进行派生或聚合。
+   */
   const value = useMemo<OjDataContextValue>(() => {
     return {
       state,
@@ -164,6 +185,9 @@ export function OjDataProvider({ children }: { children: ReactNode }) {
   return <OjDataContext.Provider value={value}>{children}</OjDataContext.Provider>;
 }
 
+/**
+ * 封装OjData相关逻辑。失败时向调用方传播异常。
+ */
 export function useOjData() {
   const context = useContext(OjDataContext);
   if (!context) {

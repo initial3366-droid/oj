@@ -1,0 +1,71 @@
+.announcement-html {
+  color: var(--semi-color-text-0);
+  font-size: 15px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+
+.announcement-html > :first-child {
+  margin-top: 0;
+}
+
+.announcement-html > :last-child {
+  margin-bottom: 0;
+}
+
+.announcement-html img,
+.announcement-html video {
+  max-width: 100%;
+  height: auto;
+}
+
+.announcement-html pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 6px;
+  background: var(--semi-color-fill-0);
+  padding: 12px 14px;
+}
+
+.announcement-html code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.announcement-html table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.announcement-html th,
+.announcement-html td {
+  border: 1px solid var(--semi-color-border);
+  padding: 8px 12px;
+}
+
+.announcement-html a {
+  color: var(--semi-color-primary);
+}
+
+.announcement-html-empty {
+  color: var(--semi-color-text-2);
+}
+
+.announcement-modal-content {
+  padding: 10px 0 24px;
+}
+
+.announcement-modal-title {
+  width: 100%;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.announcement-modal-title > * {
+  display: block;
+  width: 100%;
+  margin: 0;
+}

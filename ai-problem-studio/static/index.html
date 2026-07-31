@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>AI Problem Studio</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/layui@2.9.18/dist/css/layui.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260723-codex-agent-1" />
+    <script defer src="https://cdn.jsdelivr.net/npm/layui@2.9.18/dist/layui.js"></script>
+    <script defer src="/static/app.js?v=20260723-codex-agent-1"></script>
+  </head>
+  <body class="layui-bg-gray">
+    <header class="layui-header app-header">
+      <div class="app-shell app-header-content">
+        <div class="brand-lockup" aria-label="AI Problem Studio">
+          <span class="layui-icon layui-icon-engine brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>AI Problem Studio</h1>
+            <p>QOJ Draft Workspace</p>
+          </div>
+        </div>
+        <div class="service-status" id="serviceStatus" role="status">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span>正在连接</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="app-shell app-main">
+      <div class="message-region" id="messageRegion" role="status" aria-live="polite"></div>
+
+      <section class="layui-card app-card" aria-labelledby="settingsHeading">
+        <div class="layui-card-header card-heading">
+          <div>
+            <p class="section-kicker">Runtime</p>
+            <h2 id="settingsHeading">连接设置</h2>
+          </div>
+        </div>
+        <div class="layui-card-body">
+          <form class="layui-form" id="settingsForm">
+            <div class="settings-grid">
+              <div class="layui-form-item settings-field-span-2">
+                <label class="layui-form-label" for="modelBaseUrlInput">Codex Agent API 地址</label>
+                <div class="layui-input-block">
+                  <input id="modelBaseUrlInput" name="modelBaseUrl" class="layui-input" type="url" required placeholder="https://api.openai.com/v1" />
+                </div>
+              </div>
+              <div class="layui-form-item">
+                <label class="layui-form-label" for="modelNameInput">Codex 模型</label>
+                <div class="layui-input-block">
+                  <input id="modelNameInput" name="modelName" class="layui-input" type="text" required placeholder="gpt-5.6" />
+                </div>
+              </div>
+              <div class="layui-form-item settings-field-span-2">
+                <label class="layui-form-label" for="modelApiKeyInput">Codex API Key <span class="layui-badge api-key-status" id="apiKeyStatus">未配置</span></label>
+                <div class="layui-input-block">
+                  <input id="modelApiKeyInput" name="modelApiKey" class="layui-input" type="password" autocomplete="new-password" placeholder="请输入 API Key" />
+                  <div class="settings-key-options">
+                    <input id="clearApiKeyInput" type="checkbox" lay-filter="clearApiKey" lay-skin="primary" title="清除当前 API Key" />
+                  </div>
+                </div>
+              </div>
+              <div class="layui-form-item">
+                <label class="layui-form-label" for="reasoningEffortInput">推理强度</label>
+                <div class="layui-input-block">
+                  <select id="reasoningEffortInput">
+                    <option value="" selected>模型默认</option>
+                    <option value="none">none</option>
+                    <option value="minimal">minimal</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="xhigh">xhigh</option>
+                    <option value="max">max</option>
+                  </select>
+                </div>
+              </div>
+              <div class="layui-form-item settings-field-span-2">
+                <label class="layui-form-label" for="qojBaseUrlInput">QOJ API 地址</label>
+                <div class="layui-input-block">
+                  <input id="qojBaseUrlInput" name="qojBaseUrl" class="layui-input" type="url" required />
+                </div>
+              </div>
+              <p class="provider-note settings-field-span-2">出题请求由本机 Codex CLI 以只读 Agent 模式执行；自定义地址需要兼容 OpenAI Responses API。</p>
+              <div class="settings-action settings-field-submit">
+                <button class="layui-btn layui-btn-normal" type="submit">
+                  <i class="layui-icon layui-icon-set"></i>保存
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="layui-card app-card" aria-labelledby="briefHeading">
+        <div class="layui-card-header card-heading card-heading-with-action">
+          <div>
+            <p class="section-kicker">Step 1</p>
+            <h2 id="briefHeading">出题需求</h2>
+          </div>
+          <span class="layui-badge layui-bg-orange">必填</span>
+        </div>
+        <div class="layui-card-body">
+          <form class="layui-form" id="briefForm">
+            <div class="layui-row layui-col-space16">
+              <div class="layui-col-md6">
+                <div class="layui-form-item">
+                  <label class="layui-form-label" for="algorithmRequirementsInput">需要的算法</label>
+                  <div class="layui-input-block">
+                    <textarea id="algorithmRequirementsInput" class="layui-textarea" rows="3" required placeholder="例如：并查集、离线查询、Kruskal 重构树"></textarea>
+                  </div>
+                </div>
+              </div>
+              <div class="layui-col-md6">
+                <div class="layui-form-item">
+                  <label class="layui-form-label" for="backgroundInput">背景</label>
+                  <div class="layui-input-block">
+                    <textarea id="backgroundInput" class="layui-textarea" rows="3" required placeholder="题目的竞赛或真实世界背景"></textarea>
+                  </div>
+                </div>
+              </div>
+              <div class="layui-col-md6">
+                <div class="layui-form-item">
+                  <label class="layui-form-label" for="assessmentPointsInput">考察点</label>
+                  <div class="layui-input-block">
+                    <textarea id="assessmentPointsInput" class="layui-textarea" rows="3" required placeholder="用逗号或换行分隔"></textarea>
+                  </div>
+                </div>
+              </div>
+              <div class="layui-col-md6">
+                <div class="layui-form-item">
+                  <label class="layui-form-label" for="sampleAssessmentPointsInput">样例考察点</label>
+                  <div class="layui-input-block">
+                    <textarea id="sampleAssessmentPointsInput" class="layui-textarea" rows="3" required placeholder="用逗号或换行分隔"></textarea>
+                  </div>
+                </div>
+              </div>
+              <div class="layui-col-md12">
+                <div class="layui-form-item">
+                  <label class="layui-form-label" for="constraintsInput">数据范围与约束</label>
+                  <div class="layui-input-block">
+                    <textarea id="constraintsInput" class="layui-textarea" rows="4" required placeholder="例如：n 的范围、数据性质、禁止项、目标复杂度"></textarea>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="brief-actions">
+              <div class="layui-form-item brief-difficulty-control">
+                <label class="layui-form-label" for="difficultyInput">难度</label>
+                <div class="layui-input-block">
+                  <select id="difficultyInput" required>
+                    <option value="1">1 - 入门</option>
+                    <option value="2">2 - 基础</option>
+                    <option value="3" selected>3 - 中等</option>
+                    <option value="4">4 - 困难</option>
+                    <option value="5">5 - 挑战</option>
+                  </select>
+                </div>
+              </div>
+              <div class="brief-submit-action">
+                <button class="layui-btn" id="generateButton" type="submit">
+                  <i class="layui-icon layui-icon-release"></i>生成题目
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="layui-card app-card is-hidden" id="resultSection" aria-labelledby="resultHeading">
+        <div class="layui-card-header card-heading card-heading-with-action">
+          <div>
+            <p class="section-kicker">Step 2</p>
+            <h2 id="resultHeading">题目审核</h2>
+          </div>
+          <div class="card-heading-actions" aria-label="任务状态与操作">
+            <span class="layui-badge job-status" id="jobStatusBadge">未生成</span>
+            <button class="layui-btn layui-btn-sm layui-btn-primary retry-job-button is-hidden" id="retryJobButton" type="button">
+              <i class="layui-icon layui-icon-refresh-3" aria-hidden="true"></i>再次执行
+            </button>
+          </div>
+        </div>
+        <div class="layui-card-body">
+          <div class="job-metadata" id="jobMetadata"></div>
+          <section class="progress-panel" id="progressPanel" aria-labelledby="progressHeading">
+            <h3 id="progressHeading">实时进度</h3>
+            <ol class="layui-timeline progress-list" id="progressList" role="log" aria-live="polite"></ol>
+          </section>
+          <div class="report-grid" id="reportGrid"></div>
+          <div id="failureRegion"></div>
+          <div class="layui-row layui-col-space16 result-columns" id="candidateRegion">
+            <article class="layui-col-md6">
+              <div class="layui-panel content-pane">
+                <h3 id="candidateTitle">题目内容</h3>
+                <h4>题面</h4>
+                <pre class="markdown-preview" id="statementOutput"></pre>
+                <h4>输入格式</h4>
+                <pre class="markdown-preview" id="inputFormatOutput"></pre>
+                <h4>输出格式</h4>
+                <pre class="markdown-preview" id="outputFormatOutput"></pre>
+              </div>
+            </article>
+            <article class="layui-col-md6">
+              <div class="layui-panel content-pane">
+                <h3>方案与标程</h3>
+                <h4>标准解法说明</h4>
+                <pre class="markdown-preview" id="solutionExplanationOutput"></pre>
+                <h4>C++17 标程</h4>
+                <pre class="code-preview"><code id="referenceSolutionOutput"></code></pre>
+              </div>
+            </article>
+          </div>
+          <div class="test-area" id="testArea">
+            <h3>样例与隐藏测试</h3>
+            <div class="test-table-wrap">
+              <table class="layui-table" lay-even>
+                <thead>
+                  <tr>
+                    <th>类型</th>
+                    <th>编号</th>
+                    <th>输入</th>
+                    <th>验证输出</th>
+                    <th>考察点</th>
+                  </tr>
+                </thead>
+                <tbody id="testCasesOutput"></tbody>
+              </table>
+            </div>
+          </div>
+          <form class="layui-form review-form" id="reviewForm">
+            <div class="review-heading">
+              <p class="section-kicker">Step 3</p>
+              <h3>人工审核</h3>
+            </div>
+            <div class="layui-row layui-col-space16">
+              <div class="layui-col-md4">
+                <div class="layui-form-item">
+                  <label class="layui-form-label" for="reviewerNameInput">审核人</label>
+                  <div class="layui-input-block">
+                    <input id="reviewerNameInput" class="layui-input" type="text" maxlength="200" required />
+                  </div>
+                </div>
+              </div>
+              <div class="layui-col-md8">
+                <div class="layui-form-item">
+                  <label class="layui-form-label" for="reviewNotesInput">审核备注</label>
+                  <div class="layui-input-block">
+                    <textarea id="reviewNotesInput" class="layui-textarea" rows="3" maxlength="10000"></textarea>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="layui-form-item approval-control">
+              <input id="approvalInput" type="checkbox" lay-skin="primary" title="我已审核题面、标程、样例和测试点，并批准创建 QOJ 草稿" />
+            </div>
+            <button class="layui-btn layui-btn-primary" type="submit">
+              <i class="layui-icon layui-icon-ok"></i>记录审核决定
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <section class="layui-card app-card qoj-card" aria-labelledby="qojHeading">
+        <div class="layui-card-header card-heading card-heading-with-action">
+          <div>
+            <p class="section-kicker">Step 4</p>
+            <h2 id="qojHeading">QOJ 账号与草稿导出</h2>
+          </div>
+          <span class="layui-badge session-status is-anonymous" id="qojSessionStatus">未登录</span>
+        </div>
+        <div class="layui-card-body">
+          <div class="qoj-session-strip" aria-live="polite">
+            <i class="layui-icon layui-icon-auz" aria-hidden="true"></i>
+            <span id="qojSessionDetail">尚未建立 AI 教师账号会话。</span>
+          </div>
+          <div class="qoj-grid">
+            <form class="layui-form qoj-login-form" id="qojLoginForm">
+              <div class="qoj-login-fields">
+                <div class="qoj-login-field">
+                  <div class="layui-form-item">
+                    <label class="layui-form-label" for="qojUsernameInput">AI 教师账号</label>
+                    <div class="layui-input-block">
+                      <input id="qojUsernameInput" class="layui-input" type="text" autocomplete="username" />
+                    </div>
+                  </div>
+                </div>
+                <div class="qoj-login-field">
+                  <div class="layui-form-item">
+                    <label class="layui-form-label" for="qojPasswordInput">密码</label>
+                    <div class="layui-input-block">
+                      <input id="qojPasswordInput" class="layui-input" type="password" autocomplete="current-password" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="captcha-row">
+                <button class="layui-btn layui-btn-primary layui-btn-sm" id="refreshCaptchaButton" type="button">
+                  <i class="layui-icon layui-icon-refresh-3"></i>刷新验证码
+                </button>
+                <img id="captchaImage" class="captcha-image" alt="QOJ 验证码" />
+                <input id="captchaInput" class="layui-input captcha-input" type="text" maxlength="50" placeholder="验证码" />
+              </div>
+              <div class="qoj-command-row">
+                <button class="layui-btn" type="submit"><i class="layui-icon layui-icon-password"></i>登录 AI 教师账号</button>
+                <button class="layui-btn layui-btn-primary" id="verifySessionButton" type="button">
+                  <i class="layui-icon layui-icon-ok-circle"></i>验证会话
+                </button>
+              </div>
+            </form>
+            <form class="layui-form qoj-export-panel qoj-export-form" id="qojExportForm">
+              <div class="qoj-export-fields">
+                <div class="layui-form-item qoj-export-field-wide">
+                  <label class="layui-form-label" for="manualAccessTokenInput">临时 Access Token</label>
+                  <div class="layui-input-block">
+                    <input id="manualAccessTokenInput" class="layui-input" type="password" autocomplete="off" placeholder="可直接粘贴后验证" />
+                  </div>
+                </div>
+                <div class="layui-form-item qoj-export-field-wide">
+                  <label class="layui-form-label" for="qojTitleInput">题目名</label>
+                  <div class="layui-input-block">
+                    <input id="qojTitleInput" class="layui-input" type="text" maxlength="200" placeholder="可留空，默认使用已审核的 Agent 题名" />
+                  </div>
+                </div>
+                <div class="layui-form-item">
+                  <label class="layui-form-label" for="folderIdInput">文件夹 ID</label>
+                  <div class="layui-input-block">
+                    <input id="folderIdInput" class="layui-input" type="number" min="1" inputmode="numeric" placeholder="可留空" />
+                  </div>
+                </div>
+                <div class="layui-form-item">
+                  <label class="layui-form-label" for="accessScopeInput">访问范围</label>
+                  <div class="layui-input-block">
+                    <select id="accessScopeInput">
+                      <option value="PRIVATE" selected>PRIVATE</option>
+                      <option value="ALL">ALL</option>
+                      <option value="MAJOR">MAJOR</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="layui-form-item">
+                  <label class="layui-form-label" for="majorIdInput">专业 ID</label>
+                  <div class="layui-input-block">
+                    <input id="majorIdInput" class="layui-input" type="number" min="1" inputmode="numeric" placeholder="选择 MAJOR 后填写" disabled />
+                  </div>
+                </div>
+              </div>
+              <p class="token-note">登录会话只保留在本地服务内存与当前浏览器的 HttpOnly 会话 Cookie 中；刷新页面不会丢失，服务重启或会话过期后需要重新登录。</p>
+              <p class="export-eligibility is-blocked" id="exportEligibility" aria-live="polite">请先生成、验证并人工审核题目。</p>
+              <button class="layui-btn layui-btn-fluid" id="exportQojButton" type="submit" disabled>
+                <i class="layui-icon layui-icon-upload-drag"></i>创建 QOJ 草稿
+              </button>
+              <div class="export-result" id="exportResult"></div>
+            </form>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

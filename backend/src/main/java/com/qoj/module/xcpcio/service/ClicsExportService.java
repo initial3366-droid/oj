@@ -46,6 +46,9 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
+/**
+ * Clics导出业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class ClicsExportService {
     private final ContestMapper contestMapper;
@@ -56,6 +59,9 @@ public class ClicsExportService {
     private final ContestXcpcioConfigMapper configMapper;
     private final ZoneId zoneId = ZoneId.systemDefault();
 
+    /**
+     * 构造 Clics导出Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public ClicsExportService(
         ContestMapper contestMapper,
         ContestParticipantMapper participantMapper,
@@ -100,11 +106,17 @@ public class ClicsExportService {
     }
 
     public ClicsContestDTO contest(Long contestId) {
+        /**
+         * 构造或转换比赛。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return toContest(requireContest(contestId));
     }
 
     public ClicsStateDTO state(Long contestId) {
         Contest contest = requireContest(contestId);
+        /**
+         * 封装ClicsStateDTO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return new ClicsStateDTO(
             toOffset(contest.startTime),
             Boolean.TRUE.equals(contest.frozen) ? toOffset(contest.freezeTime) : null,
@@ -117,10 +129,16 @@ public class ClicsExportService {
 
     public List<ClicsTeamDTO> teams(Long contestId) {
         Map<Long, User> users = usersById(participants(contestId));
+        /**
+         * 封装participants相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return participants(contestId).stream()
             .map(participant -> {
                 User user = users.get(participant.userId);
                 String name = firstNonBlank(participant.nickname, user == null ? null : user.displayName, user == null ? null : user.username, "Team " + participant.id);
+                /**
+                 * 封装ClicsTeamDTO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                 */
                 return new ClicsTeamDTO(
                     String.valueOf(participant.id),
                     name,
@@ -145,6 +163,9 @@ public class ClicsExportService {
             if (participant.organizationId != null) {
                 organizations.put(
                     "org-" + participant.organizationId,
+                    /**
+                     * 封装ClicsOrganizationDTO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                     */
                     new ClicsOrganizationDTO(
                         "org-" + participant.organizationId,
                         "Organization " + participant.organizationId,
@@ -209,6 +230,9 @@ public class ClicsExportService {
             .map(submission -> {
                 LocalDateTime time = submissionTime(submission);
                 String judgementType = judgementType(submission.status);
+                /**
+                 * 封装ClicsJudgementDTO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                 */
                 return new ClicsJudgementDTO(
                     "j" + submission.id,
                     String.valueOf(submission.id),
@@ -229,6 +253,9 @@ public class ClicsExportService {
             .filter(submission -> !isPending(submission.status))
             .map(submission -> {
                 LocalDateTime time = submissionTime(submission);
+                /**
+                 * 封装ClicsRunDTO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                 */
                 return new ClicsRunDTO(
                     "r" + submission.id,
                     "j" + submission.id,
@@ -293,6 +320,9 @@ public class ClicsExportService {
             rowDtos.add(new ClicsScoreboardRowDTO(
                 i + 1,
                 row.teamId,
+                /**
+                 * 封装Clics分数DTO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+                 */
                 new ClicsScoreDTO(row.numSolved, row.totalTime),
                 row.problemScores.values().stream()
                     .map(score -> new ClicsScoreboardProblemDTO(
@@ -376,6 +406,9 @@ public class ClicsExportService {
     private Contest requireContest(Long contestId) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
         return contest;
@@ -568,6 +601,9 @@ public class ClicsExportService {
         return "";
     }
 
+    /**
+     * 分数Row领域类型。封装 xcpcio.service 模块内的相关职责。
+     */
     private static class ScoreRow {
         final String teamId;
         final LinkedHashMap<String, ProblemScore> problemScores = new LinkedHashMap<>();
@@ -582,6 +618,9 @@ public class ClicsExportService {
         }
     }
 
+    /**
+     * 题目分数领域类型。封装 xcpcio.service 模块内的相关职责。
+     */
     private static class ProblemScore {
         final String problemId;
         int numJudged;

@@ -3,6 +3,9 @@
  */
 import { apiGet, apiPost, apiPut, apiDelete } from "./client";
 
+/**
+ * 管理员仪表盘接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface AdminDashboard {
   onlineUserCount: number;
   userCount: number;
@@ -46,6 +49,9 @@ export interface AdminDashboard {
   }>;
 }
 
+/**
+ * 管理员用户接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface AdminUser {
   id: number;
   username: string;
@@ -53,11 +59,14 @@ export interface AdminUser {
   avatarUrl?: string;
   studentNo?: string;
   email?: string;
-  role: "SUPER_ADMIN" | "TEACHER" | "STUDENT" | "GUEST";
+  role: "SUPER_ADMIN" | "STUDENT";
   createdAt: string;
   updatedAt: string;
 }
 
+/**
+ * 管理员用户请求参数接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface AdminUserPayload {
   username?: string;
   password?: string;
@@ -132,6 +141,9 @@ export async function deleteAdminUser(userId: number): Promise<void> {
   return apiDelete<void>(`/api/admin/v1/users/${userId}`, true);
 }
 
+/**
+ * 封装upload管理员用户头像相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 export async function uploadAdminUserAvatar(userId: number, file: File): Promise<{ avatarUrl: string }> {
   const formData = new FormData();
   formData.append("file", file);

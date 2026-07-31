@@ -30,6 +30,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 管理员题目接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
+ */
 @RestController
 @RequestMapping("/api/admin/v1/problems")
 @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
@@ -38,6 +41,9 @@ public class AdminProblemController {
     private final ProblemMapper problemMapper;
     private final ProblemAccessPolicy problemAccessPolicy;
 
+    /**
+     * 构造 管理员题目Controller 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断；从持久化层读取数据。
+     */
     public AdminProblemController(
         ProblemService problemService,
         ProblemMapper problemMapper,
@@ -74,11 +80,17 @@ public class AdminProblemController {
     ) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "题目不存在");
         }
 
         AuthUser user = CurrentUser.required();
         if (!problemAccessPolicy.can(user, Permission.UPDATE, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权修改该题目");
         }
 
@@ -89,11 +101,17 @@ public class AdminProblemController {
     public ApiResponse<Void> delete(@PathVariable long id) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "题目不存在");
         }
 
         AuthUser user = CurrentUser.required();
         if (!problemAccessPolicy.can(user, Permission.DELETE, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权删除该题目");
         }
 
@@ -113,11 +131,17 @@ public class AdminProblemController {
     ) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "题目不存在");
         }
 
         AuthUser user = CurrentUser.required();
         if (!problemAccessPolicy.can(user, Permission.UPDATE, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权修改该题目");
         }
 
@@ -131,11 +155,17 @@ public class AdminProblemController {
     ) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "题目不存在");
         }
 
         AuthUser user = CurrentUser.required();
         if (!problemAccessPolicy.can(user, Permission.UPDATE, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权修改该题目");
         }
 
@@ -150,11 +180,17 @@ public class AdminProblemController {
     ) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "题目不存在");
         }
 
         AuthUser user = CurrentUser.required();
         if (!problemAccessPolicy.can(user, Permission.UPDATE, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权修改该题目");
         }
 
@@ -168,11 +204,17 @@ public class AdminProblemController {
     ) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "题目不存在");
         }
 
         AuthUser user = CurrentUser.required();
         if (!problemAccessPolicy.can(user, Permission.UPDATE, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权修改该题目");
         }
 
@@ -188,11 +230,17 @@ public class AdminProblemController {
     ) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND, "题目不存在");
         }
 
         AuthUser user = CurrentUser.required();
         if (!problemAccessPolicy.can(user, Permission.UPDATE, problem)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN, "无权修改该题目");
         }
 

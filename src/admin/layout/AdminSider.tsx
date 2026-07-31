@@ -1,3 +1,6 @@
+/**
+ * 管理员Sider组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Menu } from '@arco-design/web-react';
 import {
   IconDashboard,
@@ -18,6 +21,9 @@ import { adminPath } from '../../utils/adminPath';
 const MenuItem = Menu.Item;
 const SubMenu = Menu.SubMenu;
 
+/**
+ * 管理员SiderProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface AdminSiderProps {
   userRole: 'SUPER_ADMIN';
 }
@@ -27,6 +33,7 @@ const PATHS = {
   users: adminPath('/users'),
   students: adminPath('/users/students'),
   teachers: adminPath('/users/teachers'),
+  majors: adminPath('/majors'),
   problems: adminPath('/problems'),
   problemsNew: adminPath('/problems/new'),
   problemFolders: adminPath('/problem-folders'),
@@ -44,9 +51,13 @@ const PATHS = {
   settingsFrontend: adminPath('/settings/frontend'),
   settingsRegister: adminPath('/settings/register'),
   settingsSystem: adminPath('/settings/system'),
+  settingsCodeTemplates: adminPath('/settings/code-templates'),
   settingsAnnouncements: adminPath('/settings/announcements'),
 };
 
+/**
+ * 渲染管理员Sider组件，并协调其数据加载、状态和交互。
+ */
 export function AdminSider({ userRole }: AdminSiderProps) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -68,6 +79,11 @@ export function AdminSider({ userRole }: AdminSiderProps) {
 
   useEffect(() => {
     const path = location.pathname;
+    if (path.startsWith(PATHS.settingsCodeTemplates)) {
+      setOpenKeys([]);
+      return;
+    }
+
     const openKeysMap: Record<string, string> = {
       [PATHS.users]: 'users-menu',
       [PATHS.problems]: 'problems-menu',
@@ -77,21 +93,29 @@ export function AdminSider({ userRole }: AdminSiderProps) {
       [PATHS.submissions]: 'submissions-menu',
       [adminPath('/judge')]: 'judge-menu',
       [PATHS.classes]: 'classes-menu',
+      [PATHS.majors]: 'users-menu',
       [adminPath('/settings')]: 'settings-menu',
     };
 
     for (const [prefix, key] of Object.entries(openKeysMap)) {
       if (path.includes(prefix)) {
         setOpenKeys([key]);
-        break;
+        return;
       }
     }
-  }, []);
+    setOpenKeys([]);
+  }, [location.pathname]);
 
+  /**
+   * 处理MenuClick。可能改变当前路由或查询参数。
+   */
   const handleMenuClick = (key: string) => {
     navigate(key);
   };
 
+  /**
+   * 判断MenuVisible是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const isMenuVisible = (menuKey: string): boolean => {
     if (userRole === 'SUPER_ADMIN') return true;
     return false;
@@ -114,6 +138,7 @@ export function AdminSider({ userRole }: AdminSiderProps) {
         <SubMenu key="users-menu" title={<><IconUser />用户管理</>}>
           <MenuItem key={PATHS.students}>学生列表</MenuItem>
           <MenuItem key={PATHS.teachers}>教师列表</MenuItem>
+          <MenuItem key={PATHS.majors}>专业管理</MenuItem>
         </SubMenu>
       )}
 
@@ -152,6 +177,13 @@ export function AdminSider({ userRole }: AdminSiderProps) {
           <MenuItem key={PATHS.judgeQueue}>判题队列</MenuItem>
           <MenuItem key={PATHS.judgeConfig}>判题配置</MenuItem>
         </SubMenu>
+      )}
+
+      {isMenuVisible('code-template-settings') && (
+        <MenuItem key={PATHS.settingsCodeTemplates}>
+          <IconCode />
+          代码配置
+        </MenuItem>
       )}
 
       {isMenuVisible('leaderboard') && (

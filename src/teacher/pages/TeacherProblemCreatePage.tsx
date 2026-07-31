@@ -1,3 +1,6 @@
+/**
+ * 教师题目Create页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
@@ -12,26 +15,30 @@ import {
   Select,
   Space,
   Steps,
-  Switch,
   Tag,
   Upload,
 } from '@arco-design/web-react';
-import { IconDelete, IconEdit, IconPlus, IconUpload } from '@arco-design/web-react/icon';
-import { teacherGet, teacherPost, teacherPut } from '../teacherApi';
+import { IconDelete, IconPlus, IconUpload } from '@arco-design/web-react/icon';
+import { TeacherApiError, teacherGet, teacherPost, teacherPut } from '../teacherApi';
 import { decryptIdFromUrl } from '../../utils/cipher';
-import { MarkdownInsertModal } from '../../admin/components/MarkdownInsertModal';
-import { CodeInsertModal } from '../../admin/components/CodeInsertModal';
+import { HtmlMathEditor } from '../../admin/components/HtmlMathEditor';
 
 const FormItem = Form.Item;
 const TextArea = Input.TextArea;
 const Step = Steps.Step;
 
+/**
+ * Sample测试点接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface SampleCase {
   input: string;
   output: string;
   explanation?: string;
 }
 
+/**
+ * BasicFormData接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface BasicFormData {
   title: string;
   timeLimit: number;
@@ -43,6 +50,8 @@ interface BasicFormData {
   difficulty?: number;
   folderId?: number;
   isPublic?: boolean;
+  accessScope?: 'ALL' | 'MAJOR' | 'PRIVATE';
+  studentPublishStatus?: 'DRAFT' | 'PUBLISHED';
   samples: SampleCase[];
 }
 
@@ -54,6 +63,9 @@ const DIFFICULTY_OPTIONS = [
   { value: 5, label: '地狱' },
 ];
 
+/**
+ * Test测试点接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface TestCase {
   id?: number;
   caseNo: number;
@@ -61,17 +73,26 @@ interface TestCase {
   output: string;
 }
 
+/**
+ * RawTest测试点类型别名，明确该模块内部及 API 边界使用的数据结构。
+ */
 type RawTestCase = Partial<TestCase> & {
   inputData?: string;
   outputData?: string;
 };
 
+/**
+ * DraftData接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface DraftData {
   draftId: string;
   basic: BasicFormData | null;
   testCases: TestCase[];
 }
 
+/**
+ * 解析并规范化Samples。失败时向调用方传播异常。
+ */
 function normalizeSamples(samples?: SampleCase[]) {
   return (samples || [])
     .filter((sample) => {
@@ -94,6 +115,9 @@ function normalizeSamples(samples?: SampleCase[]) {
     });
 }
 
+/**
+ * 解析并规范化Basic请求参数。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeBasicPayload(values: Partial<BasicFormData>, tags: string[]) {
   return {
     title: values.title?.trim() || '',
@@ -107,9 +131,14 @@ function normalizeBasicPayload(values: Partial<BasicFormData>, tags: string[]) {
     folderId: values.folderId || undefined,
     samples: normalizeSamples(values.samples),
     isPublic: values.isPublic !== false,
+    accessScope: values.accessScope || 'ALL',
+    studentPublishStatus: values.studentPublishStatus || 'PUBLISHED',
   };
 }
 
+/**
+ * 解析并规范化TestCases。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeTestCases(testCases: TestCase[]) {
   return testCases
     .map((testCase, index) => ({
@@ -120,6 +149,9 @@ function normalizeTestCases(testCases: TestCase[]) {
     .sort((left, right) => left.caseNo - right.caseNo);
 }
 
+/**
+ * 解析并规范化LoadedTestCases。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function normalizeLoadedTestCases(testCases: RawTestCase[]) {
   return (testCases || [])
     .map((tc, index) => ({
@@ -131,6 +163,38 @@ function normalizeLoadedTestCases(testCases: RawTestCase[]) {
     .sort((left, right) => left.caseNo - right.caseNo);
 }
 
+function problemErrorSource(error: unknown) {
+  if (!(error instanceof TeacherApiError)) {
+    return '前端校验';
+  }
+  if (error.status === 0) return '网络连接';
+  if (error.status === 400) return '后端校验';
+  if (error.status === 401 || error.status === 403) return '登录与权限';
+  if (error.status === 404) return '题目草稿';
+  if (error.status === 409) return '数据冲突';
+  if (error.status >= 500) return '后端服务';
+  return '后端请求';
+}
+
+function problemErrorReason(error: unknown, source: string) {
+  const message = error instanceof Error ? error.message.trim() : '';
+  if (message && /[\u3400-\u9fff]/.test(message)) {
+    return message;
+  }
+  if (source === '网络连接') {
+    return '无法连接后端服务，请确认服务已启动后重试';
+  }
+  return '请求未能完成，请检查填写内容或稍后重试';
+}
+
+function showProblemActionError(action: string, error: unknown) {
+  const source = problemErrorSource(error);
+  Message.error(`${action}失败（${source}）：${problemErrorReason(error, source)}`);
+}
+
+/**
+ * 渲染教师题目Create页面，并协调其数据加载、状态和交互。
+ */
 export function TeacherProblemCreatePage() {
   const navigate = useNavigate();
   const params = useParams();
@@ -146,11 +210,7 @@ export function TeacherProblemCreatePage() {
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
-  const [folders, setFolders] = useState<Array<{ id: number; name: string }>>([]);
-  const [codeModalVisible, setCodeModalVisible] = useState(false);
-  const [statementModalVisible, setStatementModalVisible] = useState(false);
-  const [inputFormatModalVisible, setInputFormatModalVisible] = useState(false);
-  const [outputFormatModalVisible, setOutputFormatModalVisible] = useState(false);
+  const [folders, setFolders] = useState<Array<{ id: number; name: string; canEdit: boolean }>>([]);
   const [importZipFile, setImportZipFile] = useState<File | null>(null);
   const [importZipVisible, setImportZipVisible] = useState(false);
 
@@ -161,11 +221,14 @@ export function TeacherProblemCreatePage() {
     } else {
       createDraft();
     }
-    teacherGet<Array<{ id: number; name: string }>>('/api/admin/v1/problem-folders')
-      .then((res) => setFolders(res))
+    teacherGet<Array<{ id: number; name: string; canEdit: boolean }>>('/api/admin/v1/problem-folders')
+      .then((res) => setFolders(res.filter((folder) => folder.canEdit)))
       .catch(() => {});
   }, [isEditMode, problemId]);
 
+  /**
+   * 读取题目并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function loadProblem(id: number) {
     try {
       setLoading(true);
@@ -181,6 +244,8 @@ export function TeacherProblemCreatePage() {
         difficulty: result.difficulty ?? 1,
         folderId: result.folderId || undefined,
         isPublic: result.isPublic !== false,
+        accessScope: result.accessScope || 'PRIVATE',
+        studentPublishStatus: result.studentPublishStatus || (result.isPublic ? 'PUBLISHED' : 'DRAFT'),
         samples: result.samples || [],
       });
       setTags(result.tags || []);
@@ -192,6 +257,9 @@ export function TeacherProblemCreatePage() {
     }
   }
 
+  /**
+   * 读取TestCases并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadTestCases(id: number) {
     try {
       const cases = await teacherGet<RawTestCase[]>(`/api/admin/v1/problems/${id}/test-cases`);
@@ -201,15 +269,21 @@ export function TeacherProblemCreatePage() {
     }
   }
 
+  /**
+   * 创建或提交Draft。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function createDraft() {
     try {
       const result = await teacherPost<DraftData>('/api/admin/v1/problem-drafts');
       setDraftId(result.draftId);
     } catch (error) {
-      Message.error('创建草稿失败');
+      showProblemActionError('创建题目草稿', error);
     }
   }
 
+  /**
+   * 更新BasicInfo。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function saveBasicInfo() {
     try {
       const values = await form.validate();
@@ -223,13 +297,16 @@ export function TeacherProblemCreatePage() {
       Message.success('基本信息已保存');
     } catch (error) {
       if (error instanceof Error) {
-        Message.error(error.message);
+        showProblemActionError('保存题目基本信息', error);
       }
     } finally {
       setLoading(false);
     }
   }
 
+  /**
+   * 更新BasicInfoAndNext。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function saveBasicInfoAndNext() {
     try {
       const values = await form.validate();
@@ -244,13 +321,16 @@ export function TeacherProblemCreatePage() {
       setCurrentStep(1);
     } catch (error) {
       if (error instanceof Error) {
-        Message.error(error.message);
+        showProblemActionError('保存题目基本信息', error);
       }
     } finally {
       setLoading(false);
     }
   }
 
+  /**
+   * 更新TestCases。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；对原始数据进行派生或聚合。
+   */
   async function saveTestCases(showSuccess = true) {
     if (!isEditMode && !draftId) return false;
     try {
@@ -262,10 +342,6 @@ export function TeacherProblemCreatePage() {
 
       const seenCaseNos = new Set<number>();
       for (const testCase of normalized) {
-        if (!testCase.input) {
-          Message.warning(`测试点 ${testCase.caseNo} 的输入数据不能为空`);
-          return false;
-        }
         if (!testCase.output) {
           Message.warning(`测试点 ${testCase.caseNo} 的输出数据不能为空`);
           return false;
@@ -291,13 +367,16 @@ export function TeacherProblemCreatePage() {
       }
       return true;
     } catch (error) {
-      if (error instanceof Error) Message.error(error.message);
+      if (error instanceof Error) showProblemActionError('保存测试点', error);
       return false;
     } finally {
       setLoading(false);
     }
   }
 
+  /**
+   * 处理Commit。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function handleCommit() {
     if (!draftId) return;
     try {
@@ -309,12 +388,15 @@ export function TeacherProblemCreatePage() {
       Message.success('题目已创建');
       navigate('/teacher/problems');
     } catch (error) {
-      if (error instanceof Error) Message.error(error.message);
+      if (error instanceof Error) showProblemActionError('创建题目', error);
     } finally {
       setLoading(false);
     }
   }
 
+  /**
+   * 处理Submit。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；可能改变当前路由或查询参数。
+   */
   async function handleSubmit() {
     try {
       if (isEditMode) {
@@ -332,12 +414,15 @@ export function TeacherProblemCreatePage() {
       Message.success('题目已创建');
       navigate('/teacher/problems');
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '创建失败');
+      showProblemActionError('创建题目', error);
     } finally {
       setLoading(false);
     }
   }
 
+  /**
+   * 处理ImportZip。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function handleImportZip(file: File, overwrite: boolean) {
     const formData = new FormData();
     formData.append('file', file);
@@ -357,51 +442,34 @@ export function TeacherProblemCreatePage() {
       Message.success('导入成功');
       return true;
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '导入失败');
+      showProblemActionError('导入测试点', error);
       return false;
     } finally {
       setLoading(false);
     }
   }
 
+  /**
+   * 创建或提交Test测试点。会更新 React 状态并触发重新渲染。
+   */
   function addTestCase() {
     setTestCases([...testCases, { caseNo: testCases.length + 1, input: '', output: '' }]);
   }
 
+  /**
+   * 删除Test测试点。会更新 React 状态并触发重新渲染。
+   */
   function removeTestCase(index: number) {
     setTestCases(testCases.filter((_, i) => i !== index));
   }
 
+  /**
+   * 更新Test测试点。会更新 React 状态并触发重新渲染。
+   */
   function updateTestCase(index: number, field: 'input' | 'output', value: string) {
     const updated = [...testCases];
     updated[index] = { ...updated[index], [field]: value };
     setTestCases(updated);
-  }
-
-  function appendWithBlankLine(current: string | undefined, content: string): string {
-    const base = (current ?? '').replace(/\s+$/g, '');
-    if (!base) return content.replace(/^\s+/, '');
-    return `${base}\n\n${content.replace(/^\s+/, '')}`;
-  }
-
-  function handleInsertCode(code: string) {
-    form.setFieldValue('statement', appendWithBlankLine(form.getFieldValue('statement') as string | undefined, code));
-    setCodeModalVisible(false);
-  }
-
-  function handleInsertStatement(markdown: string) {
-    form.setFieldValue('statement', appendWithBlankLine(form.getFieldValue('statement') as string | undefined, markdown));
-    setStatementModalVisible(false);
-  }
-
-  function handleInsertInputFormat(markdown: string) {
-    form.setFieldValue('inputFormat', appendWithBlankLine(form.getFieldValue('inputFormat') as string | undefined, markdown));
-    setInputFormatModalVisible(false);
-  }
-
-  function handleInsertOutputFormat(markdown: string) {
-    form.setFieldValue('outputFormat', appendWithBlankLine(form.getFieldValue('outputFormat') as string | undefined, markdown));
-    setOutputFormatModalVisible(false);
   }
 
   return (
@@ -421,7 +489,7 @@ export function TeacherProblemCreatePage() {
             wrapperCol={{ span: 18 }}
             labelAlign="left"
             requiredSymbol={false}
-            initialValues={{ timeLimit: 1000, memoryLimit: 256, isPublic: true, difficulty: 1, samples: [] }}
+            initialValues={{ timeLimit: 1000, memoryLimit: 256, isPublic: true, accessScope: 'ALL', studentPublishStatus: 'PUBLISHED', difficulty: 1, samples: [] }}
             style={{ maxWidth: '1200px', margin: '0 auto' }}
           >
             <FormItem label="题目名称" field="title" rules={[{ required: true, message: '请输入题目名称' }]}>
@@ -433,8 +501,18 @@ export function TeacherProblemCreatePage() {
             <FormItem label="内存限制" field="memoryLimit" rules={[{ required: true, message: '请输入内存限制' }]} extra="单位：兆字节(MB)">
               <InputNumber min={16} max={1024} style={{ width: '100%' }} />
             </FormItem>
-            <FormItem label="可见性" field="isPublic" triggerPropName="checked" extra="关闭后普通用户、前台题库、直接访问题目链接和普通提交接口都不可见。">
-              <Switch checkedText="公开" uncheckedText="隐藏" />
+            <FormItem label="教师开放范围" field="accessScope" rules={[{ required: true, message: '请选择开放范围' }]}>
+              <Select>
+                <Select.Option value="ALL">所有人</Select.Option>
+                <Select.Option value="MAJOR">本专业</Select.Option>
+                <Select.Option value="PRIVATE">私有</Select.Option>
+              </Select>
+            </FormItem>
+            <FormItem label="学生题库状态" field="studentPublishStatus" rules={[{ required: true, message: '请选择发布状态' }]}>
+              <Select>
+                <Select.Option value="PUBLISHED">已发布</Select.Option>
+                <Select.Option value="DRAFT">未发布</Select.Option>
+              </Select>
             </FormItem>
             <FormItem label="难度" field="difficulty" rules={[{ required: true, message: '请选择难度' }]}>
               <Select placeholder="请选择难度">
@@ -475,37 +553,19 @@ export function TeacherProblemCreatePage() {
                 }}>添加</Button>
               </Space>
             </FormItem>
-            <FormItem label="题目描述" field="statement" rules={[{ required: true, message: '请输入题目描述' }]} triggerPropName="value">
-              <TextArea placeholder="支持 Markdown 和 LaTeX 格式" rows={10} style={{ fontFamily: 'monospace' }} />
+            <FormItem label="题目描述" field="statement" rules={[{ required: true, message: '请输入题目描述' }]} triggerPropName="value" style={{ marginBottom: '20px' }}>
+              <HtmlMathEditor placeholder="支持 HTML 标签与 LaTeX 公式" rows={10} />
             </FormItem>
-            <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
-              <Space>
-                <Button size="small" icon={<IconEdit />} onClick={() => setStatementModalVisible(true)}>
-                  插入 Markdown
-                </Button>
-                <Button size="small" icon={<IconEdit />} onClick={() => setCodeModalVisible(true)}>
-                  插入代码块
-                </Button>
-              </Space>
-            </div>
-            <FormItem label="输入格式" field="inputFormat">
-              <TextArea placeholder="输入格式说明" rows={3} style={{ fontFamily: 'monospace' }} />
+            <FormItem label="输入格式" field="inputFormat" style={{ marginBottom: '20px' }}>
+              <HtmlMathEditor placeholder="输入格式说明（支持 HTML 与 LaTeX）" rows={3} />
             </FormItem>
-            <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
-              <Button size="small" icon={<IconEdit />} onClick={() => setInputFormatModalVisible(true)}>
-                插入 Markdown
-              </Button>
-            </div>
-            <FormItem label="输出格式" field="outputFormat">
-              <TextArea placeholder="输出格式说明" rows={3} style={{ fontFamily: 'monospace' }} />
+            <FormItem label="输出格式" field="outputFormat" style={{ marginBottom: '20px' }}>
+              <HtmlMathEditor placeholder="输出格式说明（支持 HTML 与 LaTeX）" rows={3} />
             </FormItem>
-            <div style={{ marginLeft: '16.66%', marginTop: '-8px', marginBottom: '16px' }}>
-              <Button size="small" icon={<IconEdit />} onClick={() => setOutputFormatModalVisible(true)}>
-                插入 Markdown
-              </Button>
-            </div>
-            <FormItem label="样例" required>
-              <Form.List field="samples">
+            <FormItem label="样例">
+              <Form.List
+                field="samples"
+              >
                 {(fields, { add, remove }) => (
                   <>
                     {fields.map((field, index) => (
@@ -611,36 +671,6 @@ export function TeacherProblemCreatePage() {
             </Space>
           </div>
       </div>
-
-      <CodeInsertModal
-        visible={codeModalVisible}
-        onClose={() => setCodeModalVisible(false)}
-        onInsert={handleInsertCode}
-      />
-
-      <MarkdownInsertModal
-        visible={statementModalVisible}
-        onClose={() => setStatementModalVisible(false)}
-        onInsert={handleInsertStatement}
-        title="插入题目描述"
-        initialValue=""
-      />
-
-      <MarkdownInsertModal
-        visible={inputFormatModalVisible}
-        onClose={() => setInputFormatModalVisible(false)}
-        onInsert={handleInsertInputFormat}
-        title="插入输入格式"
-        initialValue=""
-      />
-
-      <MarkdownInsertModal
-        visible={outputFormatModalVisible}
-        onClose={() => setOutputFormatModalVisible(false)}
-        onInsert={handleInsertOutputFormat}
-        title="插入输出格式"
-        initialValue=""
-      />
 
       <Modal
         title="导入测试点"

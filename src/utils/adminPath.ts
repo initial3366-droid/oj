@@ -1,3 +1,6 @@
+/**
+ * 管理员Path工具模块。提供无页面依赖的通用处理能力。
+ */
 import { ADMIN_PREFIX } from '../config';
 
 /**

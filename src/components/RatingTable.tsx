@@ -1,8 +1,15 @@
-import { Table, Tag, Avatar, Typography } from '@douyinfe/semi-ui';
+/**
+ * RatingTable组件。封装可复用的界面结构、展示规则及交互行为。
+ */
+import { Table, Tag, Typography } from '@douyinfe/semi-ui';
 import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useOjData } from '../data/OjDataProvider';
 import type { RatingUser } from '../data/types';
+import { UserAvatar } from './common/UserAvatar';
 
+/**
+ * 渲染RatingTable组件，并协调其数据加载、状态和交互。
+ */
 export function RatingTable() {
   const { state } = useOjData();
   const ratings = [...state.ratings]
@@ -24,11 +31,14 @@ export function RatingTable() {
       title: '用户',
       dataIndex: 'name',
       width: 200,
-      render: (name: string) => (
+      render: (name: string, record) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Avatar size="small" color="blue">
-            {name.charAt(0).toUpperCase()}
-          </Avatar>
+          <UserAvatar
+            username={name || `#${record.userId}`}
+            avatarUrl={record.avatarUrl || undefined}
+            size="small"
+            showTooltip={false}
+          />
           <Typography.Text strong>{name}</Typography.Text>
         </div>
       ),

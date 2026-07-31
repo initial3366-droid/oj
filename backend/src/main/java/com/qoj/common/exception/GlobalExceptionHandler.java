@@ -31,6 +31,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    /**
+     * 处理BizException。不满足业务约束时直接抛出明确异常。
+     */
     @ExceptionHandler(BizException.class)
     public ResponseEntity<ApiResponse<Void>> handleBizException(BizException ex) {
         return ResponseEntity
@@ -43,6 +46,9 @@ public class GlobalExceptionHandler {
         ConstraintViolationException.class,
         BindException.class
     })
+    /**
+     * 处理ValidationException。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleValidationException(Exception ex) {
         String message = "请求参数错误";
@@ -65,12 +71,18 @@ public class GlobalExceptionHandler {
         return ApiResponse.fail(ErrorCode.BAD_REQUEST.getCode(), message);
     }
 
+    /**
+     * 处理Unreadable请求。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleUnreadableRequest() {
         return ApiResponse.fail(ErrorCode.BAD_REQUEST.getCode(), "请求数据格式错误");
     }
 
+    /**
+     * 处理DataIntegrityViolation。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @ExceptionHandler(DataIntegrityViolationException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
@@ -78,24 +90,36 @@ public class GlobalExceptionHandler {
         return ApiResponse.fail(ErrorCode.BAD_REQUEST.getCode(), "数据不合法，请检查编号是否重复、必填内容是否为空或内容是否过长");
     }
 
+    /**
+     * 处理BadCredentialsException。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @ExceptionHandler({BadCredentialsException.class})
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ApiResponse<Void> handleBadCredentialsException() {
         return ApiResponse.fail(ErrorCode.UNAUTHORIZED, "账号或密码错误");
     }
 
+    /**
+     * 处理访问DeniedException。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @ExceptionHandler(AccessDeniedException.class)
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public ApiResponse<Void> handleAccessDeniedException() {
         return ApiResponse.fail(ErrorCode.FORBIDDEN);
     }
 
+    /**
+     * 处理NotFoundException。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @ExceptionHandler({NoHandlerFoundException.class, NoResourceFoundException.class})
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public ApiResponse<Void> handleNotFoundException() {
         return ApiResponse.fail(ErrorCode.NOT_FOUND);
     }
 
+    /**
+     * 处理Exception。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ApiResponse<Void> handleException(Exception ex) {
@@ -103,6 +127,9 @@ public class GlobalExceptionHandler {
         return ApiResponse.fail(ErrorCode.INTERNAL_ERROR);
     }
 
+    /**
+     * 封装http状态相关逻辑。可能调用外部判题或网关服务。
+     */
     private HttpStatus httpStatus(int code) {
         return switch (code) {
             case 400, 40000 -> HttpStatus.BAD_REQUEST;

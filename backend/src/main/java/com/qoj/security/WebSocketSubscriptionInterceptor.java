@@ -32,6 +32,9 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
     private static final Pattern SUBMISSION_PATTERN = Pattern.compile("^/topic/submissions/(\\d+)$");
     private static final Pattern SUBMISSION_QUEUE_PATTERN = Pattern.compile("^/topic/submission-queue$");
 
+    /**
+     * 构造 WebSocketSubscriptionInterceptor 实例并保存其必要依赖或初始状态。从持久化层读取数据；在状态变化后发布异步消息。
+     */
     public WebSocketSubscriptionInterceptor(
         ContestMapper contestMapper,
         ContestParticipantMapper participantMapper,
@@ -76,6 +79,9 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
         Matcher scoreboardMatcher = CONTEST_SCOREBOARD_PATTERN.matcher(destination);
         if (scoreboardMatcher.matches()) {
             long contestId = Long.parseLong(scoreboardMatcher.group(1));
+            /**
+             * 判断访问比赛是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return canAccessContest(authUser, contestId);
         }
 
@@ -83,6 +89,9 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
         Matcher announcementMatcher = CONTEST_ANNOUNCEMENT_PATTERN.matcher(destination);
         if (announcementMatcher.matches()) {
             long contestId = Long.parseLong(announcementMatcher.group(1));
+            /**
+             * 判断访问比赛是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return canAccessContest(authUser, contestId);
         }
 
@@ -90,6 +99,9 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
         Matcher statusMatcher = CONTEST_STATUS_PATTERN.matcher(destination);
         if (statusMatcher.matches()) {
             long contestId = Long.parseLong(statusMatcher.group(1));
+            /**
+             * 判断访问比赛是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return canAccessContest(authUser, contestId);
         }
 
@@ -97,6 +109,9 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
         Matcher submissionMatcher = SUBMISSION_PATTERN.matcher(destination);
         if (submissionMatcher.matches()) {
             long submissionId = Long.parseLong(submissionMatcher.group(1));
+            /**
+             * 判断访问提交是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+             */
             return canAccessSubmission(authUser, submissionId);
         }
 

@@ -1,3 +1,6 @@
+/**
+ * 首页页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Card, Tag, Typography } from '@douyinfe/semi-ui';
 import { IconTreeTriangleDown, IconUserGroup, IconActivity } from '@douyinfe/semi-icons';
 import { AnnouncementCard } from '../components/AnnouncementCard';
@@ -6,6 +9,9 @@ import { RatingTable } from '../components/RatingTable';
 import { UpcomingContests } from '../components/UpcomingContests';
 import { useOjData } from '../data/OjDataProvider';
 
+/**
+ * 渲染首页页面，并协调其数据加载、状态和交互。
+ */
 export function HomePage() {
   const { state } = useOjData();
   const activeContestCount = state.contests.filter(

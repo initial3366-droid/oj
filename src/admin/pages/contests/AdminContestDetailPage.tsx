@@ -1,3 +1,6 @@
+/**
+ * 管理员比赛详情页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { adminPath } from '../../../utils/adminPath';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -24,11 +27,15 @@ const { Row, Col } = Grid;
 const TabPane = Tabs.TabPane;
 const Option = Select.Option;
 
+/**
+ * 比赛详情接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ContestDetail {
   id: number;
   title: string;
   description: string;
   type: string;
+  judgeMode?: 'GO_JUDGE' | 'CCPCOJ';
   status: string;
   startTime: string;
   endTime: string;
@@ -54,6 +61,9 @@ interface ContestDetail {
   updatedAt: string;
 }
 
+/**
+ * 比赛题目接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ContestProblem {
   id: number;
   contestProblemId: number;
@@ -65,6 +75,9 @@ interface ContestProblem {
   acceptedCount: number;
 }
 
+/**
+ * 报名接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface Registration {
   id: number;
   userId: number;
@@ -76,6 +89,9 @@ interface Registration {
   registeredAt: string;
 }
 
+/**
+ * Xcpcio配置接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface XcpcioConfig {
   contestId: number;
   enabled: boolean;
@@ -96,6 +112,9 @@ interface XcpcioConfig {
   clicsScoreboardUrl?: string | null;
 }
 
+/**
+ * RollingStep接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface RollingStep {
   step: number;
   displayName: string;
@@ -108,6 +127,9 @@ interface RollingStep {
   rankDelta?: number | null;
 }
 
+/**
+ * RollingState接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface RollingState {
   contestId: number;
   status: 'NOT_STARTED' | 'ROLLING' | 'FINISHED' | 'PUBLISHED';
@@ -120,11 +142,15 @@ interface RollingState {
   updatedAt?: string | null;
 }
 
+/**
+ * 渲染管理员比赛详情页面，并协调其数据加载、状态和交互。
+ */
 export function AdminContestDetailPage() {
   const { contestId } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [contest, setContest] = useState<ContestDetail | null>(null);
+  const [loadError, setLoadError] = useState('');
   const [problems, setProblems] = useState<ContestProblem[]>([]);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [xcpcioConfig, setXcpcioConfig] = useState<XcpcioConfig | null>(null);
@@ -144,35 +170,63 @@ export function AdminContestDetailPage() {
     loadContestDetail();
   }, [contestId]);
 
+  /**
+   * 读取比赛详情并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function loadContestDetail() {
     setLoading(true);
+    setLoadError('');
+    setNotice(null);
+    setContest(null);
+    setProblems([]);
+    setRegistrations([]);
+    setXcpcioConfig(null);
+    setRollingState(null);
+    if (!contestId || !/^\d+$/.test(contestId)) {
+      setLoadError('比赛编号无效');
+      setLoading(false);
+      return;
+    }
     try {
-      const [contestData, problemsData, registrationsData, xcpcioData, rollingData] = await Promise.all([
-        adminGet<ContestDetail>(`/api/admin/v1/contests/${contestId}`),
+      const contestData = await adminGet<ContestDetail>(`/api/admin/v1/contests/${contestId}`);
+      setContest(contestData);
+
+      const [problemsResult, registrationsResult, xcpcioResult, rollingResult] = await Promise.allSettled([
         adminGet<ContestProblem[]>(`/api/admin/v1/contests/${contestId}/problems`),
         adminGet<Registration[]>(`/api/admin/v1/contests/${contestId}/registrations`),
         adminGet<XcpcioConfig>(`/api/admin/v1/contests/${contestId}/xcpcio/config`),
         adminGet<RollingState>(`/api/admin/v1/contests/${contestId}/rolling`),
       ]);
-      setContest(contestData);
-      setProblems(problemsData);
-      setRegistrations(registrationsData);
-      setXcpcioConfig(xcpcioData);
-      setRollingState(rollingData);
+      if (problemsResult.status === 'fulfilled') setProblems(problemsResult.value);
+      if (registrationsResult.status === 'fulfilled') setRegistrations(registrationsResult.value);
+      if (xcpcioResult.status === 'fulfilled') setXcpcioConfig(xcpcioResult.value);
+      if (rollingResult.status === 'fulfilled') setRollingState(rollingResult.value);
+
+      const failedModules = [problemsResult, registrationsResult, xcpcioResult, rollingResult]
+        .filter((result) => result.status === 'rejected').length;
+      if (failedModules > 0) {
+        setNotice({ type: 'error', content: `比赛基本信息已加载，${failedModules} 个附加模块暂时不可用` });
+      }
       setXcpcioToken('');
       setClicsAccessToken('');
     } catch (error) {
-      setNotice({ type: 'error', content: '加载比赛详情失败' });
+      setLoadError(error instanceof Error ? error.message : '加载比赛详情失败');
       console.error(error);
     } finally {
       setLoading(false);
     }
   }
 
+  /**
+   * 更新Xcpcio配置。会更新 React 状态并触发重新渲染。
+   */
   function updateXcpcioConfig(patch: Partial<XcpcioConfig>) {
     setXcpcioConfig((current) => current ? { ...current, ...patch } : current);
   }
 
+  /**
+   * 封装fullUrl相关逻辑。可能改变当前路由或查询参数。
+   */
   function fullUrl(path?: string | null) {
     if (!path) return '';
     try {
@@ -182,6 +236,9 @@ export function AdminContestDetailPage() {
     }
   }
 
+  /**
+   * 更新Xcpcio配置。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function saveXcpcioConfig() {
     if (!contestId || !xcpcioConfig) return;
     setXcpcioSaving(true);
@@ -208,6 +265,9 @@ export function AdminContestDetailPage() {
     }
   }
 
+  /**
+   * 封装syncXcpcio配置相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function syncXcpcioConfig() {
     if (!contestId) return;
     setXcpcioSyncing(true);
@@ -222,6 +282,9 @@ export function AdminContestDetailPage() {
     }
   }
 
+  /**
+   * 封装导出榜单相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function exportScoreboard() {
     if (!contestId) return;
     setScoreboardExporting(true);
@@ -238,6 +301,9 @@ export function AdminContestDetailPage() {
     }
   }
 
+  /**
+   * 封装导出Submissions相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function exportSubmissions() {
     if (!contestId) return;
     setSubmissionsExporting(true);
@@ -254,6 +320,9 @@ export function AdminContestDetailPage() {
     }
   }
 
+  /**
+   * 封装导出报名Users相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function exportRegistrationUsers() {
     if (!contestId) return;
     setRegistrationExporting(true);
@@ -270,6 +339,9 @@ export function AdminContestDetailPage() {
     }
   }
 
+  /**
+   * 封装runRollingAction相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function runRollingAction(path: string, successMessage: string) {
     if (!contestId) return;
     setRollingLoading(true);
@@ -295,7 +367,16 @@ export function AdminContestDetailPage() {
   if (!contest) {
     return (
       <Card>
-        <div>比赛不存在</div>
+        <Alert
+          type="error"
+          content={loadError || '比赛详情暂时无法加载'}
+          action={(
+            <Space>
+              <Button onClick={() => navigate(adminPath('/contests'))}>返回列表</Button>
+              <Button type="primary" onClick={() => void loadContestDetail()}>重新加载</Button>
+            </Space>
+          )}
+        />
       </Card>
     );
   }
@@ -473,6 +554,9 @@ export function AdminContestDetailPage() {
           column={2}
           data={[
             { label: '比赛类型', value: <Tag color={contest.type === 'ACM' ? 'blue' : 'orange'}>{contest.type}</Tag> },
+            { label: '判题服务', value: contest.judgeMode === 'CCPCOJ'
+              ? <Tag color="purple">CCPCOJ</Tag>
+              : <Tag color="green">go-judge</Tag> },
             { label: '比赛状态', value: <Tag color={statusInfo.color}>{statusInfo.text}</Tag> },
             { label: '开始时间', value: new Date(contest.startTime).toLocaleString('zh-CN') },
             { label: '结束时间', value: new Date(contest.endTime).toLocaleString('zh-CN') },

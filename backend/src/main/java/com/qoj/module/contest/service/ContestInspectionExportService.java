@@ -38,6 +38,9 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.springframework.stereotype.Service;
 
+/**
+ * 比赛Inspection导出业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class ContestInspectionExportService {
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -51,6 +54,9 @@ public class ContestInspectionExportService {
     private final ContestAccessPolicy contestAccessPolicy;
     private final AuditLogger auditLogger;
 
+    /**
+     * 构造 比赛Inspection导出Service 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断；从持久化层读取数据。
+     */
     public ContestInspectionExportService(
         ContestMapper contestMapper,
         ContestProblemMapper contestProblemMapper,
@@ -75,6 +81,9 @@ public class ContestInspectionExportService {
         Contest contest = requireManageContest(contestId);
         ContestScoreboardVO scoreboard = contestService.scoreboardForAdminExport(contestId);
         auditLogger.logPermissionAllowed(CurrentUser.required(), Permission.MANAGE_SCOREBOARD, "Contest", contest.id, "导出比赛排行榜");
+        /**
+         * 封装withBom相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return withBom(scoreboardCsvText(scoreboard));
     }
 
@@ -101,6 +110,9 @@ public class ContestInspectionExportService {
             zip.finish();
             return output.toByteArray();
         } catch (IOException ex) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.INTERNAL_ERROR.getCode(), "导出提交代码失败");
         }
     }
@@ -123,6 +135,9 @@ public class ContestInspectionExportService {
             : userMapper.selectBatchIds(userIds).stream()
                 .collect(java.util.stream.Collectors.toMap(user -> user.id, user -> user));
         auditLogger.logPermissionAllowed(CurrentUser.required(), Permission.MANAGE_REGISTRATION, "Contest", contest.id, "导出比赛报名用户");
+        /**
+         * 封装withBom相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+         */
         return withBom(registrationUsersCsvText(registrations, usersById));
     }
 
@@ -147,10 +162,16 @@ public class ContestInspectionExportService {
     private Contest requireManageContest(long contestId) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
         AuthUser authUser = CurrentUser.required();
         if (!contestAccessPolicy.can(authUser, Permission.MANAGE_SCOREBOARD, contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权导出该比赛数据");
         }
         return contest;
@@ -159,10 +180,16 @@ public class ContestInspectionExportService {
     private Contest requireManageRegistrationContest(long contestId) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
         AuthUser authUser = CurrentUser.required();
         if (!contestAccessPolicy.can(authUser, Permission.MANAGE_REGISTRATION, contest)) {
+            /**
+             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
+             */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权导出该比赛报名数据");
         }
         return contest;

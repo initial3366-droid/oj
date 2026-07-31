@@ -1,13 +1,20 @@
+/**
+ * FrontHeader组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Avatar, Button, ConfigProvider, Dropdown, Flex, Grid, Layout, Menu, Space, Typography, theme } from 'antd';
 import type { MenuProps } from 'antd';
-import { LogoutOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
+import { LogoutOutlined, MenuOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useOjData } from '../data/OjDataProvider';
+import { logout as logoutFrontend } from '../api/auth';
 
 const { Header } = Layout;
 const { Text } = Typography;
 
+/**
+ * 渲染FrontHeader组件，并协调其数据加载、状态和交互。
+ */
 export function FrontHeader() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -16,6 +23,7 @@ export function FrontHeader() {
   const screens = Grid.useBreakpoint();
   const isLoggedIn = state.activeUser !== null;
   const isCompact = !screens.lg;
+  const isNarrow = !screens.md;
   const headerHeight = 64;
 
   const [siteTitle, setSiteTitle] = useState('QOJ 在线评测系统');
@@ -34,13 +42,6 @@ export function FrontHeader() {
     return () => { cancelled = true; };
   }, []);
 
-  const logout = () => {
-    window.localStorage.removeItem('qoj.accessToken');
-    window.localStorage.removeItem('qoj.refreshToken');
-    window.dispatchEvent(new Event('qoj:auth-cleared'));
-    window.location.href = '/login';
-  };
-
   const navItems = [
     { key: 'home', label: '首页', path: '/' },
     { key: 'problems', label: '题库', path: '/problems' },
@@ -48,8 +49,12 @@ export function FrontHeader() {
     { key: 'contests', label: '比赛', path: '/contests' },
     { key: 'submission-queue', label: '提交队列', path: '/submission-queue' },
     { key: 'leaderboard', label: '排行榜', path: '/leaderboard' },
+    { key: 'data-structures', label: '数据结构', path: '/data-structures', newTab: true },
   ];
 
+  /**
+   * 读取有效Key并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const getActiveKey = () => {
     const path = location.pathname;
     if (path === '/') return 'home';
@@ -61,16 +66,26 @@ export function FrontHeader() {
     return '';
   };
 
+  /**
+   * 处理NavClick。可能改变当前路由或查询参数。
+   */
   const handleNavClick: MenuProps['onClick'] = ({ key }) => {
     const item = navItems.find(item => item.key === key);
     if (item) {
+      if (item.newTab) {
+        window.open(item.path, '_blank', 'noopener,noreferrer');
+        return;
+      }
       navigate(item.path);
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  /**
+   * 处理退出登录。包含异步流程并由调用方处理完成或失败状态；可能改变当前路由或查询参数。
+   */
+  const handleLogout = async () => {
+    await logoutFrontend().catch(() => undefined);
+    navigate('/login', { replace: true });
   };
 
   const userMenuItems: MenuProps['items'] = [
@@ -95,6 +110,9 @@ export function FrontHeader() {
     },
   ];
 
+  /**
+   * 处理用户MenuClick。可能改变当前路由或查询参数。
+   */
   const handleUserMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'center') {
       navigate('/user-center');
@@ -105,7 +123,7 @@ export function FrontHeader() {
       return;
     }
     if (key === 'logout') {
-      handleLogout();
+      void handleLogout();
     }
   };
 
@@ -150,36 +168,52 @@ export function FrontHeader() {
           </Space>
         </Button>
 
-        <ConfigProvider
-          theme={{
-            components: {
-              Menu: {
-                activeBarHeight: 3,
-                activeBarBorderWidth: 0,
-                horizontalItemHoverBg: 'transparent',
-                horizontalItemSelectedBg: 'transparent',
-                itemPaddingInline: 24,
+        {isNarrow ? (
+          <Flex justify="center" style={{ flex: 1, minWidth: 0 }}>
+            <Dropdown
+              menu={{
+                items: navItems.map(({ key, label }) => ({ key, label })),
+                selectedKeys: [getActiveKey()],
+                onClick: handleNavClick,
+              }}
+              trigger={['click']}
+              placement="bottom"
+            >
+              <Button type="text" size="large" icon={<MenuOutlined />} aria-label="打开导航菜单" />
+            </Dropdown>
+          </Flex>
+        ) : (
+          <ConfigProvider
+            theme={{
+              components: {
+                Menu: {
+                  activeBarHeight: 3,
+                  activeBarBorderWidth: 0,
+                  horizontalItemHoverBg: 'transparent',
+                  horizontalItemSelectedBg: 'transparent',
+                  itemPaddingInline: 24,
+                },
               },
-            },
-          }}
-        >
-          <Menu
-            mode="horizontal"
-            selectedKeys={[getActiveKey()]}
-            onClick={handleNavClick}
-            items={navItems.map(({ key, label }) => ({ key, label }))}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              height: headerHeight,
-              lineHeight: `${headerHeight}px`,
-              justifyContent: 'center',
-              borderBottom: 'none',
-              fontSize: 16,
-              fontWeight: 500,
             }}
-          />
-        </ConfigProvider>
+          >
+            <Menu
+              mode="horizontal"
+              selectedKeys={[getActiveKey()]}
+              onClick={handleNavClick}
+              items={navItems.map(({ key, label }) => ({ key, label }))}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                height: headerHeight,
+                lineHeight: `${headerHeight}px`,
+                justifyContent: 'center',
+                borderBottom: 'none',
+                fontSize: 16,
+                fontWeight: 500,
+              }}
+            />
+          </ConfigProvider>
+        )}
 
         <Flex justify="flex-end" style={{ flex: '0 0 auto' }}>
           {isLoggedIn ? (
@@ -189,8 +223,14 @@ export function FrontHeader() {
             >
               <Button type="text" size="large">
                 <Space>
-                  <Avatar size="small" style={{ background: token.colorPrimary }}>
-                    {(state.activeUser?.displayName || state.activeUser?.username || 'U').slice(0, 2).toUpperCase()}
+                  <Avatar
+                    size="small"
+                    src={state.activeUser?.avatarUrl || undefined}
+                    style={{ background: token.colorPrimary }}
+                  >
+                    {!state.activeUser?.avatarUrl
+                      ? (state.activeUser?.displayName || state.activeUser?.username || 'U').slice(0, 2).toUpperCase()
+                      : null}
                   </Avatar>
                   {!isCompact ? (
                     <Text strong>

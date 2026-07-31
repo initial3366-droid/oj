@@ -1,11 +1,11 @@
 # QOJ 校园在线评测系统
 
-QOJ (Qingling Online Judge) 是一个面向中学生的校园在线评测平台，支持题库、练习集、比赛（ACM/OI 双赛制）、排行榜等功能。
+QOJ (Quan Online Judge) 是一个面向大学生的校园在线评测平台，支持题库、练习集、比赛（ACM/OI 双赛制）、排行榜等功能。
 
 ## 快速开始
 
 ### 前置要求
-- Node.js 18+ / npm 9+
+- Node.js 20-24 / npm 9+
 - Java 17+
 - Maven 3.8+
 - Docker & Docker Compose
@@ -32,15 +32,15 @@ npm run dev
 **4. 访问系统**
 - 用户端: http://127.0.0.1:5173
 - 管理后台: http://127.0.0.1:5173/admin
-- API 文档: http://127.0.0.1:8080/swagger-ui.html
+- API 文档: http://127.0.0.1:18080/swagger-ui.html
 
 ## 核心功能
 
 - **题库系统**: 题目管理、分类、难度标签、样例数据
 - **练习集**: 教师可创建面向班级/社团的练习
-- **比赛系统**: ACM/OI 双赛制，含封榜、防切屏
-- **判题系统**: CCPCOJ 独立评测机，支持 Docker 沙箱判题
-- **排行榜**: 全局/班级/社团三级 Rating 排名
+- **比赛系统**: ACM/OI 双赛制，含封榜
+- **判题系统**: 普通题/练习使用 go-judge，比赛使用 CCPCOJ 拉取式评测
+- **排行榜**: 全局/班级 Rating 排名
 - **实时更新**: WebSocket 推送提交状态、比赛榜单
 
 ## 技术栈
@@ -111,7 +111,11 @@ JWT_SECRET=change-this-to-a-random-64-byte-string
 JWT_ACCESS_EXPIRE=900
 JWT_REFRESH_EXPIRE=604800
 
-# 判题接入配置在管理后台“判题配置”中维护，并保存到数据库。
+# go-judge 地址与令牌只从部署环境读取，浏览器和数据库均不保存。
+GO_JUDGE_BASE_URL=http://127.0.0.1:15050
+GO_JUDGE_AUTH_TOKEN=replace-with-openssl-rand-hex-32
+
+# CCPCOJ 账号、密码和任务超时在管理后台“判题配置”中维护。
 ```
 
 ## 安全警告
@@ -119,9 +123,11 @@ JWT_REFRESH_EXPIRE=604800
 ⚠️ **生产环境禁止使用默认配置**：
 
 1. 必须修改 `JWT_SECRET` 为 64 字节以上的随机字符串
-2. 在管理后台确认不安全本地判题已关闭（用户代码直接执行，严重安全风险）
+2. go-judge 仅绑定内网/回环地址并配置 32 位以上随机令牌
 3. 使用强密码保护 MySQL 和 Redis
 4. 启用 HTTPS（通过 Nginx + Let's Encrypt）
+
+判题迁移和生产部署边界见 [go-judge 安全部署说明](docs/go-judge-security-deployment.md)。
 
 详见 [安全文档.md](docs/安全文档.md)。
 
@@ -144,4 +150,4 @@ MIT License
 ## 联系方式
 
 - 问题反馈: 提交 GitHub Issue
-- 开发团队: QOJ Team
+- 开发团队: 人生若只入初见

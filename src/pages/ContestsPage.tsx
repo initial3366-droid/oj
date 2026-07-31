@@ -1,3 +1,6 @@
+/**
+ * Contests页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Button, Checkbox, Tag, Typography, Spin, Modal, Banner, Space, Table, Input, Select } from '@douyinfe/semi-ui';
 import { IconCheckCircleStroked, IconCode, IconShield, IconSearch } from '@douyinfe/semi-icons';
 import { useEffect, useMemo, useState } from 'react';
@@ -10,18 +13,27 @@ import {
 } from '../data/apiClient';
 import { PageContainer } from '../components/common';
 
+/**
+ * 封装状态Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusText(status: PublicContest['status']) {
   if (status === 'RUNNING') return '进行中';
   if (status === 'ENDED') return '已结束';
   return '未开始';
 }
 
+/**
+ * 封装状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusColor(status: PublicContest['status']): 'green' | 'grey' | 'blue' {
   if (status === 'RUNNING') return 'green';
   if (status === 'ENDED') return 'grey';
   return 'blue';
 }
 
+/**
+ * 封装audienceText相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function audienceText(contest: PublicContest) {
   if (contest.audiences?.some((item) => item.audienceType !== 'ALL')) {
     return contest.audiences.filter((item) => item.audienceType === 'CLASS').map((item) => item.name).join('、') || '指定范围';
@@ -30,11 +42,17 @@ function audienceText(contest: PublicContest) {
   return '全校公开';
 }
 
+/**
+ * 封装报名Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function registrationText(value: string) {
   if (value === 'PASSWORD') return '密码报名';
   return value === 'PUBLIC' ? '公开报名' : '邀请码';
 }
 
+/**
+ * 格式化DateTime。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatDateTime(dateTime: string): string {
   const date = new Date(dateTime);
   const year = date.getFullYear();
@@ -45,6 +63,9 @@ function formatDateTime(dateTime: string): string {
   return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
+/**
+ * 渲染Contests页面，并协调其数据加载、状态和交互。
+ */
 export function ContestsPage() {
   const [contests, setContests] = useState<PublicContest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +80,9 @@ export function ContestsPage() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('');
 
+  /**
+   * 封装filteredContests相关逻辑。对原始数据进行派生或聚合。
+   */
   const filteredContests = useMemo(() => {
     const kw = searchKeyword.trim().toLowerCase();
     return contests.filter((c) => {
@@ -68,6 +92,9 @@ export function ContestsPage() {
     });
   }, [contests, searchKeyword, typeFilter]);
 
+  /**
+   * 读取Contests并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const loadContests = () => {
     setLoading(true);
     fetchContests()
@@ -86,10 +113,16 @@ export function ContestsPage() {
     loadContests();
   }, []);
 
+  /**
+   * 封装selectedOption相关逻辑。对原始数据进行派生或聚合。
+   */
   const selectedOption = useMemo(() => {
     return options.find((item) => `${item.identityType}:${item.identityId ?? ''}` === selectedKey);
   }, [options, selectedKey]);
 
+  /**
+   * 封装open注册相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const openRegister = async (contest: PublicContest) => {
     setActiveContest(contest);
     setOptions([]);
@@ -118,6 +151,9 @@ export function ContestsPage() {
     }
   };
 
+  /**
+   * 创建或提交注册。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   const submitRegister = async () => {
     if (!activeContest || !selectedOption || !selectedOption.available) {
       return;

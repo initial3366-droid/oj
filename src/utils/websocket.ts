@@ -11,12 +11,13 @@
  * wsClient.subscribeToSubmission(id, callback)
  */
 import { Client, StompSubscription } from "@stomp/stompjs";
+import { getValidFrontendAccessToken } from "../api/authSession";
 
 const WS_URL = import.meta.env.VITE_WS_URL || "/ws";
-const ACCESS_TOKEN_KEY = "qoj.accessToken";
-const REFRESH_TOKEN_KEY = "qoj.refreshToken";
-let websocketRefreshPromise: Promise<string | null> | null = null;
 
+/**
+ * 封装nativeWebSocketUrl相关逻辑。可能改变当前路由或查询参数。
+ */
 function nativeWebSocketUrl(path: string) {
   if (/^wss?:\/\//i.test(path)) {
     return path;
@@ -28,44 +29,9 @@ function nativeWebSocketUrl(path: string) {
   return `${origin}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-async function refreshAccessToken() {
-  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-  if (!refreshToken) {
-    return null;
-  }
-
-  if (!websocketRefreshPromise) {
-    websocketRefreshPromise = (async () => {
-      try {
-        const response = await fetch("/api/v1/auth/refresh", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refreshToken }),
-        });
-        const result = (await response.json()) as {
-          code?: number;
-          data?: {
-            accessToken: string;
-            refreshToken: string;
-          };
-        };
-        if (!response.ok || result.code !== 200 || !result.data) {
-          return null;
-        }
-        localStorage.setItem(ACCESS_TOKEN_KEY, result.data.accessToken);
-        localStorage.setItem(REFRESH_TOKEN_KEY, result.data.refreshToken);
-        return result.data.accessToken as string;
-      } catch {
-        return null;
-      }
-    })().finally(() => {
-      websocketRefreshPromise = null;
-    });
-  }
-
-  return websocketRefreshPromise;
-}
-
+/**
+ * 提交Update接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface SubmissionUpdate {
   submissionId: number;
   status: string;
@@ -74,17 +40,26 @@ export interface SubmissionUpdate {
   timestamp: number;
 }
 
+/**
+ * 榜单Update接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ScoreboardUpdate {
   contestId: number;
   action: "refresh";
   timestamp: number;
 }
 
+/**
+ * 提交队列Update接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface SubmissionQueueUpdate {
   action: "refresh";
   timestamp: number;
 }
 
+/**
+ * 比赛公告接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestAnnouncement {
   contestId: number;
   title: string;
@@ -92,6 +67,9 @@ export interface ContestAnnouncement {
   timestamp: number;
 }
 
+/**
+ * 比赛状态Update接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 export interface ContestStatusUpdate {
   contestId: number;
   status: string;
@@ -120,10 +98,7 @@ class WebSocketClient {
     this.isConnecting = true;
     this.connectPromise = new Promise((resolve, reject) => {
       (async () => {
-        let token = localStorage.getItem(ACCESS_TOKEN_KEY);
-        if (!token) {
-          token = await refreshAccessToken();
-        }
+        const token = await getValidFrontendAccessToken();
         if (!token) {
           reject(new Error("未登录"));
           this.isConnecting = false;
@@ -133,6 +108,15 @@ class WebSocketClient {
         this.client = new Client({
           connectHeaders: {
             Authorization: `Bearer ${token}`,
+          },
+          beforeConnect: async () => {
+            const latestToken = await getValidFrontendAccessToken();
+            if (!latestToken) {
+              throw new Error("未登录");
+            }
+            if (this.client) {
+              this.client.connectHeaders = { Authorization: `Bearer ${latestToken}` };
+            }
           },
           debug: (str) => {
             if (import.meta.env.DEV) {

@@ -24,6 +24,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 管理员班级Room接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
+ */
 @RestController
 @RequestMapping("/api/admin/v1")
 @PreAuthorize("hasRole('SUPER_ADMIN')")
@@ -31,27 +34,42 @@ public class AdminClassRoomController {
     private final ClassRoomService classRoomService;
     private final StudentImportFileService studentImportFileService;
 
+    /**
+     * 构造 管理员班级RoomController 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     public AdminClassRoomController(ClassRoomService classRoomService, StudentImportFileService studentImportFileService) {
         this.classRoomService = classRoomService;
         this.studentImportFileService = studentImportFileService;
     }
 
+    /**
+     * 封装classes相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @GetMapping("/classes")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
     public ApiResponse<List<ClassRoomVO>> classes(@RequestParam(required = false) String keyword) {
         return ApiResponse.ok(classRoomService.adminList(keyword));
     }
 
+    /**
+     * 封装班级详情相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @GetMapping("/classes/{classId}")
     public ApiResponse<ClassRoomVO> classDetail(@PathVariable long classId) {
         return ApiResponse.ok(classRoomService.adminDetail(classId));
     }
 
+    /**
+     * 创建或提交班级。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @PostMapping("/classes")
     public ApiResponse<ClassRoomVO> createClass(@Valid @RequestBody ClassRoomCreateRequest request) {
         return ApiResponse.ok(classRoomService.adminCreate(request));
     }
 
+    /**
+     * 更新班级。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @PutMapping("/classes/{classId}")
     public ApiResponse<ClassRoomVO> updateClass(
         @PathVariable long classId,

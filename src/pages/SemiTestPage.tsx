@@ -1,3 +1,6 @@
+/**
+ * SemiTest页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Button, Card, Tag, Space, Typography } from '@douyinfe/semi-ui';
 import { IconStar } from '@douyinfe/semi-icons';
 

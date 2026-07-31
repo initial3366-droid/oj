@@ -293,6 +293,11 @@
   border-radius: 10px;
 }
 
+.uc-page .semi-button-primary:not(.semi-button-disabled),
+.uc-page .semi-button-primary:not(.semi-button-disabled) .semi-button-content {
+  color: #fff !important;
+}
+
 .uc-btn-primary.semi-button-primary:hover {
   background: linear-gradient(135deg, #1d4ed8 0%, #4338ca 100%) !important;
   transform: translateY(-1px);
@@ -371,4 +376,17 @@
 
 .uc-avatar-actions {
   margin-top: 10px;
+}
+
+.uc-avatar-button.semi-button-primary,
+.uc-practice-view-button.semi-button-primary {
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #fff !important;
+}
+
+.uc-avatar-button.semi-button-primary:hover,
+.uc-practice-view-button.semi-button-primary:hover {
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
 }

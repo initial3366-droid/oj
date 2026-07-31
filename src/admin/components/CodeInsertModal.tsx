@@ -1,35 +1,60 @@
+/**
+ * 编码InsertModal组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Modal, Input, Select } from '@arco-design/web-react';
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
+import { HtmlMath } from '../../components/HtmlMath';
 
 const { TextArea } = Input;
 const Option = Select.Option;
 
+/** 转义代码中的 HTML 特殊字符，使其在 <pre><code> 中原样显示。 */
+function escapeHtml(text: string) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/** 把代码包装为 HTML 代码块（<pre><code class="language-xxx">...</code></pre>）。 */
+function buildCodeBlock(code: string, language: string) {
+  const classAttr = language ? ` class="language-${language}"` : '';
+  return `<pre><code${classAttr}>${escapeHtml(code)}</code></pre>`;
+}
+
+/**
+ * 编码InsertModalProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface CodeInsertModalProps {
   visible: boolean;
   onClose: () => void;
   onInsert: (code: string) => void;
 }
 
+/**
+ * 渲染编码InsertModal组件，并协调其数据加载、状态和交互。
+ */
 export function CodeInsertModal({ visible, onClose, onInsert }: CodeInsertModalProps) {
   const [code, setCode] = useState('');
   const [language, setLanguage] = useState('cpp');
 
+  /**
+   * 处理Insert。会更新 React 状态并触发重新渲染。
+   */
   function handleInsert() {
-    const codeBlock = language ? `\`\`\`${language}\n${code}\n\`\`\`` : `\`\`\`\n${code}\n\`\`\``;
-    onInsert(codeBlock);
+    onInsert(buildCodeBlock(code, language));
     setCode('');
   }
 
+  /**
+   * 处理Cancel。会更新 React 状态并触发重新渲染。
+   */
   function handleCancel() {
     setCode('');
     onClose();
   }
 
-  const codeBlock = language ? `\`\`\`${language}\n${code}\n\`\`\`` : `\`\`\`\n${code}\n\`\`\``;
+  const codeBlock = buildCodeBlock(code, language);
 
   return (
     <Modal
@@ -88,9 +113,7 @@ export function CodeInsertModal({ visible, onClose, onInsert }: CodeInsertModalP
               background: '#fafafa',
             }}
           >
-            <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
-              {codeBlock}
-            </ReactMarkdown>
+            <HtmlMath value={codeBlock} emptyText="预览区域" />
           </div>
         </div>
       </div>

@@ -12,6 +12,9 @@ import org.springframework.stereotype.Component;
 public class JudgeMessagePublisher {
     private final SimpMessagingTemplate messagingTemplate;
 
+    /**
+     * 构造 判题消息Publisher 实例并保存其必要依赖或初始状态。在状态变化后发布异步消息。
+     */
     public JudgeMessagePublisher(SimpMessagingTemplate messagingTemplate) {
         this.messagingTemplate = messagingTemplate;
     }
@@ -80,10 +83,6 @@ public class JudgeMessagePublisher {
     }
 
     /**
-     * 推送比赛状态变更（开始/结束）
-     * 频道: /topic/contests/{contestId}/status
-     */
-    /**
      * 推送新提交创建
      * 频道: /topic/submission-queue
      */
@@ -91,6 +90,10 @@ public class JudgeMessagePublisher {
         submissionQueueUpdated();
     }
 
+    /**
+     * 推送比赛状态变更（开始/结束）。
+     * 频道: /topic/contests/{contestId}/status，消息时间戳由服务端生成。
+     */
     public void contestStatusChanged(Long contestId, String status) {
         messagingTemplate.convertAndSend(
             "/topic/contests/" + contestId + "/status",

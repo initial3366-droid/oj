@@ -1,3 +1,6 @@
+/**
+ * 教师资料页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { Avatar, Button, Card, Form, Input, Message, Space, Typography } from '@arco-design/web-react';
 import { IconSave, IconUser } from '@arco-design/web-react/icon';
@@ -5,6 +8,9 @@ import { teacherGet, teacherPost, teacherPut, type TeacherMe } from '../teacherA
 
 const FormItem = Form.Item;
 
+/**
+ * 渲染教师资料页面，并协调其数据加载、状态和交互。
+ */
 export function TeacherProfilePage() {
   const [profileForm] = Form.useForm();
   const [passwordForm] = Form.useForm();
@@ -19,6 +25,9 @@ export function TeacherProfilePage() {
     loadProfile();
   }, []);
 
+  /**
+   * 读取资料并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function loadProfile() {
     setLoading(true);
     try {
@@ -33,6 +42,9 @@ export function TeacherProfilePage() {
     }
   }
 
+  /**
+   * 处理Save资料。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function handleSaveProfile() {
     try {
       const values = await profileForm.validate();
@@ -49,6 +61,9 @@ export function TeacherProfilePage() {
     }
   }
 
+  /**
+   * 处理ChangePassword。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function handleChangePassword() {
     try {
       const values = await passwordForm.validate();
@@ -70,6 +85,9 @@ export function TeacherProfilePage() {
     }
   }
 
+  /**
+   * 处理头像FileChange。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
+   */
   async function handleAvatarFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -117,9 +135,15 @@ export function TeacherProfilePage() {
           </div>
         </div>
 
-        <Form form={profileForm} layout="vertical">
+        <Form form={profileForm} layout="vertical" requiredSymbol={false}>
           <FormItem label="用户名">
             <Input value={me?.username} disabled />
+          </FormItem>
+          <FormItem label="教师编号">
+            <Input value={me?.teacherNo || '-'} disabled />
+          </FormItem>
+          <FormItem label="专业">
+            <Input value={me?.majorName || '未分配'} disabled />
           </FormItem>
           <FormItem
             label="姓名"
@@ -139,7 +163,7 @@ export function TeacherProfilePage() {
       </Card>
 
       <Card title="修改密码" bordered={false}>
-        <Form form={passwordForm} layout="vertical">
+        <Form form={passwordForm} layout="vertical" requiredSymbol={false}>
           <FormItem
             label="当前密码"
             field="oldPassword"

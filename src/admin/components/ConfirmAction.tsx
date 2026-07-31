@@ -1,6 +1,12 @@
+/**
+ * ConfirmAction组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { ReactNode } from 'react';
 import { showConfirm } from '../../utils/confirm';
 
+/**
+ * ConfirmActionProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface ConfirmActionProps {
   title?: string;
   content?: ReactNode;
@@ -11,6 +17,9 @@ interface ConfirmActionProps {
   type?: 'warning' | 'info' | 'success' | 'error';
 }
 
+/**
+ * 封装confirmAction相关逻辑。包含异步流程并由调用方处理完成或失败状态。
+ */
 export function confirmAction({
   title = '确认操作',
   content = '您确定要执行此操作吗？',

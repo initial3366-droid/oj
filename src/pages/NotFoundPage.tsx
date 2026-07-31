@@ -1,6 +1,11 @@
+/**
+ * NotFound页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Button, Card, Typography } from '@douyinfe/semi-ui';
-import { NavLink } from 'react-router-dom';
 
+/**
+ * 渲染NotFound页面，并协调其数据加载、状态和交互。
+ */
 export function NotFoundPage() {
   return (
     <div

@@ -30,6 +30,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final WebSocketSubscriptionInterceptor subscriptionInterceptor;
     private final QojProperties qojProperties;
 
+    /**
+     * 构造 WebSocket配置 实例并保存其必要依赖或初始状态。在状态变化后发布异步消息。
+     */
     public WebSocketConfig(
         WebSocketAuthInterceptor authInterceptor,
         WebSocketSubscriptionInterceptor subscriptionInterceptor,

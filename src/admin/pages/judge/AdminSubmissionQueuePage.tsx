@@ -1,3 +1,6 @@
+/**
+ * 管理员提交队列页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import {
   Button,
   Card,
@@ -27,11 +30,17 @@ const QUEUE_TABLE_SCROLL_X = 2800;
 const QUEUE_TABLE_FIXED_OPERATION_WIDTH = 320;
 const QUEUE_TABLE_SCROLL_BODY_WIDTH = QUEUE_TABLE_SCROLL_X - QUEUE_TABLE_FIXED_OPERATION_WIDTH;
 
+/**
+ * 页面结果接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface PageResult<T> {
   total: number;
   list: T[];
 }
 
+/**
+ * 队列Record接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface QueueRecord {
   queueId: number;
   submissionId: number;
@@ -58,6 +67,9 @@ interface QueueRecord {
   errorMessage?: string | null;
 }
 
+/**
+ * 队列Stats接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface QueueStats {
   waiting: number;
   judging: number;
@@ -67,6 +79,9 @@ interface QueueStats {
   total: number;
 }
 
+/**
+ * 队列Log接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface QueueLog {
   queueId: number;
   submissionId: number;
@@ -96,6 +111,9 @@ const statusOptions = [
   'Failed',
 ];
 
+/**
+ * 封装scoped比赛标识FromLocation相关逻辑。可能改变当前路由或查询参数。
+ */
 function scopedContestIdFromLocation(routeContestId?: string, queryContestId?: string | null) {
   if (routeContestId) return routeContestId;
   if (queryContestId) return queryContestId;
@@ -103,12 +121,18 @@ function scopedContestIdFromLocation(routeContestId?: string, queryContestId?: s
   return match?.[1] ?? '';
 }
 
+/**
+ * 格式化Date。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatDate(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
 }
 
+/**
+ * 格式化Duration。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatDuration(ms?: number | null) {
   const seconds = Math.floor(Math.max(0, ms ?? 0) / 1000);
   if (seconds < 60) return `${seconds}s`;
@@ -117,6 +141,9 @@ function formatDuration(ms?: number | null) {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
+/**
+ * 封装状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusColor(status: string) {
   const normalized = status.toUpperCase();
   if (normalized === 'AC' || normalized === 'ACCEPTED') return 'green';
@@ -126,11 +153,17 @@ function statusColor(status: string) {
   return 'red';
 }
 
+/**
+ * 判断有效是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function isActive(status: string) {
   const normalized = status.toUpperCase();
   return normalized === 'JUDGING' || normalized === 'RUNNING' || normalized === 'COMPILING';
 }
 
+/**
+ * 渲染管理员提交队列页面，并协调其数据加载、状态和交互。
+ */
 export function AdminSubmissionQueuePage() {
   const [searchParams] = useSearchParams();
   const routeParams = useParams();
@@ -165,6 +198,9 @@ export function AdminSubmissionQueuePage() {
     setPage(1);
   }, [scopedContestId]);
 
+  /**
+   * 读取目标数据并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const query = useCallback(() => {
     const params = new URLSearchParams({
       page: String(page),
@@ -178,6 +214,9 @@ export function AdminSubmissionQueuePage() {
     return params.toString();
   }, [filters, page, pageSize]);
 
+  /**
+   * 封装statsQuery相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const statsQuery = useCallback(() => {
     const params = new URLSearchParams();
     (['contestId', 'problemId', 'userId', 'language'] as const).forEach((key) => {
@@ -187,6 +226,9 @@ export function AdminSubmissionQueuePage() {
     return params.toString();
   }, [filters]);
 
+  /**
+   * 读取Stats并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const loadStats = useCallback(async () => {
     try {
       const params = statsQuery();
@@ -197,6 +239,9 @@ export function AdminSubmissionQueuePage() {
     }
   }, [statsQuery]);
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -232,6 +277,9 @@ export function AdminSubmissionQueuePage() {
     if (!tableScrollTargets.length) return undefined;
 
     let syncing = false;
+    /**
+     * 封装syncManualToTable相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+     */
     const syncManualToTable = () => {
       if (syncing) return;
       syncing = true;
@@ -240,6 +288,9 @@ export function AdminSubmissionQueuePage() {
       });
       window.requestAnimationFrame(() => { syncing = false; });
     };
+    /**
+     * 封装syncTableToManual相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+     */
     const syncTableToManual = (event: Event) => {
       if (syncing) return;
       syncing = true;
@@ -261,6 +312,9 @@ export function AdminSubmissionQueuePage() {
     };
   }, [rows, loading]);
 
+  /**
+   * 封装rejudge相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function rejudge(record: QueueRecord) {
     try {
       await adminPost(`/api/admin/v1/submission-queue/${record.queueId}/rejudge`);
@@ -271,6 +325,9 @@ export function AdminSubmissionQueuePage() {
     }
   }
 
+  /**
+   * 判断cel是否成立。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   async function cancel(record: QueueRecord) {
     try {
       await adminPost(`/api/admin/v1/submission-queue/${record.queueId}/cancel`);
@@ -281,6 +338,9 @@ export function AdminSubmissionQueuePage() {
     }
   }
 
+  /**
+   * 封装openLogs相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function openLogs(record: QueueRecord) {
     try {
       setLog(await adminGet<QueueLog>(`/api/admin/v1/submission-queue/${record.queueId}/logs`));
@@ -289,6 +349,9 @@ export function AdminSubmissionQueuePage() {
     }
   }
 
+  /**
+   * 更新Priority。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   async function savePriority() {
     if (!priorityRecord) return;
     try {
@@ -301,6 +364,9 @@ export function AdminSubmissionQueuePage() {
     }
   }
 
+  /**
+   * 封装confirmDelete相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
+   */
   function confirmDelete(record: QueueRecord) {
     showConfirm({
       title: '删除队列任务',

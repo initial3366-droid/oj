@@ -1,8 +1,14 @@
+/**
+ * FrontFooter组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Typography } from '@douyinfe/semi-ui';
 import { useEffect, useState } from 'react';
 
 const { Text } = Typography;
 
+/**
+ * FooterSettings接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface FooterSettings {
   footerText?: string;
   icpNumber?: string;
@@ -12,6 +18,9 @@ interface FooterSettings {
   footerLink2Url?: string;
 }
 
+/**
+ * 渲染FrontFooter组件，并协调其数据加载、状态和交互。
+ */
 export function FrontFooter() {
   const [settings, setSettings] = useState<FooterSettings>({
     footerText: 'QOJ 在线评测系统',

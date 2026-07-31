@@ -17,7 +17,7 @@ QOJ 提供完整的在线评测功能，包括：
 - **比赛系统**: ACM 和 OI 两种赛制，封榜/滚榜，实时排名
 - **练习模式**: 按知识点组织题目，跟踪学习进度
 - **组织管理**: 班级和社团管理，权限分级控制
-- **判题服务**: 集成 CCPCOJ 独立评测机，支持 C/C++/Java/Python
+- **判题服务**: go-judge 普通评测 + CCPCOJ 比赛评测，支持 C/C++/Java/Python/C#
 - **实时通信**: WebSocket 推送判题结果、比赛公告、榜单更新
 
 **核心特性**:
@@ -25,7 +25,7 @@ QOJ 提供完整的在线评测功能，包括：
 - ✅ JWT Token 自动轮换机制
 - ✅ WebSocket 实时推送
 - ✅ 私有题目和比赛数据隔离
-- ✅ 代码沙箱隔离判题（CCPCOJ/Docker）
+- ✅ 用户代码仅在独立 go-judge/CCPCOJ 沙箱节点执行
 
 ---
 
@@ -47,12 +47,12 @@ QOJ 提供完整的在线评测功能，包括：
 - **数据库迁移**: Flyway
 - **缓存**: Redis 7
 - **WebSocket**: Spring WebSocket + STOMP
-- **判题集成**: CCPCOJ 拉取式评测网关
+- **判题集成**: go-judge REST API / CCPCOJ 拉取网关
 
 ### 数据库与中间件
 - **数据库**: MySQL 8.0
 - **缓存**: Redis 7
-- **判题服务**: CCPCOJ 独立评测机 / Docker 隔离判题
+- **判题服务**: go-judge（普通题/练习）/ CCPCOJ（比赛）
 
 ---
 
@@ -114,7 +114,9 @@ REDIS_PASSWORD=
 # JWT 密钥（生产环境必须至少 64 字节）
 JWT_SECRET=your-very-long-secret-key-at-least-64-bytes-for-production-use
 
-# 判题模式和 CCPCOJ 账号密码在管理后台配置
+# go-judge 服务（地址和令牌不写入数据库）
+GO_JUDGE_BASE_URL=http://127.0.0.1:15050
+GO_JUDGE_AUTH_TOKEN=replace-with-openssl-rand-hex-32
 ```
 
 > ⚠️ **安全警告**: 生产环境的 `JWT_SECRET` 必须至少 64 字节且随机生成，否则系统将拒绝启动。
@@ -303,7 +305,8 @@ redis-server --port 16379
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `REDIS_PASSWORD` | Redis 密码 | (空) |
-| `ENABLE_UNSAFE_LOCAL_JUDGE` | 是否允许不安全本地判题 | `false` |
+| `GO_JUDGE_BASE_URL` | 后端可访问的 go-judge 私网地址 | `http://127.0.0.1:15050` |
+| `GO_JUDGE_AUTH_TOKEN` | go-judge Bearer Token（生产至少 32 位） | - |
 
 ### JWT_SECRET 生成
 
@@ -323,63 +326,14 @@ python3 -c "import secrets; print(secrets.token_urlsafe(64))"
 
 ### 判题方式
 
-QOJ 支持三种判题方式:
+QOJ 固定两条互斥链路，后台不能修改执行端地址或切换到宿主机执行：
 
-#### 1. CCPCOJ 独立评测机（推荐用于生产环境）
+1. 普通题、练习和自定义输入由 `JudgeQueueScheduler` 发送到 go-judge。
+2. 比赛提交由 CCPCOJ worker 通过 `/ojtool/judge` 领取并回传结果。
 
-**优点**:
-- QOJ 数据库保持为唯一提交队列
-- 官方评测容器与 QOJ 后端隔离部署
-- 支持 C、C++、Java、Python
-- ACM/练习与 OI 评测池分别路由
+go-judge 的可执行文件、参数、环境变量、源码文件名和资源限制均由后端白名单生成；用户输入只作为源码内容或标准输入。部署文件见 `docker/go-judge/`，CCPCOJ worker 见 `docker/ccpcoj/`。
 
-**配置**:
-
-在管理后台将判题模式设为 `ccpcoj` 并保存评测机账号密码，然后使用 `docker/ccpcoj/docker-compose.yml` 启动评测机。
-
-**工作流程**:
-1. 用户提交代码
-2. CCPCOJ 评测机通过 `/ojtool/judge` 网关领取任务
-3. 评测机在隔离环境中执行代码
-4. 评测机将状态和结果回写 QOJ
-
-#### 2. Docker 隔离判题 (开发中)
-
-使用 Docker 容器隔离用户代码:
-
-```yaml
-# 判题容器配置
-judge-worker:
-  image: qoj/judge-worker
-  volumes:
-    - /tmp/qoj-judge:/workspace
-  security_opt:
-    - no-new-privileges
-  cap_drop:
-    - ALL
-```
-
-#### 3. LocalJudgeService (仅用于开发测试)
-
-> ⚠️ **严重安全警告**: 此服务在主服务器上直接执行用户代码，**生产环境禁止使用**。
-
-**启用方式** (仅用于本地开发):
-
-```yaml
-# application.yml
-qoj:
-  judge:
-    enable-unsafe-local-judge: true  # 默认 false
-```
-
-**安全风险**:
-- ❌ 用户代码可以访问文件系统
-- ❌ 用户代码可以创建网络连接
-- ❌ 用户代码可以消耗系统资源
-- ❌ 用户代码可以执行任意系统命令
-- ❌ 没有任何沙箱隔离机制
-
-详见: [docs/security.md](docs/security.md)
+生产环境必须将评测器放在独立 Linux 主机或 VM，仅允许后端私网访问，禁止把 go-judge 端口暴露到公网。完整配置和威胁边界见 [go-judge 安全部署说明](../docs/go-judge-security-deployment.md)。
 
 ---
 
@@ -408,7 +362,7 @@ qoj:
 
 ### 3. 代码沙箱隔离
 
-- CCPCOJ 运行在独立的特权评测容器中
+- go-judge 使用 cgroup、namespace、进程数和输出限制隔离用户代码
 - 限制 CPU、内存、网络访问
 - 禁止系统调用
 
@@ -481,8 +435,10 @@ mvn flyway:migrate
 
 **解决**:
 ```bash
-# 检查 CCPCOJ 评测容器日志
-docker compose -f ../docker/ccpcoj/docker-compose.yml logs -f judge
+# 检查 go-judge 私网健康状态和后端配置
+docker compose --env-file docker/go-judge/.env -f docker/go-judge/docker-compose.yml ps
+
+# 查看后端日志中的判题错误信息
 ```
 
 ### 5. 后端登录"没有任何提示"
@@ -533,5 +489,5 @@ mvn spring-boot:run
 
 - [Spring Boot 文档](https://spring.io/projects/spring-boot)
 - [React 文档](https://react.dev/)
-- [CSGrandeur/CCPCOJ](https://github.com/CSGrandeur/CCPCOJ)
+- [go-judge](https://github.com/criyle/go-judge)
 - [MyBatis-Plus 文档](https://baomidou.com/)

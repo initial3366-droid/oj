@@ -1,7 +1,10 @@
+/**
+ * 提交队列页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Banner, Button, Card, Input, Select, Spin, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import { IconRefresh } from '@douyinfe/semi-icons';
 import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchSubmissionQueue,
   type SubmissionQueueQuery,
@@ -26,11 +29,17 @@ const statusOptions = [
   'Failed',
 ];
 
+/**
+ * 封装队列Error消息相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function queueErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : '提交队列加载失败';
   return message === '系统错误' ? '提交队列加载失败，请稍后刷新' : message;
 }
 
+/**
+ * 封装状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function statusColor(status?: string | null): 'green' | 'red' | 'orange' | 'blue' | 'grey' {
   const normalized = (status || '').toUpperCase();
   if (normalized === 'AC' || normalized === 'ACCEPTED') return 'green';
@@ -40,12 +49,19 @@ function statusColor(status?: string | null): 'green' | 'red' | 'orange' | 'blue
   return 'red';
 }
 
+/**
+ * 判断有效是否成立。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function isActive(status?: string | null) {
   const normalized = (status || '').toUpperCase();
   return normalized === 'JUDGING' || normalized === 'RUNNING' || normalized === 'COMPILING';
 }
 
+/**
+ * 渲染提交队列页面，并协调其数据加载、状态和交互。
+ */
 export function SubmissionQueuePage() {
+  const requestSequence = useRef(0);
   const [rows, setRows] = useState<SubmissionQueueRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -57,17 +73,23 @@ export function SubmissionQueuePage() {
     sortOrder: 'desc',
   });
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const load = useCallback(async () => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     try {
       const result = await fetchSubmissionQueue(query);
+      if (sequence !== requestSequence.current) return;
       setRows(result.list);
       setTotal(result.total);
       setMessage('');
     } catch (error) {
+      if (sequence !== requestSequence.current) return;
       setMessage(queueErrorMessage(error));
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }, [query]);
 
@@ -75,6 +97,9 @@ export function SubmissionQueuePage() {
     load();
   }, [load]);
 
+  /**
+   * 封装columns相关逻辑。对原始数据进行派生或聚合。
+   */
   const columns = useMemo<ColumnProps<SubmissionQueueRecord>[]>(() => [
     { title: '提交 ID', dataIndex: 'submissionId', width: 130, fixed: 'left' },
     {

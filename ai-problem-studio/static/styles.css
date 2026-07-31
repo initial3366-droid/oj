@@ -1,0 +1,876 @@
+:root {
+  --app-ink: #243047;
+  --app-muted: #718096;
+  --app-line: #e2e8f0;
+  --app-surface: #ffffff;
+  --app-canvas: #f4f7fb;
+  --app-blue: #1e73be;
+  --app-blue-dark: #155a99;
+  --app-green: #16a085;
+  --app-amber: #d68a16;
+  --app-red: #d94b4b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  color: var(--app-ink);
+  background: var(--app-canvas);
+  font-family: "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.app-shell {
+  width: min(1440px, calc(100% - 48px));
+  margin-inline: auto;
+}
+
+.app-header {
+  position: static;
+  height: auto;
+  min-height: 68px;
+  background: #243047;
+  border-bottom: 3px solid var(--app-blue);
+}
+
+.app-header-content {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.brand-lockup,
+.service-status,
+.captcha-row,
+.qoj-command-row,
+.qoj-session-strip {
+  display: flex;
+  align-items: center;
+}
+
+.brand-lockup {
+  gap: 12px;
+}
+
+.brand-mark {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  color: #203247;
+  background: #dbeeff;
+  border-radius: 4px;
+  font-size: 20px;
+}
+
+.brand-lockup h1,
+.brand-lockup p,
+.card-heading h2,
+.content-pane h3,
+.content-pane h4,
+.test-area h3,
+.review-heading h3,
+.progress-panel h3 {
+  margin: 0;
+}
+
+.brand-lockup h1 {
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.brand-lockup p {
+  color: #c2d0dd;
+  font-size: 12px;
+}
+
+.service-status {
+  gap: 8px;
+  color: #d9e4ed;
+  font-size: 13px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  background: #63c596;
+  border-radius: 50%;
+}
+
+.app-main {
+  margin-top: 22px;
+  margin-bottom: 48px;
+}
+
+.app-card {
+  margin-bottom: 18px;
+  overflow: hidden;
+  background: var(--app-surface);
+  border: 1px solid var(--app-line);
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgb(36 48 71 / 6%);
+}
+
+.app-card > .layui-card-header {
+  min-height: 64px;
+  height: auto;
+  padding: 12px 18px;
+  line-height: 1.35;
+  border-bottom: 1px solid var(--app-line);
+}
+
+.app-card > .layui-card-body {
+  padding: 20px 18px;
+}
+
+.card-heading {
+  display: flex;
+  align-items: center;
+}
+
+.card-heading-with-action {
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.card-heading-with-action > :first-child {
+  min-width: 0;
+}
+
+.card-heading-with-action > .layui-badge {
+  flex: 0 0 auto;
+}
+
+.card-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.section-kicker {
+  margin: 0 0 2px;
+  color: var(--app-blue);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.card-heading h2 {
+  color: var(--app-ink);
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.layui-form-item {
+  margin-bottom: 16px;
+}
+
+.layui-form-label {
+  width: 118px;
+  color: #536274;
+  font-weight: 600;
+}
+
+.layui-input-block {
+  min-height: 38px;
+  margin-left: 128px;
+}
+
+.layui-input,
+.layui-textarea,
+.layui-select-title .layui-input {
+  border-color: #cbd5e1;
+}
+
+.layui-input:focus,
+.layui-textarea:focus,
+.layui-select-title .layui-input:focus {
+  border-color: var(--app-blue) !important;
+}
+
+.layui-textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.settings-action,
+.brief-submit-action {
+  display: flex;
+  align-items: flex-end;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.settings-grid .layui-form-item {
+  min-width: 0;
+  margin: 0;
+}
+
+.settings-grid .layui-form-label {
+  float: none;
+  width: auto;
+  padding: 0 0 7px;
+  text-align: left;
+}
+
+.settings-grid .layui-input-block {
+  margin-left: 0;
+}
+
+.settings-grid .layui-form-select {
+  width: 100%;
+}
+
+.settings-field-span-2 {
+  grid-column: span 2;
+}
+
+.settings-field-submit .layui-btn {
+  width: 100%;
+}
+
+.provider-note {
+  margin: 0;
+  color: var(--app-muted);
+  line-height: 1.55;
+}
+
+.api-key-status {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.api-key-status.is-configured {
+  background: var(--app-green);
+}
+
+.settings-key-options {
+  min-height: 26px;
+  padding-top: 8px;
+}
+
+.settings-action .layui-btn,
+.brief-submit-action .layui-btn {
+  width: 100%;
+}
+
+.brief-actions {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 16px;
+}
+
+.brief-difficulty-control {
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+.brief-difficulty-control .layui-form-label {
+  float: none;
+  width: auto;
+  padding: 0 8px 0 0;
+  text-align: left;
+}
+
+.brief-difficulty-control .layui-input-block {
+  width: 148px;
+  margin-left: 0;
+}
+
+.brief-difficulty-control .layui-form-select {
+  width: 100%;
+}
+
+.brief-submit-action {
+  min-width: 128px;
+}
+
+/* .layui-btn {
+  background: var(--app-blue);
+} */
+
+.layui-btn:hover {
+  background: var(--app-blue-dark);
+}
+
+.layui-btn-primary {
+  color: var(--app-blue-dark);
+  background: #ffffff;
+  border-color: #b8c7d8;
+}
+
+.layui-btn-primary:hover {
+  color: var(--app-blue-dark);
+  background: #f5f9fd;
+  border-color: var(--app-blue);
+}
+
+.message-region:empty {
+  display: none;
+}
+
+.message {
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  color: #405166;
+  background: #ffffff;
+  border: 1px solid var(--app-line);
+  border-left: 4px solid var(--app-blue);
+  border-radius: 4px;
+}
+
+.message.success {
+  border-left-color: var(--app-green);
+}
+
+.message.error {
+  border-left-color: var(--app-red);
+}
+
+.job-metadata,
+.token-note,
+.export-result {
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.job-status,
+.session-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  min-width: 72px;
+  min-height: 28px;
+  height: auto;
+  padding: 5px 10px;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: visible;
+  background: #8795a6;
+  border-radius: 3px;
+}
+
+.retry-job-button {
+  flex: 0 0 auto;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.job-status.ready,
+.session-status.is-connected {
+  background: var(--app-green);
+}
+
+.job-status.failed,
+.session-status.is-expired,
+.session-status.is-failed {
+  background: var(--app-red);
+}
+
+.session-status.is-pending {
+  background: var(--app-amber);
+}
+
+.session-status.is-checking {
+  background: var(--app-blue);
+}
+
+.progress-panel,
+.test-area,
+.review-form {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--app-line);
+}
+
+.progress-panel h3,
+.test-area h3,
+.review-heading h3 {
+  color: var(--app-ink);
+  font-size: 16px;
+}
+
+.progress-list {
+  max-height: 310px;
+  margin-top: 14px;
+  overflow-y: auto;
+}
+
+.progress-event {
+  min-width: 0;
+}
+
+.progress-event .layui-timeline-axis {
+  color: var(--app-blue);
+}
+
+.progress-event.success .layui-timeline-axis {
+  color: var(--app-green);
+}
+
+.progress-event.warning .layui-timeline-axis {
+  color: var(--app-amber);
+}
+
+.progress-event.error .layui-timeline-axis {
+  color: var(--app-red);
+}
+
+.progress-event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.progress-event-phase {
+  color: var(--app-blue-dark);
+  font-weight: 700;
+}
+
+.progress-event-level {
+  padding: 1px 5px;
+  color: #5f7085;
+  background: #edf2f7;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.progress-event-message {
+  margin: 5px 0 0;
+  color: #36465b;
+  overflow-wrap: anywhere;
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+  align-items: stretch;
+}
+
+.report-panel {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--app-line);
+}
+
+.report-panel h3 {
+  margin: 0 0 8px;
+  color: var(--app-ink);
+  font-size: 14px;
+}
+
+.report-panel p,
+.report-panel ul {
+  margin: 0;
+}
+
+.report-panel ul {
+  padding-left: 18px;
+}
+
+.report-panel.passed {
+  border-top: 3px solid var(--app-green);
+}
+
+.report-panel.failed {
+  border-top: 3px solid var(--app-red);
+}
+
+.report-warnings {
+  margin-top: 8px !important;
+  color: #8a6414;
+}
+
+.result-columns {
+  margin-top: 18px;
+}
+
+.content-pane {
+  min-height: 100%;
+  padding: 16px;
+}
+
+.content-pane h3 {
+  color: var(--app-ink);
+  font-size: 16px;
+}
+
+.content-pane h4 {
+  margin-top: 16px;
+  color: #617084;
+  font-size: 13px;
+}
+
+.markdown-preview,
+.code-preview {
+  max-height: 420px;
+  margin: 7px 0 0;
+  padding: 12px;
+  overflow: auto;
+  color: #2c3b4e;
+  background: #f7fafc;
+  border: 1px solid #dce5ef;
+  border-radius: 4px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.code-preview {
+  color: #dce9f5;
+  background: #27364a;
+  border-color: #27364a;
+}
+
+.test-table-wrap {
+  margin-top: 10px;
+  overflow-x: auto;
+}
+
+.layui-table {
+  min-width: 720px;
+  margin: 0;
+}
+
+.layui-table th,
+.layui-table td {
+  vertical-align: top;
+}
+
+.layui-table td pre {
+  max-width: 280px;
+  max-height: 140px;
+  margin: 0;
+  overflow: auto;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.review-heading {
+  margin-bottom: 14px;
+}
+
+.approval-control {
+  margin-bottom: 16px;
+}
+
+.qoj-session-strip {
+  margin-bottom: 18px;
+  padding: 11px 12px;
+  gap: 8px;
+  color: #526175;
+  background: #f8fbfe;
+  border: 1px solid #d9e6f2;
+  border-radius: 4px;
+}
+
+.qoj-session-strip .layui-icon {
+  color: var(--app-blue);
+  font-size: 17px;
+}
+
+.qoj-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(360px, 5fr);
+  gap: 24px;
+  margin: 0;
+}
+
+.qoj-login-form {
+  min-width: 0;
+  padding-right: 24px;
+  border-right: 1px solid var(--app-line);
+}
+
+.qoj-login-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.captcha-row,
+.qoj-command-row {
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-left: 128px;
+}
+
+.captcha-row {
+  min-height: 38px;
+  margin-top: 0;
+}
+
+.captcha-input {
+  width: min(180px, 100%);
+}
+
+.captcha-image {
+  display: none;
+  width: 128px;
+  height: 38px;
+  object-fit: contain;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+}
+
+.qoj-command-row {
+  margin-top: 16px;
+}
+
+.qoj-export-panel {
+  min-width: 0;
+}
+
+.qoj-export-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+.qoj-export-field-wide {
+  grid-column: 1 / -1;
+}
+
+.qoj-export-panel .layui-form-item {
+  margin: 0;
+}
+
+.qoj-export-panel .layui-form-label {
+  float: none;
+  width: auto;
+  padding: 0 0 7px;
+  text-align: left;
+}
+
+.qoj-export-panel .layui-input-block {
+  margin-left: 0;
+}
+
+.qoj-export-panel .layui-form-select {
+  width: 100%;
+}
+
+.qoj-export-panel .layui-btn {
+  width: 100%;
+}
+
+.token-note {
+  margin: 14px 0;
+  line-height: 1.65;
+}
+
+.export-eligibility {
+  min-height: 22px;
+  margin: 0 0 12px;
+  line-height: 1.55;
+}
+
+.export-eligibility.is-blocked {
+  color: var(--app-amber);
+}
+
+.export-eligibility.is-ready {
+  color: var(--app-green);
+}
+
+.export-result {
+  min-height: 20px;
+  margin-top: 12px;
+}
+
+.export-result.success {
+  color: var(--app-green);
+  font-weight: 700;
+}
+
+.failure-box {
+  margin-top: 16px;
+  padding: 12px;
+  color: #972f2f;
+  background: #fff5f5;
+  border: 1px solid #f4c5c5;
+  border-radius: 4px;
+}
+
+.is-hidden {
+  display: none !important;
+}
+
+@media (max-width: 980px) {
+  .settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .report-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .qoj-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .qoj-login-form {
+    padding: 0 0 20px;
+    margin-bottom: 20px;
+    border-right: 0;
+    border-bottom: 1px solid var(--app-line);
+  }
+
+  .qoj-export-panel {
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 680px) {
+  .app-shell {
+    width: min(100% - 24px, 1440px);
+  }
+
+  .app-header-content {
+    min-height: 76px;
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .app-main {
+    margin-top: 12px;
+  }
+
+  .app-card > .layui-card-header,
+  .app-card > .layui-card-body {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .layui-form-label {
+    float: none;
+    width: auto;
+    padding: 0 0 7px;
+    text-align: left;
+  }
+
+  .layui-input-block {
+    margin-left: 0;
+  }
+
+  .settings-action,
+  .brief-submit-action {
+    align-items: stretch;
+  }
+
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-field-span-2 {
+    grid-column: span 1;
+  }
+
+  .brief-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .brief-difficulty-control {
+    display: block;
+  }
+
+  .brief-difficulty-control .layui-form-label {
+    padding: 0 0 7px;
+  }
+
+  .brief-difficulty-control .layui-input-block {
+    width: 100%;
+  }
+
+  .brief-submit-action {
+    min-width: 0;
+  }
+
+  .settings-action .layui-btn,
+  .brief-submit-action .layui-btn,
+  .qoj-command-row .layui-btn {
+    width: 100%;
+  }
+
+  .qoj-command-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .qoj-login-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .qoj-export-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .captcha-row,
+  .qoj-command-row {
+    margin-left: 0;
+  }
+
+  .report-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card-heading-with-action {
+    align-items: flex-start;
+  }
+
+  .card-heading-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+
+  .qoj-card .card-heading-with-action {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .session-status {
+    flex: 0 0 auto;
+  }
+}

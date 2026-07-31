@@ -1,3 +1,6 @@
+/**
+ * 用户资料页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Avatar, Banner, Card, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { IconUser } from '@douyinfe/semi-icons';
 import { useEffect, useState } from 'react';
@@ -5,12 +8,18 @@ import { useParams } from 'react-router-dom';
 import { fetchPublicUserProfile, type PublicUserProfile } from '../data/apiClient';
 import { PageContainer } from '../components/common';
 
+/**
+ * 格式化Date。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function formatDate(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('zh-CN');
 }
 
+/**
+ * 渲染用户资料页面，并协调其数据加载、状态和交互。
+ */
 export function UserProfilePage() {
   const { userId } = useParams();
   const id = Number(userId ?? 0);

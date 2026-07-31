@@ -17,31 +17,49 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 管理员首页接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
+ */
 @RestController
 @RequestMapping("/api/admin/v1/home")
 @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminHomeController {
     private final HomeService homeService;
 
+    /**
+     * 构造 管理员首页Controller 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     public AdminHomeController(HomeService homeService) {
         this.homeService = homeService;
     }
 
+    /**
+     * 封装首页相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @GetMapping
     public ApiResponse<HomeConfigVO> home() {
         return ApiResponse.ok(homeService.publicHome());
     }
 
+    /**
+     * 查询Slides列表。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @GetMapping("/carousel")
     public ApiResponse<List<CarouselSlideVO>> listSlides() {
         return ApiResponse.ok(homeService.listSlidesForAdmin());
     }
 
+    /**
+     * 创建或提交Slide。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     */
     @PostMapping("/carousel")
     public ApiResponse<CarouselSlideVO> createSlide(@Valid @RequestBody CarouselSlideRequest request) {
         return ApiResponse.ok(homeService.createSlide(request));
     }
 
+    /**
+     * 更新Slide。执行持久化写入。
+     */
     @PutMapping("/carousel/{id}")
     public ApiResponse<CarouselSlideVO> updateSlide(
         @PathVariable long id,

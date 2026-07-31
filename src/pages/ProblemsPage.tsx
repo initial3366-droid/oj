@@ -1,4 +1,7 @@
-import { Button, Card, Input, Select, Table, Tag, Typography, Banner } from '@douyinfe/semi-ui';
+/**
+ * Problems页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
+import { Button, Card, Input, Pagination, Select, Table, Tag, Typography, Banner } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useEffect, useMemo, useState } from 'react';
@@ -15,6 +18,12 @@ const DIFFICULTY_OPTIONS: Array<{ value: Difficulty; label: Difficulty }> = [
   { value: '地狱', label: '地狱' },
 ];
 
+const DEFAULT_PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
+
+/**
+ * 封装attemptBadge相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function attemptBadge(problem: Problem) {
   if (problem.attemptStatus === 'AC') {
     return (
@@ -37,12 +46,17 @@ function attemptBadge(problem: Problem) {
   );
 }
 
+/**
+ * 渲染Problems页面，并协调其数据加载、状态和交互。
+ */
 export function ProblemsPage() {
   const [sourceProblems, setSourceProblems] = useState<Problem[]>([]);
   const [keyword, setKeyword] = useState('');
   const [selectedDifficulties, setSelectedDifficulties] = useState<Difficulty[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [message, setMessage] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   // 从已加载题目中收集全部标签（去重 + 按出现频次排序，便于筛选高频标签）
   const allTags = useMemo(() => {
@@ -59,6 +73,9 @@ export function ProblemsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    /**
+     * 读取Problems并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；对原始数据进行派生或聚合。
+     */
     const loadProblems = () => {
       fetchProblems()
         .then((data) => {
@@ -88,6 +105,9 @@ export function ProblemsPage() {
     };
   }, []);
 
+  /**
+   * 封装problems相关逻辑。对原始数据进行派生或聚合。
+   */
   const problems = useMemo(() => {
     const normalized = keyword.trim().toLowerCase();
     return sourceProblems.filter((problem) => {
@@ -110,6 +130,22 @@ export function ProblemsPage() {
     });
   }, [keyword, sourceProblems, selectedDifficulties, selectedTags]);
 
+  // 筛选条件变化后从第一页重新展示，避免保留一个已经越界的页码。
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [keyword, selectedDifficulties, selectedTags]);
+
+  const pagedProblems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return problems.slice(start, start + pageSize);
+  }, [currentPage, pageSize, problems]);
+
+  const currentStart = problems.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const currentEnd = Math.min(currentPage * pageSize, problems.length);
+
+  /**
+   * 读取DifficultyColor并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+   */
   const getDifficultyColor = (
     difficulty: string,
   ): 'green' | 'orange' | 'red' | 'grey' => {
@@ -277,9 +313,9 @@ export function ProblemsPage() {
       >
         <Table
           columns={columns}
-          dataSource={problems}
+          dataSource={pagedProblems}
           rowKey="id"
-          pagination={{ pageSize: 20 }}
+          pagination={false}
           empty={
             <div style={{ padding: '40px 0', textAlign: 'center' }}>
               <Typography.Text type="tertiary">
@@ -291,6 +327,26 @@ export function ProblemsPage() {
           }
         />
       </Card>
+
+      {problems.length > 0 && (
+        <div className="front-table-pagination">
+          <Typography.Text type="tertiary">
+            显示第 {currentStart} 条-第 {currentEnd} 条，共 {problems.length} 条
+          </Typography.Text>
+          <Pagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            pageSizeOpts={PAGE_SIZE_OPTIONS}
+            total={problems.length}
+            showSizeChanger
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(nextPageSize) => {
+              setPageSize(nextPageSize);
+              setCurrentPage(1);
+            }}
+          />
+        </div>
+      )}
     </PageContainer>
   );
 }

@@ -46,6 +46,9 @@ public class SecurityConfig {
     @Value("${admin.path-prefix:admin}")
     private String adminPathPrefix;
 
+    /**
+     * 构造 安全配置 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public SecurityConfig(
         JwtAuthenticationFilter jwtAuthenticationFilter,
         QojProperties properties,
@@ -82,6 +85,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh", "/api/v1/auth/reset-password").permitAll()
                 .requestMatchers("/api/v1/captcha/**").permitAll()
                 .requestMatchers("/api/admin/v1/auth/login").permitAll()
+                .requestMatchers("/api/teacher/v1/auth/login").permitAll()
+                // CCPCOJ workers authenticate with their dedicated HttpOnly session cookie.
                 .requestMatchers("/ojtool/judge/**").permitAll()
                 .requestMatchers("/ws/**", "/ws-sockjs/**").permitAll()
                 .requestMatchers(
@@ -111,6 +116,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/v1/home/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/problems/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/practices/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/practices/*/unlock").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/contests/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/contests/public/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/clics/**").permitAll()
@@ -122,7 +128,6 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/v1/settings/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/submissions").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/submission-queue/**", "/api/submission-queue/**").permitAll()
-                .requestMatchers("/api/admin/v1/announcements", "/api/admin/v1/announcements/**").hasRole("SUPER_ADMIN")
                 .requestMatchers("/api/admin/v1/users/**").hasRole("SUPER_ADMIN")
                 .requestMatchers("/api/admin/v1/classes/**").hasRole("SUPER_ADMIN")
                 .requestMatchers("/api/admin/v1/teachers/**").hasRole("SUPER_ADMIN")

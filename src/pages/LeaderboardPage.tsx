@@ -1,3 +1,6 @@
+/**
+ * 排行榜页面。负责组织该路由的加载状态、用户交互和业务数据展示。
+ */
 import { Avatar, Banner, Button, Card, Spin, Table, Typography } from '@douyinfe/semi-ui';
 import { IconRefresh } from '@douyinfe/semi-icons';
 import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -6,10 +9,16 @@ import { useNavigate } from 'react-router-dom';
 import { PageContainer } from '../components/common';
 import { fetchGlobalLeaderboard, fetchClassLeaderboard, type RatingUser, type ClassRank } from '../api/rank';
 
+/**
+ * RatingRow接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface RatingRow extends RatingUser {
   rank: number;
 }
 
+/**
+ * 封装排名Tone相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function rankTone(rank: number) {
   if (rank === 1) return 'gold';
   if (rank === 2) return 'silver';
@@ -17,11 +26,17 @@ function rankTone(rank: number) {
   return 'normal';
 }
 
+/**
+ * 封装initials相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
 function initials(name?: string | null, fallback?: number) {
   const value = name?.trim() || String(fallback ?? '');
   return value.charAt(0).toUpperCase();
 }
 
+/**
+ * 渲染排行榜页面，并协调其数据加载、状态和交互。
+ */
 export function LeaderboardPage() {
   const navigate = useNavigate();
   const [rows, setRows] = useState<RatingRow[]>([]);
@@ -29,6 +44,9 @@ export function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
 
+  /**
+   * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -52,6 +70,9 @@ export function LeaderboardPage() {
     load();
   }, [load]);
 
+  /**
+   * 封装columns相关逻辑。可能改变当前路由或查询参数；对原始数据进行派生或聚合。
+   */
   const columns = useMemo<ColumnProps<RatingRow>[]>(() => [
     {
       title: '排名',
@@ -83,8 +104,8 @@ export function LeaderboardPage() {
             color: 'inherit',
           }}
         >
-          <Avatar size="small" color="blue">
-            {initials(name, record.userId)}
+          <Avatar size="small" color="blue" src={record.avatarUrl || undefined}>
+            {!record.avatarUrl ? initials(name, record.userId) : null}
           </Avatar>
           <Typography.Text strong ellipsis={{ showTooltip: true }}>
             {name || `#${record.userId}`}
@@ -120,6 +141,9 @@ export function LeaderboardPage() {
     },
   ], [navigate]);
 
+  /**
+   * 封装班级Columns相关逻辑。对原始数据进行派生或聚合。
+   */
   const classColumns = useMemo<ColumnProps<ClassRank>[]>(() => [
     {
       title: '排名',

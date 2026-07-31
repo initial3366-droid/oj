@@ -11,11 +11,17 @@ import java.util.Comparator;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
+/**
+ * 用户题目状态业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
+ */
 @Service
 public class UserProblemStatusService {
     private final UserProblemStatusMapper userProblemStatusMapper;
     private final SubmissionMapper submissionMapper;
 
+    /**
+     * 构造 用户题目状态Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
+     */
     public UserProblemStatusService(
         UserProblemStatusMapper userProblemStatusMapper,
         SubmissionMapper submissionMapper

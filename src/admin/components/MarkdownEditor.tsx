@@ -1,3 +1,6 @@
+/**
+ * MarkdownEditor组件。封装可复用的界面结构、展示规则及交互行为。
+ */
 import { Input } from '@arco-design/web-react';
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -7,12 +10,18 @@ import 'katex/dist/katex.min.css';
 
 const { TextArea } = Input;
 
+/**
+ * MarkdownEditorProps接口，明确该模块内部及 API 边界使用的数据结构。
+ */
 interface MarkdownEditorProps {
   value?: string;
   onChange?: (value: string) => void;
   placeholder?: string;
 }
 
+/**
+ * 渲染MarkdownEditor组件，并协调其数据加载、状态和交互。
+ */
 export function MarkdownEditor({ value, onChange, placeholder }: MarkdownEditorProps) {
   const [showPreview, setShowPreview] = useState(false);
 
