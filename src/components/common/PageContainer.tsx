@@ -2,7 +2,7 @@
  * 页面Container组件。封装可复用的界面结构、展示规则及交互行为。
  */
 import { ReactNode } from 'react';
-import { Typography, Breadcrumb } from '@douyinfe/semi-ui';
+import { Breadcrumb, Typography } from 'antd';
 
 const { Title } = Typography;
 
@@ -65,7 +65,7 @@ export function PageContainer({
         }
 
         .page-container-content {
-          padding: ${noPadding ? '0' : '0'};
+          padding: 0;
         }
 
         @media (max-width: 768px) {
@@ -83,28 +83,35 @@ export function PageContainer({
       {/* 面包屑 */}
       {breadcrumb && breadcrumb.length > 0 && (
         <div style={{ marginBottom: 16 }}>
-          <Breadcrumb>
-            {breadcrumb.map((item, index) => (
-              <Breadcrumb.Item
-                key={index}
-                href={item.href}
-              >
-                {item.text}
-              </Breadcrumb.Item>
-            ))}
-          </Breadcrumb>
+          <Breadcrumb
+            items={breadcrumb.map((item) => ({ title: item.href ? <a href={item.href}>{item.text}</a> : item.text }))}
+          />
         </div>
       )}
 
       {/* 页面头部 */}
-      {(title || extra) && (
+      {(title || subtitle || description || extra) && (
         <div className="page-container-header">
           <div className="page-container-title-row">
             <div className="page-container-title-content">
-              {title && (
-                <Title heading={2} style={{ margin: 0 }}>
-                  {title}
-                </Title>
+              {(title || subtitle) && (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+                  {title && (
+                    <Title level={2} style={{ margin: 0 }}>
+                      {title}
+                    </Title>
+                  )}
+                  {subtitle && (
+                    <Title level={5} type="secondary" style={{ margin: 0 }}>
+                      {subtitle}
+                    </Title>
+                  )}
+                </div>
+              )}
+              {description && (
+                <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+                  {description}
+                </Typography.Text>
               )}
             </div>
             {extra && (

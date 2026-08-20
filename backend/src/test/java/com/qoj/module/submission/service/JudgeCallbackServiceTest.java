@@ -100,6 +100,24 @@ class JudgeCallbackServiceTest {
         verify(submissionMapper, never()).updateById(org.mockito.ArgumentMatchers.isA(Submission.class));
     }
 
+    @Test
+    void staleGoJudgeWorkerResultCannotOverwriteReclaimedSubmission() {
+        Submission submission = submission("RUNNING");
+        submission.judgeBackend = "GO_JUDGE";
+        submission.judgeWorkerId = "new-worker";
+        when(submissionMapper.selectByIdForUpdate(1L)).thenReturn(submission);
+
+        JudgeResultCallbackRequest request = new JudgeResultCallbackRequest();
+        request.submissionId = 1L;
+        request.workerId = "old-worker";
+        request.status = "AC";
+
+        service.handleJudgeResult(request);
+
+        verify(submissionMapper, never()).updateById(org.mockito.ArgumentMatchers.isA(Submission.class));
+        verify(caseResultMapper, never()).delete(any());
+    }
+
     /**
      * 封装测试点ResultsReplacePreviousAttemptAndAreNormalized相关逻辑。执行持久化写入。
      */
@@ -136,9 +154,6 @@ class JudgeCallbackServiceTest {
          */
         verify(caseResultMapper).insert(caseCaptor.capture());
         assertEquals("AC", caseCaptor.getValue().status);
-        assertEquals("1 2", caseCaptor.getValue().inputPreview);
-        assertEquals("3", caseCaptor.getValue().outputPreview);
-        assertEquals("4", caseCaptor.getValue().expectedPreview);
         assertEquals("Wrong Answer", caseCaptor.getValue().judgeMessage);
         assertNotNull(caseCaptor.getValue().createdAt);
     }

@@ -49,6 +49,7 @@ public record ContestVO(
     String registeredIdentityType,
     Long registeredIdentityId,
     String registeredIdentityName,
-    Boolean registeredStarred
+    Boolean registeredStarred,
+    Long sourceContestId
 ) {
 }

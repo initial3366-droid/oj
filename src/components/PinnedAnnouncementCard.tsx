@@ -1,8 +1,8 @@
 /**
  * Pinned公告Card组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Card, Modal } from '@douyinfe/semi-ui';
-import { IconTop } from '@douyinfe/semi-icons';
+import { Card, Modal } from 'antd';
+import { PushpinOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { fetchPinnedAnnouncement, type Announcement } from '../data/apiClient';
 import { AnnouncementContent } from './AnnouncementContent';
@@ -38,8 +38,8 @@ export function PinnedAnnouncementCard() {
       <div className="pinned-announcement-wrap">
         <Card
           className="pinned-announcement-card"
-          style={{ height: 70, border: '1px solid var(--semi-color-border)' }}
-          bodyStyle={{ height: '100%', padding: 0 }}
+          style={{ height: 70, border: '1px solid #f0f0f0' }}
+          styles={{ body: { height: '100%', padding: 0 } }}
         >
           <div
             className="pinned-announcement-button"
@@ -54,7 +54,7 @@ export function PinnedAnnouncementCard() {
             }}
           >
             <span className="pinned-announcement-icon" aria-hidden="true">
-              <IconTop size="large" />
+              <PushpinOutlined style={{ fontSize: 20 }} />
             </span>
             <AnnouncementContent content={announcement.title} className="pinned-announcement-title" />
           </div>
@@ -63,12 +63,12 @@ export function PinnedAnnouncementCard() {
 
       <Modal
         title={<AnnouncementContent content={announcement.title} className="announcement-modal-title" />}
-        visible={isModalOpen}
+        open={isModalOpen}
         onCancel={() => setIsModalOpen(false)}
         footer={null}
         width={920}
         style={{ maxWidth: 'calc(100vw - 20px)' }}
-        bodyStyle={{ padding: '24px 32px 36px' }}
+        styles={{ body: { padding: '24px 32px 36px' } }}
       >
         <div className="pinned-announcement-date">
           更新时间：{new Date(announcement.updatedAt || announcement.createdAt).toLocaleString('zh-CN')}
@@ -84,7 +84,7 @@ export function PinnedAnnouncementCard() {
         }
         .pinned-announcement-card {
           overflow: hidden;
-          background: var(--semi-color-bg-0);
+          background: #ffffff;
         }
         .pinned-announcement-button {
           position: relative;
@@ -95,14 +95,14 @@ export function PinnedAnnouncementCard() {
           display: flex;
           align-items: center;
           gap: 12px;
-          color: var(--semi-color-primary);
+          color: #1677ff;
           cursor: pointer;
         }
         .pinned-announcement-button:hover {
-          background: var(--semi-color-primary-light-default);
+          background: #e6f4ff;
         }
         .pinned-announcement-button:focus-visible {
-          outline: 2px solid var(--semi-color-primary);
+          outline: 2px solid #1677ff;
           outline-offset: -2px;
         }
         .pinned-announcement-title {
@@ -111,7 +111,7 @@ export function PinnedAnnouncementCard() {
           box-sizing: border-box;
           padding: 0 40px;
           overflow: hidden;
-          color: var(--semi-color-text-0);
+          color: rgba(0, 0, 0, 0.88);
           font-size: 20px;
           font-weight: 600;
           line-height: 22px;
@@ -137,8 +137,8 @@ export function PinnedAnnouncementCard() {
         .pinned-announcement-date {
           margin-bottom: 18px;
           padding-bottom: 16px;
-          border-bottom: 1px solid var(--semi-color-border);
-          color: var(--semi-color-text-2);
+          border-bottom: 1px solid #f0f0f0;
+          color: rgba(0, 0, 0, 0.45);
           font-size: 13px;
         }
         @media (max-width: 768px) {

@@ -426,6 +426,7 @@ export interface AdminContest {
   status: "NOT_STARTED" | "RUNNING" | "ENDED";
   participantCount: number;
   submissionCount: number;
+  sourceContestId?: number | null;
   problems: Array<{
     contestProblemId?: number;
     problemId: number;
@@ -469,6 +470,7 @@ export interface PublicContest {
   registrationType: string;
   hasPassword: boolean;
   status: "NOT_STARTED" | "RUNNING" | "ENDED";
+  registrationCount?: number;
   participantCount: number;
   submissionCount: number;
   registered: boolean;
@@ -527,6 +529,8 @@ export interface ContestScoreboardProblem {
   label: string;
   title: string;
   score?: number | null;
+  submissionCount?: number;
+  acceptedCount?: number;
 }
 
 /**
@@ -541,6 +545,8 @@ export interface ContestScoreboardCell {
   penalty: number;
   score: number;
   acceptedAt?: string | null;
+  hasHiddenSubmissions?: boolean;
+  hiddenAttempts?: number;
 }
 
 /**
@@ -561,6 +567,8 @@ export interface ContestScoreboardRow {
   identityId?: number | null;
   starred?: boolean | null;
   medal?: "GOLD" | "SILVER" | "BRONZE" | null;
+  teamName?: string | null;
+  studentNo?: string | null;
 }
 
 /**
@@ -577,6 +585,7 @@ export interface ContestScoreboard {
   problems: ContestScoreboardProblem[];
   rows: ContestScoreboardRow[];
   showClassOnScoreboard?: boolean;
+  boardState?: "LIVE" | "FROZEN" | "ROLLING" | "FINAL";
 }
 
 /**
@@ -599,6 +608,8 @@ export interface ContestPublicScoreboardProblem {
   label: string;
   title: string;
   score?: number | null;
+  submissionCount?: number;
+  acceptedCount?: number;
 }
 
 /**
@@ -611,6 +622,8 @@ export interface ContestPublicScoreboardProblemStatus {
   acceptedAt?: string | null;
   score?: number | null;
   history?: ContestPublicScoreboardSubmissionHistory[];
+  hasHiddenSubmissions?: boolean;
+  hiddenAttempts?: number;
 }
 
 /**
@@ -815,6 +828,7 @@ interface BackendProblem {
   updatedAt?: string;
   acRate: number;
   attemptStatus?: string | null;
+  specialJudge?: boolean;
 }
 
 /**
@@ -847,6 +861,7 @@ interface BackendContestProblem {
   testCaseCount?: number;
   ownerName?: string;
   attemptStatus?: string | null;
+  specialJudge?: boolean;
 }
 
 /**
@@ -900,8 +915,10 @@ interface BackendContest {
   registrationType: string;
   hasPassword?: boolean;
   status: "NOT_STARTED" | "RUNNING" | "ENDED";
+  registrationCount?: number;
   participantCount?: number;
   submissionCount?: number;
+  sourceContestId?: number | null;
   problems?: AdminContest["problems"];
   registered?: boolean;
   registeredIdentityType?: "PERSONAL" | null;
@@ -1014,6 +1031,7 @@ function mapProblem(problem: BackendProblem): Problem {
     createdAt: problem.createdAt,
     updatedAt: problem.updatedAt,
     attemptStatus: problem.attemptStatus ?? null,
+    isSpecialJudge: Boolean(problem.specialJudge),
     score: 100,
   };
 }
@@ -1044,6 +1062,7 @@ function mapContestProblem(problem: BackendContestProblem | BackendProblem): Pro
     createdAt: problem.createdAt,
     updatedAt: problem.updatedAt,
     attemptStatus: problem.attemptStatus ?? null,
+    isSpecialJudge: Boolean(problem.specialJudge),
     score: 100,
   };
 }
@@ -1109,7 +1128,7 @@ function mapAdminContest(contest: BackendContest): AdminContest {
     allowAfterEndViewProblem: contest.allowAfterEndViewProblem ?? true,
     allowAfterEndViewCode: Boolean(contest.allowAfterEndViewCode),
     enableCodeTemplates: Boolean(contest.enableCodeTemplates),
-    publicScoreboardEnabled: contest.publicScoreboardEnabled ?? true,
+    publicScoreboardEnabled: Boolean(contest.publicScoreboardEnabled),
     showClassOnScoreboard: Boolean(contest.showClassOnScoreboard),
     allowViewAllSubmissions: contest.allowViewAllSubmissions ?? true,
     allowStarRegistration: Boolean(contest.allowStarRegistration),
@@ -1118,6 +1137,7 @@ function mapAdminContest(contest: BackendContest): AdminContest {
     status: contest.status,
     participantCount: Number(contest.participantCount ?? 0),
     submissionCount: Number(contest.submissionCount ?? 0),
+    sourceContestId: contest.sourceContestId ?? null,
     problems: (contest.problems ?? []).map((item) => ({
       contestProblemId: item.contestProblemId,
       problemId: item.problemId,
@@ -1156,13 +1176,14 @@ function mapPublicContest(contest: BackendContest): PublicContest {
     allowAfterEndViewProblem: contest.allowAfterEndViewProblem ?? true,
     allowAfterEndViewCode: Boolean(contest.allowAfterEndViewCode),
     enableCodeTemplates: Boolean(contest.enableCodeTemplates),
-    publicScoreboardEnabled: contest.publicScoreboardEnabled ?? true,
+    publicScoreboardEnabled: Boolean(contest.publicScoreboardEnabled),
     showClassOnScoreboard: Boolean(contest.showClassOnScoreboard),
     allowViewAllSubmissions: contest.allowViewAllSubmissions ?? true,
     allowStarRegistration: Boolean(contest.allowStarRegistration),
     registrationType: contest.registrationType,
     hasPassword: Boolean(contest.hasPassword),
     status: contest.status,
+    registrationCount: Number(contest.registrationCount ?? contest.participantCount ?? 0),
     participantCount: Number(contest.participantCount ?? 0),
     submissionCount: Number(contest.submissionCount ?? 0),
     registered: Boolean(contest.registered),
@@ -2190,6 +2211,21 @@ export async function fetchMyContestSubmissions(contestId: number, page = 1, pag
 }
 
 /**
+ * 读取当前用户在比赛中已通过的题目。独立于提交列表分页，保证题目列表的 AC 状态完整。
+ */
+export async function fetchMyContestAcceptedProblems(contestId: number) {
+  const token = window.localStorage.getItem("qoj.accessToken");
+  if (!token) {
+    throw new Error("请先登录后查看比赛状态");
+  }
+  return request<Array<{ problemId?: number | null; contestProblemId?: number | null }>>(
+    `/api/v1/contests/${contestId}/my-accepted-problems`,
+    {},
+    token,
+  );
+}
+
+/**
  * 读取管理员比赛并返回给调用方。包含异步流程并由调用方处理完成或失败状态。
  */
 export async function fetchAdminContest(token: string, contestId: number) {
@@ -2223,6 +2259,19 @@ export async function updateAdminContest(token: string, contestId: number, paylo
         method: "PUT",
         body: JSON.stringify(payload),
       },
+      token,
+    ),
+  );
+}
+
+/**
+ * 创建管理员比赛的重现赛。返回新建的重现赛（题目已锁定，信息可二次编辑）。
+ */
+export async function replayAdminContest(token: string, contestId: number) {
+  return mapAdminContest(
+    await request<BackendContest>(
+      `/api/admin/v1/contests/${contestId}/replay`,
+      { method: "POST" },
       token,
     ),
   );
@@ -2598,6 +2647,7 @@ export interface FrontendSettings {
   maintenanceMode: boolean;
   footerText?: string;
   icpNumber?: string;
+  mpsNumber?: string;
   footerLink1Text?: string;
   footerLink1Url?: string;
   footerLink2Text?: string;
@@ -2641,7 +2691,6 @@ export interface CodeTemplateSettings {
   cpp: string;
   python: string;
   java: string;
-  csharp: string;
 }
 
 const CODE_TEMPLATE_RESPONSE_PREFIX = 'base64:type15:';
@@ -2673,7 +2722,6 @@ export function decodeCodeTemplateSettings(settings: Partial<CodeTemplateSetting
     cpp: decodeCodeTemplateValue(settings.cpp),
     python: decodeCodeTemplateValue(settings.python),
     java: decodeCodeTemplateValue(settings.java),
-    csharp: decodeCodeTemplateValue(settings.csharp),
   };
 }
 

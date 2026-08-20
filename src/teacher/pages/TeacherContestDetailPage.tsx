@@ -389,7 +389,7 @@ export function TeacherContestDetailPage() {
             { label: '奖牌比例', value: `${contest.goldRatio ?? 10}% / ${contest.silverRatio ?? 20}% / ${contest.bronzeRatio ?? 30}%` },
             { label: '赛后提交', value: contest.allowAfterEndSubmit ? '允许' : '关闭' },
             { label: '赛后查看题目', value: contest.allowAfterEndViewProblem !== false ? '允许' : '关闭' },
-            { label: '公开榜单', value: contest.publicScoreboardEnabled !== false ? '开启' : '关闭' },
+            { label: '外榜', value: contest.publicScoreboardEnabled === true ? '开启' : '关闭' },
             ...(contest.allowFullscreen != null ? [{ label: '全屏模式', value: contest.allowFullscreen ? '开启' : '关闭' }] : []),
             ...(contest.antiCheatEnabled != null ? [{ label: '反作弊', value: contest.antiCheatEnabled ? '开启' : '关闭' }] : []),
             ...(contest.maxSwitches != null ? [{ label: '切屏限制', value: `${contest.maxSwitches} 次` }] : []),
@@ -495,15 +495,17 @@ export function TeacherContestDetailPage() {
                   </Card>
                 </Col>
                 <Col span={12}>
-                  <Card title="Public Scoreboard">
+                  <Card title="外榜">
                     <Space direction="vertical" style={{ width: '100%' }}>
-                      <div>公开榜单地址与前台同步，未登录用户也可以访问。</div>
-                      <Button
-                        type="primary"
-                        onClick={() => window.open(`/contests/${contestId}/public-scoreboard`, '_blank')}
-                      >
-                        打开公开榜单
-                      </Button>
+                      <div>{contest.publicScoreboardEnabled === true ? '外榜已开放，未登录用户也可以访问。' : '外榜未开启，前台入口和外榜地址均不可用。'}</div>
+                      {contest.publicScoreboardEnabled === true && (
+                        <Button
+                          type="primary"
+                          onClick={() => window.open(`/contests/${contestId}/public-scoreboard`, '_blank')}
+                        >
+                          打开外榜
+                        </Button>
+                      )}
                       <Button icon={<IconDownload />} loading={scoreboardExporting} onClick={exportScoreboard}>
                         导出排行榜 CSV
                       </Button>

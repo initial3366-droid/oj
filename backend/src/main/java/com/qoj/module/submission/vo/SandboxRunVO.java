@@ -9,6 +9,8 @@ public record SandboxRunVO(
     Long id,
     String output,
     String status,
+    Integer timeUsed,
+    Integer memoryUsed,
     LocalDateTime runAt
 ) {
 }

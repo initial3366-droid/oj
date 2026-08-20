@@ -18,6 +18,7 @@ import {
   Popconfirm,
   Select,
   Space,
+  Spin,
   Switch,
   Table,
   Tag,
@@ -59,7 +60,9 @@ import {
   type TeacherStudent,
   type TeacherSubmission,
 } from './teacherApi';
+import { CodeViewer } from '../components/common/CodeViewer';
 import { TeacherProblemListPage } from './pages/TeacherProblemListPage';
+import { HtmlMathEditor } from '../admin/components/HtmlMathEditor';
 import { TeacherProblemCreatePage } from './pages/TeacherProblemCreatePage';
 import { TeacherProblemFolderPage } from './pages/TeacherProblemFolderPage';
 import { TeacherContestListPage } from './pages/TeacherContestListPage';
@@ -839,6 +842,9 @@ function TeacherStudents() {
   const [detailSubmissionTotal, setDetailSubmissionTotal] = useState(0);
   const [detailSubmissionPage, setDetailSubmissionPage] = useState(1);
   const [detailSubmissionLoading, setDetailSubmissionLoading] = useState(false);
+  const [codeModalSubmission, setCodeModalSubmission] = useState<{ id: number; language: string; submitTime?: string | null } | null>(null);
+  const [codeContent, setCodeContent] = useState('');
+  const [codeLoading, setCodeLoading] = useState(false);
   const [editForm] = Form.useForm<{ displayName: string; studentNo: string; email: string; password: string }>();
 
   /**
@@ -958,7 +964,25 @@ function TeacherStudents() {
   }
 
   /**
-   * 封装openView相关逻辑。会更新 React 状态并触发重新渲染。
+   * 查看学生提交的代码。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
+  async function viewStudentCode(submission: TeacherSubmission) {
+    setCodeModalSubmission({ id: submission.id, language: submission.language, submitTime: submission.submitTime });
+    setCodeContent('');
+    setCodeLoading(true);
+    try {
+      const code = await teacherGet<string>(`/api/teacher/v1/submissions/${submission.id}/code`);
+      setCodeContent(code);
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '代码加载失败');
+      setCodeModalSubmission(null);
+    } finally {
+      setCodeLoading(false);
+    }
+  }
+
+  /**
+   * 打开View相关逻辑。会更新 React 状态并触发重新渲染。
    */
   function openView(student: TeacherStudent) {
     setViewingStudent({
@@ -1128,6 +1152,7 @@ function TeacherStudents() {
             rowKey="id"
             loading={detailSubmissionLoading}
             data={detailSubmissions}
+            scroll={{ x: 1000 }}
             pagination={{
               total: detailSubmissionTotal,
               current: detailSubmissionPage,
@@ -1140,7 +1165,7 @@ function TeacherStudents() {
             }}
             columns={[
               { title: '提交ID', dataIndex: 'id', width: 90, align: 'center' },
-              { title: '题目', dataIndex: 'problemTitle', render: (value) => dash(value) },
+              { title: '题目', dataIndex: 'problemTitle', width: 220, ellipsis: true, render: (value) => dash(value) },
               { title: '语言', dataIndex: 'language', width: 100, align: 'center', render: (value) => dash(value) },
               {
                 title: '状态',
@@ -1153,9 +1178,49 @@ function TeacherStudents() {
               { title: '时间', dataIndex: 'timeUsed', width: 100, align: 'center', render: (value) => value == null ? '-' : `${value} ms` },
               { title: '内存', dataIndex: 'memoryUsed', width: 110, align: 'center', render: (value) => value == null ? '-' : `${value} KB` },
               { title: '提交时间', dataIndex: 'submitTime', width: 180, render: (value) => formatDate(value) },
+              {
+                title: '操作',
+                width: 100,
+                align: 'center',
+                render: (_: unknown, record: TeacherSubmission) => (
+                  <Button
+                    size="mini"
+                    type="text"
+                    loading={codeLoading && codeModalSubmission?.id === record.id}
+                    onClick={() => viewStudentCode(record)}
+                  >
+                    查看代码
+                  </Button>
+                ),
+              },
             ]}
           />
         </Card>
+      </Modal>
+
+      <Modal
+        title="提交代码"
+        visible={codeModalSubmission != null}
+        onCancel={() => { setCodeModalSubmission(null); setCodeContent(''); }}
+        footer={null}
+        style={{ width: '70%' }}
+      >
+        {codeLoading ? (
+          <div style={{ padding: 24, textAlign: 'center' }}><Spin /></div>
+        ) : (
+          <div>
+            {codeModalSubmission?.submitTime && (
+              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 12 }}>
+                {formatDate(codeModalSubmission.submitTime)}
+              </Typography.Text>
+            )}
+            <CodeViewer
+              code={codeContent || '（无代码）'}
+              language={codeModalSubmission?.language || ''}
+              height="60vh"
+            />
+          </div>
+        )}
       </Modal>
     </Card>
   );
@@ -1384,6 +1449,9 @@ function TeacherSubmissions() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [classes, setClasses] = useState<TeacherClass[]>([]);
+  const [codeModalSubmission, setCodeModalSubmission] = useState<{ id: number; language: string; submitTime?: string | null } | null>(null);
+  const [codeContent, setCodeContent] = useState('');
+  const [codeLoading, setCodeLoading] = useState(false);
   const [filters, setFilters] = useState({
     classId: '',
     keyword: '',
@@ -1431,6 +1499,24 @@ function TeacherSubmissions() {
   };
 
   useEffect(() => { load(); }, [page, filters]);
+
+  /**
+   * 查看提交代码。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
+  async function viewCode(submission: TeacherSubmission) {
+    setCodeModalSubmission({ id: submission.id, language: submission.language, submitTime: submission.submitTime });
+    setCodeContent('');
+    setCodeLoading(true);
+    try {
+      const code = await teacherGet<string>(`/api/teacher/v1/submissions/${submission.id}/code`);
+      setCodeContent(code);
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '代码加载失败');
+      setCodeModalSubmission(null);
+    } finally {
+      setCodeLoading(false);
+    }
+  }
 
   /**
    * 更新Filter。会更新 React 状态并触发重新渲染。
@@ -1518,9 +1604,49 @@ function TeacherSubmissions() {
             { title: '语言', dataIndex: 'language', width: 100 },
             { title: '状态', dataIndex: 'status', width: 120, render: statusTag },
             { title: '提交时间', dataIndex: 'submitTime', width: 190, render: formatDate },
+            {
+              title: '操作',
+              width: 100,
+              align: 'center',
+              render: (_: unknown, record: TeacherSubmission) => (
+                <Button
+                  size="mini"
+                  type="text"
+                  loading={codeLoading && codeModalSubmission?.id === record.id}
+                  onClick={() => viewCode(record)}
+                >
+                  查看代码
+                </Button>
+              ),
+            },
           ]}
         />
       </Card>
+
+      <Modal
+        title="提交代码"
+        visible={codeModalSubmission != null}
+        onCancel={() => { setCodeModalSubmission(null); setCodeContent(''); }}
+        footer={null}
+        style={{ width: '70%' }}
+      >
+        {codeLoading ? (
+          <div style={{ padding: 24, textAlign: 'center' }}><Spin /></div>
+        ) : (
+          <div>
+            {codeModalSubmission?.submitTime && (
+              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 12 }}>
+                {formatDate(codeModalSubmission.submitTime)}
+              </Typography.Text>
+            )}
+            <CodeViewer
+              code={codeContent || '（无代码）'}
+              language={codeModalSubmission?.language || ''}
+              height="60vh"
+            />
+          </div>
+        )}
+      </Modal>
     </Space>
   );
 }
@@ -1644,6 +1770,10 @@ function TeacherPracticeSubmissions() {
   const [filterLanguage, setFilterLanguage] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterClass, setFilterClass] = useState('');
+  const [filterPractice, setFilterPractice] = useState('');
+  const [codeModalSubmission, setCodeModalSubmission] = useState<{ id: number; language: string; submitTime?: string | null } | null>(null);
+  const [codeContent, setCodeContent] = useState('');
+  const [codeLoading, setCodeLoading] = useState(false);
 
   /**
    * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
@@ -1683,10 +1813,37 @@ function TeacherPracticeSubmissions() {
           const cls = classMap[s.userId] || '';
           if (!cls.includes(filterClass)) return false;
         }
+        if (filterPractice && s.practiceTitle !== filterPractice) return false;
         return true;
       }),
-    [submissions, filterStudent, filterProblem, filterLanguage, filterStatus, filterClass, classMap],
+    [submissions, filterStudent, filterProblem, filterLanguage, filterStatus, filterClass, filterPractice, classMap],
   );
+
+  /**
+   * 题单列表（有提交记录的题单，去重）。
+   */
+  const practices = useMemo(
+    () => [...new Set(submissions.filter((s) => s.practiceTitle).map((s) => s.practiceTitle as string))].sort(),
+    [submissions],
+  );
+
+  /**
+   * 查看提交代码。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
+   */
+  async function viewCode(submission: TeacherSubmission) {
+    setCodeModalSubmission({ id: submission.id, language: submission.language, submitTime: submission.submitTime });
+    setCodeContent('');
+    setCodeLoading(true);
+    try {
+      const code = await teacherGet<string>(`/api/teacher/v1/submissions/${submission.id}/code`);
+      setCodeContent(code);
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '代码加载失败');
+      setCodeModalSubmission(null);
+    } finally {
+      setCodeLoading(false);
+    }
+  }
 
   /**
    * 封装languages相关逻辑。对原始数据进行派生或聚合。
@@ -1703,6 +1860,9 @@ function TeacherPracticeSubmissions() {
       extra={<Button icon={<IconRefresh />} onClick={load}>刷新</Button>}
     >
       <Space wrap style={{ marginBottom: 16 }}>
+        <Select style={{ width: 150 }} placeholder="题单" allowClear value={filterPractice || undefined} onChange={(v) => setFilterPractice(v || '')}>
+          {practices.map((p) => <Option key={p} value={p}>{p}</Option>)}
+        </Select>
         <Input style={{ width: 130 }} placeholder="学生" prefix={<IconSearch />} value={filterStudent} onChange={setFilterStudent} allowClear />
         <Input style={{ width: 150 }} placeholder="题目" prefix={<IconSearch />} value={filterProblem} onChange={setFilterProblem} allowClear />
         <Select style={{ width: 100 }} placeholder="语言" allowClear value={filterLanguage || undefined} onChange={(v) => setFilterLanguage(v || '')}>
@@ -1727,9 +1887,49 @@ function TeacherPracticeSubmissions() {
           { title: '语言', dataIndex: 'language', width: 80 },
           { title: '状态', dataIndex: 'status', width: 90, render: statusTag },
           { title: '提交时间', dataIndex: 'submitTime', width: 160, render: formatDate },
+          {
+            title: '操作',
+            width: 100,
+            align: 'center',
+            render: (_: unknown, record: TeacherSubmission) => (
+              <Button
+                size="mini"
+                type="text"
+                loading={codeLoading && codeModalSubmission?.id === record.id}
+                onClick={() => viewCode(record)}
+              >
+                查看代码
+              </Button>
+            ),
+          },
         ]}
         pagination={{ pageSize: 10 }}
       />
+
+      <Modal
+        title="提交代码"
+        visible={codeModalSubmission != null}
+        onCancel={() => { setCodeModalSubmission(null); setCodeContent(''); }}
+        footer={null}
+        style={{ width: '70%' }}
+      >
+        {codeLoading ? (
+          <div style={{ padding: 24, textAlign: 'center' }}><Spin /></div>
+        ) : (
+          <div>
+            {codeModalSubmission?.submitTime && (
+              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 12 }}>
+                {formatDate(codeModalSubmission.submitTime)}
+              </Typography.Text>
+            )}
+            <CodeViewer
+              code={codeContent || '（无代码）'}
+              language={codeModalSubmission?.language || ''}
+              height="60vh"
+            />
+          </div>
+        )}
+      </Modal>
     </Card>
   );
 }
@@ -2300,7 +2500,7 @@ function TeacherContests() {
         maxSwitches: 3,
         allowAfterEndSubmit: false,
         allowAfterEndViewProblem: true,
-        publicScoreboardEnabled: true,
+        publicScoreboardEnabled: false,
         registrationType: 'PUBLIC',
         problems: buildContestProblems(problemIds, values.type),
       });
@@ -2354,7 +2554,9 @@ function TeacherContests() {
           <FormItem field="startTime" label="开始时间" rules={[{ required: true, message: '请选择开始时间' }]}>
             <Input type="datetime-local" />
           </FormItem>
-          <FormItem field="description" label="比赛介绍"><TextArea autoSize={{ minRows: 3, maxRows: 6 }} /></FormItem>
+          <FormItem field="description" label="比赛介绍">
+            <HtmlMathEditor placeholder="请输入比赛介绍，支持 HTML 格式" />
+          </FormItem>
           <FormItem field="problemIds" label="比赛题目" rules={[{ required: true, message: '请选择题目' }]}>
             <Select mode="multiple" placeholder="选择题目" allowClear>
               {problems.map((item) => <Option key={item.id} value={item.id}>{item.id}. {item.title}</Option>)}

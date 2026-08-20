@@ -1,11 +1,14 @@
 /**
  * 练习列表页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Button, Tag, Typography, Banner, Table, Input, Pagination, Select } from '@douyinfe/semi-ui';
-import { IconLock, IconSearch } from '@douyinfe/semi-icons';
+import { Alert, Button, Input, Pagination, Select, Table, Tag, Typography } from 'antd';
+import { LockOutlined, SearchOutlined } from '@ant-design/icons';
+import type { TableColumnsType } from 'antd';
 import { useEffect, useState } from 'react';
 import { fetchPractices, type Practice } from '../data/apiClient';
 import { PageContainer } from '../components/common';
+
+const { Paragraph, Text } = Typography;
 
 /**
  * 封装audienceLabel相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
@@ -62,22 +65,22 @@ export function PracticeListPage() {
   const currentStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const currentEnd = Math.min(page * pageSize, total);
 
-  const columns = [
+  const columns: TableColumnsType<Practice> = [
     {
       title: '题单名称',
       dataIndex: 'title',
-      render: (title: string, record: Practice) => (
+      render: (title: string, record) => (
         <div style={{ minWidth: 0 }}>
-          <Typography.Text strong ellipsis={{ showTooltip: true }}>
+          <Text strong ellipsis={{ tooltip: title }}>
             {title}
-          </Typography.Text>
-          <Typography.Paragraph
-            type="tertiary"
-            ellipsis={{ rows: 1, showTooltip: true }}
+          </Text>
+          <Paragraph
+            type="secondary"
+            ellipsis={{ rows: 1, tooltip: record.description || '暂无说明' }}
             style={{ margin: '4px 0 0', fontSize: 13 }}
           >
             {record.description || '暂无说明'}
-          </Typography.Paragraph>
+          </Paragraph>
         </div>
       ),
     },
@@ -85,7 +88,7 @@ export function PracticeListPage() {
       title: '范围',
       dataIndex: 'audience',
       width: 120,
-      render: (audience: Practice['audience']) => <Tag>{audienceLabel(audience)}</Tag>,
+      render: (audience: Practice['audience']) => <Tag style={{ marginInlineEnd: 0 }}>{audienceLabel(audience)}</Tag>,
     },
     {
       title: '题目',
@@ -97,7 +100,11 @@ export function PracticeListPage() {
       title: '权限',
       dataIndex: 'hasPassword',
       width: 100,
-      render: (hasPassword: boolean) => hasPassword ? <Tag color="orange"><IconLock /> 密码</Tag> : <Tag color="green">公开</Tag>,
+      render: (hasPassword: boolean) => hasPassword ? (
+        <Tag color="warning" icon={<LockOutlined />} style={{ marginInlineEnd: 0 }}>密码</Tag>
+      ) : (
+        <Tag color="success" style={{ marginInlineEnd: 0 }}>公开</Tag>
+      ),
     },
     {
       title: '操作',
@@ -113,20 +120,19 @@ export function PracticeListPage() {
   return (
     <PageContainer
       title="公共题单"
-      subtitle="Problem Sets"
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <Input
-          prefix={<IconSearch />}
+          prefix={<SearchOutlined />}
           placeholder="筛选题单"
           value={keyword}
-          onChange={setKeyword}
+          onChange={(event) => setKeyword(event.target.value)}
           style={{ width: 220 }}
         />
         <Select
           value={scope}
           style={{ width: 160 }}
-          optionList={[
+          options={[
             { label: '全部范围', value: 'all' },
             { label: '所有人', value: 'public' },
             { label: '班级', value: 'class' },
@@ -139,10 +145,11 @@ export function PracticeListPage() {
       </div>
 
       {message && (
-        <Banner
-          type="danger"
-          description={message}
-          closeIcon={null}
+        <Alert
+          type="error"
+          message={message}
+          showIcon={false}
+          banner
           style={{ marginBottom: 24 }}
         />
       )}
@@ -157,19 +164,21 @@ export function PracticeListPage() {
 
       {total > 0 && (
         <div className="front-table-pagination">
-          <Typography.Text type="tertiary">
+          <Text type="secondary">
             显示第 {currentStart} 条-第 {currentEnd} 条，共 {total} 条
-          </Typography.Text>
+          </Text>
           <Pagination
-            currentPage={page}
+            current={page}
             pageSize={pageSize}
-            pageSizeOpts={[10, 20, 50]}
+            pageSizeOptions={[10, 20, 50]}
             total={total}
             showSizeChanger
-            onPageChange={setPage}
-            onPageSizeChange={(nextPageSize) => {
-              setPageSize(nextPageSize);
-              setPage(1);
+            onChange={(nextPage, nextPageSize) => {
+              setPage(nextPage);
+              if (nextPageSize !== pageSize) {
+                setPageSize(nextPageSize);
+                setPage(1);
+              }
             }}
           />
         </div>

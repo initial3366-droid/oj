@@ -1,0 +1,1983 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>QOJ 滚榜动画演示</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #667085;
+      --faint: #98a2b3;
+      --line: #e4e7ec;
+      --line-strong: #d0d5dd;
+      --canvas: #f5f7fb;
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+      --surface-blue: #eff6ff;
+      --blue: #2563eb;
+      --blue-dark: #1d4ed8;
+      --blue-light: #dbeafe;
+      --green: #047857;
+      --green-light: #d1fae5;
+      --amber: #b45309;
+      --amber-light: #fef3c7;
+      --red: #b42318;
+      --red-light: #fee4e2;
+      --shadow: 0 8px 24px rgba(16, 24, 40, 0.06);
+      --radius: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      background: var(--canvas);
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      color: var(--ink);
+      background: var(--canvas);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    body.demo-fullscreen-fallback {
+      overflow: hidden;
+    }
+
+    body.demo-fullscreen-fallback .app-shell {
+      position: fixed;
+      inset: 0;
+      height: 100vh;
+      overflow: auto;
+      background: var(--canvas);
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .app-shell {
+      min-height: 100vh;
+    }
+
+    .topbar {
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .topbar-inner,
+    .page {
+      width: min(1440px, calc(100% - 48px));
+      margin: 0 auto;
+    }
+
+    .topbar-inner {
+      min-height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      color: #ffffff;
+      background: var(--blue);
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .brand-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      line-height: 1.15;
+    }
+
+    .brand-copy strong {
+      font-size: 15px;
+    }
+
+    .brand-copy span {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .topbar-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .topbar-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 4px var(--green-light);
+    }
+
+    .page {
+      padding: 28px 0 42px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .contest-banner {
+      padding: 26px 28px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 28px;
+    }
+
+    .eyebrow,
+    .panel-kicker {
+      color: var(--blue);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .contest-banner h1 {
+      margin: 7px 0 8px;
+      font-size: clamp(24px, 3vw, 36px);
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    .contest-banner p {
+      max-width: 760px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .banner-stats {
+      min-width: min(100%, 420px);
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--surface-soft);
+    }
+
+    .banner-stat {
+      padding: 14px 16px;
+      border-left: 1px solid var(--line);
+    }
+
+    .banner-stat:first-child {
+      border-left: 0;
+    }
+
+    .banner-stat strong {
+      display: block;
+      color: var(--ink);
+      font-size: 21px;
+      line-height: 1.2;
+    }
+
+    .banner-stat span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .control-panel {
+      margin-top: 16px;
+      padding: 18px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .control-summary {
+      min-width: 270px;
+      flex: 1 1 auto;
+    }
+
+    .control-line {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 9px;
+    }
+
+    .state-tag,
+    .data-tag,
+    .row-state,
+    .event-status,
+    .rank-shift {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .state-tag {
+      min-height: 26px;
+      padding: 0 10px;
+      border: 1px solid var(--line-strong);
+      color: var(--muted);
+      background: var(--surface-soft);
+    }
+
+    .state-tag.frozen {
+      border-color: #fcd34d;
+      color: var(--amber);
+      background: var(--amber-light);
+    }
+
+    .state-tag.rolling {
+      border-color: #93c5fd;
+      color: var(--blue-dark);
+      background: var(--blue-light);
+    }
+
+    .state-tag.final {
+      border-color: #6ee7b7;
+      color: var(--green);
+      background: var(--green-light);
+    }
+
+    .control-count {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .progress-track {
+      height: 6px;
+      margin-top: 12px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #eaf0f7;
+    }
+
+    .progress-value {
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--blue);
+      transition: width 520ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .control-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .speed-control {
+      min-width: 190px;
+      flex: 0 1 210px;
+    }
+
+    .speed-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .speed-line label {
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .speed-line strong {
+      color: var(--blue-dark);
+      font-size: 12px;
+    }
+
+    .speed-control input[type="range"] {
+      width: 100%;
+      height: 18px;
+      margin: 6px 0 0;
+      accent-color: var(--blue);
+      cursor: pointer;
+    }
+
+    .speed-scale {
+      display: flex;
+      justify-content: space-between;
+      color: var(--faint);
+      font-size: 10px;
+    }
+
+    .button {
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0 13px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      color: var(--ink);
+      background: var(--surface);
+      cursor: pointer;
+      transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, opacity 160ms ease;
+    }
+
+    .button:hover:not(:disabled) {
+      border-color: #98a2b3;
+      background: var(--surface-soft);
+    }
+
+    .button:focus-visible {
+      outline: 3px solid rgba(37, 99, 235, 0.2);
+      outline-offset: 2px;
+    }
+
+    .button:disabled {
+      cursor: not-allowed;
+      opacity: 0.42;
+    }
+
+    .button.primary {
+      border-color: var(--blue);
+      color: #ffffff;
+      background: var(--blue);
+    }
+
+    .button.primary:hover:not(:disabled) {
+      border-color: var(--blue-dark);
+      background: var(--blue-dark);
+    }
+
+    .button.success {
+      border-color: var(--green);
+      color: #ffffff;
+      background: var(--green);
+    }
+
+    .button.success:hover:not(:disabled) {
+      border-color: #065f46;
+      background: #065f46;
+    }
+
+    .button .button-icon {
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    .content-grid {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      align-items: start;
+      gap: 16px;
+    }
+
+    .scoreboard-panel {
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .panel-head {
+      min-height: 76px;
+      padding: 17px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-head h2 {
+      margin: 4px 0 0;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    .panel-head-side {
+      color: var(--muted);
+      font-size: 12px;
+      text-align: right;
+    }
+
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      overflow-y: visible;
+    }
+
+    .scoreboard {
+      width: 100%;
+      min-width: 970px;
+      border-collapse: separate;
+      border-spacing: 0;
+      table-layout: fixed;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .scoreboard col.rank-col {
+      width: 76px;
+    }
+
+    .scoreboard col.user-col {
+      width: 216px;
+    }
+
+    .scoreboard col.solved-col {
+      width: 70px;
+    }
+
+    .scoreboard col.penalty-col {
+      width: 92px;
+    }
+
+    .scoreboard col.problem-col {
+      width: 96px;
+    }
+
+    .scoreboard th,
+    .scoreboard td {
+      border-bottom: 1px solid var(--line);
+    }
+
+    .scoreboard th {
+      height: 58px;
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      padding: 9px 10px;
+      color: var(--muted);
+      background: #f8fafc;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      text-align: center;
+    }
+
+    .scoreboard th:first-child,
+    .scoreboard td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 4;
+      background: var(--surface);
+    }
+
+    .scoreboard th:first-child {
+      z-index: 6;
+      background: #f8fafc;
+    }
+
+    .scoreboard th:nth-child(2),
+    .scoreboard td:nth-child(2) {
+      text-align: left;
+    }
+
+    .scoreboard tbody tr {
+      background: var(--surface);
+      transition: background-color 180ms ease;
+    }
+
+    .scoreboard tbody tr:hover {
+      background: #f8fafc;
+    }
+
+    .scoreboard tbody tr:hover td:first-child {
+      background: #f8fafc;
+    }
+
+    .scoreboard td {
+      height: 79px;
+      padding: 9px 10px;
+      text-align: center;
+      vertical-align: middle;
+    }
+
+    .scoreboard td:first-child {
+      padding-left: 14px;
+      padding-right: 8px;
+      box-shadow: 4px 0 9px -9px rgba(16, 24, 40, 0.45);
+    }
+
+    .rank-number {
+      display: block;
+      color: var(--ink);
+      font-size: 17px;
+      font-weight: 800;
+      line-height: 1.15;
+    }
+
+    .rank-shift {
+      min-height: 18px;
+      margin-top: 4px;
+      padding: 0 5px;
+    }
+
+    .rank-shift.up {
+      color: var(--green);
+      background: var(--green-light);
+    }
+
+    .rank-shift.down {
+      color: var(--red);
+      background: var(--red-light);
+    }
+
+    .rank-shift.same {
+      color: var(--muted);
+      background: var(--surface-soft);
+    }
+
+    .user-cell {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .avatar {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 34px;
+      display: grid;
+      place-items: center;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      color: var(--blue-dark);
+      background: var(--surface-blue);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .user-copy {
+      min-width: 0;
+    }
+
+    .user-name-line {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .user-name {
+      overflow: hidden;
+      color: var(--ink);
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .user-school {
+      overflow: hidden;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .post-records {
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 3px;
+      line-height: 1.2;
+    }
+
+    .post-record-label {
+      color: var(--blue-dark);
+      font-size: 9px;
+      font-weight: 800;
+    }
+
+    .post-record-group {
+      min-height: 17px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 4px;
+      border: 1px solid #bfdbfe;
+      border-radius: 4px;
+      background: #eff6ff;
+      font-size: 9px;
+      white-space: nowrap;
+    }
+
+    .post-record-problem {
+      color: var(--blue-dark);
+      font-weight: 800;
+    }
+
+    .post-record-result {
+      font-size: 9px;
+      font-weight: 800;
+    }
+
+    .post-record-result.ac {
+      color: var(--green);
+    }
+
+    .post-record-result.wa {
+      color: var(--red);
+    }
+
+    .post-record-count {
+      color: var(--muted);
+      font-size: 9px;
+    }
+
+    .row-state {
+      min-height: 18px;
+      padding: 0 5px;
+      border: 1px solid var(--line);
+      color: var(--faint);
+      background: var(--surface-soft);
+      font-size: 10px;
+    }
+
+    .row-state.revealed {
+      border-color: #a7f3d0;
+      color: var(--green);
+      background: #ecfdf5;
+    }
+
+    .row-state.changed {
+      border-color: #93c5fd;
+      color: var(--blue-dark);
+      background: #eff6ff;
+    }
+
+    .summary-number {
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .summary-label {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .score-cell {
+      min-height: 56px;
+      padding: 7px 5px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      line-height: 1.2;
+    }
+
+    .score-cell strong {
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .score-cell span {
+      color: inherit;
+      font-size: 10px;
+      opacity: 0.78;
+    }
+
+    .score-cell.accepted {
+      border-color: #6ee7b7;
+      color: #065f46;
+      background: var(--green-light);
+    }
+
+    .score-cell.wrong {
+      border-color: #fecaca;
+      color: var(--red);
+      background: var(--red-light);
+    }
+
+    .score-cell.empty {
+      border-color: var(--line);
+      color: var(--faint);
+      background: var(--surface-soft);
+    }
+
+    .score-cell.post-freeze {
+      box-shadow: inset 0 0 0 1px #60a5fa;
+    }
+
+    .post-freeze-marker {
+      color: var(--blue-dark);
+      font-size: 9px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .score-cell.changed {
+      box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.24);
+    }
+
+    .side-stack {
+      display: grid;
+      gap: 16px;
+    }
+
+    .current-panel,
+    .events-panel {
+      overflow: hidden;
+    }
+
+    .top-events-panel {
+      margin-top: 16px;
+    }
+
+    .current-content {
+      padding: 20px;
+    }
+
+    .current-label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .current-name {
+      margin-top: 6px;
+      color: var(--ink);
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
+    .current-detail {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .current-ranks {
+      margin-top: 17px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .current-rank-box {
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface-soft);
+    }
+
+    .current-rank-box span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .current-rank-box strong {
+      display: block;
+      margin-top: 2px;
+      color: var(--ink);
+      font-size: 20px;
+      line-height: 1.15;
+    }
+
+    .current-arrow {
+      color: var(--blue);
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .empty-current {
+      padding: 2px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .event-list {
+      margin: 0;
+      padding: 4px 20px 14px;
+      list-style: none;
+    }
+
+    .top-event-list {
+      padding: 14px 20px 18px;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .event-item {
+      min-height: 58px;
+      display: grid;
+      grid-template-columns: 25px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .event-item:last-child {
+      border-bottom: 0;
+    }
+
+    .top-event-list .event-item {
+      min-height: 67px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface-soft);
+    }
+
+    .event-index {
+      color: var(--faint);
+      font-size: 11px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .event-body {
+      min-width: 0;
+    }
+
+    .event-topline {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .event-user {
+      overflow: hidden;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .event-problem {
+      min-width: 20px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: var(--blue-dark);
+      background: var(--blue-light);
+      font-size: 10px;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .event-freeze-tag {
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: var(--blue-dark);
+      background: var(--blue-light);
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .event-time {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .event-status {
+      min-width: 37px;
+      min-height: 22px;
+      padding: 0 6px;
+      border: 1px solid var(--line);
+      color: var(--faint);
+      background: var(--surface-soft);
+    }
+
+    .event-status.ac {
+      border-color: #6ee7b7;
+      color: var(--green);
+      background: var(--green-light);
+    }
+
+    .event-status.wa {
+      border-color: #fecaca;
+      color: var(--red);
+      background: var(--red-light);
+    }
+
+    .event-status.post-freeze {
+      border-color: #60a5fa;
+      color: var(--blue-dark);
+      background: var(--blue-light);
+    }
+
+    .event-status.post-freeze.ac {
+      border-color: #6ee7b7;
+      color: var(--green);
+      background: var(--green-light);
+    }
+
+    .event-status.post-freeze.wa {
+      border-color: #fecaca;
+      color: var(--red);
+      background: var(--red-light);
+    }
+
+    .event-item.revealed .event-index {
+      color: var(--blue);
+    }
+
+    .legend {
+      padding: 13px 20px 17px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px 14px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .legend-swatch {
+      width: 11px;
+      height: 11px;
+      border-radius: 3px;
+      border: 1px solid var(--line);
+      background: var(--surface-soft);
+    }
+
+    .legend-swatch.accepted {
+      border-color: #6ee7b7;
+      background: var(--green-light);
+    }
+
+    .legend-swatch.wrong {
+      border-color: #fecaca;
+      background: var(--red-light);
+    }
+
+    .legend-swatch.revealed {
+      border-color: #93c5fd;
+      background: var(--blue-light);
+    }
+
+    .legend-swatch.post-freeze {
+      border-color: #60a5fa;
+      background: var(--blue-light);
+    }
+
+    .footer-note {
+      padding: 16px 2px 0;
+      color: var(--muted);
+      font-size: 11px;
+      text-align: right;
+    }
+
+    @keyframes rowReveal {
+      0% {
+        background: #dbeafe;
+      }
+      100% {
+        background: var(--surface);
+      }
+    }
+
+    @keyframes cellReveal {
+      0% {
+        transform: scale(0.94);
+        opacity: 0.35;
+      }
+      55% {
+        transform: scale(1.035);
+        opacity: 1;
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .scoreboard tr.row-revealed {
+      animation: rowReveal var(--row-reveal-duration, 1250ms) ease-out;
+    }
+
+    .scoreboard tr.row-retracted {
+      animation: rowReveal 900ms ease-out reverse;
+    }
+
+    .score-cell.cell-revealed {
+      animation: cellReveal var(--cell-reveal-duration, 850ms) cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+
+    @media (max-width: 1100px) {
+      .control-panel {
+        align-items: flex-start;
+      }
+
+      .control-buttons {
+        flex-basis: 100%;
+        justify-content: flex-start;
+      }
+
+      .content-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .side-stack {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      }
+    }
+
+    @media (max-width: 820px) {
+      .topbar-inner,
+      .page {
+        width: min(100% - 28px, 1440px);
+      }
+
+      .page {
+        padding-top: 16px;
+      }
+
+      .contest-banner {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 20px;
+        padding: 22px 20px;
+      }
+
+      .banner-stats {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .control-panel {
+        align-items: stretch;
+        flex-direction: column;
+        padding: 16px;
+      }
+
+      .control-buttons {
+        justify-content: flex-start;
+      }
+
+      .side-stack {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .top-event-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 520px) {
+      .topbar-inner {
+        min-height: 58px;
+      }
+
+      .topbar-meta {
+        display: none;
+      }
+
+      .contest-banner h1 {
+        font-size: 25px;
+      }
+
+      .banner-stat {
+        padding: 12px 10px;
+      }
+
+      .banner-stat strong {
+        font-size: 18px;
+      }
+
+      .banner-stat span {
+        font-size: 10px;
+      }
+
+      .button {
+        flex: 1 1 calc(50% - 8px);
+      }
+
+      .button.primary,
+      .button.success {
+        flex-basis: 100%;
+      }
+
+      .panel-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .panel-head-side {
+        text-align: left;
+      }
+
+      .top-event-list {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="#" aria-label="QOJ 滚榜动画演示">
+          <span class="brand-mark">Q</span>
+          <span class="brand-copy">
+            <strong>QOJ</strong>
+            <span>Contest rolling demo</span>
+          </span>
+        </a>
+        <div class="topbar-meta">
+          <span class="topbar-dot" aria-hidden="true"></span>
+          <span>离线演示 · 无需接口</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="contest-banner panel" aria-labelledby="contest-title">
+        <div>
+          <div class="eyebrow">QOJ / SCOREBOARD</div>
+          <h1 id="contest-title">2026 春季算法挑战赛</h1>
+          <p>封榜后提交固定展示在榜单上方，滚榜时逐题揭晓并按 ACM 规则实时调整排名。</p>
+        </div>
+        <div class="banner-stats" aria-label="演示数据统计">
+          <div class="banner-stat">
+            <strong id="participant-count">20</strong>
+            <span>封榜前数据</span>
+          </div>
+          <div class="banner-stat">
+            <strong id="post-submission-count">10</strong>
+            <span>封榜后提交</span>
+          </div>
+          <div class="banner-stat">
+            <strong>ACM</strong>
+            <span>计分模式</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="events-panel top-events-panel panel" aria-labelledby="events-title">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">POST-FREEZE SUBMISSIONS</div>
+            <h2 id="events-title">封榜后提交</h2>
+          </div>
+          <div id="event-count-label" class="panel-head-side">10 条 · 固定展示</div>
+        </div>
+        <ol id="event-list" class="event-list top-event-list"></ol>
+      </section>
+
+      <section class="control-panel panel" aria-label="滚榜控制">
+        <div class="control-summary">
+          <div class="control-line">
+            <span id="board-state" class="state-tag frozen">封榜榜</span>
+            <span id="step-count" class="control-count">0 / 8 题</span>
+          </div>
+          <div class="progress-track" aria-hidden="true">
+            <div id="progress-value" class="progress-value"></div>
+          </div>
+        </div>
+        <div class="speed-control">
+          <div class="speed-line">
+            <label for="speed-control">滚榜速度</label>
+            <strong id="speed-label">标准</strong>
+          </div>
+          <input id="speed-control" type="range" min="1" max="5" step="1" value="3" aria-valuetext="标准">
+          <div class="speed-scale"><span>慢</span><span>快</span></div>
+        </div>
+        <div class="control-buttons">
+          <button id="start-button" class="button primary" type="button">
+            <span class="button-icon" aria-hidden="true">▶</span>
+            <span>开始滚榜</span>
+          </button>
+          <button id="previous-button" class="button" type="button" disabled>
+            <span class="button-icon" aria-hidden="true">←</span>
+            <span>上一题</span>
+          </button>
+          <button id="next-button" class="button" type="button" disabled>
+            <span>下一题</span>
+            <span class="button-icon" aria-hidden="true">→</span>
+          </button>
+          <button id="autoplay-button" class="button" type="button" disabled>
+            <span class="button-icon" aria-hidden="true">▷</span>
+            <span>自动播放</span>
+          </button>
+          <button id="finish-button" class="button" type="button" disabled>
+            <span class="button-icon" aria-hidden="true">◆</span>
+            <span>完成滚榜</span>
+          </button>
+          <button id="publish-button" class="button success" type="button" disabled>
+            <span class="button-icon" aria-hidden="true">✓</span>
+            <span>发布最终榜</span>
+          </button>
+          <button id="reset-button" class="button" type="button">
+            <span class="button-icon" aria-hidden="true">↺</span>
+            <span>重置</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="content-grid">
+        <section class="scoreboard-panel panel" aria-labelledby="scoreboard-title">
+          <div class="panel-head">
+            <div>
+              <div class="panel-kicker">LIVE VIEW</div>
+              <h2 id="scoreboard-title">比赛排行榜</h2>
+            </div>
+            <div id="board-caption" class="panel-head-side">封榜快照 · 20 位参赛者</div>
+          </div>
+          <div class="table-wrap">
+            <table class="scoreboard">
+              <colgroup>
+                <col class="rank-col">
+                <col class="user-col">
+                <col class="solved-col">
+                <col class="penalty-col">
+                <col class="problem-col">
+                <col class="problem-col">
+                <col class="problem-col">
+                <col class="problem-col">
+                <col class="problem-col">
+                <col class="problem-col">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col">排名</th>
+                  <th scope="col">参赛者</th>
+                  <th scope="col">通过</th>
+                  <th scope="col">罚时</th>
+                  <th scope="col" title="Binary Signal">A</th>
+                  <th scope="col" title="Range Query">B</th>
+                  <th scope="col" title="Graph Relay">C</th>
+                  <th scope="col" title="Matrix Wind">D</th>
+                  <th scope="col" title="Tree Palette">E</th>
+                  <th scope="col" title="Final Frontier">F</th>
+                </tr>
+              </thead>
+              <tbody id="scoreboard-body"></tbody>
+            </table>
+          </div>
+          <div class="legend" aria-label="榜单图例">
+            <span class="legend-item"><span class="legend-swatch accepted" aria-hidden="true"></span>已通过</span>
+            <span class="legend-item"><span class="legend-swatch wrong" aria-hidden="true"></span>未通过</span>
+            <span class="legend-item"><span class="legend-swatch post-freeze" aria-hidden="true"></span>封榜后提交</span>
+            <span class="legend-item"><span class="legend-swatch revealed" aria-hidden="true"></span>本步揭晓</span>
+            <span class="legend-item">罚时 = 通过用时 + 错误提交 × 20</span>
+          </div>
+        </section>
+
+        <aside class="side-stack">
+          <section class="current-panel panel" aria-labelledby="current-title">
+            <div class="panel-head">
+              <div>
+                <div class="panel-kicker">REVEAL QUEUE</div>
+                <h2 id="current-title">当前揭晓</h2>
+              </div>
+              <div id="current-step-label" class="panel-head-side">等待开始</div>
+            </div>
+            <div id="current-content" class="current-content"></div>
+          </section>
+
+        </aside>
+      </section>
+
+      <div class="footer-note">Standalone HTML · 数据、榜单计算与动画均内嵌于本文件</div>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const PROBLEMS = [
+        { label: 'A', title: 'Binary Signal' },
+        { label: 'B', title: 'Range Query' },
+        { label: 'C', title: 'Graph Relay' },
+        { label: 'D', title: 'Matrix Wind' },
+        { label: 'E', title: 'Tree Palette' },
+        { label: 'F', title: 'Final Frontier' }
+      ];
+
+      const empty = () => ({ accepted: false, attempts: 0, minute: null });
+      const wrong = (attempts = 1) => ({ accepted: false, attempts, minute: null });
+      const accepted = (attempts, minute) => ({ accepted: true, attempts, minute });
+
+      function makeRow(id, name, school, cells) {
+        const row = { id, name, school, cells: {} };
+        PROBLEMS.forEach((problem, index) => {
+          row.cells[problem.label] = cells[index] || empty();
+        });
+        return row;
+      }
+
+      // 封榜前 20 条榜单数据。
+      const preFreezeData = [
+        makeRow('u01', 'AlgoSage', '清华附中', [accepted(1, 14), accepted(1, 37), accepted(2, 65), accepted(1, 92), accepted(1, 126), accepted(1, 181)]),
+        makeRow('u02', 'bit_by_bit', '华中科技大学', [accepted(1, 9), accepted(2, 48), accepted(1, 73), accepted(1, 104), accepted(1, 157), empty()]),
+        makeRow('u03', 'monotone', '浙江大学', [accepted(1, 22), accepted(1, 51), accepted(1, 89), accepted(2, 116), accepted(1, 169), empty()]),
+        makeRow('u04', 'Fourier', '上海交通大学', [accepted(2, 18), accepted(1, 63), accepted(1, 97), accepted(1, 134), empty(), accepted(1, 205)]),
+        makeRow('u05', 'lambda_ray', '北京理工大学', [accepted(1, 31), accepted(1, 72), accepted(2, 110), accepted(1, 146), empty(), empty()]),
+        makeRow('u06', 'stacktrace', '南京大学', [accepted(1, 28), accepted(1, 84), accepted(1, 119), accepted(2, 154), accepted(1, 188), empty()]),
+        makeRow('u07', 'red_black', '西安电子科技大学', [accepted(1, 35), accepted(2, 91), accepted(1, 123), empty(), accepted(1, 204), accepted(1, 232)]),
+        makeRow('u08', 'greedy_fox', '中山大学', [accepted(1, 42), empty(), accepted(1, 128), accepted(1, 165), accepted(1, 212), empty()]),
+        makeRow('u09', 'manacher', '哈尔滨工业大学', [accepted(2, 38), accepted(1, 93), empty(), accepted(1, 151), accepted(1, 219), empty()]),
+        makeRow('u10', 'dijkstra', '四川大学', [accepted(1, 47), accepted(1, 108), accepted(1, 143), empty(), accepted(1, 231), empty()]),
+        makeRow('u11', 'xor_tree', '中国科学技术大学', [accepted(1, 55), accepted(2, 102), accepted(1, 161), accepted(1, 187), empty(), empty()]),
+        makeRow('u12', 'splay', '北京邮电大学', [accepted(1, 61), accepted(1, 115), accepted(1, 174), empty(), accepted(1, 245), empty()]),
+        makeRow('u13', 'prime_walk', '山东大学', [accepted(1, 67), accepted(1, 126), empty(), accepted(1, 193), accepted(1, 252), empty()]),
+        makeRow('u14', 'lazy_coder', '东南大学', [accepted(1, 74), accepted(2, 134), empty(), accepted(1, 201), accepted(1, 260), empty()]),
+        makeRow('u15', 'heap_overflow', '吉林大学', [accepted(1, 81), accepted(1, 145), accepted(1, 208), empty(), empty(), accepted(1, 271)]),
+        makeRow('u16', 'dp_master', '重庆大学', [accepted(1, 88), accepted(1, 153), accepted(1, 221), accepted(1, 236), empty(), empty()]),
+        makeRow('u17', 'segmenter', '厦门大学', [accepted(1, 95), accepted(1, 167), accepted(1, 230), empty(), empty(), empty()]),
+        makeRow('u18', 'parallel_io', '大连理工大学', [accepted(1, 103), accepted(1, 182), accepted(1, 242), empty(), empty(), empty()]),
+        makeRow('u19', 'null_pointer', '湖南大学', [accepted(1, 111), accepted(2, 174), empty(), empty(), empty(), empty()]),
+        makeRow('u20', 'young_wizard', '华南理工大学', [accepted(1, 119), accepted(1, 196), empty(), empty(), empty(), empty()])
+      ];
+
+      // 封榜后 10 条提交；滚榜时按参赛者和题目分组，每步只揭晓一个题目。
+      const postFreezeSubmissions = [
+        { id: 's01', userId: 'u20', userName: 'young_wizard', problem: 'F', verdict: 'WA', minute: 244 },
+        { id: 's02', userId: 'u20', userName: 'young_wizard', problem: 'F', verdict: 'AC', minute: 256 },
+        { id: 's03', userId: 'u20', userName: 'young_wizard', problem: 'E', verdict: 'AC', minute: 332 },
+        { id: 's04', userId: 'u18', userName: 'parallel_io', problem: 'D', verdict: 'AC', minute: 267 },
+        { id: 's05', userId: 'u16', userName: 'dp_master', problem: 'E', verdict: 'AC', minute: 274 },
+        { id: 's06', userId: 'u14', userName: 'lazy_coder', problem: 'C', verdict: 'WA', minute: 282 },
+        { id: 's07', userId: 'u14', userName: 'lazy_coder', problem: 'C', verdict: 'AC', minute: 296 },
+        { id: 's08', userId: 'u14', userName: 'lazy_coder', problem: 'F', verdict: 'AC', minute: 346 },
+        { id: 's09', userId: 'u11', userName: 'xor_tree', problem: 'F', verdict: 'AC', minute: 304 },
+        { id: 's10', userId: 'u08', userName: 'greedy_fox', problem: 'B', verdict: 'WA', minute: 313 }
+      ];
+
+      function cloneRows(rows) {
+        return rows.map((row) => ({
+          ...row,
+          cells: Object.fromEntries(
+            PROBLEMS.map((problem) => [problem.label, { ...row.cells[problem.label] }])
+          )
+        }));
+      }
+
+      function scoreRow(row) {
+        let solved = 0;
+        let penalty = 0;
+        let lastAccepted = 0;
+        PROBLEMS.forEach((problem) => {
+          const cell = row.cells[problem.label];
+          if (!cell.accepted) return;
+          solved += 1;
+          penalty += cell.minute + Math.max(0, cell.attempts - 1) * 20;
+          lastAccepted = Math.max(lastAccepted, cell.minute);
+        });
+        return { solved, penalty, lastAccepted };
+      }
+
+      function rankRows(rows) {
+        const ranked = rows.map((row) => ({ ...row, score: scoreRow(row) }));
+        ranked.sort((left, right) => {
+          if (right.score.solved !== left.score.solved) return right.score.solved - left.score.solved;
+          if (left.score.penalty !== right.score.penalty) return left.score.penalty - right.score.penalty;
+          if (left.score.lastAccepted !== right.score.lastAccepted) return left.score.lastAccepted - right.score.lastAccepted;
+          return left.id.localeCompare(right.id);
+        });
+        return ranked.map((row, index) => ({ ...row, rank: index + 1 }));
+      }
+
+      function applyGroupInPlace(rows, group) {
+        const row = rows.find((item) => item.id === group.userId);
+        if (!row) return;
+        const cell = row.cells[group.problem];
+        group.events.forEach((submission) => {
+          cell.attempts += 1;
+          if (submission.verdict === 'AC' && !cell.accepted) {
+            cell.accepted = true;
+            cell.minute = submission.minute;
+          }
+        });
+      }
+
+      function applyGroups(rows, groups) {
+        const nextRows = cloneRows(rows);
+        groups.forEach((group) => applyGroupInPlace(nextRows, group));
+        return nextRows;
+      }
+
+      let groupIndex = 0;
+      const groupByCellKey = new Map();
+      postFreezeSubmissions.forEach((submission) => {
+        const key = `${submission.userId}:${submission.problem}`;
+        if (!groupByCellKey.has(key)) {
+          groupByCellKey.set(key, {
+            id: `g${String(++groupIndex).padStart(2, '0')}`,
+            userId: submission.userId,
+            userName: submission.userName,
+            problem: submission.problem,
+            events: []
+          });
+        }
+        groupByCellKey.get(key).events.push(submission);
+      });
+
+      const postGroups = Array.from(groupByCellKey.values());
+      const postGroupsByCell = new Map(postGroups.map((group) => [`${group.userId}:${group.problem}`, group]));
+      const postGroupsByUser = new Map();
+      postGroups.forEach((group) => {
+        const groups = postGroupsByUser.get(group.userId) || [];
+        groups.push(group);
+        postGroupsByUser.set(group.userId, groups);
+      });
+
+      const frozenRows = rankRows(preFreezeData);
+      const frozenById = new Map(frozenRows.map((row) => [row.id, row]));
+      postGroups.forEach((group) => {
+        const frozenRow = preFreezeData.find((row) => row.id === group.userId);
+        const groupRow = cloneRows([frozenRow])[0];
+        applyGroupInPlace([groupRow], group);
+        group.frozenCell = { ...frozenRow.cells[group.problem] };
+        group.finalCell = { ...groupRow.cells[group.problem] };
+      });
+
+      function buildRevealSteps() {
+        const revealedGroupIds = new Set();
+        let excludedUserId = null;
+        let currentRows = frozenRows;
+        const steps = [];
+
+        while (revealedGroupIds.size < postGroups.length) {
+          let candidates = currentRows.filter((row) => {
+            const groups = postGroupsByUser.get(row.id) || [];
+            return row.id !== excludedUserId && groups.some((group) => !revealedGroupIds.has(group.id));
+          });
+          if (candidates.length === 0) {
+            excludedUserId = null;
+            candidates = currentRows.filter((row) => {
+              const groups = postGroupsByUser.get(row.id) || [];
+              return groups.some((group) => !revealedGroupIds.has(group.id));
+            });
+          }
+
+          const candidate = candidates[candidates.length - 1];
+          const group = (postGroupsByUser.get(candidate.id) || []).find((item) => !revealedGroupIds.has(item.id));
+          const frozenRank = candidate.rank;
+          revealedGroupIds.add(group.id);
+          currentRows = rankRows(applyGroups(preFreezeData, postGroups.filter((item) => revealedGroupIds.has(item.id))));
+          const updated = currentRows.find((row) => row.id === candidate.id);
+          const rankDelta = frozenRank - updated.rank;
+          steps.push({
+            step: steps.length + 1,
+            id: group.id,
+            groupId: group.id,
+            userId: group.userId,
+            name: group.userName,
+            problem: group.problem,
+            frozenRank,
+            finalRank: updated.rank,
+            rankDelta,
+            events: group.events,
+            accepted: group.finalCell.accepted && !group.frozenCell.accepted
+          });
+          excludedUserId = group.finalCell.accepted ? candidate.id : null;
+        }
+        return steps;
+      }
+
+      const revealSteps = buildRevealSteps();
+
+      const elements = {
+        participantCount: document.getElementById('participant-count'),
+        postSubmissionCount: document.getElementById('post-submission-count'),
+        boardState: document.getElementById('board-state'),
+        stepCount: document.getElementById('step-count'),
+        progressValue: document.getElementById('progress-value'),
+        speedControl: document.getElementById('speed-control'),
+        speedLabel: document.getElementById('speed-label'),
+        startButton: document.getElementById('start-button'),
+        previousButton: document.getElementById('previous-button'),
+        nextButton: document.getElementById('next-button'),
+        autoplayButton: document.getElementById('autoplay-button'),
+        finishButton: document.getElementById('finish-button'),
+        publishButton: document.getElementById('publish-button'),
+        resetButton: document.getElementById('reset-button'),
+        boardCaption: document.getElementById('board-caption'),
+        scoreboardBody: document.getElementById('scoreboard-body'),
+        currentStepLabel: document.getElementById('current-step-label'),
+        currentContent: document.getElementById('current-content'),
+        eventCountLabel: document.getElementById('event-count-label'),
+        eventList: document.getElementById('event-list')
+      };
+
+      const state = {
+        started: false,
+        published: false,
+        step: 0,
+        timer: null
+      };
+
+      const speedProfiles = {
+        1: { label: '慢速', delay: 3800, duration: 1200 },
+        2: { label: '较慢', delay: 2900, duration: 980 },
+        3: { label: '标准', delay: 2100, duration: 760 },
+        4: { label: '较快', delay: 1450, duration: 600 },
+        5: { label: '快速', delay: 900, duration: 440 }
+      };
+
+      elements.participantCount.textContent = String(preFreezeData.length);
+      elements.postSubmissionCount.textContent = String(postFreezeSubmissions.length);
+      elements.eventCountLabel.textContent = `${postFreezeSubmissions.length} 条`;
+
+      function revealedIdsFor(step) {
+        return new Set(revealSteps.slice(0, step).map((item) => item.groupId));
+      }
+
+      function displayedRows() {
+        const revealedGroupIds = revealedIdsFor(state.step);
+        const groups = postGroups.filter((group) => revealedGroupIds.has(group.id));
+        return rankRows(applyGroups(preFreezeData, groups));
+      }
+
+      function changedCell(frozenCell, finalCell) {
+        return frozenCell.accepted !== finalCell.accepted
+          || frozenCell.attempts !== finalCell.attempts
+          || frozenCell.minute !== finalCell.minute;
+      }
+
+      function initials(name) {
+        return name
+          .split(/[_\s-]+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part[0])
+          .join('')
+          .toUpperCase();
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#039;');
+      }
+
+      function cellMarkup(cell, changed, revealedDelta, postEvents) {
+        const kind = cell.accepted ? 'accepted' : cell.attempts > 0 ? 'wrong' : 'empty';
+        const hasPostFreeze = postEvents.length > 0;
+        const title = cell.accepted
+          ? hasPostFreeze
+            ? `封榜后 ${postEvents.length} 次提交，最终通过，${cell.minute} 分钟，共 ${cell.attempts} 次提交`
+            : `通过，${cell.minute} 分钟，${cell.attempts} 次提交`
+          : cell.attempts > 0
+            ? hasPostFreeze
+              ? `封榜后 ${postEvents.length} 次提交，${cell.attempts} 次未通过提交`
+              : `${cell.attempts} 次未通过提交`
+            : '暂无提交';
+        const mainText = cell.accepted ? 'AC' : cell.attempts > 0 ? 'WA' : '—';
+        const subText = hasPostFreeze
+          ? `封榜后 ${postEvents.length} 次 · 共 ${cell.attempts} 次`
+          : cell.accepted
+            ? `${cell.minute} min · ${cell.attempts} try`
+            : cell.attempts > 0
+              ? `${cell.attempts} tries`
+              : '未提交';
+        return `<div class="score-cell ${kind}${hasPostFreeze ? ' post-freeze' : ''}${changed ? ' changed' : ''}${revealedDelta && changed ? ' cell-revealed' : ''}" title="${title}">
+          ${hasPostFreeze ? '<span class="post-freeze-marker">封榜后</span>' : ''}
+          <strong>${mainText}</strong>
+          <span>${subText}</span>
+        </div>`;
+      }
+
+      function rankMarkup(row, currentStep) {
+        if (!currentStep || currentStep.userId !== row.id) return `<span class="rank-number">${row.rank}</span>`;
+        const step = currentStep;
+        if (!step || step.rankDelta === 0) {
+          return `<span class="rank-number">${row.rank}</span><span class="rank-shift same">=</span>`;
+        }
+        const direction = step.rankDelta > 0 ? 'up' : 'down';
+        const symbol = step.rankDelta > 0 ? '↑' : '↓';
+        return `<span class="rank-number">${row.rank}</span><span class="rank-shift ${direction}">${symbol} ${Math.abs(step.rankDelta)}</span>`;
+      }
+
+      function rowMarkup(row, revealedGroupIds, revealedDeltaIds, retractedIds) {
+        const frozen = frozenById.get(row.id);
+        const rowGroups = postGroupsByUser.get(row.id) || [];
+        const revealedGroups = rowGroups.filter((group) => revealedGroupIds.has(group.id));
+        const pendingGroups = rowGroups.length - revealedGroups.length;
+        const isNew = revealedGroups.some((group) => revealedDeltaIds.has(group.id));
+        const isRetracted = rowGroups.some((group) => retractedIds.has(group.id));
+        const currentStep = state.step > 0 ? revealSteps[state.step - 1] : null;
+        const classNames = ['score-row'];
+        if (isNew) classNames.push('row-revealed');
+        if (isRetracted) classNames.push('row-retracted');
+        const stateLabel = rowGroups.length === 0
+          ? '<span class="row-state">无新增提交</span>'
+          : pendingGroups === 0
+            ? '<span class="row-state revealed">已揭晓</span>'
+            : revealedGroups.length > 0
+              ? `<span class="row-state changed">已揭晓 ${revealedGroups.length}/${rowGroups.length}</span>`
+              : '<span class="row-state">待揭晓</span>';
+        const postRecordMarkup = rowGroups.length === 0
+          ? ''
+          : `<span class="post-records" title="封榜后提交记录">
+              <span class="post-record-label">封榜后</span>
+              ${rowGroups.map((group) => `<span class="post-record-group">
+                <span class="post-record-problem">${group.problem}</span>
+                ${group.events.map((submission) => `<span class="post-record-result ${submission.verdict.toLowerCase()}">${submission.verdict}</span>`).join('')}
+                <span class="post-record-count">${group.events.length} 次</span>
+              </span>`).join('')}
+            </span>`;
+        const cells = PROBLEMS.map((problem) => {
+          const currentCell = row.cells[problem.label];
+          const frozenCell = frozen.cells[problem.label];
+          const group = postGroupsByCell.get(`${row.id}:${problem.label}`);
+          const groupRevealed = Boolean(group && revealedGroupIds.has(group.id));
+          const changed = groupRevealed && changedCell(frozenCell, currentCell);
+          const postEvents = groupRevealed && group ? group.events : [];
+          const cellIsNew = Boolean(group && revealedDeltaIds.has(group.id));
+          return `<td>${cellMarkup(currentCell, changed, cellIsNew, postEvents)}</td>`;
+        }).join('');
+        return `<tr class="${classNames.join(' ')}" data-id="${row.id}">
+          <td>${rankMarkup(row, currentStep)}</td>
+          <td>
+            <div class="user-cell">
+              <span class="avatar" aria-hidden="true">${initials(row.name)}</span>
+              <span class="user-copy">
+                <span class="user-name-line"><span class="user-name">${escapeHtml(row.name)}</span>${stateLabel}</span>
+                <span class="user-school">${escapeHtml(row.school)}</span>
+                ${postRecordMarkup}
+              </span>
+            </div>
+          </td>
+          <td><span class="summary-number">${row.score.solved}</span><div class="summary-label">题</div></td>
+          <td><span class="summary-number">${row.score.penalty}</span><div class="summary-label">分钟</div></td>
+          ${cells}
+        </tr>`;
+      }
+
+      function rowPositions() {
+        return new Map(
+          Array.from(elements.scoreboardBody.querySelectorAll('tr[data-id]'))
+            .map((row) => [row.dataset.id, row.getBoundingClientRect()])
+        );
+      }
+
+      function currentSpeedProfile() {
+        return speedProfiles[Number(elements.speedControl.value)] || speedProfiles[3];
+      }
+
+      function updateSpeedLabel() {
+        const profile = currentSpeedProfile();
+        elements.speedLabel.textContent = profile.label;
+        elements.speedControl.setAttribute('aria-valuetext', profile.label);
+      }
+
+      function animateReorder(previousPositions) {
+        if (!previousPositions || typeof window.requestAnimationFrame !== 'function') return;
+        window.requestAnimationFrame(() => {
+          elements.scoreboardBody.querySelectorAll('tr[data-id]').forEach((row) => {
+            const previous = previousPositions.get(row.dataset.id);
+            if (!previous || typeof row.animate !== 'function') return;
+            const current = row.getBoundingClientRect();
+            const offset = previous.top - current.top;
+            if (Math.abs(offset) < 1) return;
+            row.animate(
+              [
+                { transform: `translateY(${offset}px)` },
+                { transform: 'translateY(0)' }
+              ],
+              { duration: currentSpeedProfile().duration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
+            );
+          });
+        });
+      }
+
+      function setStateTag() {
+        let text = '封榜榜';
+        let className = 'frozen';
+        if (state.published) {
+          text = '最终榜';
+          className = 'final';
+        } else if (state.started) {
+          text = '滚榜中';
+          className = 'rolling';
+        }
+        elements.boardState.textContent = text;
+        elements.boardState.className = `state-tag ${className}`;
+      }
+
+      function renderCurrent() {
+        const currentStep = state.step > 0 ? revealSteps[state.step - 1] : null;
+        if (!currentStep) {
+          elements.currentStepLabel.textContent = state.published ? '已发布' : state.started ? '准备揭晓' : '等待开始';
+          elements.currentContent.innerHTML = `<div class="empty-current">${state.published ? '最终榜已发布，所有封榜后题目均已呈现。' : state.started ? '点击“下一题”继续揭晓，AC 后该参赛者会先离开滚榜队列。' : '当前显示封榜时刻的榜单快照。'}</div>`;
+          return;
+        }
+        const eventCount = currentStep.events.length;
+        const eventText = `封榜后 ${eventCount} 条提交 · ${currentStep.accepted ? 'AC 后提升排名' : '未通过，排名不变'}`;
+        elements.currentStepLabel.textContent = `第 ${currentStep.step} / ${revealSteps.length} 题`;
+        elements.currentContent.innerHTML = `
+          <div class="current-label">本步揭晓题目</div>
+          <div class="current-name">${escapeHtml(currentStep.name)}</div>
+          <div class="current-detail">题目 ${currentStep.problem} · ${eventText}</div>
+          <div class="current-ranks">
+            <div class="current-rank-box"><span>封榜排名</span><strong>${currentStep.frozenRank ?? '-'}</strong></div>
+            <div class="current-arrow" aria-hidden="true">→</div>
+            <div class="current-rank-box"><span>本步排名</span><strong>${currentStep.finalRank ?? '-'}</strong></div>
+          </div>`;
+      }
+
+      function renderEvents() {
+        const revealedIds = revealedIdsFor(state.step);
+        elements.eventList.innerHTML = postFreezeSubmissions.map((submission, index) => {
+          const group = postGroupsByCell.get(`${submission.userId}:${submission.problem}`);
+          const revealed = Boolean(group && revealedIds.has(group.id));
+          const verdict = submission.verdict;
+          const verdictClass = `post-freeze ${submission.verdict.toLowerCase()}`;
+          const detail = `${submission.minute} 分钟 · ${submission.verdict === 'AC' ? '通过' : '未通过'}`;
+          return `<li class="event-item${revealed ? ' revealed' : ''}">
+            <span class="event-index">${String(index + 1).padStart(2, '0')}</span>
+            <span class="event-body">
+              <span class="event-topline"><span class="event-user">${escapeHtml(submission.userName)}</span><span class="event-freeze-tag">封榜后</span><span class="event-problem">${submission.problem}</span></span>
+              <span class="event-time">${detail}</span>
+            </span>
+            <span class="event-status ${verdictClass}">${verdict}</span>
+          </li>`;
+        }).join('');
+      }
+
+      function updateButtons() {
+        const atEnd = state.step >= revealSteps.length;
+        elements.startButton.disabled = state.started;
+        elements.previousButton.disabled = !state.started || state.step === 0 || state.published;
+        elements.nextButton.disabled = !state.started || atEnd || state.published;
+        elements.autoplayButton.disabled = !state.started || atEnd || state.published;
+        elements.finishButton.disabled = !state.started || atEnd || state.published;
+        elements.publishButton.disabled = !state.started || !atEnd || state.published;
+        elements.autoplayButton.querySelector('span:last-child').textContent = state.timer ? '暂停播放' : '自动播放';
+        elements.autoplayButton.querySelector('.button-icon').textContent = state.timer ? 'Ⅱ' : '▷';
+      }
+
+      function render(options = {}) {
+        const previousPositions = options.animate ? rowPositions() : null;
+        const previousRevealedIds = options.previousStep == null ? revealedIdsFor(state.step) : revealedIdsFor(options.previousStep);
+        const currentRevealedIds = revealedIdsFor(state.step);
+        const revealedDeltaIds = new Set([...currentRevealedIds].filter((id) => !previousRevealedIds.has(id)));
+        const retractedIds = new Set([...previousRevealedIds].filter((id) => !currentRevealedIds.has(id)));
+
+        elements.scoreboardBody.innerHTML = displayedRows()
+          .map((row) => rowMarkup(row, currentRevealedIds, revealedDeltaIds, retractedIds))
+          .join('');
+        const motion = currentSpeedProfile();
+        elements.scoreboardBody.style.setProperty('--row-reveal-duration', `${motion.duration}ms`);
+        elements.scoreboardBody.style.setProperty('--cell-reveal-duration', `${Math.max(300, motion.duration * 0.8)}ms`);
+        elements.stepCount.textContent = `${state.step} / ${revealSteps.length} 题`;
+        elements.progressValue.style.width = `${(state.step / revealSteps.length) * 100}%`;
+        elements.boardCaption.textContent = state.published
+          ? '最终榜 · 20 位参赛者'
+          : state.started
+            ? `已揭晓 ${state.step} 题 · 其余保留封榜数据`
+            : '封榜快照 · 20 位参赛者';
+        setStateTag();
+        updateSpeedLabel();
+        renderCurrent();
+        renderEvents();
+        updateButtons();
+        animateReorder(previousPositions);
+      }
+
+      function stopAutoplay() {
+        if (state.timer) {
+          window.clearInterval(state.timer);
+          state.timer = null;
+        }
+      }
+
+      function revealNext() {
+        if (state.step >= revealSteps.length || state.published) {
+          stopAutoplay();
+          render();
+          return;
+        }
+        const previousStep = state.step;
+        state.step += 1;
+        render({ animate: true, previousStep });
+        if (state.step >= revealSteps.length) stopAutoplay();
+      }
+
+      function revealPrevious() {
+        if (state.step <= 0 || state.published) return;
+        const previousStep = state.step;
+        state.step -= 1;
+        render({ animate: true, previousStep });
+      }
+
+      function requestRollingFullscreen() {
+        const enableFallback = () => {
+          document.body.classList.add('demo-fullscreen-fallback');
+          return false;
+        };
+        if (document.fullscreenElement || typeof document.documentElement.requestFullscreen !== 'function') {
+          return Promise.resolve(enableFallback());
+        }
+        return document.documentElement.requestFullscreen()
+          .then(() => document.fullscreenElement ? true : enableFallback())
+          .catch(() => enableFallback());
+      }
+
+      function scrollToRollingStart() {
+        const fallbackScroller = document.body.classList.contains('demo-fullscreen-fallback')
+          ? document.querySelector('.app-shell')
+          : null;
+        if (fallbackScroller) {
+          const scrollTop = Math.max(0, fallbackScroller.scrollHeight - fallbackScroller.clientHeight);
+          fallbackScroller.scrollTo({ top: scrollTop, behavior: 'auto' });
+          return;
+        }
+        const scrollTop = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        window.scrollTo({ top: scrollTop, behavior: 'auto' });
+      }
+
+      function beginAutoplayTimer() {
+        stopAutoplay();
+        if (state.step >= revealSteps.length || state.published) return;
+        state.timer = window.setInterval(revealNext, currentSpeedProfile().delay);
+      }
+
+      function startRolling() {
+        document.body.classList.add('demo-fullscreen-fallback');
+        const fullscreenPromise = requestRollingFullscreen();
+        state.started = true;
+        state.published = false;
+        render();
+        scrollToRollingStart();
+        revealNext();
+        beginAutoplayTimer();
+        updateButtons();
+        void fullscreenPromise.then(() => {
+          if (state.started && !state.published) scrollToRollingStart();
+        });
+      }
+
+      function toggleAutoplay() {
+        if (!state.started || state.published) return;
+        if (state.timer) {
+          stopAutoplay();
+          render();
+          return;
+        }
+        if (state.step >= revealSteps.length) return;
+        beginAutoplayTimer();
+        render();
+      }
+
+      function finishRolling() {
+        if (!state.started || state.published) return;
+        stopAutoplay();
+        const previousStep = state.step;
+        state.step = revealSteps.length;
+        render({ animate: true, previousStep });
+      }
+
+      function publishFinal() {
+        if (!state.started || state.step < revealSteps.length) return;
+        stopAutoplay();
+        state.published = true;
+        render();
+      }
+
+      function reset() {
+        stopAutoplay();
+        if (document.fullscreenElement && typeof document.exitFullscreen === 'function') {
+          void document.exitFullscreen().catch(() => {});
+        }
+        document.body.classList.remove('demo-fullscreen-fallback');
+        state.started = false;
+        state.published = false;
+        state.step = 0;
+        render();
+        window.scrollTo({ top: 0, behavior: 'auto' });
+      }
+
+      elements.speedControl.addEventListener('input', () => {
+        updateSpeedLabel();
+        if (state.timer) beginAutoplayTimer();
+        render();
+      });
+      elements.startButton.addEventListener('click', startRolling);
+      elements.previousButton.addEventListener('click', revealPrevious);
+      elements.nextButton.addEventListener('click', revealNext);
+      elements.autoplayButton.addEventListener('click', toggleAutoplay);
+      elements.finishButton.addEventListener('click', finishRolling);
+      elements.publishButton.addEventListener('click', publishFinal);
+      elements.resetButton.addEventListener('click', reset);
+
+      document.addEventListener('keydown', (event) => {
+        if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+        if (event.key === 'ArrowRight') revealNext();
+        if (event.key === 'ArrowLeft') revealPrevious();
+        if (event.key === ' ') {
+          event.preventDefault();
+          toggleAutoplay();
+        }
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>

@@ -27,6 +27,8 @@ public class PublicScoreboardVO {
         public String label;
         public String title;
         public Integer score; // For OI mode
+        public Long submissionCount;
+        public Long acceptedCount;
     }
 
     /**
@@ -61,6 +63,8 @@ public class PublicScoreboardVO {
         public LocalDateTime acceptedAt;
         public Integer score; // Score for this problem (OI)
         public List<SubmissionHistory> history;
+        public Boolean hasHiddenSubmissions;
+        public Integer hiddenAttempts;
     }
 
     /**

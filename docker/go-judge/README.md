@@ -1,7 +1,7 @@
 # QOJ go-judge worker
 
 This directory builds a pinned criyle/go-judge `1.12.1` worker with the C,
-C++, Java 17, Python 3 and Mono C# toolchains used by QOJ.
+C++, Java 17 and Python 3 toolchains used by QOJ.
 
 ## Start
 
@@ -19,6 +19,23 @@ Set the same token in the backend environment:
 GO_JUDGE_BASE_URL=http://127.0.0.1:15050
 GO_JUDGE_AUTH_TOKEN=<same-random-token>
 ```
+
+## Special Judge
+
+The QOJ backend packages a pinned `testlib.h` and copies it into each checker
+compilation sandbox. This avoids depending on files outside the Go Judge
+working directory. When a problem has checker source, QOJ compiles it as C++17
+and runs it in the same Go Judge isolation boundary as submissions. The checker
+receives these positional arguments:
+
+```text
+input.txt output.txt answer.txt
+```
+
+Use `registerTestlibCmd(argc, argv)` and read the participant output through
+`ouf`. A zero exit status accepts the case; testlib's wrong-answer and
+presentation-error exit statuses reject it. Other checker failures are reported
+as a system error rather than silently accepting a submission.
 
 ## Security boundary
 

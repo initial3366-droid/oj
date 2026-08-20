@@ -1,11 +1,13 @@
 /**
  * RatingTable组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Table, Tag, Typography } from '@douyinfe/semi-ui';
-import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { Table, Tag, Typography } from 'antd';
+import type { TableColumnsType } from 'antd';
 import { useOjData } from '../data/OjDataProvider';
 import type { RatingUser } from '../data/types';
 import { UserAvatar } from './common/UserAvatar';
+
+const { Text } = Typography;
 
 /**
  * 渲染RatingTable组件，并协调其数据加载、状态和交互。
@@ -16,13 +18,13 @@ export function RatingTable() {
     .sort((a, b) => b.acCount - a.acCount)
     .slice(0, 10);
 
-  const columns: ColumnProps<RatingUser>[] = [
+  const columns: TableColumnsType<RatingUser> = [
     {
       title: '排名',
       dataIndex: 'rank',
       width: 100,
       render: (_text, _record, index) => (
-        <Tag color={index < 3 ? 'amber' : 'grey'} size="small">
+        <Tag color={index < 3 ? 'gold' : 'default'} style={{ marginInlineEnd: 0 }}>
           {index + 1}
         </Tag>
       ),
@@ -39,7 +41,7 @@ export function RatingTable() {
             size="small"
             showTooltip={false}
           />
-          <Typography.Text strong>{name}</Typography.Text>
+          <Text strong>{name}</Text>
         </div>
       ),
     },
@@ -48,9 +50,9 @@ export function RatingTable() {
       dataIndex: 'className',
       width: 150,
       render: (className?: string) => (
-        <Typography.Text type={className ? 'primary' : 'tertiary'}>
+        <Text type={className ? undefined : 'secondary'}>
           {className || '-'}
-        </Typography.Text>
+        </Text>
       ),
     },
     {
@@ -58,9 +60,9 @@ export function RatingTable() {
       dataIndex: 'acCount',
       width: 120,
       render: (acCount: number) => (
-        <Typography.Text strong style={{ color: 'var(--semi-color-primary)', fontSize: 15 }}>
+        <Text strong style={{ color: '#1677ff', fontSize: 15 }}>
           {acCount}
-        </Typography.Text>
+        </Text>
       ),
     },
   ];
@@ -72,13 +74,15 @@ export function RatingTable() {
       rowKey="id"
       pagination={false}
       style={{
-        border: '1px solid var(--semi-color-border)',
+        border: '1px solid #f0f0f0',
       }}
-      empty={
-        <div style={{ padding: '40px 0', textAlign: 'center' }}>
-          <Typography.Text type="tertiary">暂无真实排行榜数据</Typography.Text>
-        </div>
-      }
+      locale={{
+        emptyText: (
+          <div style={{ padding: '40px 0', textAlign: 'center' }}>
+            <Text type="secondary">暂无真实排行榜数据</Text>
+          </div>
+        ),
+      }}
     />
   );
 }

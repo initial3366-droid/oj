@@ -1,0 +1,4 @@
+username,password
+loadtest001,REPLACE_WITH_PASSWORD_001
+loadtest002,REPLACE_WITH_PASSWORD_002
+# 实际执行需要准备至少 100 个不同的普通学生账号。

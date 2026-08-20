@@ -1,13 +1,15 @@
 /**
  * 排行榜页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Avatar, Banner, Button, Card, Spin, Table, Typography } from '@douyinfe/semi-ui';
-import { IconRefresh } from '@douyinfe/semi-icons';
-import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { Alert, Avatar, Button, Card, Spin, Table, Typography } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
+import type { TableColumnsType } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer } from '../components/common';
 import { fetchGlobalLeaderboard, fetchClassLeaderboard, type RatingUser, type ClassRank } from '../api/rank';
+
+const { Text } = Typography;
 
 /**
  * RatingRow接口，明确该模块内部及 API 边界使用的数据结构。
@@ -73,7 +75,7 @@ export function LeaderboardPage() {
   /**
    * 封装columns相关逻辑。可能改变当前路由或查询参数；对原始数据进行派生或聚合。
    */
-  const columns = useMemo<ColumnProps<RatingRow>[]>(() => [
+  const columns = useMemo<TableColumnsType<RatingRow>>(() => [
     {
       title: '排名',
       dataIndex: 'rank',
@@ -104,12 +106,12 @@ export function LeaderboardPage() {
             color: 'inherit',
           }}
         >
-          <Avatar size="small" color="blue" src={record.avatarUrl || undefined}>
+          <Avatar size="small" style={{ backgroundColor: '#1677ff', flexShrink: 0 }} src={record.avatarUrl || undefined}>
             {!record.avatarUrl ? initials(name, record.userId) : null}
           </Avatar>
-          <Typography.Text strong ellipsis={{ showTooltip: true }}>
+          <Text strong ellipsis={{ tooltip: name || `#${record.userId}` }}>
             {name || `#${record.userId}`}
-          </Typography.Text>
+          </Text>
         </button>
       ),
     },
@@ -118,9 +120,9 @@ export function LeaderboardPage() {
       dataIndex: 'className',
       width: '18%',
       render: (className?: string) => (
-        <Typography.Text type={className ? 'primary' : 'tertiary'} ellipsis={{ showTooltip: true }}>
+        <Text type={className ? undefined : 'secondary'} ellipsis={{ tooltip: className || '-' }}>
           {className || '-'}
-        </Typography.Text>
+        </Text>
       ),
     },
     {
@@ -128,23 +130,23 @@ export function LeaderboardPage() {
       dataIndex: 'acCount',
       width: '18%',
       render: (acCount: number) => (
-        <Typography.Text strong style={{ color: 'var(--semi-color-primary)' }}>
+        <Text strong style={{ color: '#1677ff' }}>
           {acCount}
-        </Typography.Text>
+        </Text>
       ),
     },
     {
       title: '连续训练',
       dataIndex: 'streak',
       width: '16%',
-      render: (streak: number) => <Typography.Text>{streak ?? 0} 天</Typography.Text>,
+      render: (streak: number) => <Text>{streak ?? 0} 天</Text>,
     },
   ], [navigate]);
 
   /**
    * 封装班级Columns相关逻辑。对原始数据进行派生或聚合。
    */
-  const classColumns = useMemo<ColumnProps<ClassRank>[]>(() => [
+  const classColumns = useMemo<TableColumnsType<ClassRank>>(() => [
     {
       title: '排名',
       width: 96,
@@ -157,21 +159,21 @@ export function LeaderboardPage() {
     {
       title: '班级',
       dataIndex: 'className',
-      render: (className: string) => <Typography.Text strong>{className || '-'}</Typography.Text>,
+      render: (className: string) => <Text strong>{className || '-'}</Text>,
     },
     {
       title: '教师',
       dataIndex: 'teacherName',
-      render: (teacherName: string) => <Typography.Text>{teacherName || '-'}</Typography.Text>,
+      render: (teacherName: string) => <Text>{teacherName || '-'}</Text>,
     },
     {
       title: 'AC 数量',
       dataIndex: 'acCount',
       width: 160,
       render: (acCount: number) => (
-        <Typography.Text strong style={{ color: 'var(--semi-color-primary)' }}>
+        <Text strong style={{ color: '#1677ff' }}>
           {acCount}
-        </Typography.Text>
+        </Text>
       ),
     },
   ], []);
@@ -179,10 +181,8 @@ export function LeaderboardPage() {
   return (
     <PageContainer
       title="排行榜"
-      subtitle="Leaderboard"
-      description="只统计学生的非比赛 AC，班级榜每日 00:00 更新。"
       extra={(
-        <Button icon={<IconRefresh />} onClick={load} loading={loading}>
+        <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
           刷新
         </Button>
       )}
@@ -191,10 +191,6 @@ export function LeaderboardPage() {
         .leaderboard-shell {
           display: grid;
           gap: 16px;
-        }
-
-        .leaderboard-table-card {
-          border: 1px solid var(--semi-color-border);
         }
 
         .leaderboard-user-button {
@@ -221,8 +217,8 @@ export function LeaderboardPage() {
           height: 28px;
           place-items: center;
           border-radius: 8px;
-          background: var(--semi-color-fill-0);
-          color: var(--semi-color-text-1);
+          background: #f5f5f5;
+          color: rgba(0, 0, 0, 0.65);
           font-weight: 700;
           line-height: 1;
         }
@@ -242,60 +238,47 @@ export function LeaderboardPage() {
           color: #92400e;
         }
 
-        .leaderboard-table-card .semi-card-body {
+        .leaderboard-table-card .ant-card-body {
           padding: 0;
         }
 
-        .leaderboard-table-card,
-        .leaderboard-table-card .semi-card-body,
-        .leaderboard-table-wrap,
-        .leaderboard-table {
-          width: 100%;
-          min-width: 0;
-        }
-
         .leaderboard-table-card {
+          min-width: 0;
           overflow: hidden;
         }
 
         .leaderboard-table-wrap {
+          width: 100%;
+          min-width: 0;
           overflow-x: auto;
         }
 
-        .leaderboard-table .semi-table-wrapper,
-        .leaderboard-table .semi-table-container,
-        .leaderboard-table .semi-table {
-          width: 100%;
+        .leaderboard-class-table-wrap {
+          overflow: hidden;
         }
 
-        .leaderboard-table .semi-table {
-          min-width: 720px;
+        .leaderboard-class-table-wrap table {
+          width: 100%;
           table-layout: fixed;
         }
 
-        .leaderboard-table .semi-table-thead > .semi-table-row > .semi-table-row-head,
-        .leaderboard-table .semi-table-tbody > .semi-table-row > .semi-table-row-cell {
-          padding: 18px 20px;
+        .leaderboard-class-table-wrap .ant-table-cell {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
-        .leaderboard-table .semi-table-pagination-outer {
-          margin: 0;
-          padding: 16px 20px;
-          border-top: 1px solid var(--semi-color-border);
+        .leaderboard-table-user-lb .ant-table {
+          min-width: 720px;
         }
 
         .leaderboard-table-user {
           width: 100%;
           min-width: 0;
         }
-
-        .leaderboard-table-user .semi-typography {
-          min-width: 0;
-        }
-
       `}</style>
 
-      {message && <Banner type="danger" description={message} closeIcon={null} style={{ marginBottom: 16 }} />}
+      {message && <Alert type="error" message={message} showIcon={false} banner style={{ marginBottom: 16 }} />}
 
       <div className="leaderboard-shell">
         <Card className="leaderboard-table-card" title="班级最多 AC">
@@ -304,18 +287,21 @@ export function LeaderboardPage() {
               <Spin tip="排行榜加载中" />
             </div>
           ) : (
-            <div className="leaderboard-table-wrap">
+            <div className="leaderboard-table-wrap leaderboard-class-table-wrap">
               <Table
                 className="leaderboard-table"
                 dataSource={classRows}
                 rowKey="classId"
                 pagination={false}
                 columns={classColumns}
-                empty={
-                  <div style={{ padding: '40px 0', textAlign: 'center' }}>
-                    <Typography.Text type="tertiary">暂无班级排行榜数据</Typography.Text>
-                  </div>
-                }
+                tableLayout="fixed"
+                locale={{
+                  emptyText: (
+                    <div style={{ padding: '40px 0', textAlign: 'center' }}>
+                      <Text type="secondary">暂无班级排行榜数据</Text>
+                    </div>
+                  ),
+                }}
               />
             </div>
           )}
@@ -329,7 +315,7 @@ export function LeaderboardPage() {
           ) : (
             <div className="leaderboard-table-wrap">
               <Table
-                className="leaderboard-table"
+                className="leaderboard-table leaderboard-table-user-lb"
                 columns={columns}
                 dataSource={rows}
                 rowKey="userId"
@@ -337,11 +323,13 @@ export function LeaderboardPage() {
                   pageSize: 20,
                   showSizeChanger: true,
                 }}
-                empty={
-                  <div style={{ padding: '40px 0', textAlign: 'center' }}>
-                    <Typography.Text type="tertiary">暂无真实排行榜数据</Typography.Text>
-                  </div>
-                }
+                locale={{
+                  emptyText: (
+                    <div style={{ padding: '40px 0', textAlign: 'center' }}>
+                      <Text type="secondary">暂无真实排行榜数据</Text>
+                    </div>
+                  ),
+                }}
               />
             </div>
           )}

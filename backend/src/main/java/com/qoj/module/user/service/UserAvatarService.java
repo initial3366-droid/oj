@@ -92,6 +92,25 @@ public class UserAvatarService {
     }
 
     /**
+     * 上传富文本图片（比赛介绍等 HTML 编辑器的插入图片）。复用头像的文件校验与 COS 存储，
+     * 不关联账号业务数据；返回可直接引用的公开 URL。
+     */
+    public String uploadRichTextImage(MultipartFile file) {
+        OssSettingsVO config = settingService.getOssRuntimeSettings();
+        validateOssEnabled(config);
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "读取图片文件失败");
+        }
+        String contentType = validateFile(config, file, bytes, "图片");
+        String objectKey = buildObjectKey(config.dir, "images", 0L, EXTENSIONS.get(contentType));
+        putObject(config, objectKey, contentType, bytes);
+        return publicUrl(config.publicBaseUrl, objectKey);
+    }
+
+    /**
      * 更新用户头像。不满足业务约束时直接抛出明确异常；执行持久化写入；整个过程位于同一数据库事务中。
      */
     @Transactional
@@ -107,7 +126,7 @@ public class UserAvatarService {
              */
             throw new BizException(ErrorCode.BAD_REQUEST, "读取头像文件失败");
         }
-        String contentType = validateFile(config, file, bytes);
+        String contentType = validateFile(config, file, bytes, "头像");
         String objectKey = buildObjectKey(config.dir, "users", user.id, EXTENSIONS.get(contentType));
         putObject(config, objectKey, contentType, bytes);
         String avatarUrl = publicUrl(config.publicBaseUrl, objectKey);
@@ -137,7 +156,7 @@ public class UserAvatarService {
         } catch (IOException e) {
             throw new BizException(ErrorCode.BAD_REQUEST, "读取头像文件失败");
         }
-        String contentType = validateFile(config, file, bytes);
+        String contentType = validateFile(config, file, bytes, "头像");
         String objectKey = buildObjectKey(config.dir, "teachers", teacher.id, EXTENSIONS.get(contentType));
         putObject(config, objectKey, contentType, bytes);
         String avatarUrl = publicUrl(config.publicBaseUrl, objectKey);
@@ -154,7 +173,7 @@ public class UserAvatarService {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
-            throw new BizException(ErrorCode.BAD_REQUEST, "OSS 未启用，无法上传头像");
+            throw new BizException(ErrorCode.BAD_REQUEST, "OSS 未启用，无法上传文件");
         }
         if (!hasText(config.bucket) || !hasText(config.region) || !hasText(config.accessKeyId)
             || !hasText(config.accessKeySecret) || !hasText(config.publicBaseUrl)) {
@@ -168,42 +187,42 @@ public class UserAvatarService {
     /**
      * 校验File。不满足业务约束时直接抛出明确异常。
      */
-    private String validateFile(OssSettingsVO config, MultipartFile file, byte[] bytes) {
+    private String validateFile(OssSettingsVO config, MultipartFile file, byte[] bytes, String label) {
         if (file == null || file.isEmpty() || bytes == null || bytes.length == 0) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
-            throw new BizException(ErrorCode.BAD_REQUEST, "请选择头像文件");
+            throw new BizException(ErrorCode.BAD_REQUEST, "请选择" + label + "文件");
         }
         long maxBytes = (long) (config.maxSizeMb == null ? 5 : config.maxSizeMb) * 1024L * 1024L;
         if (bytes.length > maxBytes || file.getSize() > maxBytes) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
-            throw new BizException(ErrorCode.BAD_REQUEST, "头像文件不能超过 " + (config.maxSizeMb == null ? 5 : config.maxSizeMb) + " MB");
+            throw new BizException(ErrorCode.BAD_REQUEST, label + "文件不能超过 " + (config.maxSizeMb == null ? 5 : config.maxSizeMb) + " MB");
         }
         String contentType = normalizedContentType(file.getContentType());
         if (!SUPPORTED_CONTENT_TYPES.contains(contentType)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
-            throw new BizException(ErrorCode.BAD_REQUEST, "仅支持 JPG、PNG、GIF、WEBP、BMP 格式头像");
+            throw new BizException(ErrorCode.BAD_REQUEST, "仅支持 JPG、PNG、GIF、WEBP、BMP 格式的图片");
         }
-        String detectedType = detectImageType(bytes);
+        String detectedType = detectImageType(bytes, label);
         if (!contentType.equals(detectedType)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
-            throw new BizException(ErrorCode.BAD_REQUEST, "头像文件内容与声明格式不一致");
+            throw new BizException(ErrorCode.BAD_REQUEST, label + "文件内容与声明格式不一致");
         }
-        validateImageDimensions(contentType, bytes);
+        validateImageDimensions(contentType, bytes, label);
         return contentType;
     }
 
     /**
      * 封装detectImage类型相关逻辑。不满足业务约束时直接抛出明确异常。
      */
-    private String detectImageType(byte[] bytes) {
+    private String detectImageType(byte[] bytes, String label) {
         if (bytes.length >= 3
             && (bytes[0] & 0xff) == 0xff
             && (bytes[1] & 0xff) == 0xd8
@@ -247,13 +266,13 @@ public class UserAvatarService {
         /**
          * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
          */
-        throw new BizException(ErrorCode.BAD_REQUEST, "头像文件不是有效图片");
+        throw new BizException(ErrorCode.BAD_REQUEST, label + "文件不是有效图片");
     }
 
     /**
      * 校验ImageDimensions。不满足业务约束时直接抛出明确异常。
      */
-    private void validateImageDimensions(String contentType, byte[] bytes) {
+    private void validateImageDimensions(String contentType, byte[] bytes, String label) {
         if ("image/webp".equals(contentType)) {
             return;
         }
@@ -263,19 +282,19 @@ public class UserAvatarService {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */
-                throw new BizException(ErrorCode.BAD_REQUEST, "头像文件不是有效图片");
+                throw new BizException(ErrorCode.BAD_REQUEST, label + "文件不是有效图片");
             }
             if ((long) image.getWidth() * image.getHeight() > MAX_PIXELS) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */
-                throw new BizException(ErrorCode.BAD_REQUEST, "头像图片像素过大");
+                throw new BizException(ErrorCode.BAD_REQUEST, "图片文件像素过大");
             }
         } catch (IOException e) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
-            throw new BizException(ErrorCode.BAD_REQUEST, "头像文件不是有效图片");
+            throw new BizException(ErrorCode.BAD_REQUEST, label + "文件不是有效图片");
         }
     }
 
@@ -317,7 +336,7 @@ public class UserAvatarService {
         } catch (CosServiceException e) {
             throw new BizException(
                 ErrorCode.INTERNAL_ERROR,
-                "头像上传到腾讯云 COS 失败（HTTP " + e.getStatusCode() + "）"
+                "文件上传到腾讯云 COS 失败（HTTP " + e.getStatusCode() + "）"
             );
         } catch (CosClientException e) {
             throw new BizException(ErrorCode.INTERNAL_ERROR, "连接腾讯云 COS 失败，请检查 Region 和网络");

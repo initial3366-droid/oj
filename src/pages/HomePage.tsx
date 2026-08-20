@@ -1,13 +1,15 @@
 /**
  * 首页页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Card, Tag, Typography } from '@douyinfe/semi-ui';
-import { IconTreeTriangleDown, IconUserGroup, IconActivity } from '@douyinfe/semi-icons';
+import { Card, Tag, Typography } from 'antd';
+import { ExperimentOutlined, TrophyOutlined, TeamOutlined } from '@ant-design/icons';
 import { AnnouncementCard } from '../components/AnnouncementCard';
 import { HomeCarousel } from '../components/HomeCarousel';
 import { RatingTable } from '../components/RatingTable';
 import { UpcomingContests } from '../components/UpcomingContests';
 import { useOjData } from '../data/OjDataProvider';
+
+const { Text, Title } = Typography;
 
 /**
  * 渲染首页页面，并协调其数据加载、状态和交互。
@@ -44,12 +46,7 @@ export function HomePage() {
         }}
         className="home-stats-section"
       >
-        <Card
-          style={{
-            border: '1px solid var(--semi-color-border)',
-          }}
-          bodyStyle={{ padding: 20 }}
-        >
+        <Card styles={{ body: { padding: 20 } }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             <div
               style={{
@@ -58,29 +55,24 @@ export function HomePage() {
                 width: 48,
                 height: 48,
                 borderRadius: 8,
-                backgroundColor: 'var(--semi-color-primary-light-default)',
-                color: 'var(--semi-color-primary)',
+                backgroundColor: '#e8f1ff',
+                color: '#1677ff',
               }}
             >
-              <IconTreeTriangleDown size="extra-large" />
+              <ExperimentOutlined style={{ fontSize: 24 }} />
             </div>
             <div>
-              <Typography.Text type="tertiary" style={{ fontSize: 14 }}>
+              <Text type="secondary" style={{ fontSize: 14 }}>
                 题库题目
-              </Typography.Text>
-              <Typography.Title heading={3} style={{ margin: '4px 0 0 0' }}>
+              </Text>
+              <Title level={3} style={{ margin: '4px 0 0 0' }}>
                 {state.problems.length}
-              </Typography.Title>
+              </Title>
             </div>
           </div>
         </Card>
 
-        <Card
-          style={{
-            border: '1px solid var(--semi-color-border)',
-          }}
-          bodyStyle={{ padding: 20 }}
-        >
+        <Card styles={{ body: { padding: 20 } }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             <div
               style={{
@@ -89,29 +81,24 @@ export function HomePage() {
                 width: 48,
                 height: 48,
                 borderRadius: 8,
-                backgroundColor: 'var(--semi-color-success-light-default)',
-                color: 'var(--semi-color-success)',
+                backgroundColor: '#f0fff4',
+                color: '#52c41a',
               }}
             >
-              <IconActivity size="extra-large" />
+              <TrophyOutlined style={{ fontSize: 24 }} />
             </div>
             <div>
-              <Typography.Text type="tertiary" style={{ fontSize: 14 }}>
+              <Text type="secondary" style={{ fontSize: 14 }}>
                 进行中比赛
-              </Typography.Text>
-              <Typography.Title heading={3} style={{ margin: '4px 0 0 0' }}>
+              </Text>
+              <Title level={3} style={{ margin: '4px 0 0 0' }}>
                 {activeContestCount}
-              </Typography.Title>
+              </Title>
             </div>
           </div>
         </Card>
 
-        <Card
-          style={{
-            border: '1px solid var(--semi-color-border)',
-          }}
-          bodyStyle={{ padding: 20 }}
-        >
+        <Card styles={{ body: { padding: 20 } }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             <div
               style={{
@@ -124,15 +111,15 @@ export function HomePage() {
                 color: 'rgb(139, 92, 246)',
               }}
             >
-              <IconUserGroup size="extra-large" />
+              <TeamOutlined style={{ fontSize: 24 }} />
             </div>
             <div>
-              <Typography.Text type="tertiary" style={{ fontSize: 14 }}>
+              <Text type="secondary" style={{ fontSize: 14 }}>
                 上榜用户
-              </Typography.Text>
-              <Typography.Title heading={3} style={{ margin: '4px 0 0 0' }}>
+              </Text>
+              <Title level={3} style={{ margin: '4px 0 0 0' }}>
                 {Math.min(state.ratings.length, 10)}
-              </Typography.Title>
+              </Title>
             </div>
           </div>
         </Card>
@@ -141,14 +128,14 @@ export function HomePage() {
       <section style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
           <div>
-            <Typography.Title heading={3} style={{ margin: 0 }}>
+            <Title level={3} style={{ margin: 0 }}>
               全站 AC 榜
-            </Typography.Title>
-            <Typography.Text type="tertiary" style={{ marginTop: 8, display: 'block', fontSize: 14 }}>
+            </Title>
+            <Text type="secondary" style={{ marginTop: 8, display: 'block', fontSize: 14 }}>
               按非比赛 AC 题目数量排序，每日 00:00 刷新前十名。
-            </Typography.Text>
+            </Text>
           </div>
-          <Tag color="blue" size="large">
+          <Tag color="blue" style={{ fontSize: 14, padding: '4px 10px' }}>
             每日榜单
           </Tag>
         </div>

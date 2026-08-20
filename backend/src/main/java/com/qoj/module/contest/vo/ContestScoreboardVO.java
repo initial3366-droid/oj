@@ -16,6 +16,7 @@ public record ContestScoreboardVO(
     Integer durationMinutes,
     List<ContestScoreboardProblemVO> problems,
     List<ContestScoreboardRowVO> rows,
-    Boolean showClassOnScoreboard
+    Boolean showClassOnScoreboard,
+    String boardState
 ) {
 }

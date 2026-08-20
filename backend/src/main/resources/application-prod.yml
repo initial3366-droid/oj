@@ -4,3 +4,7 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+qoj:
+  openapi:
+    public-access: false

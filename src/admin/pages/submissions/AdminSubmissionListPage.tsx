@@ -39,15 +39,11 @@ interface SubmissionCase {
   id?: number | null;
   submissionId?: number | null;
   caseNo: number;
-  subtaskNo?: number | null;
   status: string;
   score?: number | null;
   maxScore?: number | null;
   timeMs?: number | null;
   memoryKb?: number | null;
-  inputPreview?: string | null;
-  outputPreview?: string | null;
-  expectedPreview?: string | null;
   judgeMessage?: string | null;
 }
 
@@ -166,7 +162,7 @@ export function AdminSubmissionListPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(10);
   const [filters, setFilters] = useState({
     id: '',
     userId: '',
@@ -330,17 +326,17 @@ export function AdminSubmissionListPage() {
     },
     { title: '比赛ID', dataIndex: 'contestId', width: 110, render: dash },
     { title: '比赛名称', dataIndex: 'contestTitle', width: 180, render: dash },
-    { title: '题单ID', dataIndex: 'practiceId', width: 110, render: dash },
-    { title: '题单名称', dataIndex: 'practiceTitle', width: 180, render: dash },
-    { title: '参赛者ID', dataIndex: 'participantId', width: 110, render: dash },
-    { title: '团队ID', dataIndex: 'teamId', width: 100, render: dash },
-    { title: '语言', dataIndex: 'language', width: 110 },
     {
       title: '状态',
       dataIndex: 'status',
       width: 130,
       render: (value: string) => <Tag color={statusColor(value)}>{value || '-'}</Tag>,
     },
+    { title: '题单ID', dataIndex: 'practiceId', width: 110, render: dash },
+    { title: '题单名称', dataIndex: 'practiceTitle', width: 180, render: dash },
+    { title: '参赛者ID', dataIndex: 'participantId', width: 110, render: dash },
+    { title: '团队ID', dataIndex: 'teamId', width: 100, render: dash },
+    { title: '语言', dataIndex: 'language', width: 110 },
     { title: '分数', dataIndex: 'score', width: 90, render: dash },
     { title: '通过测试点', key: 'caseCount', width: 120, render: (_: unknown, record: AdminSubmission) => caseCount(record) },
     { title: '运行时间(ms)', dataIndex: 'timeUsed', width: 130, render: dash },
@@ -523,21 +519,17 @@ export function AdminSubmissionListPage() {
               <Typography.Title heading={6}>测试点</Typography.Title>
               <Table
                 size="small"
-                rowKey={(record) => record.id ?? `${record.caseNo}-${record.subtaskNo ?? 'main'}-${record.status}`}
+                rowKey={(record) => record.id ?? `${record.caseNo}-${record.status}`}
                 pagination={false}
                 data={detail.cases || []}
                 columns={[
                   { title: 'ID', dataIndex: 'id', width: 90, render: dash },
                   { title: '测试点', dataIndex: 'caseNo', width: 120 },
-                  { title: '子任务', dataIndex: 'subtaskNo', width: 100, render: dash },
                   { title: '状态', dataIndex: 'status', width: 160, render: (value: string) => <Tag color={statusColor(value)}>{value}</Tag> },
                   { title: '得分', dataIndex: 'score', width: 90, render: dash },
                   { title: '满分', dataIndex: 'maxScore', width: 90, render: dash },
                   { title: '时间(ms)', dataIndex: 'timeMs', render: dash },
                   { title: '内存(KB)', dataIndex: 'memoryKb', render: dash },
-                  { title: '输入预览', dataIndex: 'inputPreview', width: 180, render: dash },
-                  { title: '输出预览', dataIndex: 'outputPreview', width: 180, render: dash },
-                  { title: '期望预览', dataIndex: 'expectedPreview', width: 180, render: dash },
                   { title: '判题信息', dataIndex: 'judgeMessage', width: 220, render: dash },
                 ]}
               />

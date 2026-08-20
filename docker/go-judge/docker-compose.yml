@@ -43,7 +43,7 @@ services:
       # worker is responsive and accepted the token without executing code.
       test:
         - CMD-SHELL
-        - test -s /usr/bin/qoj-csharp-launcher.exe && curl -fsS http://127.0.0.1:5050/version >/dev/null || exit 1
+        - curl -fsS http://127.0.0.1:5050/version >/dev/null || exit 1
       interval: 10s
       timeout: 3s
       retries: 12

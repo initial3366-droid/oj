@@ -4,6 +4,7 @@
 import { adminPath } from '../../../utils/adminPath';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { HtmlMathEditor } from '../../components/HtmlMathEditor';
 import {
   Button,
   Card,
@@ -44,6 +45,7 @@ import {
   fetchAdminContests,
   fetchAdminProblemTestCases,
   fetchContestDraft,
+  replayAdminContest,
   saveContestDraft,
   updateAdminContest,
   type AdminContest,
@@ -67,14 +69,13 @@ import {
 const { Row, Col } = Grid;
 const FormItem = Form.Item;
 const Step = Steps.Step;
-const TextArea = Input.TextArea;
 const RadioGroup = Radio.Group;
 const CheckboxGroup = Checkbox.Group;
 
 /**
  * 比赛模式类型别名，明确该模块内部及 API 边界使用的数据结构。
  */
-type ContestMode = 'add' | 'edit' | 'list' | 'rankings';
+type ContestMode = 'add' | 'edit' | 'list';
 /**
  * Audience类型别名，明确该模块内部及 API 边界使用的数据结构。
  */
@@ -115,7 +116,7 @@ const emptyDraft: ContestDraftPayload = {
   allowAfterEndViewProblem: true,
   allowAfterEndViewCode: false,
   enableCodeTemplates: false,
-  publicScoreboardEnabled: true,
+  publicScoreboardEnabled: false,
   showClassOnScoreboard: false,
   allowStarRegistration: false,
   allowViewAllSubmissions: true,
@@ -137,7 +138,6 @@ function adminToken() {
 function routeMode(pathname: string): ContestMode {
   if (pathname.endsWith('/new')) return 'add';
   if (pathname.endsWith('/edit')) return 'edit';
-  if (pathname.endsWith('/rankings')) return 'rankings';
   return 'list';
 }
 
@@ -390,6 +390,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
     startTime: nowLocalInput(),
   }));
   const [step, setStep] = useState(0);
+  const [draggingProblemId, setDraggingProblemId] = useState<number | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -406,6 +407,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
   const [listKeyword, setListKeyword] = useState('');
   const [editingHasPassword, setEditingHasPassword] = useState(false);
   const [judgeModeLocked, setJudgeModeLocked] = useState(false);
+  const [problemsLocked, setProblemsLocked] = useState(false);
   const saveTimer = useRef<number | null>(null);
 
   /**
@@ -476,7 +478,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
 
   useEffect(() => {
     if (!token) return;
-    if (mode !== 'list' && mode !== 'rankings') return;
+    if (mode !== 'list') return;
     loadContests();
   }, [mode, token]);
 
@@ -511,6 +513,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
         setProblems(allProblems);
         setEditingHasPassword(false);
         setJudgeModeLocked(false);
+        setProblemsLocked(false);
         setStep(0);
       })
       .catch((error) => {
@@ -578,6 +581,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
         setProblems(allProblems);
         setEditingHasPassword(contest.hasPassword);
         setJudgeModeLocked(contest.submissionCount > 0);
+        setProblemsLocked(contest.sourceContestId != null);
         setStep(0);
       })
       .catch((error) => {
@@ -819,6 +823,67 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
   }
 
   /**
+   * 拖拽排序：将 fromId 题目移动到 toId 题目所在位置，并重新分配 displayOrder 与编号（A/B/C…）。
+   */
+  function reorderProblem(fromId: number, toId: number) {
+    if (fromId === toId) return;
+    const next = [...selectedProblems];
+    const fromIndex = next.findIndex((item) => item.problemId === fromId);
+    const toIndex = next.findIndex((item) => item.problemId === toId);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    updateDraft({
+      ...draft,
+      problems: next.map((item, index) => ({
+        ...item,
+        displayOrder: index + 1,
+        label: labelOf(index),
+      })),
+    });
+  }
+
+  /**
+   * 已选题目表格的可拖拽行：通过 HTML5 拖拽实现上下拖动排序。
+   */
+  function draggableRow(props: any) {
+    const problemId = Number(props['data-row-key'] ?? props.record?.problemId);
+    const draggable = !Number.isNaN(problemId);
+    const isDragging = draggable && draggingProblemId === problemId;
+    return (
+      <tr
+        {...props}
+        draggable={draggable}
+        style={{
+          ...(props.style || {}),
+          cursor: draggable ? 'grab' : 'default',
+          background: isDragging ? 'var(--color-fill-2)' : undefined,
+        }}
+        onDragStart={(e) => {
+          if (!draggable) return;
+          e.dataTransfer.setData('text/plain', String(problemId));
+          e.dataTransfer.effectAllowed = 'move';
+          setDraggingProblemId(problemId);
+        }}
+        onDragOver={(e) => {
+          if (!draggable) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        }}
+        onDrop={(e) => {
+          if (!draggable) return;
+          e.preventDefault();
+          const fromId = Number(e.dataTransfer.getData('text/plain'));
+          if (!Number.isNaN(fromId)) {
+            reorderProblem(fromId, problemId);
+          }
+        }}
+        onDragEnd={() => setDraggingProblemId(null)}
+      />
+    );
+  }
+
+  /**
    * 封装change比赛类型相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
    */
   function changeContestType(type: ContestType) {
@@ -933,7 +998,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
         allowAfterEndViewProblem: draft.allowAfterEndViewProblem !== false,
         allowAfterEndViewCode: Boolean(draft.allowAfterEndViewCode),
         enableCodeTemplates: Boolean(draft.enableCodeTemplates),
-        publicScoreboardEnabled: draft.publicScoreboardEnabled !== false,
+        publicScoreboardEnabled: Boolean(draft.publicScoreboardEnabled),
         showClassOnScoreboard: Boolean(draft.showClassOnScoreboard),
         allowStarRegistration: Boolean(draft.allowStarRegistration),
         allowViewAllSubmissions: draft.allowViewAllSubmissions !== false,
@@ -941,10 +1006,14 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
       } satisfies ContestPayload;
 
       if (isEditing && numericContestId) {
+        // 重现赛题目已锁定：更新时不下发 problems 字段，后端也会拒绝改动题目。
+        const updatePayload: Partial<ContestPayload> = problemsLocked
+          ? { ...payload, problems: undefined }
+          : payload;
         if (portal === 'teacher') {
-          await teacherPut(`/api/admin/v1/contests/${numericContestId}`, payload);
+          await teacherPut(`/api/admin/v1/contests/${numericContestId}`, updatePayload);
         } else {
-          await updateAdminContest(token, numericContestId, payload);
+          await updateAdminContest(token, numericContestId, updatePayload);
         }
       } else {
         if (portal === 'teacher') {
@@ -977,6 +1046,24 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
   }
 
   /**
+   * 创建重现赛并跳转到编辑页：信息可二次编辑、题目已锁定。
+   */
+  async function replayContest(id: number) {
+    try {
+      const created = portal === 'teacher'
+        ? await teacherPost<AdminContest>(`/api/admin/v1/contests/${id}/replay`)
+        : await replayAdminContest(token, id);
+      Message.success('重现赛已创建，请编辑比赛信息');
+      const editPath = portal === 'teacher'
+        ? `/teacher/contests/${created.id}/edit`
+        : adminPath(`/contests/${created.id}/edit`);
+      navigate(editPath);
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '创建重现赛失败');
+    }
+  }
+
+  /**
    * 封装题目标题相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
    */
   function problemTitle(problemId: number) {
@@ -994,7 +1081,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
     return <Result status="403" title="请先登录后台" />;
   }
 
-  if (mode === 'list' || mode === 'rankings') {
+  if (mode === 'list') {
     const columns = [
       {
         title: 'ID',
@@ -1054,7 +1141,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
           <Space direction="vertical" size={2}>
             <Typography.Text>{value ? value.replace('T', ' ').slice(0, 16) : '-'}</Typography.Text>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {record.durationMinutes} 分钟
+              结束：{record.endTime ? new Date(record.endTime).toLocaleString('zh-CN', { hour12: false }) : '-'}
             </Typography.Text>
           </Space>
         ),
@@ -1067,30 +1154,29 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
       },
       {
         title: '操作',
-        width: '23%',
+        width: '25%',
         align: 'center' as const,
         render: (_: unknown, record: AdminContest) => (
           <Space size={0} style={{ flexWrap: 'nowrap', justifyContent: 'center' }}>
-            {mode === 'list' ? (
-              <>
-                <Button type="text" size="mini" onClick={() => navigate(`/admin/contests/${record.id}`)}>
-                  查看
-                </Button>
-                <Button type="text" size="mini" onClick={() => navigate(`/admin/contests/${record.id}/edit`)}>
-                  编辑
-                </Button>
-              </>
-            ) : null}
-            <Button type="text" size="mini" onClick={() => openPublicScoreboard(record.id)}>
-              外榜
+            <Button type="text" size="mini" onClick={() => navigate(`/admin/contests/${record.id}`)}>
+              查看
             </Button>
-            {mode === 'list' ? (
-              <Popconfirm title="确定要删除该比赛吗？" onOk={() => removeContest(record.id)}>
-                <Button type="text" size="mini" status="danger">
-                  删除
-                </Button>
-              </Popconfirm>
-            ) : null}
+            <Button type="text" size="mini" onClick={() => navigate(`/admin/contests/${record.id}/edit`)}>
+              编辑
+            </Button>
+            <Button type="text" size="mini" onClick={() => replayContest(record.id)}>
+              重现赛
+            </Button>
+            {record.publicScoreboardEnabled === true && (
+              <Button type="text" size="mini" onClick={() => openPublicScoreboard(record.id)}>
+                外榜
+              </Button>
+            )}
+            <Popconfirm title="确定要删除该比赛吗？" onOk={() => removeContest(record.id)}>
+              <Button type="text" size="mini" status="danger">
+                删除
+              </Button>
+            </Popconfirm>
           </Space>
         ),
       },
@@ -1098,17 +1184,15 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
 
     return (
       <Card
-        title={mode === 'rankings' ? '比赛排行榜' : '比赛列表'}
+        title="比赛列表"
         extra={
           <Space>
             <Button icon={<IconRefresh />} onClick={loadContests} loading={loading}>
               刷新
             </Button>
-            {mode === 'list' ? (
-              <Button type="primary" icon={<IconPlus />} onClick={() => navigate(contestNewPath)}>
-                添加比赛
-              </Button>
-            ) : null}
+            <Button type="primary" icon={<IconPlus />} onClick={() => navigate(contestNewPath)}>
+              添加比赛
+            </Button>
           </Space>
         }
       >
@@ -1292,15 +1376,58 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
     },
   ];
 
+  const lockedSelectedColumns = [
+    {
+      title: '编号',
+      dataIndex: 'label',
+      width: 80,
+      align: 'center' as const,
+      render: (value: string) => <Tag color="arcoblue">{value}</Tag>,
+    },
+    {
+      title: '题目名称',
+      dataIndex: 'problemId',
+      render: (value: number) => problemTitle(value),
+    },
+    {
+      title: '测试点',
+      dataIndex: 'problemId',
+      width: 100,
+      align: 'center' as const,
+      render: (value: number) => {
+        const problem = problems.find((p) => numericProblemId(p.id) === value);
+        return problem?.testCaseCount ?? 0;
+      },
+    },
+    {
+      title: '分数',
+      dataIndex: 'score',
+      width: 100,
+      align: 'center' as const,
+      render: (value: number) => draft.type === 'OI' ? (value ?? 0) : '-',
+    },
+    {
+      title: '测试点分数',
+      render: (_: unknown, record: ContestProblemPayload) => {
+        if (draft.type !== 'OI') return '-';
+        if (!record.caseScores?.length) return <Typography.Text type="secondary">暂无测试点分数</Typography.Text>;
+        return (
+          <Space wrap>
+            {record.caseScores.map((caseScore) => (
+              <Tag key={caseScore.caseNo} size="small">#{caseScore.caseNo}: {caseScore.score}</Tag>
+            ))}
+          </Space>
+        );
+      },
+    },
+  ];
+
   return (
     <Spin loading={loading} style={{ width: '100%' }}>
       <Card
         title={isEditing ? '编辑比赛' : '添加比赛'}
         extra={
           <Space>
-            <Typography.Text type="secondary">
-              {isEditing ? '编辑模式' : savingDraft ? '草稿保存中...' : '草稿自动保存到 Redis'}
-            </Typography.Text>
             <Button icon={<IconLeft />} onClick={() => navigate(contestListPath)}>
               返回列表
             </Button>
@@ -1503,7 +1630,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
                           uncheckedText="关闭"
                           onChange={(checked) => updateDraft({ ...draft, allowAfterEndViewCode: checked })}
                         />
-                        <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
+                        <div style={{ fontSize: 12, color: 'var(--qoj-color-text-2)', marginTop: 4 }}>
                           比赛结束后可查看他人代码
                         </div>
                       </FormItem>
@@ -1516,19 +1643,22 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
                           uncheckedText="关闭"
                           onChange={(checked) => updateDraft({ ...draft, enableCodeTemplates: checked })}
                         />
-                        <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
+                        <div style={{ fontSize: 12, color: 'var(--qoj-color-text-2)', marginTop: 4 }}>
                           开启后，比赛答题页会填充后台配置的语言初始代码
                         </div>
                       </FormItem>
                     </Col>
                     <Col xs={24} md={8}>
-                      <FormItem label="公共榜单">
+                      <FormItem label="开启外榜">
                         <Switch
-                          checked={draft.publicScoreboardEnabled !== false}
+                          checked={Boolean(draft.publicScoreboardEnabled)}
                           checkedText="开启"
                           uncheckedText="关闭"
                           onChange={(checked) => updateDraft({ ...draft, publicScoreboardEnabled: checked })}
                         />
+                        <div style={{ fontSize: 12, color: 'var(--qoj-color-text-2)', marginTop: 4 }}>
+                          关闭后前台不显示外榜入口，外榜地址也无法访问
+                        </div>
                       </FormItem>
                     </Col>
                     <Col xs={24} md={8}>
@@ -1539,7 +1669,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
                           uncheckedText="隐藏"
                           onChange={(checked) => updateDraft({ ...draft, showClassOnScoreboard: checked })}
                         />
-                        <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
+                        <div style={{ fontSize: 12, color: 'var(--qoj-color-text-2)', marginTop: 4 }}>
                           比赛榜单显示参赛者班级
                         </div>
                       </FormItem>
@@ -1562,7 +1692,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
                           uncheckedText="隐藏"
                           onChange={(checked) => updateDraft({ ...draft, allowViewAllSubmissions: checked })}
                         />
-                        <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 4 }}>
+                        <div style={{ fontSize: 12, color: 'var(--qoj-color-text-2)', marginTop: 4 }}>
                           关闭后参赛者仅能查看自己的状态
                         </div>
                       </FormItem>
@@ -1611,24 +1741,50 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
               </Col>
               <Col span={24}>
                 <FormItem label="比赛介绍">
-                  <TextArea
-                    rows={7}
-                    placeholder="请输入比赛介绍"
+                  <HtmlMathEditor
                     value={draft.description ?? ''}
                     onChange={(value) => updateDraft({ ...draft, description: value })}
+                    placeholder="请输入比赛介绍，支持 HTML 格式"
+                    rows={7}
                   />
                 </FormItem>
               </Col>
             </Row>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Button status="danger" icon={<IconDelete />} onClick={clearAll}>
-                清空
-              </Button>
+              {problemsLocked ? (
+                <span />
+              ) : (
+                <Button status="danger" icon={<IconDelete />} onClick={clearAll}>
+                  清空
+                </Button>
+              )}
               <Button type="primary" onClick={goNext}>
                 下一步
               </Button>
             </div>
           </Form>
+        ) : problemsLocked ? (
+          <Space direction="vertical" size={20} style={{ width: '100%' }}>
+            <Card title="重现赛题目（已锁定）" bordered>
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Typography.Text type="secondary">
+                  重现赛题目已从原比赛复制并锁定，不可增删、排序或修改分数。
+                </Typography.Text>
+                <Table
+                  columns={lockedSelectedColumns}
+                  data={selectedProblems}
+                  rowKey="problemId"
+                  pagination={false}
+                />
+              </Space>
+            </Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <Button onClick={() => setStep(0)}>上一步</Button>
+              <Button type="primary" icon={<IconSave />} loading={submitting} onClick={submitContest}>
+                更新比赛
+              </Button>
+            </div>
+          </Space>
         ) : (
           <Space direction="vertical" size={20} style={{ width: '100%' }}>
             <Space style={{ width: '100%', justifyContent: 'space-between' }}>
@@ -1722,7 +1878,11 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
                 data={selectedProblems}
                 rowKey="problemId"
                 pagination={false}
+                components={{ body: { row: draggableRow } }}
               />
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                提示：可直接上下拖动题目行调整顺序
+              </Typography.Text>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>

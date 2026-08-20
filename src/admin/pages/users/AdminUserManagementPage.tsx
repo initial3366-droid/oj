@@ -720,7 +720,7 @@ export function AdminUserManagementPage() {
             }}
             columns={[
               { title: '提交ID', dataIndex: 'id', width: 90, align: 'center' },
-              { title: '题目', dataIndex: 'problemTitle', render: (value) => dash(value) },
+              { title: '题目', dataIndex: 'problemTitle', width: 220, ellipsis: true, render: (value) => dash(value) },
               { title: '语言', dataIndex: 'language', width: 100, align: 'center', render: (value) => dash(value) },
               {
                 title: '状态',
@@ -730,8 +730,6 @@ export function AdminUserManagementPage() {
                 render: (value) => value ? <Tag color={statusColor(value)}>{value}</Tag> : '-',
               },
               { title: '分数', dataIndex: 'score', width: 90, align: 'center', render: (value) => dash(value) },
-              { title: '时间', dataIndex: 'timeUsed', width: 100, align: 'center', render: (value) => value == null ? '-' : `${value} ms` },
-              { title: '内存', dataIndex: 'memoryUsed', width: 110, align: 'center', render: (value) => value == null ? '-' : `${value} KB` },
               { title: '提交时间', dataIndex: 'submitTime', width: 180, render: (value) => formatDate(value) },
             ]}
           />

@@ -9,6 +9,8 @@ import com.qoj.module.contest.entity.ContestProblem;
 import com.qoj.module.contest.mapper.ContestMapper;
 import com.qoj.module.contest.mapper.ContestParticipantMapper;
 import com.qoj.module.contest.mapper.ContestProblemMapper;
+import com.qoj.module.problem.entity.Problem;
+import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.mapper.SubmissionMapper;
 import com.qoj.module.user.entity.User;
@@ -54,6 +56,7 @@ public class ClicsExportService {
     private final ContestMapper contestMapper;
     private final ContestParticipantMapper participantMapper;
     private final ContestProblemMapper contestProblemMapper;
+    private final ProblemMapper problemMapper;
     private final SubmissionMapper submissionMapper;
     private final UserMapper userMapper;
     private final ContestXcpcioConfigMapper configMapper;
@@ -66,6 +69,7 @@ public class ClicsExportService {
         ContestMapper contestMapper,
         ContestParticipantMapper participantMapper,
         ContestProblemMapper contestProblemMapper,
+        ProblemMapper problemMapper,
         SubmissionMapper submissionMapper,
         UserMapper userMapper,
         ContestXcpcioConfigMapper configMapper
@@ -73,6 +77,7 @@ public class ClicsExportService {
         this.contestMapper = contestMapper;
         this.participantMapper = participantMapper;
         this.contestProblemMapper = contestProblemMapper;
+        this.problemMapper = problemMapper;
         this.submissionMapper = submissionMapper;
         this.userMapper = userMapper;
         this.configMapper = configMapper;
@@ -179,15 +184,34 @@ public class ClicsExportService {
     }
 
     public List<ClicsProblemDTO> problems(Long contestId) {
-        return contestProblems(contestId).stream()
-            .map(problem -> new ClicsProblemDTO(
-                String.valueOf(problem.id),
-                problem.displayOrder == null ? 0 : problem.displayOrder,
-                firstNonBlank(problem.label, labelFor(problem.displayOrder)),
-                firstNonBlank(problem.title, firstNonBlank(problem.label, String.valueOf(problem.id))),
-                problem.timeLimit == null ? null : problem.timeLimit / 1000.0,
-                null
-            ))
+        List<ContestProblem> contestProblems = contestProblems(contestId);
+        // 动态引用原题：标题与时限实时从原题读取
+        List<Long> sourceProblemIds = contestProblems.stream()
+            .map(problem -> problem.problemId)
+            .filter(Objects::nonNull)
+            .distinct()
+            .toList();
+        Map<Long, Problem> sourceProblemById = sourceProblemIds.isEmpty()
+            ? Map.of()
+            : problemMapper.selectBatchIds(sourceProblemIds).stream()
+                .collect(Collectors.toMap(problem -> problem.id, problem -> problem));
+        return contestProblems.stream()
+            .map(contestProblem -> {
+                Problem source = contestProblem.problemId == null ? null : sourceProblemById.get(contestProblem.problemId);
+                String title = firstNonBlank(
+                    source == null ? null : source.title,
+                    firstNonBlank(contestProblem.label, String.valueOf(contestProblem.id))
+                );
+                Double timeLimit = source == null || source.timeLimit == null ? null : source.timeLimit / 1000.0;
+                return new ClicsProblemDTO(
+                    String.valueOf(contestProblem.id),
+                    contestProblem.displayOrder == null ? 0 : contestProblem.displayOrder,
+                    firstNonBlank(contestProblem.label, labelFor(contestProblem.displayOrder)),
+                    title,
+                    timeLimit,
+                    null
+                );
+            })
             .toList();
     }
 

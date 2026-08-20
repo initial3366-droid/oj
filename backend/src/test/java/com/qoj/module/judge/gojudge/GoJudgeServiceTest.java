@@ -37,6 +37,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class GoJudgeServiceTest {
     private static final String FILE_ID = "compiled_file-1";
+    private static final String CHECKER_FILE_ID = "compiled_checker-1";
 
     @Mock private GoJudgeClient client;
 
@@ -66,9 +67,6 @@ class GoJudgeServiceTest {
             () -> assertTrue(service.supportsLanguage("python3")),
             () -> assertTrue(service.supportsLanguage("py")),
             () -> assertTrue(service.supportsLanguage("java")),
-            () -> assertTrue(service.supportsLanguage("c#")),
-            () -> assertTrue(service.supportsLanguage("csharp")),
-            () -> assertTrue(service.supportsLanguage("cs")),
             () -> assertFalse(service.supportsLanguage(null)),
             () -> assertFalse(service.supportsLanguage("")),
             () -> assertFalse(service.supportsLanguage("javascript")),
@@ -174,6 +172,7 @@ class GoJudgeServiceTest {
             source,
             1000,
             64,
+            null,
             List.of(new JudgeTask.TestCase(1, input, "ok\n"))
         ));
 
@@ -197,6 +196,50 @@ class GoJudgeServiceTest {
     }
 
     @Test
+    void checkerRunsWithTheFixedTestlibAbiAndCanRejectOutput() {
+        String checker = "#include \"testlib.h\"\nint main(int argc, char** argv) { return 1; }";
+        when(client.run(any(RunRequest.class), any(Duration.class)))
+            .thenReturn(List.of(compileSuccess("main")))
+            .thenReturn(List.of(compileSuccess("checker", CHECKER_FILE_ID)))
+            .thenReturn(List.of(runResult("Accepted", 0, "999\n")))
+            .thenReturn(List.of(runResult("Nonzero Exit Status", 1, "", "not a valid construction")));
+
+        JudgeResult result = service.judge(new JudgeTask(
+            9L,
+            "cpp",
+            "int main() { return 0; }",
+            1000,
+            64,
+            checker,
+            List.of(new JudgeTask.TestCase(1, "input\n", "jury answer\n"))
+        ));
+
+        assertEquals(SubmissionStatus.WA, result.status());
+        assertEquals("not a valid construction", result.caseResults().get(0).message());
+
+        ArgumentCaptor<RunRequest> requestCaptor = ArgumentCaptor.forClass(RunRequest.class);
+        verify(client, times(4)).run(requestCaptor.capture(), any(Duration.class));
+        Command checkerCompile = requestCaptor.getAllValues().get(1).cmd().get(0);
+        Command checkerRun = requestCaptor.getAllValues().get(3).cmd().get(0);
+        assertEquals(
+            List.of(
+                "/usr/bin/g++", "-std=c++17", "-O2", "-pipe",
+                "-I", ".", "checker.cpp", "-o", "checker"
+            ),
+            checkerCompile.args()
+        );
+        assertEquals(List.of("./checker", "input.txt", "output.txt", "answer.txt"), checkerRun.args());
+        assertEquals(checker, checkerCompile.copyIn().get("checker.cpp").content());
+        assertTrue(checkerCompile.copyIn().get("testlib.h").content().contains("registerTestlibCmd"));
+        assertEquals(CHECKER_FILE_ID, checkerRun.copyIn().get("checker").fileId());
+        assertEquals("input\n", checkerRun.copyIn().get("input.txt").content());
+        assertEquals("999\n", checkerRun.copyIn().get("output.txt").content());
+        assertEquals("jury answer\n", checkerRun.copyIn().get("answer.txt").content());
+        verify(client).deleteFile(FILE_ID);
+        verify(client).deleteFile(CHECKER_FILE_ID);
+    }
+
+    @Test
     void javaCompilationUsesOnlyTheImageOwnedWrapper() {
         when(client.run(any(RunRequest.class), any(Duration.class)))
             .thenReturn(List.of(compileSuccess("main.jar")))
@@ -213,29 +256,22 @@ class GoJudgeServiceTest {
     }
 
     @Test
-    void csharpCompilationAndExecutionUseFixedMonoCommands() {
-        String source = "using System; class Program { static void Main() { Console.WriteLine(42); } }";
+    void acceptsEffectiveLimitsAtDoubleThePublishedMaximum() {
         when(client.run(any(RunRequest.class), any(Duration.class)))
-            .thenReturn(List.of(compileSuccess("main.exe")))
-            .thenReturn(List.of(runResult("Accepted", 0, "42\n")));
+            .thenReturn(List.of(compileSuccess("main.py")))
+            .thenReturn(List.of(runResult("Accepted", 0, "ok\n")));
 
-        service.judge(task("csharp", source, "42\n"));
+        JudgeResult result = service.judge(new JudgeTask(
+            1L,
+            "python",
+            "print('ok')",
+            120000,
+            2048,
+            null,
+            List.of(new JudgeTask.TestCase(1, "", "ok\n"))
+        ));
 
-        ArgumentCaptor<RunRequest> requestCaptor = ArgumentCaptor.forClass(RunRequest.class);
-        verify(client, times(2)).run(requestCaptor.capture(), any(Duration.class));
-        Command compileCommand = requestCaptor.getAllValues().get(0).cmd().get(0);
-        Command runCommand = requestCaptor.getAllValues().get(1).cmd().get(0);
-        assertEquals(
-            List.of("/usr/bin/mcs", "-optimize+", "-out:main.exe", "Main.cs"),
-            compileCommand.args()
-        );
-        assertEquals(
-            List.of("/usr/bin/mono", "/usr/bin/qoj-csharp-launcher.exe", "main.exe"),
-            runCommand.args()
-        );
-        assertEquals(List.of("Main.cs"), List.copyOf(compileCommand.copyIn().keySet()));
-        assertEquals(source, compileCommand.copyIn().get("Main.cs").content());
-        assertEquals(FILE_ID, runCommand.copyIn().get("main.exe").fileId());
+        assertEquals(SubmissionStatus.AC, result.status());
     }
 
     private JudgeTask task(String language, String code, String expectedOutput) {
@@ -248,11 +284,16 @@ class GoJudgeServiceTest {
             code,
             1000,
             64,
+            null,
             List.of(new JudgeTask.TestCase(1, "", expectedOutput))
         );
     }
 
     private static Result compileSuccess(String artifactName) {
+        return compileSuccess(artifactName, FILE_ID);
+    }
+
+    private static Result compileSuccess(String artifactName, String fileId) {
         /**
          * 封装结果相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
@@ -264,11 +305,15 @@ class GoJudgeServiceTest {
             0,
             0,
             Map.of("stdout", "", "stderr", ""),
-            Map.of(artifactName, FILE_ID)
+            Map.of(artifactName, fileId)
         );
     }
 
     private static Result runResult(String status, int exitStatus, String stdout) {
+        return runResult(status, exitStatus, stdout, "");
+    }
+
+    private static Result runResult(String status, int exitStatus, String stdout, String stderr) {
         /**
          * 封装结果相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
@@ -279,7 +324,7 @@ class GoJudgeServiceTest {
             1_500_001,
             2_049,
             0,
-            Map.of("stdout", stdout, "stderr", ""),
+            Map.of("stdout", stdout, "stderr", stderr),
             Map.of()
         );
     }

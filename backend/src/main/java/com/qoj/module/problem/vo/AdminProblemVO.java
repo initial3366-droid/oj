@@ -22,6 +22,8 @@ public record AdminProblemVO(
     Long folderId,
     String folderName,
     BigDecimal acRate,
+    Long submissionCount,
+    Long acceptedCount,
     LocalDateTime createdAt,
     List<ProblemSampleCaseVO> samples,
     Long testCaseCount,
@@ -37,7 +39,8 @@ public record AdminProblemVO(
     String majorName,
     String studentPublishStatus,
     Boolean owner,
-    Boolean canEdit
+    Boolean canEdit,
+    Boolean specialJudge
 ) {
     /**
      * Converts this admin VO to a public VO by excluding admin-only fields.
@@ -61,7 +64,8 @@ public record AdminProblemVO(
             samples,
             testCaseCount,
             ownerName,
-            attemptStatus
+            attemptStatus,
+            specialJudge
         );
     }
 }

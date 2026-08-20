@@ -57,6 +57,11 @@ public class SubmissionAccessPolicy extends AccessPolicy<Submission> {
             return true;
         }
 
+        // 普通练习提交（非比赛）：登录用户可查看全部提交（含他人）
+        if (submission.contestId == null) {
+            return true;
+        }
+
         /**
          * 校验AndLog。调用前会结合当前登录身份执行权限判断。
          */
@@ -83,6 +88,11 @@ public class SubmissionAccessPolicy extends AccessPolicy<Submission> {
 
         // 用户可以查看自己的提交代码
         if (submission.userId.equals(user.id())) {
+            return true;
+        }
+
+        // 普通练习提交（非比赛）：登录用户可查看他人代码（只读）
+        if (submission.contestId == null) {
             return true;
         }
 

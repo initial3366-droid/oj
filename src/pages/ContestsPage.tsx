@@ -1,8 +1,9 @@
 /**
  * Contests页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Button, Checkbox, Tag, Typography, Spin, Modal, Banner, Space, Table, Input, Select } from '@douyinfe/semi-ui';
-import { IconCheckCircleStroked, IconCode, IconShield, IconSearch } from '@douyinfe/semi-icons';
+import { Alert, Button, Checkbox, Input, Modal, Select, Space, Spin, Table, Tag, Typography } from 'antd';
+import { CodeOutlined, SafetyCertificateOutlined, SearchOutlined } from '@ant-design/icons';
+import type { TableColumnsType } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import {
   fetchContestRegistrationOptions,
@@ -12,6 +13,8 @@ import {
   type PublicContest,
 } from '../data/apiClient';
 import { PageContainer } from '../components/common';
+
+const { Text } = Typography;
 
 /**
  * 封装状态Text相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
@@ -25,10 +28,10 @@ function statusText(status: PublicContest['status']) {
 /**
  * 封装状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
-function statusColor(status: PublicContest['status']): 'green' | 'grey' | 'blue' {
-  if (status === 'RUNNING') return 'green';
-  if (status === 'ENDED') return 'grey';
-  return 'blue';
+function statusColor(status: PublicContest['status']): 'success' | 'default' | 'processing' {
+  if (status === 'RUNNING') return 'success';
+  if (status === 'ENDED') return 'default';
+  return 'processing';
 }
 
 /**
@@ -72,7 +75,6 @@ export function ContestsPage() {
   const [message, setMessage] = useState('');
   const [activeContest, setActiveContest] = useState<PublicContest | null>(null);
   const [options, setOptions] = useState<ContestRegistrationOption[]>([]);
-  const [selectedKey, setSelectedKey] = useState('');
   const [starred, setStarred] = useState(false);
   const [registrationPassword, setRegistrationPassword] = useState('');
   const [optionLoading, setOptionLoading] = useState(false);
@@ -114,19 +116,11 @@ export function ContestsPage() {
   }, []);
 
   /**
-   * 封装selectedOption相关逻辑。对原始数据进行派生或聚合。
-   */
-  const selectedOption = useMemo(() => {
-    return options.find((item) => `${item.identityType}:${item.identityId ?? ''}` === selectedKey);
-  }, [options, selectedKey]);
-
-  /**
    * 封装open注册相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
    */
   const openRegister = async (contest: PublicContest) => {
     setActiveContest(contest);
     setOptions([]);
-    setSelectedKey('');
     setStarred(Boolean(contest.registeredStarred));
     setRegistrationPassword('');
     setMessage('');
@@ -134,15 +128,6 @@ export function ContestsPage() {
     try {
       const visibleOptions = await fetchContestRegistrationOptions(contest.id);
       setOptions(visibleOptions);
-      const currentKey = contest.registeredIdentityType
-        ? `${contest.registeredIdentityType}:${contest.registeredIdentityId ?? ''}`
-        : '';
-      const firstAvailable = visibleOptions.find((item) => item.available);
-      setSelectedKey(visibleOptions.some((item) => `${item.identityType}:${item.identityId ?? ''}` === currentKey)
-        ? currentKey
-        : firstAvailable
-          ? `${firstAvailable.identityType}:${firstAvailable.identityId ?? ''}`
-          : '');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '报名选项加载失败');
       setActiveContest(null);
@@ -155,7 +140,8 @@ export function ContestsPage() {
    * 创建或提交注册。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
    */
   const submitRegister = async () => {
-    if (!activeContest || !selectedOption || !selectedOption.available) {
+    const option = options[0];
+    if (!activeContest || !option?.available) {
       return;
     }
     setRegistering(true);
@@ -178,26 +164,26 @@ export function ContestsPage() {
     }
   };
 
-  const columns = [
+  const columns: TableColumnsType<PublicContest> = [
     {
       title: '比赛名称',
       dataIndex: 'title',
-      render: (title: string, contest: PublicContest) => (
+      render: (title: string, contest) => (
         <div style={{ minWidth: 0 }}>
-          <Typography.Text
+          <Text
             strong
-            ellipsis={{ showTooltip: true }}
-            style={{ cursor: 'pointer', color: 'var(--semi-color-link)' }}
+            ellipsis={{ tooltip: title }}
+            style={{ cursor: 'pointer', color: '#1677ff' }}
             onClick={() => { window.location.href = `/contests/${contest.id}`; }}
           >
             {title}
-          </Typography.Text>
+          </Text>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-            <Tag color={statusColor(contest.status)} size="small">{statusText(contest.status)}</Tag>
-            <Tag size="small" type="ghost">{contest.type}</Tag>
-            {contest.allowStarRegistration ? <Tag color="amber" size="small">支持打星</Tag> : null}
-            {contest.registered ? <Tag color="green" size="small">已报名</Tag> : null}
-            {contest.registeredStarred ? <Tag color="amber" size="small">打星</Tag> : null}
+            <Tag color={statusColor(contest.status)} style={{ marginInlineEnd: 0 }}>{statusText(contest.status)}</Tag>
+            <Tag style={{ marginInlineEnd: 0 }}>{contest.type}</Tag>
+            {contest.allowStarRegistration ? <Tag color="gold" style={{ marginInlineEnd: 0 }}>支持打星</Tag> : null}
+            {contest.registered ? <Tag color="success" style={{ marginInlineEnd: 0 }}>已报名</Tag> : null}
+            {contest.registeredStarred ? <Tag color="gold" style={{ marginInlineEnd: 0 }}>打星</Tag> : null}
           </div>
         </div>
       ),
@@ -205,20 +191,20 @@ export function ContestsPage() {
     {
       title: '范围/报名',
       width: 180,
-      render: (_: unknown, contest: PublicContest) => (
+      render: (_: unknown, contest) => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <Typography.Text>{audienceText(contest)}</Typography.Text>
-          <Typography.Text type="tertiary" style={{ fontSize: 13 }}>{registrationText(contest.registrationType)}</Typography.Text>
+          <Text>{audienceText(contest)}</Text>
+          <Text type="secondary" style={{ fontSize: 13 }}>{registrationText(contest.registrationType)}</Text>
         </div>
       ),
     },
     {
       title: '时间',
       width: 260,
-      render: (_: unknown, contest: PublicContest) => (
+      render: (_: unknown, contest) => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <Typography.Text type="secondary" style={{ fontSize: 13 }}>开始：{formatDateTime(contest.startTime)}</Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 13 }}>结束：{formatDateTime(contest.endTime)}</Typography.Text>
+          <Text type="secondary" style={{ fontSize: 13 }}>开始：{formatDateTime(contest.startTime)}</Text>
+          <Text type="secondary" style={{ fontSize: 13 }}>结束：{formatDateTime(contest.endTime)}</Text>
         </div>
       ),
     },
@@ -226,17 +212,17 @@ export function ContestsPage() {
       title: '报名人数',
       dataIndex: 'participantCount',
       width: 110,
-      render: (count: number) => <Typography.Text>{count} 人</Typography.Text>,
+      render: (count: number) => <Text>{count} 人</Text>,
     },
     {
       title: '操作',
       width: 260,
-      render: (_: unknown, contest: PublicContest) => (
-        <Space spacing={8} wrap>
+      render: (_: unknown, contest) => (
+        <Space size={8} wrap>
           {contest.status === 'ENDED' ? (
             <Button
               type="primary"
-              icon={<IconCode />}
+              icon={<CodeOutlined />}
               onClick={() => {
                 window.location.href = `/contests/${contest.id}`;
               }}
@@ -250,8 +236,7 @@ export function ContestsPage() {
           )}
           {contest.registered && contest.status !== 'ENDED' && (
             <Button
-              theme="borderless"
-              icon={<IconCode />}
+              icon={<CodeOutlined />}
               onClick={() => {
                 window.location.href = `/contests/${contest.id}`;
               }}
@@ -259,10 +244,9 @@ export function ContestsPage() {
               进入
             </Button>
           )}
-          {contest.publicScoreboardEnabled !== false && (
+          {contest.publicScoreboardEnabled === true && (
             <Button
-              theme="borderless"
-              icon={<IconShield />}
+              icon={<SafetyCertificateOutlined />}
               onClick={() => {
                 window.location.href = `/contests/${contest.id}/public-scoreboard`;
               }}
@@ -278,14 +262,13 @@ export function ContestsPage() {
   return (
     <PageContainer
       title="比赛"
-      subtitle="Contest Center"
-      description="比赛报名、参赛与提交统计。"
     >
       {message && (
-        <Banner
+        <Alert
           type="info"
-          description={message}
-          closeIcon={null}
+          message={message}
+          showIcon={false}
+          banner
           style={{ marginBottom: 24 }}
         />
       )}
@@ -294,8 +277,8 @@ export function ContestsPage() {
         <div
           style={{
             borderRadius: 8,
-            border: '1px solid var(--semi-color-border)',
-            background: 'var(--semi-color-bg-0)',
+            border: '1px solid #f0f0f0',
+            background: '#ffffff',
             padding: '40px 20px',
             textAlign: 'center',
           }}
@@ -308,24 +291,24 @@ export function ContestsPage() {
         <>
           <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
             <Input
-              prefix={<IconSearch />}
+              prefix={<SearchOutlined />}
               placeholder="搜索比赛名称"
               value={searchKeyword}
-              onChange={(v) => setSearchKeyword(v)}
+              onChange={(event) => setSearchKeyword(event.target.value)}
               style={{ width: 260 }}
-              showClear
+              allowClear
             />
             <Select
               placeholder="赛制"
               value={typeFilter || undefined}
               onChange={(v) => setTypeFilter(typeof v === 'string' ? v : '')}
               style={{ width: 140 }}
-              emptyContent
-            >
-              <Select.Option value="">全部赛制</Select.Option>
-              <Select.Option value="ACM">ACM</Select.Option>
-              <Select.Option value="OI">OI</Select.Option>
-            </Select>
+              options={[
+                { label: '全部赛制', value: '' },
+                { label: 'ACM', value: 'ACM' },
+                { label: 'OI', value: 'OI' },
+              ]}
+            />
           </div>
           <Table
             rowKey="id"
@@ -340,26 +323,26 @@ export function ContestsPage() {
         <div
           style={{
             borderRadius: 8,
-            border: '1px solid var(--semi-color-border)',
-            background: 'var(--semi-color-bg-0)',
+            border: '1px solid #f0f0f0',
+            background: '#ffffff',
             padding: '40px 20px',
             textAlign: 'center',
           }}
         >
-          <Typography.Text type="tertiary">暂无比赛</Typography.Text>
+          <Text type="secondary">暂无比赛</Text>
         </div>
       )}
 
       <Modal
         title="比赛报名"
-        visible={!!activeContest}
-          onCancel={() => {
-            if (!registering) {
-              setActiveContest(null);
-              setRegistrationPassword('');
-              setStarred(false);
-            }
-          }}
+        open={!!activeContest}
+        onCancel={() => {
+          if (!registering) {
+            setActiveContest(null);
+            setRegistrationPassword('');
+            setStarred(false);
+          }
+        }}
         footer={
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
             <Button onClick={() => {
@@ -369,7 +352,7 @@ export function ContestsPage() {
             }}>取消</Button>
             <Button
               type="primary"
-              disabled={!selectedOption?.available || registering || Boolean(activeContest?.hasPassword && !registrationPassword.trim())}
+              disabled={!options[0]?.available || registering || Boolean(activeContest?.hasPassword && !registrationPassword.trim())}
               loading={registering}
               onClick={submitRegister}
             >
@@ -380,92 +363,66 @@ export function ContestsPage() {
       >
         {activeContest && (
           <div>
-            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
               {activeContest.title}
-            </Typography.Text>
+            </Text>
+
+            {optionLoading ? (
+              <div
+                style={{
+                  borderRadius: 6,
+                  border: '1px solid #f0f0f0',
+                  backgroundColor: '#fafafa',
+                  padding: '32px 16px',
+                  textAlign: 'center',
+                }}
+              >
+                <Spin tip="报名信息加载中" />
+              </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    marginBottom: 16,
+                    borderRadius: 6,
+                    border: '1px solid #f0f0f0',
+                    backgroundColor: '#fafafa',
+                    padding: '12px 16px',
+                  }}
+                >
+                  <Text strong>将以账号 {options[0]?.name || '-'} 报名</Text>
+                </div>
+                {options[0] && !options[0].available && options[0].disabledReason && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message={options[0].disabledReason}
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
+              </>
+            )}
+
             {activeContest.hasPassword && (
               <label style={{ display: 'block', marginBottom: 16 }}>
-                <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
+                <Text strong style={{ display: 'block', marginBottom: 6 }}>
                   比赛密码
-                </Typography.Text>
-                <input
-                  type="password"
+                </Text>
+                <Input.Password
                   value={registrationPassword}
                   onChange={(event) => setRegistrationPassword(event.target.value)}
                   placeholder="请输入比赛密码"
-                  style={{
-                    width: '100%',
-                    borderRadius: 6,
-                    border: '1px solid var(--semi-color-border)',
-                    padding: '10px 12px',
-                    outline: 'none',
-                  }}
                 />
               </label>
             )}
 
             {activeContest.allowStarRegistration && (
               <label style={{ display: 'block', marginBottom: 16 }}>
-                <Checkbox checked={starred} onChange={(event) => setStarred(Boolean(event.target.checked))}>
+                <Checkbox checked={starred} onChange={(event) => setStarred(event.target.checked)}>
                   打星报名
                 </Checkbox>
               </label>
             )}
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {optionLoading && (
-                <div
-                  style={{
-                    borderRadius: 6,
-                    border: '1px solid var(--semi-color-border)',
-                    backgroundColor: 'var(--semi-color-fill-0)',
-                    padding: '32px 16px',
-                    textAlign: 'center',
-                  }}
-                >
-                  <Spin tip="报名信息加载中" />
-                </div>
-              )}
-
-              {!optionLoading &&
-                options.map((option) => {
-                  const key = `${option.identityType}:${option.identityId ?? ''}`;
-                  const active = selectedKey === key;
-                  return (
-                    <button
-                      key={key}
-                      style={{
-                        width: '100%',
-                        borderRadius: 6,
-                        border: `1px solid ${active ? 'var(--semi-color-primary)' : 'var(--semi-color-border)'}`,
-                        backgroundColor: active ? 'var(--semi-color-primary-light-default)' : 'var(--semi-color-bg-0)',
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: 14,
-                        transition: 'all 0.2s',
-                        opacity: option.available ? 1 : 0.55,
-                        cursor: option.available ? 'pointer' : 'not-allowed',
-                      }}
-                      disabled={!option.available}
-                      type="button"
-                      onClick={() => setSelectedKey(key)}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                        <Typography.Text strong>个人报名</Typography.Text>
-                        {active && <IconCheckCircleStroked style={{ color: 'var(--semi-color-primary)', fontSize: 17 }} />}
-                      </div>
-                      <Typography.Text type="secondary" style={{ marginTop: 4, display: 'block' }}>
-                        {option.name}
-                      </Typography.Text>
-                      {!option.available && option.disabledReason && (
-                        <Typography.Text type="danger" style={{ marginTop: 8, display: 'block', fontSize: 12 }}>
-                          {option.disabledReason}
-                        </Typography.Text>
-                      )}
-                    </button>
-                  );
-                })}
-            </div>
           </div>
         )}
       </Modal>

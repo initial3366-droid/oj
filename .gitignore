@@ -45,3 +45,6 @@ qoj-deploy.tar.gz
 
 # 杂项
 wd.docx
+tools/qoj-publish/__pycache__/
+__pycache__/
+*.pyc

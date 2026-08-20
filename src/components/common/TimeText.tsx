@@ -1,8 +1,8 @@
 /**
  * TimeText组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Typography, Tooltip } from '@douyinfe/semi-ui';
-import { IconClock } from '@douyinfe/semi-icons';
+import { Typography, Tooltip } from 'antd';
+import { ClockCircleOutlined } from '@ant-design/icons';
 
 /**
  * TimeTextProps接口，明确该模块内部及 API 边界使用的数据结构。
@@ -82,9 +82,9 @@ export function TimeText({
   const content = (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, ...style }}>
       {showIcon && (
-        <IconClock style={{ fontSize: 14, color: 'var(--semi-color-text-2)' }} />
+        <ClockCircleOutlined style={{ fontSize: 14, color: 'var(--qoj-color-text-2)' }} />
       )}
-      <Typography.Text type="tertiary" style={{ fontSize: 14 }}>
+      <Typography.Text type="secondary" style={{ fontSize: 14 }}>
         {displayText}
       </Typography.Text>
     </span>
@@ -92,7 +92,7 @@ export function TimeText({
 
   if (tooltipContent) {
     return (
-      <Tooltip content={tooltipContent} position="top">
+      <Tooltip title={tooltipContent} placement="top">
         {content}
       </Tooltip>
     );

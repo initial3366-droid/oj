@@ -46,6 +46,7 @@ export interface Problem {
   createdAt?: string;
   updatedAt?: string;
   attemptStatus?: string | null;
+  isSpecialJudge?: boolean;
   score: number;
 }
 

@@ -1,0 +1,28 @@
+{
+  "title": "构造一个六的倍数",
+  "timeLimit": 1000,
+  "memoryLimit": 256,
+  "difficulty": 1,
+  "statement": "给定一个整数 n，请构造一个整数 x，使得 n < x < 1000 且 x 是 6 的倍数。答案不唯一，输出任意一个满足条件的 x 即可。",
+  "inputFormat": "输入一行一个整数 n（100 ≤ n ≤ 995）。",
+  "outputFormat": "输出一行一个整数 x。只要满足 n < x < 1000 且 x 能被 6 整除，输出就合法。输出的 x 不要求与标准答案相同。",
+  "tags": [
+    "constructive",
+    "math"
+  ],
+  "folderId": 7,
+  "samples": [
+    {
+      "input": "100",
+      "output": "102",
+      "explanation": "102 > 100，102 < 1000，且 102 = 6 × 17。"
+    },
+    {
+      "input": "995",
+      "output": "996",
+      "explanation": "996 > 995，996 < 1000，且 996 = 6 × 166。"
+    }
+  ],
+  "construction": true,
+  "checkerSource": "#include <testlib.h>\n\nint main(int argc, char** argv) {\n    registerTestlibCmd(argc, argv);\n\n    const long long n = inf.readLong();\n    const long long x = ouf.readLong();\n\n    if (n < 100 || n > 995) {\n        quitf(_fail, \"input is outside the stated range\");\n    }\n    if (x <= n || x >= 1000 || x % 6 != 0) {\n        quitf(_wa, \"the output is not a valid construction\");\n    }\n    if (!ouf.seekEof()) {\n        quitf(_pe, \"extra output\");\n    }\n\n    quitf(_ok, \"valid construction\");\n}"
+}

@@ -8,13 +8,12 @@ import com.qoj.module.contest.dto.ContestCreateRequest;
 import com.qoj.module.contest.dto.ContestDraftRequest;
 import com.qoj.module.contest.dto.ContestUpdateRequest;
 import com.qoj.module.contest.entity.Contest;
-import com.qoj.module.contest.entity.ContestProblem;
 import com.qoj.module.contest.entity.ContestRegistration;
 import com.qoj.module.contest.mapper.ContestMapper;
-import com.qoj.module.contest.mapper.ContestProblemMapper;
 import com.qoj.module.contest.mapper.ContestRegistrationMapper;
 import com.qoj.module.contest.service.ContestInspectionExportService;
 import com.qoj.module.contest.service.ContestService;
+import com.qoj.module.contest.vo.ContestProblemVO;
 import com.qoj.module.contest.vo.ContestVO;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
@@ -47,7 +46,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminContestController {
     private final ContestService contestService;
     private final ContestMapper contestMapper;
-    private final ContestProblemMapper contestProblemMapper;
     private final ContestRegistrationMapper contestRegistrationMapper;
     private final ContestAccessPolicy contestAccessPolicy;
     private final ContestInspectionExportService contestInspectionExportService;
@@ -58,14 +56,12 @@ public class AdminContestController {
     public AdminContestController(
         ContestService contestService,
         ContestMapper contestMapper,
-        ContestProblemMapper contestProblemMapper,
         ContestRegistrationMapper contestRegistrationMapper,
         ContestAccessPolicy contestAccessPolicy,
         ContestInspectionExportService contestInspectionExportService
     ) {
         this.contestService = contestService;
         this.contestMapper = contestMapper;
-        this.contestProblemMapper = contestProblemMapper;
         this.contestRegistrationMapper = contestRegistrationMapper;
         this.contestAccessPolicy = contestAccessPolicy;
         this.contestInspectionExportService = contestInspectionExportService;
@@ -110,6 +106,16 @@ public class AdminContestController {
         return ApiResponse.ok(contestService.update(id, request));
     }
 
+    @PostMapping("/{id}/unbind")
+    public ApiResponse<ContestVO> unbind(@PathVariable long id) {
+        return ApiResponse.ok(contestService.unbind(id));
+    }
+
+    @PostMapping("/{id}/replay")
+    public ApiResponse<ContestVO> replay(@PathVariable long id) {
+        return ApiResponse.ok(contestService.replay(id));
+    }
+
     @GetMapping("/draft")
     public ApiResponse<ContestDraftRequest> draft() {
         return ApiResponse.ok(contestService.draft());
@@ -149,21 +155,8 @@ public class AdminContestController {
     }
 
     @GetMapping("/{id}/problems")
-    public ApiResponse<List<ContestProblem>> getContestProblems(@PathVariable long id) {
-        Contest contest = contestMapper.selectById(id);
-        if (contest == null) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
-        }
-
-        List<ContestProblem> problems = contestProblemMapper.selectList(
-            new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ContestProblem>()
-                .eq("contest_id", id)
-                .orderByAsc("display_order")
-        );
-        return ApiResponse.ok(problems);
+    public ApiResponse<List<ContestProblemVO>> getContestProblems(@PathVariable long id) {
+        return ApiResponse.ok(contestService.adminProblems(id));
     }
 
     @GetMapping("/{id}/registrations")

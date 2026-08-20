@@ -43,6 +43,9 @@ public class SecurityConfig {
     private final QojProperties properties;
     private final ObjectMapper objectMapper;
 
+    @Value("${qoj.openapi.public-access:false}")
+    private boolean openApiPublicAccess;
+
     @Value("${admin.path-prefix:admin}")
     private String adminPathPrefix;
 
@@ -112,7 +115,14 @@ public class SecurityConfig {
                     "/profile",
                     "/semi-test"
                 ).permitAll()
-                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").hasRole("SUPER_ADMIN")
+                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
+                .access((authentication, context) -> openApiPublicAccess
+                    ? new org.springframework.security.authorization.AuthorizationDecision(true)
+                    : new org.springframework.security.authorization.AuthorizationDecision(
+                        authentication.get().isAuthenticated()
+                            && authentication.get().getAuthorities().stream()
+                                .anyMatch(authority -> "ROLE_SUPER_ADMIN".equals(authority.getAuthority())))
+                )
                 .requestMatchers(HttpMethod.GET, "/api/v1/home/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/problems/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/practices/**").permitAll()
@@ -134,6 +144,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/v1/settings/**").hasRole("SUPER_ADMIN")
                 .requestMatchers("/api/teacher/v1/**").hasRole("TEACHER")
                 .requestMatchers("/api/admin/v1/**").hasAnyRole("SUPER_ADMIN", "TEACHER")
+                .requestMatchers("/api/v1/uploads/**").hasAnyRole("SUPER_ADMIN", "TEACHER")
                 .anyRequest().authenticated()
             )
             .exceptionHandling(exception -> exception

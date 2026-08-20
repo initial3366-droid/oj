@@ -1,8 +1,36 @@
 /**
  * 用户头像组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Avatar, Tooltip } from '@douyinfe/semi-ui';
-import { IconUser } from '@douyinfe/semi-icons';
+import { Avatar, Tooltip } from 'antd';
+import { UserOutlined } from '@ant-design/icons';
+
+const AVATAR_SIZE_MAP: Record<string, number> = {
+  'extra-extra-small': 24,
+  'extra-small': 28,
+  small: 32,
+  default: 40,
+  medium: 48,
+  large: 56,
+  'extra-large': 64,
+};
+
+const AVATAR_COLOR_MAP: Record<string, string> = {
+  amber: '#fbbf24',
+  blue: '#3b82f6',
+  cyan: '#06b6d4',
+  green: '#22c55e',
+  indigo: '#6366f1',
+  'light-blue': '#38bdf8',
+  'light-green': '#a3e635',
+  lime: '#84cc16',
+  orange: '#f97316',
+  pink: '#ec4899',
+  purple: '#a855f7',
+  red: '#ef4444',
+  teal: '#14b8a6',
+  violet: '#8b5cf6',
+  yellow: '#eab308',
+};
 
 /**
  * 用户头像Props接口，明确该模块内部及 API 边界使用的数据结构。
@@ -60,23 +88,23 @@ export function UserAvatar({
 
   const avatarElement = (
     <Avatar
-      size={size}
+      size={AVATAR_SIZE_MAP[size]}
       src={avatarUrl}
       alt={username}
-      color={getColorFromUsername(username)}
       onClick={onClick}
       style={{
         cursor: onClick ? 'pointer' : 'default',
+        backgroundColor: AVATAR_COLOR_MAP[getColorFromUsername(username)],
         ...style,
       }}
     >
-      {!avatarUrl && (username.charAt(0).toUpperCase() || <IconUser />)}
+      {!avatarUrl && (username.charAt(0).toUpperCase() || <UserOutlined />)}
     </Avatar>
   );
 
   if (showTooltip) {
     return (
-      <Tooltip content={username} position="top">
+      <Tooltip title={username} placement="top">
         {avatarElement}
       </Tooltip>
     );

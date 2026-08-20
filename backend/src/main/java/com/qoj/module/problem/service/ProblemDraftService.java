@@ -83,7 +83,9 @@ public class ProblemDraftService {
 
     public ProblemDraftVO saveBasic(String draftId, ProblemDraftBasicRequest request) {
         DraftData draft = loadOrNew(draftId);
-        draft = new DraftData(request, draft.testCases());
+        List<ProblemTestCaseRequest> testCases = normalizeCases(draft.testCases());
+        validateHiddenTestCases(request, testCases);
+        draft = new DraftData(request, testCases);
         /**
          * 更新目标数据。执行持久化写入。
          */
@@ -96,7 +98,9 @@ public class ProblemDraftService {
 
     public ProblemDraftVO saveTestCases(String draftId, ProblemDraftTestCasesRequest request) {
         DraftData draft = requireDraft(draftId);
-        draft = new DraftData(draft.basic(), normalizeCases(request.testCases()));
+        List<ProblemTestCaseRequest> testCases = normalizeCases(request.testCases());
+        validateHiddenTestCases(draft.basic(), testCases);
+        draft = new DraftData(draft.basic(), testCases);
         /**
          * 更新目标数据。执行持久化写入。
          */
@@ -109,10 +113,11 @@ public class ProblemDraftService {
 
     public ProblemDraftVO importZip(String draftId, MultipartFile file, boolean overwrite) {
         DraftData draft = requireDraft(draftId);
-        List<ProblemTestCaseRequest> parsed = parseZip(file);
+        List<ProblemTestCaseRequest> parsed = parseZip(file, allowsBlankExpectedOutput(draft.basic()));
         if (!overwrite) {
             parsed = appendCases(draft.testCases(), parsed);
         }
+        validateHiddenTestCases(draft.basic(), parsed);
         draft = new DraftData(draft.basic(), parsed);
         /**
          * 更新目标数据。执行持久化写入。
@@ -153,6 +158,7 @@ public class ProblemDraftService {
         problem.statement = basic.statement();
         problem.inputFormat = basic.inputFormat();
         problem.outputFormat = basic.outputFormat();
+        problem.checkerSource = problemService.normalizeCheckerSource(basic.checkerSource());
         problem.sampleCases = "[]";
         problem.timeLimit = basic.timeLimit();
         problem.memoryLimit = basic.memoryLimit();
@@ -263,11 +269,29 @@ public class ProblemDraftService {
     private List<ProblemTestCaseRequest> normalizeCases(List<ProblemTestCaseRequest> testCases) {
         List<ProblemTestCaseRequest> result = new ArrayList<>();
         int index = 1;
-        for (ProblemTestCaseRequest item : testCases) {
+        for (ProblemTestCaseRequest item : testCases == null ? List.<ProblemTestCaseRequest>of() : testCases) {
             result.add(new ProblemTestCaseRequest(item.caseNo() == null ? index : item.caseNo(), item.input(), item.output()));
             index++;
         }
         return result;
+    }
+
+    private boolean allowsBlankExpectedOutput(ProblemDraftBasicRequest basic) {
+        return basic != null && !ProblemService.requiresExpectedOutput(false, basic.checkerSource());
+    }
+
+    private void validateHiddenTestCases(ProblemDraftBasicRequest basic, List<ProblemTestCaseRequest> testCases) {
+        if (allowsBlankExpectedOutput(basic)) {
+            return;
+        }
+        int index = 1;
+        for (ProblemTestCaseRequest testCase : testCases == null ? List.<ProblemTestCaseRequest>of() : testCases) {
+            int caseNo = testCase.caseNo() == null ? index : testCase.caseNo();
+            if (testCase.output() == null || testCase.output().isBlank()) {
+                throw new BizException(400, "测试点 " + caseNo + " 的输出数据不能为空");
+            }
+            index++;
+        }
     }
 
     private List<ProblemTestCaseRequest> appendCases(
@@ -286,7 +310,7 @@ public class ProblemDraftService {
         return result;
     }
 
-    private List<ProblemTestCaseRequest> parseZip(MultipartFile file) {
+    private List<ProblemTestCaseRequest> parseZip(MultipartFile file, boolean allowMissingOutput) {
         if (file == null || file.isEmpty()) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
@@ -346,17 +370,17 @@ public class ProblemDraftService {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
-            throw new BizException(400, "ZIP 中未找到 1.in/1.out 格式测试点");
+            throw new BizException(400, allowMissingOutput ? "ZIP 中未找到测试点" : "ZIP 中未找到 1.in/1.out 格式测试点");
         }
         List<ProblemTestCaseRequest> result = new ArrayList<>();
         for (Integer caseNo : caseNos) {
-            if (!outputs.containsKey(caseNo)) {
+            if (!outputs.containsKey(caseNo) && !allowMissingOutput) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */
                 throw new BizException(400, caseNo + ".out 缺失");
             }
-            result.add(new ProblemTestCaseRequest(caseNo, inputs.get(caseNo), outputs.get(caseNo)));
+            result.add(new ProblemTestCaseRequest(caseNo, inputs.get(caseNo), outputs.getOrDefault(caseNo, "")));
         }
         return result;
     }

@@ -3,9 +3,8 @@ package com.qoj.module.judge.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.qoj.common.redis.RedisKeys;
 import com.qoj.common.util.Utf8TextLimiter;
-import com.qoj.module.contest.entity.ContestProblemTestCase;
 import com.qoj.module.contest.mapper.ContestProblemMapper;
-import com.qoj.module.contest.mapper.ContestProblemTestCaseMapper;
+import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.mapper.ProblemTestCaseMapper;
@@ -57,7 +56,6 @@ class CcpcojJudgeGatewayServiceTest {
     @Mock private ProblemMapper problemMapper;
     @Mock private ProblemTestCaseMapper problemTestCaseMapper;
     @Mock private ContestProblemMapper contestProblemMapper;
-    @Mock private ContestProblemTestCaseMapper contestProblemTestCaseMapper;
     @Mock private SystemSettingService settingService;
     @Mock private StringRedisTemplate redisTemplate;
     @Mock private ValueOperations<String, String> valueOperations;
@@ -78,7 +76,6 @@ class CcpcojJudgeGatewayServiceTest {
             problemMapper,
             problemTestCaseMapper,
             contestProblemMapper,
-            contestProblemTestCaseMapper,
             settingService,
             redisTemplate,
             passwordEncoder,
@@ -209,24 +206,27 @@ class CcpcojJudgeGatewayServiceTest {
     }
 
     @Test
-    void csharpSubmissionUsesCcpcojLanguageIdNine() {
+    void problemInfoUsesTheSubmittedLanguageLimits() {
         String sessionId = "12345678-abcd-4abc-8abc-1234567890ab";
         JudgeSettingsVO settings = judgeSettings();
         mockAuthenticatedSession(sessionId, "judger", settings);
 
-        Submission submission = new Submission();
-        submission.id = 9L;
+        Submission submission = activeSubmission(9L, "python");
         submission.userId = 4L;
         submission.problemId = 1L;
         submission.contestId = 2L;
-        submission.language = "csharp";
-        submission.status = "RUNNING";
-        submission.judgeServer = "CCPCOJ";
-        submission.judgeBackend = "CCPCOJ";
-        submission.judgeWorkerId = "judger-12345678";
+        Problem problem = new Problem();
+        problem.id = 1L;
+        problem.timeLimit = 1000;
+        problem.memoryLimit = 128;
         when(submissionMapper.selectById(9L)).thenReturn(submission);
+        when(problemMapper.selectById(1L)).thenReturn(problem);
 
-        assertEquals("2\n4\n9\n2\n", service.solutionInfo(9L, sessionId));
+        assertEquals("9\n4\n6\n2\n", service.solutionInfo(9L, sessionId));
+        assertEquals("2.0\n256\n0\n", service.problemInfo(9L, sessionId));
+
+        submission.language = "cpp";
+        assertEquals("1.0\n128\n0\n", service.problemInfo(9L, sessionId));
     }
 
     /**
@@ -238,7 +238,9 @@ class CcpcojJudgeGatewayServiceTest {
         String sessionId = "12345678-abcd-4abc-8abc-1234567890ab";
         JudgeSettingsVO settings = judgeSettings();
         mockAuthenticatedSession(sessionId, "judger", settings);
-        when(submissionMapper.countActiveCcpcojClaims("judger-12345678", 1L, false)).thenReturn(1L);
+        Submission submission = activeSubmission(2L, "cpp");
+        submission.problemId = 1L;
+        when(submissionMapper.selectById(2L)).thenReturn(submission);
 
         ProblemTestCase hidden = new ProblemTestCase();
         hidden.caseNo = 1;
@@ -265,17 +267,12 @@ class CcpcojJudgeGatewayServiceTest {
         String sessionId = "12345678-abcd-4abc-8abc-1234567890ab";
         JudgeSettingsVO settings = judgeSettings();
         mockAuthenticatedSession(sessionId, "judger", settings);
-        when(submissionMapper.countActiveCcpcojClaims("judger-12345678", 1L, false)).thenReturn(0L);
 
         assertEquals("", service.testDataList(2L, sessionId));
         /**
          * 校验前置条件。从持久化层读取数据。
          */
         verify(problemTestCaseMapper, never()).selectList(any());
-        /**
-         * 校验NoInteractions。从持久化层读取数据。
-         */
-        verifyNoInteractions(contestProblemTestCaseMapper);
     }
 
     /**
@@ -417,6 +414,17 @@ class CcpcojJudgeGatewayServiceTest {
         when(valueOperations.get(RedisKeys.ccpcojJudgeSession(sessionId)))
             .thenReturn(sessionValue(username, settings));
         when(settingService.getJudgeRuntimeSettings()).thenReturn(settings);
+    }
+
+    private Submission activeSubmission(long id, String language) {
+        Submission submission = new Submission();
+        submission.id = id;
+        submission.language = language;
+        submission.status = "RUNNING";
+        submission.judgeServer = "CCPCOJ";
+        submission.judgeBackend = "CCPCOJ";
+        submission.judgeWorkerId = "judger-12345678";
+        return submission;
     }
 
     /**

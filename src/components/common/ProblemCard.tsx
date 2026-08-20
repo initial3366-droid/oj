@@ -1,8 +1,8 @@
 /**
  * 题目Card组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Card, Typography, Space, Tag } from '@douyinfe/semi-ui';
-import { IconUser, IconCalendar } from '@douyinfe/semi-icons';
+import { Card, Typography, Space, Tag } from 'antd';
+import { UserOutlined, CalendarOutlined } from '@ant-design/icons';
 import { DifficultyTag } from './DifficultyTag';
 import type { CSSProperties } from 'react';
 
@@ -49,26 +49,24 @@ export function ProblemCard({
   return (
     <div onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
       <Card
-        shadows="hover"
         style={{
-          transition: 'all 0.2s',
           ...style,
         }}
-        bodyStyle={{ padding: 20 }}
+        styles={{ body: { padding: 20 } }}
       >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Space spacing={8} align="center">
+            <Space size={8} align="center">
               <Typography.Text
-                type="tertiary"
+                type="secondary"
                 style={{ fontSize: 14, fontWeight: 600 }}
               >
                 #{id}
               </Typography.Text>
               <Typography.Title
-                heading={5}
-                ellipsis={{ showTooltip: true }}
+                level={5}
+                ellipsis={{ tooltip: <span>{title}</span> }}
                 style={{ margin: 0, fontSize: 16 }}
               >
                 {title}
@@ -81,12 +79,12 @@ export function ProblemCard({
         {tags.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {tags.slice(0, 5).map((tag, index) => (
-              <Tag key={index} size="small" color="grey">
+              <Tag key={index} style={{ fontSize: 12 }} color="default">
                 {tag}
               </Tag>
             ))}
             {tags.length > 5 && (
-              <Tag size="small" color="grey">
+              <Tag style={{ fontSize: 12 }} color="default">
                 +{tags.length - 5}
               </Tag>
             )}
@@ -101,12 +99,12 @@ export function ProblemCard({
             flexWrap: 'wrap',
             gap: 12,
             paddingTop: 8,
-            borderTop: '1px solid var(--semi-color-border)',
+            borderTop: '1px solid var(--qoj-color-border)',
           }}
         >
-          <Space spacing={16}>
+          <Space size={16}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Typography.Text type="tertiary" style={{ fontSize: 13 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 13 }}>
                 通过率
               </Typography.Text>
               <Typography.Text
@@ -115,17 +113,17 @@ export function ProblemCard({
                   fontSize: 13,
                   color:
                     rate >= 60
-                      ? 'var(--semi-color-success)'
+                      ? 'var(--qoj-color-success)'
                       : rate >= 30
-                        ? 'var(--semi-color-warning)'
-                        : 'var(--semi-color-danger)',
+                        ? 'var(--qoj-color-warning)'
+                        : 'var(--qoj-color-danger)',
                 }}
               >
                 {rate}%
               </Typography.Text>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Typography.Text type="tertiary" style={{ fontSize: 13 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 13 }}>
                 提交
               </Typography.Text>
               <Typography.Text style={{ fontSize: 13 }}>
@@ -135,19 +133,19 @@ export function ProblemCard({
           </Space>
 
           {(author || createdAt) && (
-            <Space spacing={12}>
+            <Space size={12}>
               {author && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <IconUser style={{ fontSize: 14, color: 'var(--semi-color-text-2)' }} />
-                  <Typography.Text type="tertiary" style={{ fontSize: 13 }}>
+                  <UserOutlined style={{ fontSize: 14, color: 'var(--qoj-color-text-2)' }} />
+                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>
                     {author}
                   </Typography.Text>
                 </div>
               )}
               {createdAt && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <IconCalendar style={{ fontSize: 14, color: 'var(--semi-color-text-2)' }} />
-                  <Typography.Text type="tertiary" style={{ fontSize: 13 }}>
+                  <CalendarOutlined style={{ fontSize: 14, color: 'var(--qoj-color-text-2)' }} />
+                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>
                     {new Date(createdAt).toLocaleDateString('zh-CN')}
                   </Typography.Text>
                 </div>

@@ -1,25 +1,27 @@
 /**
  * UpcomingContests组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Card, Typography, Tag } from '@douyinfe/semi-ui';
+import { Card, Tag, Typography } from 'antd';
 import { NavLink } from 'react-router-dom';
 import { useOjData } from '../data/OjDataProvider';
+
+const { Text, Title } = Typography;
 
 /**
  * 渲染UpcomingContests组件，并协调其数据加载、状态和交互。
  */
 export function UpcomingContests() {
   const { state } = useOjData();
-  const contests = [...state.contests].slice(0, 4);
+  const contests = [...state.contests].slice(0, 5);
 
   /**
    * 读取状态Color并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
    */
-  const getStatusColor = (status: string): 'blue' | 'green' | 'grey' => {
+  const getStatusColor = (status: string): 'success' | 'processing' | 'default' => {
     const normalized = status.toLowerCase();
-    if (normalized.includes('进行中') || normalized === 'running') return 'green';
-    if (normalized.includes('未开始') || normalized === 'upcoming') return 'blue';
-    return 'grey';
+    if (normalized.includes('进行中') || normalized === 'running') return 'success';
+    if (normalized.includes('未开始') || normalized === 'upcoming') return 'processing';
+    return 'default';
   };
 
   /**
@@ -38,22 +40,25 @@ export function UpcomingContests() {
     <Card
       style={{
         height: 580,
-        border: '1px solid var(--semi-color-border)',
+        border: '1px solid #f0f0f0',
         display: 'flex',
         flexDirection: 'column',
       }}
-      bodyStyle={{ padding: 0, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      styles={{
+        body: { padding: 0, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+        header: { padding: 0, borderBottom: '1px solid #f0f0f0' },
+      }}
       title={
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px' }}>
-          <Typography.Title heading={5} style={{ margin: 0 }}>
+          <Title level={5} style={{ margin: 0 }}>
             近期比赛
-          </Typography.Title>
+          </Title>
           <NavLink
             to="/contests"
             style={{
               fontSize: 14,
               fontWeight: 500,
-              color: 'var(--semi-color-primary)',
+              color: '#1677ff',
               textDecoration: 'none',
             }}
           >
@@ -61,7 +66,6 @@ export function UpcomingContests() {
           </NavLink>
         </div>
       }
-      headerStyle={{ padding: 0, borderBottom: '1px solid var(--semi-color-border)' }}
     >
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {contests.map((contest) => (
@@ -76,37 +80,32 @@ export function UpcomingContests() {
             <div
               style={{
                 borderRadius: 8,
-                border: '1px solid var(--semi-color-border)',
+                border: '1px solid #f0f0f0',
                 padding: 16,
                 cursor: 'pointer',
-                transition: 'all 0.2s ease',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--semi-color-primary)';
-                e.currentTarget.style.backgroundColor = 'var(--semi-color-fill-0)';
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.08)';
+                e.currentTarget.style.borderColor = '#1677ff';
+                e.currentTarget.style.backgroundColor = '#f5f5f5';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--semi-color-border)';
+                e.currentTarget.style.borderColor = '#f0f0f0';
                 e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = 'none';
               }}
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
                 <div style={{ flex: 1 }}>
-                  <Typography.Text strong style={{ fontSize: 14 }}>
+                  <Text strong style={{ fontSize: 14 }}>
                     {contest.title}
-                  </Typography.Text>
-                  <Typography.Text
-                    type="tertiary"
+                  </Text>
+                  <Text
+                    type="secondary"
                     style={{ fontSize: 12, display: 'block', marginTop: 8 }}
                   >
                     {formatDateTime(contest.startsAt)} · {contest.type} · {contest.audience}
-                  </Typography.Text>
+                  </Text>
                 </div>
-                <Tag color={getStatusColor(contest.status)} size="small">
+                <Tag color={getStatusColor(contest.status)} style={{ marginInlineEnd: 0 }}>
                   {contest.status}
                 </Tag>
               </div>

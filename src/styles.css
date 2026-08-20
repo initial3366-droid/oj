@@ -13,12 +13,18 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--semi-color-bg-1);
-  color: var(--semi-color-text-0);
+  background-color: var(--qoj-color-bg-1);
+  color: var(--qoj-color-text-0);
 }
 
 #root {
   min-height: 100vh;
+}
+
+.contest-detail-static-card,
+.contest-detail-static-card:hover {
+  box-shadow: none !important;
+  transform: none !important;
 }
 
 .teacher-problem-folder-table .arco-table-content-inner {
@@ -41,6 +47,50 @@ body {
   height: 48px;
   min-height: 48px;
   max-height: 48px;
+}
+
+/* 写代码页左侧题面整体字号比默认值大 2px，右侧编辑器保持独立字号控制。 */
+.practice-problem-pane {
+  font-size: 18px;
+}
+
+.practice-problem-pane .practice-problem-header {
+  font-size: 18px;
+}
+
+.practice-problem-pane .practice-problem-content .text-xs,
+.practice-problem-pane .practice-problem-header .text-xs {
+  font-size: 14px;
+}
+
+.practice-problem-pane .practice-problem-content.text-sm,
+.practice-problem-pane .practice-problem-content .text-sm,
+.practice-problem-pane .practice-judge-grid.text-sm,
+.practice-problem-pane .practice-problem-header .text-sm {
+  font-size: 16px;
+}
+
+.practice-problem-pane .practice-problem-content .text-base,
+.practice-problem-pane .practice-problem-header .text-base {
+  font-size: 18px;
+}
+
+.practice-problem-pane .practice-problem-content .text-lg,
+.practice-problem-pane .practice-problem-header .text-lg {
+  font-size: 20px;
+}
+
+.practice-problem-pane .practice-problem-content .text-xl,
+.practice-problem-pane .practice-problem-header .text-xl {
+  font-size: 22px;
+}
+
+.practice-problem-pane .practice-problem-header .ant-btn {
+  font-size: 16px;
+}
+
+.practice-problem-pane .practice-problem-header .ant-tag {
+  font-size: 14px;
 }
 
 .practice-problem-header {
@@ -117,6 +167,35 @@ body {
   min-height: 40px;
   padding: 8px 16px;
   line-height: 24px;
+}
+
+.practice-sample-copy-button {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.practice-sample-copy-button:hover {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.practice-sample-copy-button:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}
+
+.practice-sample-copy-button .anticon {
+  font-size: 16px;
 }
 
 .practice-sample-value {
@@ -255,14 +334,38 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--semi-color-fill-0);
+  background: var(--qoj-color-fill-0);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--semi-color-fill-2);
+  background: var(--qoj-color-fill-2);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--semi-color-text-3);
+  background: var(--qoj-color-text-3);
+}
+
+/* antd Table 固定列表头背景与普通表头保持一致（antd 默认用白色 tableBg，造成表头左右两侧颜色不一致） */
+.ant-table-thead > tr > th.ant-table-cell-fix-left,
+.ant-table-thead > tr > th.ant-table-cell-fix-right {
+  background: #fafafa;
+}
+
+/* 前台表格分页栏：独立放在表格下方。 */
+.front-table-pagination {
+  display: flex;
+  min-height: 32px;
+  margin-top: 16px;
+  padding: 0 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .front-table-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }

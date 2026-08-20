@@ -6,11 +6,10 @@ import com.qoj.common.redis.RedisKeys;
 import com.qoj.common.util.Utf8TextLimiter;
 import com.qoj.module.contest.entity.ContestProblem;
 import com.qoj.module.contest.entity.ContestProblemCaseScore;
-import com.qoj.module.contest.entity.ContestProblemTestCase;
 import com.qoj.module.contest.mapper.ContestProblemCaseScoreMapper;
 import com.qoj.module.contest.mapper.ContestProblemMapper;
-import com.qoj.module.contest.mapper.ContestProblemTestCaseMapper;
 import com.qoj.module.judge.JudgeCaseResult;
+import com.qoj.module.judge.JudgeResourceLimits;
 import com.qoj.module.judge.JudgeResult;
 import com.qoj.module.judge.JudgeTask;
 import com.qoj.module.judge.gojudge.GoJudgeService;
@@ -57,7 +56,6 @@ public class JudgeQueueScheduler {
     private final ProblemMapper problemMapper;
     private final ProblemTestCaseMapper problemTestCaseMapper;
     private final ContestProblemMapper contestProblemMapper;
-    private final ContestProblemTestCaseMapper contestProblemTestCaseMapper;
     private final ContestProblemCaseScoreMapper contestProblemCaseScoreMapper;
     private final GoJudgeService goJudgeService;
     private final JudgeCallbackService callbackService;
@@ -73,7 +71,6 @@ public class JudgeQueueScheduler {
         ProblemMapper problemMapper,
         ProblemTestCaseMapper problemTestCaseMapper,
         ContestProblemMapper contestProblemMapper,
-        ContestProblemTestCaseMapper contestProblemTestCaseMapper,
         ContestProblemCaseScoreMapper contestProblemCaseScoreMapper,
         GoJudgeService goJudgeService,
         JudgeCallbackService callbackService,
@@ -86,7 +83,6 @@ public class JudgeQueueScheduler {
         this.problemMapper = problemMapper;
         this.problemTestCaseMapper = problemTestCaseMapper;
         this.contestProblemMapper = contestProblemMapper;
-        this.contestProblemTestCaseMapper = contestProblemTestCaseMapper;
         this.contestProblemCaseScoreMapper = contestProblemCaseScoreMapper;
         this.goJudgeService = goJudgeService;
         this.callbackService = callbackService;
@@ -106,6 +102,13 @@ public class JudgeQueueScheduler {
             JudgeSettingsVO settings = settingService.getJudgeRuntimeSettings();
             if (!settings.enabled || !shouldPoll(settings.pollIntervalMs)) {
                 return;
+            }
+            LocalDateTime now = LocalDateTime.now();
+            int recovered = submissionMapper.requeueStaleGoJudgeClaims(
+                now.minusMinutes(staleTaskMinutes(settings)), now);
+            if (recovered > 0) {
+                log.warn("requeued {} stale go-judge submission claim(s)", recovered);
+                messagePublisher.submissionQueueUpdated();
             }
             int slots = settings.maxConcurrent - Math.toIntExact(submissionMapper.countRunning());
             if (slots <= 0) {
@@ -176,7 +179,7 @@ public class JudgeQueueScheduler {
             log.error("go-judge execution failed for submission {}", submission.id, ex);
             failDirectly(submission, "go-judge 判题异常");
         } finally {
-            submissionMapper.releaseWorker(submission.id, LocalDateTime.now());
+            submissionMapper.releaseWorker(submission.id, workerId, LocalDateTime.now());
         }
     }
 
@@ -186,6 +189,7 @@ public class JudgeQueueScheduler {
     private void complete(Submission submission, JudgeResult result) {
         JudgeResultCallbackRequest request = new JudgeResultCallbackRequest();
         request.submissionId = submission.id;
+        request.workerId = workerId;
         request.status = result.status().name();
         request.timeUsed = result.maxTimeMs();
         request.memoryUsed = result.maxMemoryKb();
@@ -197,17 +201,18 @@ public class JudgeQueueScheduler {
         if (completed == null) {
             return;
         }
-        completed.judgeServer = "GO_JUDGE";
-        completed.judgeMessage = result.compileOutput() == null || result.compileOutput().isBlank()
+        String judgeMessage = result.compileOutput() == null || result.compileOutput().isBlank()
             ? null
             : Utf8TextLimiter.fitMysqlText(result.compileOutput());
-        if (result.status() == SubmissionStatus.SE || result.status() == SubmissionStatus.FAILED) {
-            completed.errorMessage = Utf8TextLimiter.fitMysqlText(completed.judgeMessage == null
-                ? "go-judge 系统错误"
-                : completed.judgeMessage);
+        String errorMessage = result.status() == SubmissionStatus.SE || result.status() == SubmissionStatus.FAILED
+            ? Utf8TextLimiter.fitMysqlText(judgeMessage == null ? "go-judge 系统错误" : judgeMessage)
+            : null;
+        int updated = submissionMapper.updateGoJudgeCompletionMetadata(
+            completed.id, workerId, judgeMessage, errorMessage, LocalDateTime.now());
+        if (updated == 0) {
+            log.info("ignoring stale go-judge result for submission {}", submission.id);
+            return;
         }
-        completed.updatedAt = LocalDateTime.now();
-        submissionMapper.updateById(completed);
 
         redisTemplate.delete(RedisKeys.judgePending(
             completed.userId,
@@ -254,7 +259,12 @@ public class JudgeQueueScheduler {
 
     private Integer score(Submission submission, JudgeResult result) {
         if (submission.contestId == null || submission.contestProblemId == null) {
-            return null;
+            // 非比赛（练习/普通题）提交：满分 100，按通过测试点比例计分，全过即 100。
+            long total = result.caseResults() == null ? 0 : result.caseResults().size();
+            long passed = result.caseResults() == null ? 0 : result.caseResults().stream()
+                .filter(item -> item.status() == SubmissionStatus.AC)
+                .count();
+            return total == 0 ? 0 : (int) Math.round(100.0 * passed / total);
         }
         ContestProblem problem = contestProblemMapper.selectById(submission.contestProblemId);
         int fullScore = problem == null
@@ -290,13 +300,18 @@ public class JudgeQueueScheduler {
 
     private JudgeTask buildTask(Submission submission) {
         if (submission.contestProblemId != null) {
-            ContestProblem problem = contestProblemMapper.selectById(submission.contestProblemId);
+            ContestProblem contestProblem = contestProblemMapper.selectById(submission.contestProblemId);
+            if (contestProblem == null || contestProblem.problemId == null) {
+                return null;
+            }
+            // 动态引用原题：时限/内存/checker/隐藏用例实时从原题读取
+            Problem problem = problemMapper.selectById(contestProblem.problemId);
             if (problem == null) {
                 return null;
             }
-            List<ContestProblemTestCase> cases = contestProblemTestCaseMapper.selectList(
-                new QueryWrapper<ContestProblemTestCase>()
-                    .eq("contest_problem_id", submission.contestProblemId)
+            List<ProblemTestCase> cases = problemTestCaseMapper.selectList(
+                new QueryWrapper<ProblemTestCase>()
+                    .eq("problem_id", problem.id)
                     .eq("sample", false)
                     .orderByAsc("case_no")
             );
@@ -307,6 +322,7 @@ public class JudgeQueueScheduler {
                 submission,
                 positive(problem.timeLimit, 1000),
                 positive(problem.memoryLimit, 256),
+                problem.checkerSource,
                 cases.stream().map(item -> new JudgeTask.TestCase(
                     item.caseNo, item.inputData, item.outputData)).toList()
             );
@@ -329,6 +345,7 @@ public class JudgeQueueScheduler {
             submission,
             positive(problem.timeLimit, 1000),
             positive(problem.memoryLimit, 256),
+            problem.checkerSource,
             cases.stream().map(item -> new JudgeTask.TestCase(
                 item.caseNo, item.inputData, item.outputData)).toList()
         );
@@ -338,11 +355,14 @@ public class JudgeQueueScheduler {
         Submission submission,
         int timeLimit,
         int memoryLimit,
+        String checkerSource,
         List<JudgeTask.TestCase> cases
     ) {
         if (cases.isEmpty()) {
             return null;
         }
+        JudgeResourceLimits.Limits limits = JudgeResourceLimits.forLanguage(
+            submission.language, timeLimit, memoryLimit);
         /**
          * 封装判题Task相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
@@ -350,8 +370,9 @@ public class JudgeQueueScheduler {
             submission.id,
             submission.language,
             submission.code,
-            timeLimit,
-            memoryLimit,
+            limits.timeLimitMs(),
+            limits.memoryLimitMb(),
+            checkerSource,
             cases
         );
     }
@@ -373,14 +394,14 @@ public class JudgeQueueScheduler {
 
     private void failDirectly(Submission submission, String message) {
         LocalDateTime now = LocalDateTime.now();
-        submission.status = SubmissionStatus.SE.name();
-        submission.judgeServer = "GO_JUDGE";
-        submission.judgeEndTime = now;
-        submission.judgeMessage = Utf8TextLimiter.fitMysqlText(message);
-        submission.errorMessage = Utf8TextLimiter.fitMysqlText(message);
-        submission.updatedAt = now;
-        submissionMapper.updateById(submission);
-        messagePublisher.submissionChanged(submission.id, submission.status, null, null);
+        String limitedMessage = Utf8TextLimiter.fitMysqlText(message);
+        int updated = submissionMapper.markGoJudgeFailure(
+            submission.id, workerId, now, limitedMessage, limitedMessage, now);
+        if (updated == 0) {
+            log.info("ignoring failure from stale go-judge worker for submission {}", submission.id);
+            return;
+        }
+        messagePublisher.submissionChanged(submission.id, SubmissionStatus.SE.name(), null, null);
         messagePublisher.submissionQueueUpdated();
     }
 
@@ -396,6 +417,12 @@ public class JudgeQueueScheduler {
         }
         lastPollAt = now;
         return true;
+    }
+
+    private int staleTaskMinutes(JudgeSettingsVO settings) {
+        // Keep the existing admin setting backward-compatible; it now applies
+        // to both CCPCOJ and embedded go-judge claims.
+        return Math.max(2, settings.ccpcojStaleTaskMinutes);
     }
 
     private String generateWorkerId() {

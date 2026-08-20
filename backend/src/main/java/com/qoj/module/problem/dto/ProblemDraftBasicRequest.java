@@ -20,6 +20,7 @@ public record ProblemDraftBasicRequest(
     @NotBlank(message = "题目描述不能为空") String statement,
     String inputFormat,
     String outputFormat,
+    @Size(max = 200_000, message = "特殊判题代码不能超过200000个字符") String checkerSource,
     List<String> tags,
     @Min(value = 1, message = "难度不能小于1") @Max(value = 5, message = "难度不能大于5") Integer difficulty,
     Long folderId,

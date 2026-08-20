@@ -33,6 +33,8 @@ export interface ProblemPreviewDetail {
   tags?: string[];
   folderName?: string;
   acRate?: number;
+  submissionCount?: number;
+  acceptedCount?: number;
   createdAt?: string;
   updatedAt?: string;
   samples?: SampleCase[];
@@ -145,7 +147,7 @@ export function ProblemPreviewModal({ visible, problemId, onClose, get }: Proble
                       </Tag>
                     ),
                   },
-                  { label: '通过率', value: detail.acRate != null ? `${detail.acRate}%` : '-' },
+                  { label: '通过率', value: detail.acRate != null ? `${detail.acRate}% (${detail.acceptedCount ?? 0}/${detail.submissionCount ?? 0})` : '-' },
                   { label: '测试点', value: detail.testCaseCount != null ? `${detail.testCaseCount} 个` : '-' },
                   { label: '时间限制', value: detail.timeLimit != null ? `${detail.timeLimit} ms` : '-' },
                   { label: '内存限制', value: detail.memoryLimit != null ? `${detail.memoryLimit} MB` : '-' },

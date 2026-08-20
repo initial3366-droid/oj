@@ -3,15 +3,14 @@
  */
 import React from "react";
 import ReactDOM from "react-dom/client";
-import "@douyinfe/semi-ui/react19-adapter";
 import { BrowserRouter } from "react-router-dom";
+import { ConfigProvider } from "antd";
+import zhCN from "antd/locale/zh_CN";
 import { filterReact19RefWarning } from "./utils/filterReact19RefWarning";
 import { App } from "./App";
 import { OjDataProvider } from "./data/OjDataProvider";
 import "katex/dist/katex.min.css";
-import "./styles/semi-base.css";
-import "./styles/semi-theme.css";
-import "./styles/semi-overrides.css";
+import "./styles/tokens.css";
 import "./styles.css";
 
 filterReact19RefWarning();
@@ -19,9 +18,11 @@ filterReact19RefWarning();
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <OjDataProvider>
-        <App />
-      </OjDataProvider>
+      <ConfigProvider locale={zhCN}>
+        <OjDataProvider>
+          <App />
+        </OjDataProvider>
+      </ConfigProvider>
     </BrowserRouter>
   </React.StrictMode>,
 );

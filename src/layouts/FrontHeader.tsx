@@ -141,7 +141,6 @@ export function FrontHeader() {
         paddingInline: isCompact ? 16 : 52,
         background: token.colorBgContainer,
         borderBottom: `1px solid ${token.colorBorderSecondary}`,
-        boxShadow: token.boxShadowTertiary,
       }}
     >
       <Flex align="center" gap={24} style={{ height: '100%', minWidth: 0 }}>
@@ -152,14 +151,45 @@ export function FrontHeader() {
           style={{ height: 48, paddingInline: 8, flex: '0 0 auto' }}
         >
           <Space size={12}>
-            <Avatar
-              shape="square"
-              size={36}
-              src={siteLogo || undefined}
-              style={{ background: token.colorPrimary, fontWeight: 700 }}
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flex: '0 0 auto',
+                width: 44,
+                height: 40,
+                overflow: 'hidden',
+                background: 'transparent',
+              }}
             >
-              OJ
-            </Avatar>
+              {siteLogo ? (
+                <img
+                  src={siteLogo}
+                  alt={siteTitle}
+                  onError={() => setSiteLogo('')}
+                  style={{
+                    display: 'block',
+                    width: 'auto',
+                    height: 'auto',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                  }}
+                />
+              ) : (
+                <span
+                  style={{
+                    color: token.colorPrimary,
+                    fontSize: 20,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                  }}
+                >
+                  OJ
+                </span>
+              )}
+            </span>
             {!isCompact ? (
               <Text strong style={{ color: token.colorPrimary, fontSize: 20 }}>
                 {siteTitle}

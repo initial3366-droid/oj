@@ -40,6 +40,9 @@
   margin: 0.6em 0;
 }
 
+.html-math ul { list-style: disc; }
+.html-math ol { list-style: decimal; }
+
 .html-math li {
   margin: 0.25em 0;
 }
@@ -55,7 +58,6 @@
 .html-math img,
 .html-math video {
   max-width: 100%;
-  height: auto;
 }
 
 .html-math code {

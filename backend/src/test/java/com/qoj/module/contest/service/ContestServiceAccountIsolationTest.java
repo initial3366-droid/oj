@@ -2,10 +2,12 @@ package com.qoj.module.contest.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qoj.common.ErrorCode;
 import com.qoj.common.exception.BizException;
 import com.qoj.module.classroom.mapper.ClassMemberMapper;
 import com.qoj.module.contest.dto.ContestRegisterRequest;
 import com.qoj.module.contest.entity.Contest;
+import com.qoj.module.contest.mapper.ContestRegistrationMapper;
 import com.qoj.module.contest.mapper.ContestMapper;
 import com.qoj.module.teacher.entity.Teacher;
 import com.qoj.module.user.entity.User;
@@ -32,6 +34,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ContestServiceAccountIsolationTest {
     @Mock private ContestMapper contestMapper;
+    @Mock private ContestRegistrationMapper registrationMapper;
     @Mock private UserMapper userMapper;
     @Mock private ClassMemberMapper classMemberMapper;
     @InjectMocks private ContestService contestService;
@@ -85,6 +88,29 @@ class ContestServiceAccountIsolationTest {
         assertEquals(403, exception.getCode());
         assertEquals("比赛已结束，报名已截止", exception.getMessage());
         verify(userMapper, never()).selectById(any());
+    }
+
+    @Test
+    void passwordProtectedContestCannotExposeProblemsAfterContestEndWithoutRegistration() {
+        authenticateStudent(8L);
+        Contest contest = new Contest();
+        contest.id = 1L;
+        contest.startTime = LocalDateTime.now().minusHours(2);
+        contest.endTime = LocalDateTime.now().minusMinutes(1);
+        contest.allowAfterEndViewProblem = true;
+        contest.audience = "ALL";
+        contest.registrationPassword = "encoded-password";
+        when(contestMapper.selectById(1L)).thenReturn(contest);
+        when(registrationMapper.selectOne(any(QueryWrapper.class))).thenReturn(null);
+
+        BizException exception = assertThrows(
+            BizException.class,
+            () -> contestService.problemDetail(1L, 10L)
+        );
+
+        assertEquals(ErrorCode.FORBIDDEN.getCode(), exception.getCode());
+        assertEquals("无权查看比赛题目", exception.getMessage());
+        verify(registrationMapper).selectOne(any(QueryWrapper.class));
     }
 
     private void authenticateTeacher(Long id) {

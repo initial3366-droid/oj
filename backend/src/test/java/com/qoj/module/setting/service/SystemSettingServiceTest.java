@@ -117,7 +117,6 @@ class SystemSettingServiceTest {
         assertTrue(settings.cpp.contains("ios::sync_with_stdio"));
         assertTrue(settings.python.contains("def solve"));
         assertTrue(settings.java.contains("class Main"));
-        assertTrue(settings.csharp.contains("static class Program"));
     }
 
     /**
@@ -132,14 +131,12 @@ class SystemSettingServiceTest {
         request.cpp = "int main() { return 0; }";
         request.python = "print('ok')";
         request.java = "class Main {}";
-        request.csharp = "class Program {}";
 
         settingService.updateCodeTemplateSettings(request, adminAuthUser());
 
         verify(settingMapper).insert(org.mockito.ArgumentMatchers.<SystemSetting>argThat(setting ->
             "system.code_templates".equals(setting.settingKey)
                 && setting.settingValue.contains("int main(void)")
-                && setting.settingValue.contains("class Program")
         ));
     }
 

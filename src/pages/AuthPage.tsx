@@ -390,7 +390,6 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         });
         window.localStorage.setItem('qoj.accessToken', auth.accessToken);
         window.localStorage.setItem('qoj.refreshToken', auth.refreshToken);
-        antdMessage.success('注册成功');
       } else {
         const auth = await loginWithoutPersist(form.username, form.password);
         if (auth.portal === 'TEACHER') {
@@ -411,10 +410,12 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           return;
         }
         saveFrontendAuthTokens(auth);
-        antdMessage.success('登录成功');
       }
-      // 刷新页面以重新加载用户状态
-      window.location.href = redirectPath;
+      // 刷新页面以重新加载用户状态：先展示成功提示，再延迟跳转，避免提示被立即刷新打断
+      antdMessage.success(isRegister ? '注册成功' : '登录成功', 2);
+      setTimeout(() => {
+        window.location.href = redirectPath;
+      }, 1200);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '操作失败';
       if (!isRegister && errorMessage.includes('教师账号请使用教师端登录')) {

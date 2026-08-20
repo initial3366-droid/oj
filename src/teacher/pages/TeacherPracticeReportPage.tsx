@@ -16,6 +16,7 @@ import {
 } from '@arco-design/web-react';
 import { IconDownload, IconEye, IconLeft } from '@arco-design/web-react/icon';
 import { teacherGet } from '../teacherApi';
+import { CodeViewer } from '../../components/common/CodeViewer';
 
 const { Row, Col } = Grid;
 
@@ -84,6 +85,7 @@ export function TeacherPracticeReportPage() {
   const [report, setReport] = useState<PracticeReport | null>(null);
   const [codeModalVisible, setCodeModalVisible] = useState(false);
   const [codeContent, setCodeContent] = useState('');
+  const [codeLanguage, setCodeLanguage] = useState('');
   const [codeLoading, setCodeLoading] = useState(false);
 
   useEffect(() => {
@@ -108,9 +110,10 @@ export function TeacherPracticeReportPage() {
   /**
    * 封装view编码相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
    */
-  async function viewCode(submissionId: number) {
+  async function viewCode(submissionId: number, language: string) {
     setCodeLoading(true);
     setCodeModalVisible(true);
+    setCodeLanguage(language);
     try {
       const code = await teacherGet<string>(`/api/teacher/v1/submissions/${submissionId}/code`);
       setCodeContent(code);
@@ -232,7 +235,7 @@ export function TeacherPracticeReportPage() {
                 {
                   title: '代码', width: 80, align: 'center',
                   render: (_: unknown, record: PracticeSubmission) => (
-                    <Button type="text" size="small" icon={<IconEye />} onClick={() => viewCode(record.id)}>查看</Button>
+                    <Button type="text" size="small" icon={<IconEye />} onClick={() => viewCode(record.id, record.language)}>查看</Button>
                   ),
                 },
               ]}
@@ -244,16 +247,14 @@ export function TeacherPracticeReportPage() {
       <Modal
         title="提交代码"
         visible={codeModalVisible}
-        onCancel={() => { setCodeModalVisible(false); setCodeContent(''); }}
+        onCancel={() => { setCodeModalVisible(false); setCodeContent(''); setCodeLanguage(''); }}
         footer={null}
-        style={{ width: 700 }}
+        style={{ width: '70%' }}
       >
         {codeLoading ? (
           <div style={{ padding: 20, textAlign: 'center' }}>加载中...</div>
         ) : (
-          <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 8, overflow: 'auto', maxHeight: 500, fontSize: 13, fontFamily: 'monospace' }}>
-            {codeContent}
-          </pre>
+          <CodeViewer code={codeContent} language={codeLanguage} height="60vh" />
         )}
       </Modal>
     </Space>

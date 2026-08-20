@@ -1,7 +1,7 @@
 /**
  * DifficultyTag组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Tag } from '@douyinfe/semi-ui';
+import { Tag } from 'antd';
 
 /**
  * Difficulty类型别名，明确该模块内部及 API 边界使用的数据结构。
@@ -59,8 +59,8 @@ export function DifficultyTag({ difficulty, size = 'sm' }: DifficultyTagProps) {
 
   return (
     <Tag
-      color={config.color}
-      size={tagSize}
+      color={config.color === 'grey' ? 'default' : config.color}
+      style={{ fontSize: tagSize === 'small' ? 12 : undefined }}
     >
       {config.text}
     </Tag>

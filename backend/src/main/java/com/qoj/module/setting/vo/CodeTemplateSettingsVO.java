@@ -8,5 +8,4 @@ public class CodeTemplateSettingsVO {
     public String cpp;
     public String python;
     public String java;
-    public String csharp;
 }

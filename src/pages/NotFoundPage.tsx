@@ -1,7 +1,7 @@
 /**
  * NotFound页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Button, Card, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Typography } from 'antd';
 
 /**
  * 渲染NotFound页面，并协调其数据加载、状态和交互。
@@ -13,26 +13,27 @@ export function NotFoundPage() {
         display: 'grid',
         placeItems: 'center',
         minHeight: '100vh',
-        backgroundColor: 'var(--semi-color-fill-0)',
+        backgroundColor: 'var(--qoj-color-fill-0)',
         padding: 24,
       }}
     >
       <Card
         style={{
           maxWidth: 448,
-          border: '1px solid var(--semi-color-border)',
+          border: '1px solid var(--qoj-color-border)',
         }}
-        bodyStyle={{
-          padding: 40,
-          textAlign: 'center',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 20,
+        styles={{
+          body: {
+            padding: 40,
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 20,
+          },
         }}
       >
         <Typography.Text
-          type="primary"
           style={{
             fontSize: 14,
             fontWeight: 600,
@@ -42,7 +43,7 @@ export function NotFoundPage() {
         >
           404
         </Typography.Text>
-        <Typography.Title heading={2} style={{ margin: 0 }}>
+        <Typography.Title level={2} style={{ margin: 0 }}>
           页面不存在
         </Typography.Title>
         <Typography.Paragraph style={{ margin: 0, fontSize: 14, lineHeight: 1.6 }} type="secondary">

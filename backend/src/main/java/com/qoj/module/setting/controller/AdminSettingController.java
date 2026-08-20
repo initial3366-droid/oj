@@ -150,6 +150,7 @@ public class AdminSettingController {
             request.maintenanceMode,
             request.footerText,
             request.icpNumber,
+            request.mpsNumber,
             request.footerLink1Text,
             request.footerLink1Url,
             request.footerLink2Text,
@@ -168,6 +169,7 @@ public class AdminSettingController {
         public Boolean maintenanceMode;
         public String footerText;
         public String icpNumber;
+        public String mpsNumber;
         public String footerLink1Text;
         public String footerLink1Url;
         public String footerLink2Text;

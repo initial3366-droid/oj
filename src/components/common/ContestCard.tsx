@@ -1,8 +1,8 @@
 /**
  * 比赛Card组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Card, Typography, Tag, Space } from '@douyinfe/semi-ui';
-import { IconUser, IconCalendar, IconClock } from '@douyinfe/semi-icons';
+import { Card, Typography, Tag, Space } from 'antd';
+import { UserOutlined, CalendarOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { ContestStatusTag } from './ContestStatusTag';
 import type { CSSProperties } from 'react';
 
@@ -74,26 +74,24 @@ export function ContestCard({
   return (
     <div onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
       <Card
-        shadows="hover"
         style={{
-          transition: 'all 0.2s',
           ...style,
         }}
-        bodyStyle={{ padding: 20 }}
+        styles={{ body: { padding: 20 } }}
       >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Space spacing={8} align="center" style={{ marginBottom: 8 }}>
+            <Space size={8} align="center" style={{ marginBottom: 8 }}>
               <Typography.Text
-                type="tertiary"
+                type="secondary"
                 style={{ fontSize: 14, fontWeight: 600 }}
               >
                 #{id}
               </Typography.Text>
               <Typography.Title
-                heading={5}
-                ellipsis={{ showTooltip: true }}
+                level={5}
+                ellipsis={{ tooltip: <span>{title}</span> }}
                 style={{ margin: 0, fontSize: 16 }}
               >
                 {title}
@@ -101,8 +99,8 @@ export function ContestCard({
             </Space>
             {description && (
               <Typography.Paragraph
-                ellipsis={{ rows: 2, showTooltip: true }}
-                type="tertiary"
+                ellipsis={{ rows: 2, tooltip: <span>{description}</span> }}
+                type="secondary"
                 style={{ margin: 0, fontSize: 14 }}
               >
                 {description}
@@ -114,12 +112,12 @@ export function ContestCard({
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {type && (
-            <Tag size="small" color="cyan" type="light">
+            <Tag color="cyan" style={{ fontSize: 12 }}>
               {type}
             </Tag>
           )}
           {participantCount > 0 && (
-            <Tag size="small" color="purple" type="light">
+            <Tag color="purple" style={{ fontSize: 12 }}>
               {participantCount} 人参加
             </Tag>
           )}
@@ -133,26 +131,26 @@ export function ContestCard({
             flexWrap: 'wrap',
             gap: 12,
             paddingTop: 8,
-            borderTop: '1px solid var(--semi-color-border)',
+            borderTop: '1px solid var(--qoj-color-border)',
           }}
         >
-          <Space spacing={12} wrap>
+          <Space size={12} wrap>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <IconCalendar style={{ fontSize: 14, color: 'var(--semi-color-text-2)' }} />
-              <Typography.Text type="tertiary" style={{ fontSize: 13 }}>
+              <CalendarOutlined style={{ fontSize: 14, color: 'var(--qoj-color-text-2)' }} />
+              <Typography.Text type="secondary" style={{ fontSize: 13 }}>
                 {formatDateTime(startTime)}
               </Typography.Text>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <IconClock style={{ fontSize: 14, color: 'var(--semi-color-text-2)' }} />
-              <Typography.Text type="tertiary" style={{ fontSize: 13 }}>
+              <ClockCircleOutlined style={{ fontSize: 14, color: 'var(--qoj-color-text-2)' }} />
+              <Typography.Text type="secondary" style={{ fontSize: 13 }}>
                 {getDuration()}
               </Typography.Text>
             </div>
             {organizer && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <IconUser style={{ fontSize: 14, color: 'var(--semi-color-text-2)' }} />
-                <Typography.Text type="tertiary" style={{ fontSize: 13 }}>
+                <UserOutlined style={{ fontSize: 14, color: 'var(--qoj-color-text-2)' }} />
+                <Typography.Text type="secondary" style={{ fontSize: 13 }}>
                   {organizer}
                 </Typography.Text>
               </div>

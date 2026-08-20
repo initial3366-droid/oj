@@ -47,6 +47,7 @@ interface BasicFormData {
   statement: string;
   inputFormat?: string;
   outputFormat?: string;
+  checkerSource?: string;
   tags?: string[];
   difficulty?: number;
   folderId?: number;
@@ -128,6 +129,7 @@ function normalizeBasicPayload(values: Partial<BasicFormData>, tags: string[]) {
     statement: values.statement?.trim() || '',
     inputFormat: values.inputFormat?.trim() || '',
     outputFormat: values.outputFormat?.trim() || '',
+    checkerSource: values.checkerSource || '',
     tags,
     difficulty: values.difficulty ?? null,
     folderId: values.folderId || undefined,
@@ -234,7 +236,10 @@ export function AdminProblemCreatePage() {
   async function loadProblem(id: number) {
     try {
       setLoading(true);
-      const result = await adminGet<any>(`/api/admin/v1/problems/${id}`);
+      const [result, checkerSource] = await Promise.all([
+        adminGet<any>(`/api/admin/v1/problems/${id}`),
+        adminGet<string>(`/api/admin/v1/problems/${id}/checker-source`),
+      ]);
       basicForm.setFieldsValue({
         title: result.title,
         timeLimit: result.timeLimit,
@@ -242,6 +247,7 @@ export function AdminProblemCreatePage() {
         statement: result.statement,
         inputFormat: result.inputFormat || '',
         outputFormat: result.outputFormat || '',
+        checkerSource: checkerSource || '',
         tags: result.tags || [],
         difficulty: result.difficulty ?? 1,
         folderId: result.folderId || undefined,
@@ -458,8 +464,10 @@ export function AdminProblemCreatePage() {
       }
 
       const seenCaseNos = new Set<number>();
+      const checkerSource = basicForm.getFieldValue('checkerSource');
+      const hasChecker = typeof checkerSource === 'string' && checkerSource.trim().length > 0;
       for (const tc of normalized) {
-        if (!tc.output) {
+        if (!hasChecker && !tc.output) {
           Message.warning(`测试点 ${tc.caseNo} 的输出数据不能为空`);
           return false;
         }
@@ -552,6 +560,7 @@ export function AdminProblemCreatePage() {
               accessScope: 'ALL',
               studentPublishStatus: 'PUBLISHED',
               difficulty: 1,
+              checkerSource: '',
               samples: [],
             }}
             style={{ maxWidth: '1200px', margin: '0 auto' }}
@@ -680,6 +689,18 @@ export function AdminProblemCreatePage() {
             <HtmlMathEditor placeholder="输出格式说明（支持 HTML 与 LaTeX）" rows={3} />
           </FormItem>
 
+          <FormItem
+            label="SPJ 代码"
+            field="checkerSource"
+            extra="留空使用默认 token 比较；填写 C++ testlib checker 后由 Go Judge 在隔离沙箱中执行。"
+          >
+            <Textarea
+              placeholder={'#include "testlib.h"\n\nint main(int argc, char* argv[]) {\n    registerTestlibCmd(argc, argv);\n    ...\n}'}
+              rows={14}
+              style={{ fontFamily: 'monospace' }}
+            />
+          </FormItem>
+
           <FormItem label="样例">
             <Form.List field="samples">
               {(fields, { add, remove }) => (
@@ -779,11 +800,11 @@ export function AdminProblemCreatePage() {
                 />
               </div>
               <div style={{ marginBottom: '16px' }}>
-                <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>输出数据</div>
+                <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>输出数据（SPJ 可留空）</div>
                 <Textarea
                   value={testCase.output}
                   onChange={(value: string) => updateTestCase(index, 'output', value)}
-                  placeholder="测试点输出数据"
+                  placeholder="测试点输出数据（SPJ 可留空）"
                   rows={4}
                 />
               </div>

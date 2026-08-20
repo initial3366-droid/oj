@@ -49,6 +49,7 @@ public class Contest {
     public String status;
     public Integer registrationCount;
     public Integer participantCount;
+    public Long sourceContestId;
     public Boolean isDeleted;
     public LocalDateTime deletedAt;
     public LocalDateTime createdAt;

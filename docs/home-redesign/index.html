@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <title>QOJ 校园在线评测 · 首页重构原型</title>
+  <style>
+    /* ============================================================
+       QOJ 首页重构 · 静态原型（独立文件，不依赖现有工程代码）
+       设计基调：面向校园、安静克制、信息优先
+       主色沿用 tokens.css 中的 --qoj-color-primary: #0066ff
+       页面内所有数据均为示意数据，仅用于演示版式
+       ============================================================ */
+
+    :root {
+      --qoj-primary: #0066ff;
+      --qoj-primary-soft: rgba(0, 102, 255, 0.08);
+      --qoj-text: rgba(0, 0, 0, 0.85);
+      --qoj-text-2: rgba(0, 0, 0, 0.55);
+      --qoj-text-3: rgba(0, 0, 0, 0.35);
+      --qoj-border: #e8eaee;
+      --qoj-bg: #f5f6f8;
+      --qoj-card: #ffffff;
+      --qoj-success: #10b981;
+      --qoj-warning: #f59e0b;
+      --qoj-radius: 10px;
+      --qoj-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: var(--qoj-bg);
+      color: var(--qoj-text);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    ul { list-style: none; }
+
+    .wrap {
+      width: 100%;
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ---------- 顶部导航 ---------- */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--qoj-border);
+    }
+    .site-header-inner {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 17px;
+      flex: 0 0 auto;
+    }
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: var(--qoj-primary);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .brand small { font-weight: 400; color: var(--qoj-text-3); font-size: 12px; }
+    .main-nav { display: flex; align-items: center; gap: 4px; flex: 1; }
+    .main-nav a {
+      padding: 7px 14px;
+      border-radius: 8px;
+      color: var(--qoj-text-2);
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    .main-nav a:hover { color: var(--qoj-primary); background: var(--qoj-primary-soft); }
+    .main-nav a.active { color: var(--qoj-primary); font-weight: 600; background: var(--qoj-primary-soft); }
+    .header-actions { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      font-size: 14px;
+      line-height: 1;
+      padding: 9px 18px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .btn-ghost { border-color: var(--qoj-border); color: var(--qoj-text); background: #fff; }
+    .btn-ghost:hover { border-color: var(--qoj-primary); color: var(--qoj-primary); }
+    .btn-primary { background: var(--qoj-primary); color: #fff; font-weight: 500; }
+    .btn-primary:hover { background: #0052cc; }
+
+    /* ---------- 通用标题 ---------- */
+    .section { margin-top: 40px; }
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .section-head h2 { font-size: 17px; font-weight: 650; }
+    .section-head .more { font-size: 13px; color: var(--qoj-primary); }
+    .section-head .more:hover { text-decoration: underline; }
+    .section-head .hint { font-size: 13px; color: var(--qoj-text-3); }
+
+    .card {
+      background: var(--qoj-card);
+      border: 1px solid var(--qoj-border);
+      border-radius: var(--qoj-radius);
+      box-shadow: var(--qoj-shadow);
+    }
+
+    /* ---------- 主视觉（Hero） ---------- */
+    .hero {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 28px;
+      padding: 36px 40px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(560px 260px at 8% 0%, rgba(0, 102, 255, 0.07), transparent 62%);
+      pointer-events: none;
+    }
+    .hero-left { position: relative; display: flex; flex-direction: column; justify-content: center; }
+    .hero-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      font-size: 12.5px;
+      color: var(--qoj-primary);
+      background: var(--qoj-primary-soft);
+      border-radius: 999px;
+      padding: 5px 12px;
+      margin-bottom: 18px;
+    }
+    .hero h1 { font-size: 30px; line-height: 1.35; font-weight: 700; letter-spacing: 0.2px; }
+    .hero h1 em { font-style: normal; color: var(--qoj-primary); }
+    .hero p.desc { margin-top: 12px; color: var(--qoj-text-2); font-size: 15px; max-width: 460px; }
+    .hero-cta { margin-top: 26px; display: flex; align-items: center; gap: 14px; }
+    .hero-cta .btn { padding: 11px 22px; font-size: 15px; }
+    .hero-cta .hint { font-size: 13px; color: var(--qoj-text-3); }
+    .hero-stats { margin-top: 30px; display: flex; gap: 36px; }
+    .hero-stats .num { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .hero-stats .num i { font-style: normal; font-size: 13px; font-weight: 400; color: var(--qoj-text-3); margin-left: 2px; }
+    .hero-stats .label { font-size: 12.5px; color: var(--qoj-text-2); margin-top: 2px; }
+
+    .hero-right { position: relative; display: flex; flex-direction: column; }
+    .hero-panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--qoj-border);
+    }
+    .hero-panel-head h3 { font-size: 14px; font-weight: 650; }
+    .contest-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 15px 18px;
+    }
+    .contest-row + .contest-row { border-top: 1px solid var(--qoj-border); }
+    .contest-date {
+      flex: 0 0 auto;
+      width: 52px;
+      text-align: center;
+      border: 1px solid var(--qoj-border);
+      border-radius: 8px;
+      padding: 5px 0;
+      background: var(--qoj-bg);
+    }
+    .contest-date .d { font-size: 19px; font-weight: 700; line-height: 1.1; }
+    .contest-date .m { font-size: 11px; color: var(--qoj-text-2); }
+    .contest-info { flex: 1; min-width: 0; }
+    .contest-info .t { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .contest-info .meta { font-size: 12px; color: var(--qoj-text-2); margin-top: 3px; }
+    .tag {
+      flex: 0 0 auto;
+      font-size: 12px;
+      border-radius: 6px;
+      padding: 3px 9px;
+      font-weight: 500;
+    }
+    .tag-running { color: #047857; background: rgba(16, 185, 129, 0.12); }
+    .tag-upcoming { color: #b45309; background: rgba(245, 158, 11, 0.12); }
+    .tag-ended { color: var(--qoj-text-3); background: rgba(0, 0, 0, 0.05); }
+    .hero-panel-foot { padding: 10px 18px 14px; font-size: 12.5px; color: var(--qoj-text-3); }
+
+    /* ---------- 常用入口 ---------- */
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    .quick-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 18px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .quick-card:hover { border-color: rgba(0, 102, 255, 0.45); box-shadow: 0 3px 10px rgba(0, 102, 255, 0.08); }
+    .quick-icon {
+      flex: 0 0 auto;
+      width: 42px;
+      height: 42px;
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+    }
+    .quick-icon svg { width: 21px; height: 21px; }
+    .quick-card .name { font-weight: 600; font-size: 14.5px; }
+    .quick-card .sub { font-size: 12.5px; color: var(--qoj-text-2); margin-top: 2px; }
+
+    /* ---------- 公告 ---------- */
+    .notice-card { padding: 20px 24px; display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: start; }
+    .notice-card .head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .notice-card .head h3 { font-size: 14.5px; font-weight: 650; }
+    .notice-bell {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: var(--qoj-primary-soft); color: var(--qoj-primary);
+      display: grid; place-items: center;
+    }
+    .notice-bell svg { width: 16px; height: 16px; }
+    .notice-list { display: flex; flex-direction: column; gap: 4px; }
+    .notice-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      transition: background 0.15s ease;
+    }
+    .notice-item:hover { background: var(--qoj-bg); }
+    .notice-item .dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--qoj-primary); }
+    .notice-item .t { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .notice-item .date { flex: 0 0 auto; font-size: 12.5px; color: var(--qoj-text-3); font-variant-numeric: tabular-nums; }
+    .notice-side { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; padding-top: 4px; }
+    .notice-side .more { font-size: 13px; color: var(--qoj-primary); }
+    .notice-side .mini { text-align: right; font-size: 12.5px; color: var(--qoj-text-3); }
+
+    /* ---------- 数据概览 ---------- */
+    .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .stat-card { padding: 20px; }
+    .stat-top { display: flex; align-items: center; justify-content: space-between; }
+    .stat-top .label { font-size: 13px; color: var(--qoj-text-2); }
+    .stat-num { margin-top: 10px; font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .stat-num small { font-size: 13px; font-weight: 400; color: var(--qoj-text-3); }
+    .stat-foot { margin-top: 12px; font-size: 12.5px; color: var(--qoj-text-3); }
+    .stat-foot b { color: var(--qoj-success); font-weight: 600; }
+    .stat-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+    .dot-blue { background: var(--qoj-primary); }
+    .dot-green { background: var(--qoj-success); }
+    .dot-amber { background: var(--qoj-warning); }
+    .dot-violet { background: #8b5cf6; }
+
+    /* ---------- 学习路线 ---------- */
+    .path-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .path-card { padding: 22px; }
+    .path-step {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: var(--qoj-primary-soft);
+      color: var(--qoj-primary);
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 14px;
+    }
+    .path-card h3 { font-size: 15px; font-weight: 650; }
+    .path-card p { margin-top: 8px; font-size: 13.5px; color: var(--qoj-text-2); }
+    .path-card .go { display: inline-block; margin-top: 14px; font-size: 13px; color: var(--qoj-primary); }
+    .path-card .go:hover { text-decoration: underline; }
+
+    /* ---------- 班级风云榜 ---------- */
+    .rank-card { padding: 8px 24px 16px; }
+    .rank-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 16px 0 12px;
+      border-bottom: 1px solid var(--qoj-border);
+    }
+    .rank-head h3 { font-size: 14.5px; font-weight: 650; flex: 1; }
+    .rank-head .refresh { font-size: 12.5px; color: var(--qoj-text-3); }
+    .rank-row {
+      display: grid;
+      grid-template-columns: 46px 1fr 150px 92px 76px 130px;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 8px;
+      border-bottom: 1px solid var(--qoj-border);
+    }
+    .rank-row:last-child { border-bottom: none; }
+    .rank-row.head-row { font-size: 12px; color: var(--qoj-text-3); padding: 10px 8px 6px; }
+    .rank-num { font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; text-align: center; }
+    .rank-num.top { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: #fff; font-size: 14px; }
+    .rank-1 { background: #f2b01e; }
+    .rank-2 { background: #9aa5b1; }
+    .rank-3 { background: #c98a5e; }
+    .rank-user { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .avatar {
+      flex: 0 0 auto;
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      background: var(--qoj-primary-soft);
+      color: var(--qoj-primary);
+      display: grid; place-items: center;
+      font-weight: 700; font-size: 14px;
+    }
+    .rank-user .name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rank-user .badge { font-size: 11px; color: var(--qoj-primary); background: var(--qoj-primary-soft); border-radius: 5px; padding: 1px 7px; margin-left: 6px; }
+    .rank-class { font-size: 13px; color: var(--qoj-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rank-ac { font-weight: 700; font-size: 14.5px; font-variant-numeric: tabular-nums; }
+    .rank-streak { font-size: 13px; color: var(--qoj-warning); font-variant-numeric: tabular-nums; }
+    .rank-bar { height: 6px; border-radius: 999px; background: var(--qoj-bg); overflow: hidden; }
+    .rank-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, rgba(0, 102, 255, 0.55), var(--qoj-primary)); }
+    .rank-foot { padding: 12px 8px 6px; font-size: 12.5px; color: var(--qoj-text-3); text-align: center; }
+
+    /* ---------- 页脚 ---------- */
+    .site-footer { margin-top: 56px; background: #fff; border-top: 1px solid var(--qoj-border); }
+    .site-footer-inner { padding: 32px 24px 28px; display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+    .footer-col h4 { font-size: 13.5px; font-weight: 650; margin-bottom: 12px; }
+    .footer-col a { display: block; font-size: 13px; color: var(--qoj-text-2); padding: 3px 0; }
+    .footer-col a:hover { color: var(--qoj-primary); }
+    .footer-copy { width: 100%; border-top: 1px solid var(--qoj-border); margin-top: 20px; padding-top: 16px; font-size: 12.5px; color: var(--qoj-text-3); text-align: center; }
+
+    /* ---------- 响应式 ---------- */
+    @media (max-width: 960px) {
+      .main-nav a { padding: 7px 9px; font-size: 13.5px; }
+      .hero { grid-template-columns: 1fr; padding: 30px 28px; }
+      .quick-grid { grid-template-columns: repeat(2, 1fr); }
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+      .path-grid { grid-template-columns: 1fr; }
+      .rank-row { grid-template-columns: 40px 1fr 110px 70px 90px; }
+      .rank-row .rank-streak, .rank-row.head-row .h-streak { display: none; }
+      .rank-class { max-width: 110px; }
+      .notice-card { grid-template-columns: 1fr; }
+      .notice-side { flex-direction: row; align-items: center; justify-content: space-between; }
+    }
+    @media (max-width: 640px) {
+      .wrap { padding: 0 16px; }
+      .main-nav { display: none; }
+      .site-header-inner { gap: 12px; justify-content: space-between; }
+      .hero { padding: 24px 20px; }
+      .hero h1 { font-size: 24px; }
+      .hero-stats { gap: 22px; flex-wrap: wrap; }
+      .hero-cta { flex-wrap: wrap; }
+      .quick-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+      .stat-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+      .rank-row { grid-template-columns: 36px 1fr 64px; }
+      .rank-row .rank-class, .rank-row .rank-bar, .rank-row.head-row .h-class, .rank-row.head-row .h-bar { display: none; }
+      .rank-head .refresh { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================= 顶部导航 ================= -->
+  <header class="site-header">
+    <div class="wrap site-header-inner">
+      <a class="brand" href="#">
+        <span class="brand-mark">OJ</span>
+        QOJ 在线评测<small>&nbsp;·&nbsp;校园版</small>
+      </a>
+      <nav class="main-nav">
+        <a href="#" class="active">首页</a>
+        <a href="#">题库</a>
+        <a href="#">题单</a>
+        <a href="#">比赛</a>
+        <a href="#">排行榜</a>
+        <a href="#">数据结构</a>
+      </nav>
+      <div class="header-actions">
+        <a class="btn btn-ghost" href="#">登录</a>
+        <a class="btn btn-primary" href="#">注册</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- ================= 主视觉 ================= -->
+    <section class="hero card">
+      <div class="hero-left">
+        <span class="hero-kicker">第 12 届校程序设计竞赛 · 报名进行中</span>
+        <h1>从课堂到赛场，<br />在 <em>QOJ</em> 一步步练出硬实力</h1>
+        <p class="desc">
+          面向全校师生的在线评测平台：按课程、按难度组织的题库，配套题单与练习，
+          支持 ACM / OI 赛制的校内比赛，还有班级排行榜见证每一次进步。
+        </p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#">开始刷题</a>
+          <a class="btn btn-ghost" href="#">查看全部比赛</a>
+          <span class="hint">新人可先看「新手路线」</span>
+        </div>
+        <div class="hero-stats">
+          <div>
+            <div class="num">1,286<i>题</i></div>
+            <div class="label">覆盖 C / C++ / Java / Python</div>
+          </div>
+          <div>
+            <div class="num">3,512<i>人</i></div>
+            <div class="label">实名认证学生用户</div>
+          </div>
+          <div>
+            <div class="num">286,459<i>次</i></div>
+            <div class="label">累计提交评测</div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="hero-right">
+        <div class="hero-panel-head">
+          <h3>近期比赛</h3>
+          <a class="more" href="#">全部比赛 →</a>
+        </div>
+        <a class="contest-row" href="#">
+          <span class="contest-date"><span class="d">16</span><span class="m">8月</span></span>
+          <span class="contest-info">
+            <span class="t">2026 年秋季新生赛（预热赛）</span>
+            <span class="meta">ACM 赛制 · 面向大一新生 · 2 小时</span>
+          </span>
+          <span class="tag tag-upcoming">未开始</span>
+        </a>
+        <a class="contest-row" href="#">
+          <span class="contest-date"><span class="d">10</span><span class="m">8月</span></span>
+          <span class="contest-info">
+            <span class="t">数据结构课程期末上机模拟</span>
+            <span class="meta">OI 赛制 · 面向大二学生 · 3 小时</span>
+          </span>
+          <span class="tag tag-running">进行中</span>
+        </a>
+        <a class="contest-row" href="#">
+          <span class="contest-date"><span class="d">02</span><span class="m">8月</span></span>
+          <span class="contest-info">
+            <span class="t">算法协会暑期排位赛 · 第四场</span>
+            <span class="meta">ACM 赛制 · 面向全体 · 5 小时</span>
+          </span>
+          <span class="tag tag-ended">已结束</span>
+        </a>
+        <div class="hero-panel-foot">比赛数据为示意内容，上线后接入「近期比赛」接口自动更新。</div>
+      </aside>
+    </section>
+
+    <!-- ================= 常用入口 ================= -->
+    <section class="section">
+      <div class="section-head">
+        <h2>常用入口</h2>
+      </div>
+      <div class="quick-grid">
+        <a class="card quick-card" href="#">
+          <span class="quick-icon" style="background:rgba(0,102,255,0.1);color:#0066ff;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </span>
+          <span><span class="name">题库</span><span class="sub" style="display:block">按难度与标签检索题目</span></span>
+        </a>
+        <a class="card quick-card" href="#">
+          <span class="quick-icon" style="background:rgba(16,185,129,0.12);color:#059669;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </span>
+          <span><span class="name">题单</span><span class="sub" style="display:block">课程配套练习与作业</span></span>
+        </a>
+        <a class="card quick-card" href="#">
+          <span class="quick-icon" style="background:rgba(245,158,11,0.14);color:#d97706;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+          </span>
+          <span><span class="name">比赛</span><span class="sub" style="display:block">校内赛与课程模拟赛</span></span>
+        </a>
+        <a class="card quick-card" href="#">
+          <span class="quick-icon" style="background:rgba(139,92,246,0.12);color:#7c3aed;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
+          </span>
+          <span><span class="name">数据结构</span><span class="sub" style="display:block">可视化演示与实验</span></span>
+        </a>
+      </div>
+    </section>
+
+    <!-- ================= 公告 ================= -->
+    <section class="section">
+      <div class="card notice-card">
+        <div>
+          <div class="head">
+            <span class="notice-bell">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            </span>
+            <h3>站内公告</h3>
+          </div>
+          <ul class="notice-list" id="notice-list"></ul>
+        </div>
+        <div class="notice-side">
+          <a class="more" href="#">全部公告 →</a>
+          <span class="mini">重要通知会同步置顶显示</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 数据概览 ================= -->
+    <section class="section">
+      <div class="section-head">
+        <h2>平台概况</h2>
+        <span class="hint">数据每日更新</span>
+      </div>
+      <div class="stat-grid">
+        <div class="card stat-card">
+          <div class="stat-top"><span class="label">题库题目</span><span class="stat-dot dot-blue"></span></div>
+          <div class="stat-num">1,286<small> 题</small></div>
+          <div class="stat-foot">本周新增 <b>+24</b> 题</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-top"><span class="label">注册用户</span><span class="stat-dot dot-green"></span></div>
+          <div class="stat-num">3,512<small> 人</small></div>
+          <div class="stat-foot">覆盖 23 个班级</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-top"><span class="label">本月提交</span><span class="stat-dot dot-amber"></span></div>
+          <div class="stat-num">18,203<small> 次</small></div>
+          <div class="stat-foot">平均通过率 46.8%</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-top"><span class="label">进行中比赛</span><span class="stat-dot dot-violet"></span></div>
+          <div class="stat-num">3<small> 场</small></div>
+          <div class="stat-foot">本月已举办 7 场比赛</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 学习路线 ================= -->
+    <section class="section">
+      <div class="section-head">
+        <h2>学习路线</h2>
+        <span class="hint">为初学者准备的三个起点</span>
+      </div>
+      <div class="path-grid">
+        <div class="card path-card">
+          <span class="path-step">01</span>
+          <h3>语言入门</h3>
+          <p>从输入输出、分支循环到函数与数组，配套课程进度逐章练习，提交后即时判题反馈。</p>
+          <a class="go" href="#">从「入门」难度开始 →</a>
+        </div>
+        <div class="card path-card">
+          <span class="path-step">02</span>
+          <h3>课程进阶</h3>
+          <p>栈、队列、树与图等数据结构专题，结合可视化实验室理解算法，再完成配套题单巩固。</p>
+          <a class="go" href="#">打开数据结构实验室 →</a>
+        </div>
+        <div class="card path-card">
+          <span class="path-step">03</span>
+          <h3>以赛促练</h3>
+          <p>参加校内 ACM / OI 赛制比赛，赛前刷往届真题，赛后看排行榜与题解复盘，稳步提升。</p>
+          <a class="go" href="#">看看近期比赛 →</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 班级风云榜 ================= -->
+    <section class="section">
+      <div class="section-head">
+        <h2>班级风云榜</h2>
+        <a class="more" href="#">完整榜单 →</a>
+      </div>
+      <div class="card rank-card">
+        <div class="rank-head">
+          <h3>本周 AC 榜</h3>
+          <span class="refresh">按非比赛 AC 数排序 · 每周一 00:00 更新</span>
+        </div>
+        <div class="rank-row head-row">
+          <span style="text-align:center">排名</span><span>用户</span><span class="h-class">班级</span><span>AC 数</span><span class="h-streak">连续</span><span class="h-bar">本周进度</span>
+        </div>
+        <div id="rank-list"></div>
+        <div class="rank-foot">榜单数据为示意内容，上线后接入排行榜接口自动渲染。</div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ================= 页脚 ================= -->
+  <footer class="site-footer">
+    <div class="wrap site-footer-inner">
+      <div class="footer-col">
+        <h4>平台</h4>
+        <a href="#">关于 QOJ</a>
+        <a href="#">常见问题</a>
+        <a href="#">评测机状态</a>
+      </div>
+      <div class="footer-col">
+        <h4>学习</h4>
+        <a href="#">题库</a>
+        <a href="#">题单</a>
+        <a href="#">数据结构实验室</a>
+      </div>
+      <div class="footer-col">
+        <h4>竞赛</h4>
+        <a href="#">近期比赛</a>
+        <a href="#">排行榜</a>
+        <a href="#">历年真题</a>
+      </div>
+      <div class="footer-copy">QOJ 校园在线评测系统 · 仅供校内教学与竞赛使用 · 页面为首页重构静态原型（示意数据）</div>
+    </div>
+  </footer>
+
+  <script>
+    // 示意数据：上线实现时，公告替换为 fetchLatestAnnouncements()，
+    // 榜单替换为 useOjData() 中的 ratings 字段，无需改动本原型的版式。
+    (function () {
+      var notices = [
+        { date: '08-12', title: '关于 8 月 16 日新生赛期间判题队列可能拥堵的说明' },
+        { date: '08-08', title: '数据结构实验室新增「红黑树」可视化演示，欢迎体验' },
+        { date: '08-03', title: '暑期排位赛第四场题解与获奖名单已发布' },
+        { date: '07-30', title: '题库新增「动态规划入门」专题题单，共 20 题' },
+      ];
+
+      var list = document.getElementById('notice-list');
+      notices.forEach(function (n) {
+        var li = document.createElement('li');
+        li.className = 'notice-item';
+        li.innerHTML =
+          '<span class="dot"></span>' +
+          '<a class="t" href="#">' + n.title + '</a>' +
+          '<span class="date">' + n.date + '</span>';
+        list.appendChild(li);
+      });
+
+      var rows = [
+        { rank: 1, name: '林晓阳', cls: '计科 2302 班', ac: 128, streak: 32, badge: '班内第 1' },
+        { rank: 2, name: '陈雨桐', cls: '软工 2301 班', ac: 117, streak: 21, badge: '' },
+        { rank: 3, name: '赵启铭', cls: '计科 2301 班', ac: 109, streak: 15, badge: '' },
+        { rank: 4, name: '苏文博', cls: '人工智能 2301 班', ac: 96, streak: 8, badge: '' },
+        { rank: 5, name: '周子涵', cls: '计科 2302 班', ac: 84, streak: 12, badge: '' },
+        { rank: 6, name: '王浩然', cls: '大数据 2301 班', ac: 71, streak: 5, badge: '' },
+      ];
+      var max = rows[0].ac;
+
+      var rank = document.getElementById('rank-list');
+      rows.forEach(function (r) {
+        var div = document.createElement('div');
+        div.className = 'rank-row';
+        var numClass = r.rank <= 3 ? 'rank-num top rank-' + r.rank : 'rank-num';
+        var pct = Math.round((r.ac / max) * 100);
+        div.innerHTML =
+          '<span class="' + numClass + '">' + r.rank + '</span>' +
+          '<span class="rank-user">' +
+            '<span class="avatar">' + r.name.charAt(0) + '</span>' +
+            '<span class="name">' + r.name + (r.badge ? '<span class="badge">' + r.badge + '</span>' : '') + '</span>' +
+          '</span>' +
+          '<span class="rank-class">' + r.cls + '</span>' +
+          '<span class="rank-ac">' + r.ac + '</span>' +
+          '<span class="rank-streak">🔥 ' + r.streak + ' 天</span>' +
+          '<span class="rank-bar"><i style="width:' + pct + '%"></i></span>';
+        rank.appendChild(div);
+      });
+    })();
+  </script>
+</body>
+</html>

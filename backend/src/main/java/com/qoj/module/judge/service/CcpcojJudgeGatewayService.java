@@ -4,9 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.qoj.common.redis.RedisKeys;
 import com.qoj.common.util.Utf8TextLimiter;
 import com.qoj.module.contest.entity.ContestProblem;
-import com.qoj.module.contest.entity.ContestProblemTestCase;
 import com.qoj.module.contest.mapper.ContestProblemMapper;
-import com.qoj.module.contest.mapper.ContestProblemTestCaseMapper;
+import com.qoj.module.judge.JudgeResourceLimits;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.problem.mapper.ProblemMapper;
@@ -68,7 +67,6 @@ public class CcpcojJudgeGatewayService {
     private final ProblemMapper problemMapper;
     private final ProblemTestCaseMapper problemTestCaseMapper;
     private final ContestProblemMapper contestProblemMapper;
-    private final ContestProblemTestCaseMapper contestProblemTestCaseMapper;
     private final SystemSettingService settingService;
     private final StringRedisTemplate redisTemplate;
     private final PasswordEncoder passwordEncoder;
@@ -83,7 +81,6 @@ public class CcpcojJudgeGatewayService {
         ProblemMapper problemMapper,
         ProblemTestCaseMapper problemTestCaseMapper,
         ContestProblemMapper contestProblemMapper,
-        ContestProblemTestCaseMapper contestProblemTestCaseMapper,
         SystemSettingService settingService,
         StringRedisTemplate redisTemplate,
         PasswordEncoder passwordEncoder,
@@ -94,7 +91,6 @@ public class CcpcojJudgeGatewayService {
         this.problemMapper = problemMapper;
         this.problemTestCaseMapper = problemTestCaseMapper;
         this.contestProblemMapper = contestProblemMapper;
-        this.contestProblemTestCaseMapper = contestProblemTestCaseMapper;
         this.settingService = settingService;
         this.redisTemplate = redisTemplate;
         this.passwordEncoder = passwordEncoder;
@@ -181,7 +177,6 @@ public class CcpcojJudgeGatewayService {
             acceptedLanguages.contains(1),
             acceptedLanguages.contains(3),
             acceptedLanguages.contains(6),
-            acceptedLanguages.contains(9),
             staleBefore
         );
         return candidates.stream()
@@ -224,7 +219,9 @@ public class CcpcojJudgeGatewayService {
         if (!supportsProtocol(submission)) {
             return "";
         }
-        long judgeProblemId = encodeProblemId(submission.problemId, submission.contestProblemId);
+        // CCPCOJ treats this as an opaque test-data key. It must identify the
+        // submission because the effective limits depend on its language.
+        long judgeProblemId = submission.id;
         return judgeProblemId + "\n"
             + submission.userId + "\n"
             + languageId(submission.language) + "\n"
@@ -236,25 +233,29 @@ public class CcpcojJudgeGatewayService {
         return submission == null || submission.code == null ? "" : submission.code + "\n";
     }
 
-    public String problemInfo(long judgeProblemId, String sessionId) {
-        if (!canAccessProblem(judgeProblemId, sessionId)) {
+    public String problemInfo(long submissionId, String sessionId) {
+        Submission submission = ownedSubmission(submissionId, sessionId);
+        if (submission == null) {
             return "";
         }
-        JudgeProblem problem = loadJudgeProblem(judgeProblemId);
+        JudgeProblem problem = loadJudgeProblem(submission);
         if (problem == null) {
             return "";
         }
         int timeLimitMs = problem.timeLimitMs == null ? 1000 : problem.timeLimitMs;
         int memoryLimitMb = problem.memoryLimitMb == null ? 256 : problem.memoryLimitMb;
-        double seconds = Math.max(1, timeLimitMs) / 1000.0;
-        return seconds + "\n" + Math.max(1, memoryLimitMb) + "\n0\n";
+        JudgeResourceLimits.Limits limits = JudgeResourceLimits.forLanguage(
+            submission.language, Math.max(1, timeLimitMs), Math.max(1, memoryLimitMb));
+        double seconds = limits.timeLimitMs() / 1000.0;
+        return seconds + "\n" + limits.memoryLimitMb() + "\n0\n";
     }
 
-    public String testDataList(long judgeProblemId, String sessionId) {
-        if (!canAccessProblem(judgeProblemId, sessionId)) {
+    public String testDataList(long submissionId, String sessionId) {
+        Submission submission = ownedSubmission(submissionId, sessionId);
+        if (submission == null) {
             return "";
         }
-        List<JudgeTestCase> testCases = loadHiddenTestCases(judgeProblemId);
+        List<JudgeTestCase> testCases = loadHiddenTestCases(submission);
         StringBuilder result = new StringBuilder();
         for (JudgeTestCase testCase : testCases) {
             long timestamp = testCase.updatedAt == null
@@ -274,16 +275,17 @@ public class CcpcojJudgeGatewayService {
              */
             throw new IllegalArgumentException("filename 参数格式错误");
         }
-        long judgeProblemId = parseProtocolLong(matcher.group(1), "filename");
+        long submissionId = parseProtocolLong(matcher.group(1), "filename");
         int caseNo = parseProtocolInt(matcher.group(2), "filename");
-        if (!canAccessProblem(judgeProblemId, sessionId)) {
+        Submission submission = ownedSubmission(submissionId, sessionId);
+        if (submission == null) {
             return null;
         }
         boolean input = "in".equals(matcher.group(3));
         /**
          * 读取HiddenTestCases并返回给调用方。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
-        return loadHiddenTestCases(judgeProblemId).stream()
+        return loadHiddenTestCases(submission).stream()
             .filter(item -> item.caseNo == caseNo)
             .findFirst()
             .map(item -> (input ? item.input : item.output).getBytes(StandardCharsets.UTF_8))
@@ -368,43 +370,34 @@ public class CcpcojJudgeGatewayService {
         return ownedBy(submission, workerId(sessionId)) ? submission : null;
     }
 
-    private boolean canAccessProblem(long judgeProblemId, String sessionId) {
-        if (!authenticated(sessionId) || judgeProblemId <= 0 || !protocolInt(judgeProblemId)) {
-            return false;
-        }
-        DecodedProblemId decoded = decodeProblemId(judgeProblemId);
-        if (decoded.id <= 0) {
-            return false;
-        }
-        return submissionMapper.countActiveCcpcojClaims(
-            workerId(sessionId), decoded.id, decoded.contestProblem) > 0;
-    }
-
     /**
      * Samples are public examples and must never affect verdicts or OI pass rates.
      */
-    private List<JudgeTestCase> loadHiddenTestCases(long judgeProblemId) {
-        DecodedProblemId decoded = decodeProblemId(judgeProblemId);
+    private List<JudgeTestCase> loadHiddenTestCases(Submission submission) {
         List<JudgeTestCase> result = new ArrayList<>();
-        if (decoded.contestProblem) {
-            List<ContestProblemTestCase> testCases = contestProblemTestCaseMapper.selectList(
-                new QueryWrapper<ContestProblemTestCase>()
-                    .eq("contest_problem_id", decoded.id)
-                    .eq("sample", false)
-                    .orderByAsc("case_no")
-            );
-            for (ContestProblemTestCase item : testCases) {
-                result.add(new JudgeTestCase(
-                    item.caseNo,
-                    nullToEmpty(item.inputData),
-                    nullToEmpty(item.outputData),
-                    item.updatedAt == null ? item.createdAt : item.updatedAt
-                ));
+        if (submission.contestProblemId != null) {
+            // 动态引用原题：隐藏用例实时从原题读取
+            ContestProblem contestProblem = contestProblemMapper.selectById(submission.contestProblemId);
+            if (contestProblem != null && contestProblem.problemId != null) {
+                List<ProblemTestCase> testCases = problemTestCaseMapper.selectList(
+                    new QueryWrapper<ProblemTestCase>()
+                        .eq("problem_id", contestProblem.problemId)
+                        .eq("sample", false)
+                        .orderByAsc("case_no")
+                );
+                for (ProblemTestCase item : testCases) {
+                    result.add(new JudgeTestCase(
+                        item.caseNo,
+                        nullToEmpty(item.inputData),
+                        nullToEmpty(item.outputData),
+                        item.updatedAt == null ? item.createdAt : item.updatedAt
+                    ));
+                }
             }
-        } else {
+        } else if (submission.problemId != null) {
             List<ProblemTestCase> testCases = problemTestCaseMapper.selectList(
                 new QueryWrapper<ProblemTestCase>()
-                    .eq("problem_id", decoded.id)
+                    .eq("problem_id", submission.problemId)
                     .eq("sample", false)
                     .orderByAsc("case_no")
             );
@@ -420,39 +413,20 @@ public class CcpcojJudgeGatewayService {
         return result;
     }
 
-    private JudgeProblem loadJudgeProblem(long judgeProblemId) {
-        DecodedProblemId decoded = decodeProblemId(judgeProblemId);
-        if (decoded.contestProblem) {
-            ContestProblem problem = contestProblemMapper.selectById(decoded.id);
+    private JudgeProblem loadJudgeProblem(Submission submission) {
+        if (submission.contestProblemId != null) {
+            ContestProblem contestProblem = contestProblemMapper.selectById(submission.contestProblemId);
+            if (contestProblem == null || contestProblem.problemId == null) {
+                return null;
+            }
+            Problem problem = problemMapper.selectById(contestProblem.problemId);
             return problem == null ? null : new JudgeProblem(problem.timeLimit, problem.memoryLimit);
         }
-        Problem problem = problemMapper.selectById(decoded.id);
+        if (submission.problemId == null) {
+            return null;
+        }
+        Problem problem = problemMapper.selectById(submission.problemId);
         return problem == null ? null : new JudgeProblem(problem.timeLimit, problem.memoryLimit);
-    }
-
-    private long encodeProblemId(Long problemId, Long contestProblemId) {
-        Long selectedId = contestProblemId == null ? problemId : contestProblemId;
-        if (selectedId == null || selectedId <= 0) {
-            /**
-             * 封装IllegalStateException相关逻辑。可能调用外部判题或网关服务。
-             */
-            throw new IllegalStateException("CCPCOJ 题目标识无效");
-        }
-        long encoded = Math.multiplyExact(selectedId, 2L) + (contestProblemId == null ? 0L : 1L);
-        if (encoded > Integer.MAX_VALUE) {
-            /**
-             * 封装IllegalStateException相关逻辑。可能调用外部判题或网关服务。
-             */
-            throw new IllegalStateException("CCPCOJ 题目标识超出 32 位整数范围");
-        }
-        return encoded;
-    }
-
-    private DecodedProblemId decodeProblemId(long encoded) {
-        /**
-         * 构造 Decoded题目标识 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
-         */
-        return new DecodedProblemId(encoded / 2L, encoded % 2L == 1L);
     }
 
     private int languageId(String language) {
@@ -462,7 +436,6 @@ public class CcpcojJudgeGatewayService {
             case "cpp", "c++", "cxx", "g++" -> 1;
             case "java" -> 3;
             case "python", "python3", "py" -> 6;
-            case "c#", "csharp", "cs" -> 9;
             default -> -1;
         };
     }
@@ -781,9 +754,4 @@ public class CcpcojJudgeGatewayService {
     private record JudgeTestCase(int caseNo, String input, String output, LocalDateTime updatedAt) {
     }
 
-    /**
-     * Decoded题目标识不可变数据载体。通过 record 语义表达一组只读字段及其结构约束。
-     */
-    private record DecodedProblemId(long id, boolean contestProblem) {
-    }
 }

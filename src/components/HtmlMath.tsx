@@ -25,11 +25,11 @@ const ALLOWED_TAGS = [
   "u", "ul", "var",
 ];
 
-const ALLOWED_ATTR = ["class", "href", "src", "alt", "title", "target", "rel", "colspan", "rowspan", "align", "style"];
+const ALLOWED_ATTR = ["class", "href", "src", "alt", "title", "target", "rel", "colspan", "rowspan", "align", "style", "width", "height"];
 
 const SAFE_INLINE_STYLE_PROPERTIES = [
   "color", "background-color", "font-weight", "font-style", "text-decoration",
-  "text-align", "white-space",
+  "text-align", "white-space", "max-width", "width", "height",
 ] as const;
 
 const UNSAFE_STYLE_VALUE = /url\s*\(|expression\s*\(|@import|javascript:|var\s*\(/i;

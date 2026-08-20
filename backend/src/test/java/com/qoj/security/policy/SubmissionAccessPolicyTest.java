@@ -115,6 +115,7 @@ class SubmissionAccessPolicyTest {
         submission.id = 1L;
         submission.userId = userId;
         submission.problemId = 1L;
+        submission.contestId = 1L; // 默认比赛提交：他人不可见/不可看代码
         submission.language = "cpp";
         submission.code = "int main() { return 0; }";
         submission.status = "ACCEPTED";
@@ -200,6 +201,18 @@ class SubmissionAccessPolicyTest {
         Submission submission = createSubmission(4L);
         AuthUser other = createUser(999L, "STUDENT");
         assertFalse(policy.can(other, Permission.VIEW_CODE, submission));
+    }
+
+    /**
+     * 普通练习提交（非比赛）：登录用户可查看他人代码。
+     */
+    @Test
+    @DisplayName("VIEW_CODE: other user can view code of non-contest submission")
+    void testViewCode_OtherUser_NonContestSubmission_ShouldAllow() {
+        Submission submission = createSubmission(4L);
+        submission.contestId = null;
+        AuthUser other = createUser(999L, "STUDENT");
+        assertTrue(policy.can(other, Permission.VIEW_CODE, submission));
     }
 
     /**

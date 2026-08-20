@@ -2,8 +2,7 @@
  * FrontLayout组件。封装可复用的界面结构、展示规则及交互行为。
  */
 import { Outlet, useLocation } from 'react-router-dom';
-import { Layout, BackTop } from '@douyinfe/semi-ui';
-import { IconArrowUp } from '@douyinfe/semi-icons';
+import { Layout, FloatButton } from 'antd';
 import { FrontHeader } from './FrontHeader';
 import { FrontFooter } from './FrontFooter';
 import { PinnedAnnouncementCard } from '../components/PinnedAnnouncementCard';
@@ -44,21 +43,22 @@ export function FrontLayout() {
           }
         }
 
-        /* BackTop 样式 */
-        .semi-backtop {
+        /* 返回顶部按钮：固定定位并去除阴影 */
+        .front-layout .ant-float-btn {
           right: 40px;
           bottom: 40px;
+          box-shadow: none;
         }
 
         @media (max-width: 768px) {
-          .semi-backtop {
+          .front-layout .ant-float-btn {
             right: 20px;
             bottom: 20px;
           }
         }
       `}</style>
 
-      <Layout>
+      <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
         {/* 顶部导航 */}
         <FrontHeader />
 
@@ -73,25 +73,7 @@ export function FrontLayout() {
         <FrontFooter />
 
         {/* 返回顶部 */}
-        <BackTop>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              background: 'var(--semi-color-primary)',
-              color: 'white',
-              boxShadow: '0 4px 12px rgba(28, 100, 242, 0.3)',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease',
-            }}
-          >
-            <IconArrowUp size="large" />
-          </div>
-        </BackTop>
+        <FloatButton.BackTop type="primary" />
       </Layout>
     </div>
   );

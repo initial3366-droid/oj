@@ -17,6 +17,7 @@ public class Problem {
     public String statement;
     public String inputFormat;
     public String outputFormat;
+    public String checkerSource;
     public String sampleCases;
     public Integer timeLimit;
     public Integer memoryLimit;

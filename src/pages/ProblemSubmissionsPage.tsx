@@ -1,9 +1,9 @@
 /**
  * 题目Submissions页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Button, Card, Table, Tag, Typography, Banner, Modal } from '@douyinfe/semi-ui';
-import { IconChevronLeft } from '@douyinfe/semi-icons';
-import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { Alert, Button, Card, Modal, Table, Tag, Typography } from 'antd';
+import { LeftOutlined } from '@ant-design/icons';
+import type { TableColumnsType } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
@@ -36,29 +36,29 @@ function practiceProblemPath(problemId: string | undefined, contestId: number | 
 }
 
 const statusLabels: Record<string, string> = {
-  WAITING: '队列中',
-  PENDING: '等待测评',
-  QUEUED: '等待测评',
-  REJUDGE_PENDING: '等待重判',
-  JUDGING: '测评中',
-  COMPILING: '编译中',
-  RUNNING: '运行中',
-  AC: '通过',
-  ACCEPTED: '通过',
-  WA: '答案错误',
-  WRONG_ANSWER: '答案错误',
-  TLE: '运行超时',
-  TIME_LIMIT_EXCEEDED: '运行超时',
-  MLE: '内存超限',
-  MEMORY_LIMIT_EXCEEDED: '内存超限',
-  RE: '运行错误',
-  RUNTIME_ERROR: '运行错误',
-  CE: '编译错误',
-  COMPILE_ERROR: '编译错误',
-  NOO: '无输出',
-  SE: '系统错误',
-  SYSTEM_ERROR: '系统错误',
-  FAILED: '测评失败',
+  WAITING: 'Waiting',
+  PENDING: 'Pending',
+  QUEUED: 'Pending',
+  REJUDGE_PENDING: 'Rejudge Pending',
+  JUDGING: 'Judging',
+  COMPILING: 'Compiling',
+  RUNNING: 'Running',
+  AC: 'Accepted',
+  ACCEPTED: 'Accepted',
+  WA: 'Wrong Answer',
+  WRONG_ANSWER: 'Wrong Answer',
+  TLE: 'Time Limit Exceeded',
+  TIME_LIMIT_EXCEEDED: 'Time Limit Exceeded',
+  MLE: 'Memory Limit Exceeded',
+  MEMORY_LIMIT_EXCEEDED: 'Memory Limit Exceeded',
+  RE: 'Runtime Error',
+  RUNTIME_ERROR: 'Runtime Error',
+  CE: 'Compile Error',
+  COMPILE_ERROR: 'Compile Error',
+  NOO: 'No Output',
+  SE: 'System Error',
+  SYSTEM_ERROR: 'System Error',
+  FAILED: 'Failed',
 };
 
 /**
@@ -170,7 +170,7 @@ export function ProblemSubmissionsPage() {
     }
   };
 
-  const columns: ColumnProps<SubmissionRecord>[] = [
+  const columns: TableColumnsType<SubmissionRecord> = [
     {
       title: '代码',
       dataIndex: 'id',
@@ -178,7 +178,7 @@ export function ProblemSubmissionsPage() {
       render: (_text, record) => (
         <Button
           size="small"
-          theme="borderless"
+          type="text"
           loading={codeLoadingId === record.id}
           disabled={!hasAccessToken || codeLoadingId === record.id}
           onClick={() => openCode(record)}
@@ -198,7 +198,7 @@ export function ProblemSubmissionsPage() {
                 {caseCountText(record)}
               </Typography.Text>
             ),
-          } satisfies ColumnProps<SubmissionRecord>,
+          } satisfies NonNullable<TableColumnsType<SubmissionRecord>[number]>,
         ]
       : []),
     {
@@ -208,7 +208,7 @@ export function ProblemSubmissionsPage() {
       render: (_time: string, record: SubmissionRecord) => (
         <div style={{ minWidth: 144 }}>
           <Typography.Text style={{ fontSize: 14 }}>{formatTime(submissionTime(record))}</Typography.Text>
-          <Typography.Text type="tertiary" style={{ marginTop: 8, display: 'block', fontSize: 12 }}>
+          <Typography.Text type="secondary" style={{ marginTop: 8, display: 'block', fontSize: 12 }}>
             {record.language}
           </Typography.Text>
         </div>
@@ -217,14 +217,17 @@ export function ProblemSubmissionsPage() {
     {
       title: '状态',
       dataIndex: 'status',
-      width: 150,
+      width: 200,
       render: (status: string, record: SubmissionRecord) => (
         <div style={{ minWidth: 112, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Tag color={getStatusColor(status)} size="small">
+          <Tag
+            color={getStatusColor(status) === 'grey' ? 'default' : getStatusColor(status)}
+            style={{ fontSize: 12 }}
+          >
             {statusLabels[status.toUpperCase()] ?? status}
           </Tag>
           {(typeof record.timeUsed === 'number' || typeof record.memoryUsed === 'number') && (
-            <Typography.Text type="tertiary" style={{ fontSize: 12 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
               {typeof record.timeUsed === 'number' ? `${record.timeUsed} ms` : '-'}
               {' / '}
               {typeof record.memoryUsed === 'number' ? `${record.memoryUsed} KB` : '-'}
@@ -242,8 +245,8 @@ export function ProblemSubmissionsPage() {
       description={`查看${contestId ? '本场比赛' : '本道题'}的提交时间和测评状态。`}
       extra={
         <Button
-          icon={<IconChevronLeft />}
-          theme="borderless"
+          icon={<LeftOutlined />}
+          type="text"
           onClick={() => {
             window.location.href = practiceProblemPath(problemId, contestId);
           }}
@@ -253,43 +256,45 @@ export function ProblemSubmissionsPage() {
       }
     >
       {message && (
-        <Banner
-          type="danger"
-          description={message}
-          closeIcon={null}
+        <Alert
+          type="error"
+          message={message}
+          showIcon={false}
           style={{ marginBottom: 24 }}
         />
       )}
 
       <Card
         style={{
-          border: '1px solid var(--semi-color-border)',
+          border: '1px solid var(--qoj-color-border)',
         }}
-        bodyStyle={{ padding: 0 }}
+        styles={{ body: { padding: 0 } }}
       >
         <Table
           columns={columns}
           dataSource={submissions}
           rowKey="id"
           pagination={false}
-          empty={
-            <div style={{ padding: '40px 0', textAlign: 'center' }}>
-              <Typography.Text type="tertiary">暂无提交记录</Typography.Text>
-            </div>
-          }
+          locale={{
+            emptyText: (
+              <div style={{ padding: '40px 0', textAlign: 'center' }}>
+                <Typography.Text type="secondary">暂无提交记录</Typography.Text>
+              </div>
+            ),
+          }}
         />
       </Card>
 
       <Modal
         title="提交代码"
-        visible={!!selectedSubmission}
+        open={!!selectedSubmission}
         onCancel={() => setSelectedSubmission(null)}
         footer={null}
-        style={{ width: '50%' }}
+        width="60%"
       >
         {selectedSubmission && (
           <div>
-            <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 16, fontSize: 12 }}>
+            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 12 }}>
               {formatTime(submissionTime(selectedSubmission))}
             </Typography.Text>
             <CodeViewer

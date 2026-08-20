@@ -1,9 +1,9 @@
 /**
  * 编码Block组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Typography } from '@douyinfe/semi-ui';
-import { IconCopy } from '@douyinfe/semi-icons';
-import { Toast } from '@douyinfe/semi-ui';
+import { Typography, message } from 'antd';
+import { CopyOutlined } from '@ant-design/icons';
+import { copyTextToClipboard } from '../../utils/clipboard';
 
 /**
  * 编码BlockProps接口，明确该模块内部及 API 边界使用的数据结构。
@@ -31,11 +31,11 @@ export function CodeBlock({
    * 处理Copy。包含异步流程并由调用方处理完成或失败状态。
    */
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(code);
-      Toast.success('已复制到剪贴板');
-    } catch (err) {
-      Toast.error('复制失败');
+    const ok = await copyTextToClipboard(code);
+    if (ok) {
+      message.success('已复制到剪贴板');
+    } else {
+      message.error('复制失败，请手动选择复制');
     }
   };
 
@@ -45,8 +45,8 @@ export function CodeBlock({
     <div
       style={{
         position: 'relative',
-        backgroundColor: 'var(--semi-color-fill-0)',
-        border: '1px solid var(--semi-color-border)',
+        backgroundColor: 'var(--qoj-color-fill-0)',
+        border: '1px solid var(--qoj-color-border)',
         borderRadius: '8px',
         overflow: 'hidden',
       }}
@@ -55,8 +55,8 @@ export function CodeBlock({
         <div
           style={{
             padding: '8px 16px',
-            backgroundColor: 'var(--semi-color-fill-1)',
-            borderBottom: '1px solid var(--semi-color-border)',
+            backgroundColor: 'var(--qoj-color-fill-1)',
+            borderBottom: '1px solid var(--qoj-color-border)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -65,12 +65,12 @@ export function CodeBlock({
           <Typography.Text strong style={{ fontSize: 14 }}>
             {title}
           </Typography.Text>
-          <IconCopy
+          <CopyOutlined
             onClick={handleCopy}
             style={{
               cursor: 'pointer',
               fontSize: 16,
-              color: 'var(--semi-color-text-2)',
+              color: 'var(--qoj-color-text-2)',
             }}
           />
         </div>
@@ -88,7 +88,7 @@ export function CodeBlock({
             fontFamily: 'JetBrains Mono, Fira Code, Menlo, Consolas, monospace',
             fontSize: 14,
             lineHeight: 1.6,
-            color: 'var(--semi-color-text-0)',
+            color: 'var(--qoj-color-text-0)',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
           }}
@@ -103,7 +103,7 @@ export function CodeBlock({
                         paddingRight: 16,
                         textAlign: 'right',
                         userSelect: 'none',
-                        color: 'var(--semi-color-text-2)',
+                        color: 'var(--qoj-color-text-2)',
                         minWidth: 40,
                         verticalAlign: 'top',
                       }}
@@ -121,7 +121,7 @@ export function CodeBlock({
         </pre>
       </div>
       {!title && (
-        <IconCopy
+        <CopyOutlined
           onClick={handleCopy}
           style={{
             position: 'absolute',
@@ -129,8 +129,8 @@ export function CodeBlock({
             right: 12,
             cursor: 'pointer',
             fontSize: 16,
-            color: 'var(--semi-color-text-2)',
-            backgroundColor: 'var(--semi-color-fill-1)',
+            color: 'var(--qoj-color-text-2)',
+            backgroundColor: 'var(--qoj-color-fill-1)',
             padding: 6,
             borderRadius: 4,
           }}

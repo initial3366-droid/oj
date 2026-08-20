@@ -10,6 +10,8 @@ import com.qoj.module.judge.gojudge.GoJudgeClient.Command;
 import com.qoj.module.judge.gojudge.GoJudgeClient.CommandFile;
 import com.qoj.module.judge.gojudge.GoJudgeClient.Result;
 import com.qoj.module.judge.gojudge.GoJudgeClient.RunRequest;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -33,6 +35,17 @@ public class GoJudgeService implements JudgeService {
     private static final Logger log = LoggerFactory.getLogger(GoJudgeService.class);
     private static final long NANOS_PER_MILLISECOND = 1_000_000L;
     private static final long BYTES_PER_MEGABYTE = 1024L * 1024L;
+    private static final int CHECKER_MEMORY_MB = 256;
+    private static final int MAX_CHECKER_SOURCE_BYTES = 200_000;
+    private static final int MAX_TESTLIB_HEADER_BYTES = 1_000_000;
+    private static final int MAX_CHECKER_TIME_MS = 5_000;
+    private static final String CHECKER_SOURCE_NAME = "checker.cpp";
+    private static final String CHECKER_ARTIFACT_NAME = "checker";
+    private static final String TESTLIB_HEADER_NAME = "testlib.h";
+    private static final String CHECKER_INPUT_NAME = "input.txt";
+    private static final String CHECKER_OUTPUT_NAME = "output.txt";
+    private static final String CHECKER_ANSWER_NAME = "answer.txt";
+    private static final String TESTLIB_HEADER = loadTestlibHeader();
     private static final List<String> FIXED_ENV = List.of(
         "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
         "LANG=C.UTF-8",
@@ -68,6 +81,17 @@ public class GoJudgeService implements JudgeService {
                 : JudgeResult.systemError(program.message);
         }
 
+        CompiledProgram checker = null;
+        if (hasChecker(task.checkerSource())) {
+            checker = compileChecker(task.checkerSource());
+            if (checker.status != SubmissionStatus.AC) {
+                String message = "特殊判题编译失败:\n" + checker.message;
+                return checker.status == SubmissionStatus.CE
+                    ? JudgeResult.compileError(message)
+                    : JudgeResult.systemError(message);
+            }
+        }
+
         try {
             List<JudgeCaseResult> caseResults = new ArrayList<>();
             SubmissionStatus finalStatus = SubmissionStatus.AC;
@@ -97,9 +121,23 @@ public class GoJudgeService implements JudgeService {
 
                 CaseExecution execution = mapRunResult(results.get(0));
                 SubmissionStatus status = execution.status;
-                if (status == SubmissionStatus.AC
-                    && !sameOutput(execution.output, testCase.expectedOutput())) {
-                    status = SubmissionStatus.WA;
+                String message = execution.message;
+                if (status == SubmissionStatus.AC) {
+                    if (checker == null) {
+                        if (!sameOutput(execution.output, testCase.expectedOutput())) {
+                            status = SubmissionStatus.WA;
+                            message = "Wrong Answer";
+                        }
+                    } else {
+                        CheckerExecution checkerExecution = runChecker(
+                            checker.fileId,
+                            testCase,
+                            execution.output,
+                            task.timeLimit()
+                        );
+                        status = checkerExecution.status;
+                        message = checkerExecution.message;
+                    }
                 }
                 caseResults.add(new JudgeCaseResult(
                     testCase.caseNo(),
@@ -109,7 +147,7 @@ public class GoJudgeService implements JudgeService {
                     truncate(testCase.input(), 200),
                     truncate(execution.output, 200),
                     truncate(testCase.expectedOutput(), 200),
-                    status == SubmissionStatus.WA ? "Wrong Answer" : execution.message
+                    message
                 ));
                 maxTimeMs = Math.max(maxTimeMs, execution.timeMs);
                 if (execution.memoryKb > 0) {
@@ -131,6 +169,9 @@ public class GoJudgeService implements JudgeService {
             return JudgeResult.systemError("go-judge 服务不可用或执行失败");
         } finally {
             client.deleteFile(program.fileId);
+            if (checker != null) {
+                client.deleteFile(checker.fileId);
+            }
         }
     }
 
@@ -160,7 +201,7 @@ public class GoJudgeService implements JudgeService {
              */
             return new SandboxResult("", "代码或输入超过安全上限", SubmissionStatus.SE.name(), 0, 0);
         }
-        if (!validLimits(safeTime, safeMemory)) {
+        if (!validCustomRunLimits(safeTime, safeMemory)) {
             /**
              * 封装沙箱结果相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
              */
@@ -271,6 +312,137 @@ public class GoJudgeService implements JudgeService {
              * 构造 CompiledProgram 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
              */
             return new CompiledProgram(SubmissionStatus.SE, null, "go-judge 编译服务不可用");
+        }
+    }
+
+    private CompiledProgram compileChecker(String source) {
+        if (utf8Length(source) > MAX_CHECKER_SOURCE_BYTES) {
+            return new CompiledProgram(SubmissionStatus.CE, null, "特殊判题代码超过安全上限");
+        }
+        try {
+            Map<String, CommandFile> copyIn = new LinkedHashMap<>();
+            copyIn.put(CHECKER_SOURCE_NAME, CommandFile.content(source));
+            copyIn.put(TESTLIB_HEADER_NAME, CommandFile.content(TESTLIB_HEADER));
+            Command command = command(
+                List.of(
+                    "/usr/bin/g++", "-std=c++17", "-O2", "-pipe",
+                    "-I", ".",
+                    CHECKER_SOURCE_NAME, "-o", CHECKER_ARTIFACT_NAME
+                ),
+                standardFiles(""),
+                (long) config.getCompileTimeoutMs() * NANOS_PER_MILLISECOND,
+                (config.getCompileTimeoutMs() + 5_000L) * NANOS_PER_MILLISECOND,
+                512L * BYTES_PER_MEGABYTE,
+                copyIn,
+                List.of(CHECKER_ARTIFACT_NAME)
+            );
+            List<Result> results = client.run(
+                new RunRequest(List.of(command)),
+                Duration.ofMillis(config.getCompileTimeoutMs() + 10_000L)
+            );
+            if (results.size() != 1 || results.get(0) == null) {
+                return new CompiledProgram(SubmissionStatus.SE, null, "go-judge 特殊判题编译响应格式错误");
+            }
+            Result result = results.get(0);
+            if (!"Accepted".equals(result.status()) || result.exitStatus() != 0) {
+                if ("Internal Error".equals(result.status()) || "File Error".equals(result.status())) {
+                    return new CompiledProgram(SubmissionStatus.SE, null, "go-judge 特殊判题编译环境错误");
+                }
+                return new CompiledProgram(SubmissionStatus.CE, null, compileMessage(result));
+            }
+            String fileId = result.fileIds() == null ? null : result.fileIds().get(CHECKER_ARTIFACT_NAME);
+            if (fileId == null || fileId.isBlank()) {
+                return new CompiledProgram(SubmissionStatus.SE, null, "go-judge 未返回特殊判题编译产物");
+            }
+            return new CompiledProgram(SubmissionStatus.AC, fileId, "");
+        } catch (GoJudgeClient.GoJudgeClientException ex) {
+            log.warn("go-judge checker compile request failed: {}", ex.getMessage());
+            return new CompiledProgram(SubmissionStatus.SE, null, "go-judge 特殊判题编译服务不可用");
+        }
+    }
+
+    private CheckerExecution runChecker(
+        String checkerFileId,
+        JudgeTask.TestCase testCase,
+        String actualOutput,
+        int timeLimitMs
+    ) {
+        int timeoutMs = checkerTimeoutMs(timeLimitMs);
+        long cpuLimit = timeoutMs * NANOS_PER_MILLISECOND;
+        long clockLimit = Math.max(cpuLimit + NANOS_PER_MILLISECOND, cpuLimit * 3L);
+        Map<String, CommandFile> copyIn = new LinkedHashMap<>();
+        copyIn.put(CHECKER_ARTIFACT_NAME, CommandFile.cached(checkerFileId));
+        copyIn.put(CHECKER_INPUT_NAME, CommandFile.content(testCase.input()));
+        copyIn.put(CHECKER_OUTPUT_NAME, CommandFile.content(actualOutput));
+        copyIn.put(CHECKER_ANSWER_NAME, CommandFile.content(testCase.expectedOutput()));
+        try {
+            List<Result> results = client.run(
+                new RunRequest(List.of(command(
+                    List.of(
+                        "./" + CHECKER_ARTIFACT_NAME,
+                        CHECKER_INPUT_NAME,
+                        CHECKER_OUTPUT_NAME,
+                        CHECKER_ANSWER_NAME
+                    ),
+                    standardFiles(""),
+                    cpuLimit,
+                    clockLimit,
+                    CHECKER_MEMORY_MB * BYTES_PER_MEGABYTE,
+                    copyIn,
+                    List.of()
+                ))),
+                runRequestTimeout(timeoutMs)
+            );
+            if (results.size() != 1 || results.get(0) == null) {
+                return new CheckerExecution(SubmissionStatus.SE, "go-judge 特殊判题响应格式错误");
+            }
+            Result result = results.get(0);
+            String message = checkerMessage(result);
+            if ("Accepted".equals(result.status()) && result.exitStatus() == 0) {
+                return new CheckerExecution(SubmissionStatus.AC, message);
+            }
+            if (result.exitStatus() == 1 || result.exitStatus() == 2) {
+                return new CheckerExecution(
+                    SubmissionStatus.WA,
+                    message.isBlank() ? "Wrong Answer" : message
+                );
+            }
+            if ("Time Limit Exceeded".equals(result.status())) {
+                return new CheckerExecution(SubmissionStatus.SE, "特殊判题程序执行超时");
+            }
+            String failure = message.isBlank() ? "特殊判题程序执行失败" : message;
+            return new CheckerExecution(SubmissionStatus.SE, failure);
+        } catch (GoJudgeClient.GoJudgeClientException ex) {
+            log.warn("go-judge checker execution failed: {}", ex.getMessage());
+            return new CheckerExecution(SubmissionStatus.SE, "go-judge 特殊判题服务不可用或执行失败");
+        }
+    }
+
+    private boolean hasChecker(String source) {
+        return source != null && !source.isBlank();
+    }
+
+    private int checkerTimeoutMs(int timeLimitMs) {
+        return Math.min(MAX_CHECKER_TIME_MS, Math.max(1_000, timeLimitMs + 1_000));
+    }
+
+    private String checkerMessage(Result result) {
+        String stderr = output(result, "stderr");
+        return stderr.isBlank() ? output(result, "stdout") : stderr;
+    }
+
+    private static String loadTestlibHeader() {
+        try (InputStream stream = GoJudgeService.class.getResourceAsStream("/judge/testlib.h")) {
+            if (stream == null) {
+                throw new IllegalStateException("缺少内置 testlib.h");
+            }
+            byte[] bytes = stream.readAllBytes();
+            if (bytes.length == 0 || bytes.length > MAX_TESTLIB_HEADER_BYTES) {
+                throw new IllegalStateException("内置 testlib.h 大小异常");
+            }
+            return new String(bytes, StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            throw new IllegalStateException("读取内置 testlib.h 失败", ex);
         }
     }
 
@@ -409,15 +581,20 @@ public class GoJudgeService implements JudgeService {
         if (utf8Length(task.code()) > config.getMaxSourceBytes()) {
             return "源代码超过 go-judge 安全上限";
         }
-        if (!validLimits(task.timeLimit(), task.memoryLimit())) {
+        if (!validTaskLimits(task.timeLimit(), task.memoryLimit())) {
             return "题目资源限制超出安全范围";
         }
         return null;
     }
 
-    private boolean validLimits(Integer timeLimitMs, Integer memoryLimitMb) {
+    private boolean validCustomRunLimits(Integer timeLimitMs, Integer memoryLimitMb) {
         return timeLimitMs != null && timeLimitMs >= 100 && timeLimitMs <= 60000
             && memoryLimitMb != null && memoryLimitMb >= 16 && memoryLimitMb <= 1024;
+    }
+
+    private boolean validTaskLimits(Integer timeLimitMs, Integer memoryLimitMb) {
+        return timeLimitMs != null && timeLimitMs >= 100 && timeLimitMs <= 120000
+            && memoryLimitMb != null && memoryLimitMb >= 16 && memoryLimitMb <= 2048;
     }
 
     private Duration runRequestTimeout(int timeLimitMs) {
@@ -490,11 +667,6 @@ public class GoJudgeService implements JudgeService {
             "Main.java",
             "main.jar",
             List.of("/usr/local/bin/qoj-java-compile")
-        ),
-        CSHARP(
-            "Main.cs",
-            "main.exe",
-            List.of("/usr/bin/mcs", "-optimize+", "-out:main.exe", "Main.cs")
         );
 
         private final String sourceName;
@@ -526,11 +698,6 @@ public class GoJudgeService implements JudgeService {
                     "main.jar",
                     "Main"
                 );
-                case CSHARP -> List.of(
-                    "/usr/bin/mono",
-                    "/usr/bin/qoj-csharp-launcher.exe",
-                    "main.exe"
-                );
             };
         }
 
@@ -544,7 +711,6 @@ public class GoJudgeService implements JudgeService {
                 case "cpp", "c++", "cxx", "g++" -> CPP;
                 case "python", "python3", "py" -> PYTHON;
                 case "java" -> JAVA;
-                case "c#", "csharp", "cs" -> CSHARP;
                 default -> null;
             };
         }
@@ -567,5 +733,8 @@ public class GoJudgeService implements JudgeService {
         int memoryKb,
         String message
     ) {
+    }
+
+    private record CheckerExecution(SubmissionStatus status, String message) {
     }
 }

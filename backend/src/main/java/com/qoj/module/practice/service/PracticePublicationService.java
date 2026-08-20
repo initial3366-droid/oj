@@ -107,31 +107,43 @@ public class PracticePublicationService {
         List<PracticeProblem> sourceProblems = practiceProblems(practiceId);
         Map<Long, PracticeProblem> sourceByProblem = new HashMap<>();
         sourceProblems.forEach(item -> sourceByProblem.put(item.problemId, item));
-        Map<Long, String> requestedVisibility = normalizeVisibility(request.problems(), sourceByProblem.keySet());
+        // 发布题目全集由请求决定（支持新增/删减，不影响源题单）
+        LinkedHashMap<Long, String> requestedVisibility = resolveRequestedVisibility(request.problems());
         if (requestedVisibility.values().stream().noneMatch("VISIBLE"::equals)) {
             throw new BizException(400, "至少公开一道题目后才能发布");
         }
+        // 新增题目（不在源题单中）需校验可用性
+        List<Long> addedProblemIds = requestedVisibility.keySet().stream()
+            .filter(problemId -> !sourceByProblem.containsKey(problemId))
+            .toList();
+        requireUsableProblems(publisher, addedProblemIds);
         List<Long> classIds = normalizeClasses(publisher, request.studentAccessMode(), request.classIds());
         String publicationTitle = hasText(request.title()) ? request.title().trim() : source.title;
         String publicationDescription = request.description() == null ? source.description : request.description().trim();
 
-        List<PracticeProblem> publishedProblems = sourceProblems.stream()
-            .filter(item -> "VISIBLE".equals(requestedVisibility.get(item.problemId)))
-            .toList();
-        Map<Long, String> publicationVisibility = requestedVisibility;
+        // 发布题目全集（保序）：仅收录公开的题目（隐藏题不收录，保持原有语义），
+        // 分数取自源题单，新增题目默认 100 分
+        List<PracticeProblem> publishedProblems = new ArrayList<>();
+        for (Long problemId : requestedVisibility.keySet()) {
+            if (!"VISIBLE".equals(requestedVisibility.get(problemId))) {
+                continue;
+            }
+            PracticeProblem sourceProblem = sourceByProblem.get(problemId);
+            PracticeProblem published = new PracticeProblem();
+            published.problemId = problemId;
+            published.score = (sourceProblem != null && sourceProblem.score != null)
+                ? sourceProblem.score : 100;
+            publishedProblems.add(published);
+        }
         boolean sourceOwnedByPublisher = resourceAccessService.isOwner(
             publisher, source.ownerAccountType, source.ownerId
         );
         if (publisher.teacherAccount()
             && (!sourceOwnedByPublisher || publishedProblems.size() != sourceProblems.size())) {
+            // 教师发布时若调整了题目集合（或使用他人题单），创建独立副本，不影响原题单
             source = createPublicationCopy(
                 publisher, publicationTitle, publicationDescription, publishedProblems
             );
-            sourceProblems = practiceProblems(source.id);
-            publicationVisibility = sourceProblems.stream().collect(java.util.stream.Collectors.toMap(
-                item -> item.problemId,
-                item -> "VISIBLE"
-            ));
         }
 
         PracticePublication publication = new PracticePublication();
@@ -152,13 +164,14 @@ public class PracticePublicationService {
             grant.classId = classId;
             publicationClassMapper.insert(grant);
         }
-        for (PracticeProblem sourceProblem : sourceProblems) {
+        int displayOrder = 1;
+        for (PracticeProblem published : publishedProblems) {
             PracticePublicationProblem item = new PracticePublicationProblem();
             item.publicationId = publication.id;
-            item.problemId = sourceProblem.problemId;
-            item.displayOrder = sourceProblem.displayOrder;
-            item.score = sourceProblem.score;
-            item.visibility = publicationVisibility.get(sourceProblem.problemId);
+            item.problemId = published.problemId;
+            item.displayOrder = displayOrder++;
+            item.score = published.score;
+            item.visibility = requestedVisibility.get(published.problemId);
             publicationProblemMapper.insert(item);
         }
         return managementDetail(publication.id);
@@ -229,13 +242,29 @@ public class PracticePublicationService {
                 item.publicationId = publicationId;
                 item.problemId = problemId;
                 item.displayOrder = displayOrder;
-                item.score = 0;
+                Integer sourceScore = sourceProblemScore(publication.sourcePracticeId, problemId);
+                item.score = sourceScore == null ? 100 : sourceScore;
                 item.visibility = visibility;
                 publicationProblemMapper.insert(item);
             }
             displayOrder++;
         }
         return managementDetail(publicationId);
+    }
+
+    /**
+     * 从源题单读取题目分数（编辑发布新增题目时与初次发布保持一致）。
+     */
+    private Integer sourceProblemScore(Long sourcePracticeId, Long problemId) {
+        if (sourcePracticeId == null || problemId == null) {
+            return null;
+        }
+        PracticeProblem source = practiceProblemMapper.selectOne(
+            new QueryWrapper<PracticeProblem>()
+                .eq("practice_id", sourcePracticeId)
+                .eq("problem_id", problemId)
+        );
+        return source == null ? null : source.score;
     }
 
     public PracticeReportVO publicationReport(long publicationId) {
@@ -547,27 +576,6 @@ public class PracticePublicationService {
             throw new BizException(403, "包含无权使用的题目");
         }
         return problems.stream().collect(java.util.stream.Collectors.toMap(item -> item.id, item -> item));
-    }
-
-    private Map<Long, String> normalizeVisibility(
-        List<PracticePublicationRequest.ProblemVisibilityRequest> requested,
-        Set<Long> expectedProblemIds
-    ) {
-        Map<Long, String> result = new HashMap<>();
-        for (PracticePublicationRequest.ProblemVisibilityRequest item : requested) {
-            if (item.problemId() == null || !expectedProblemIds.contains(item.problemId()) || result.containsKey(item.problemId())) {
-                throw new BizException(400, "发布题目与源题单不一致");
-            }
-            String visibility = item.visibility().trim().toUpperCase();
-            if (!Set.of("VISIBLE", "HIDDEN").contains(visibility)) {
-                throw new BizException(400, "题目状态仅支持公开或隐藏");
-            }
-            result.put(item.problemId(), visibility);
-        }
-        if (!result.keySet().equals(expectedProblemIds)) {
-            throw new BizException(400, "必须设置题单内每道题目的公开状态");
-        }
-        return result;
     }
 
     private boolean studentCanAccess(Long userId, PracticePublication publication) {

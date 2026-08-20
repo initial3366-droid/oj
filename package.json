@@ -12,9 +12,8 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@ant-design/icons": "^6.3.2",
     "@arco-design/web-react": "2.66.2",
-    "@douyinfe/semi-icons": "^2.100.0",
-    "@douyinfe/semi-ui": "^2.100.0",
     "@monaco-editor/react": "4.7.0",
     "@stomp/stompjs": "7.0.0",
     "antd": "^6.5.0",

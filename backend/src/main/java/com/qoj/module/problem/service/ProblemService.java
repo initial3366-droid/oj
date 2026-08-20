@@ -220,8 +220,9 @@ public class ProblemService {
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
 
-        // 如果用户有管理权限，返回AdminProblemVO，否则返回PublicProblemVO
-        boolean isAdmin = user != null && problemAccessPolicy.can(user, com.qoj.security.policy.Permission.UPDATE, problem);
+        // 教师账号或拥有管理权限时返回 AdminProblemVO（含全量统计），否则返回 PublicProblemVO
+        boolean isAdmin = user != null && (user.teacherAccount()
+            || problemAccessPolicy.can(user, com.qoj.security.policy.Permission.UPDATE, problem));
 
         if (isAdmin) {
             /**
@@ -329,6 +330,11 @@ public class ProblemService {
         problem.statement = request.statement();
         problem.inputFormat = request.inputFormat();
         problem.outputFormat = request.outputFormat();
+        if (request.checkerSource() != null) {
+            String checkerSource = normalizeCheckerSource(request.checkerSource());
+            ensureHiddenTestCasesHaveExpectedOutput(problem, checkerSource);
+            problem.checkerSource = checkerSource;
+        }
         problem.sampleCases = writeSampleCases(samples);
         problem.timeLimit = request.timeLimit();
         problem.memoryLimit = request.memoryLimit();
@@ -355,6 +361,7 @@ public class ProblemService {
             problem.publishedById = null;
             problem.publishedAt = null;
         }
+        problem.updatedAt = java.time.LocalDateTime.now();
         problemMapper.updateById(problem);
         if (request.folderId() != null) {
             problemFolderService.assignOwnedProblem(request.folderId(), problem);
@@ -379,7 +386,9 @@ public class ProblemService {
     }
 
     public void replaceTestCases(Long problemId, List<ProblemTestCase> testCases, boolean sample) {
-        List<ProblemTestCase> normalized = normalizeReplacementTestCases(problemId, testCases, sample);
+        Problem problem = sample ? null : problemMapper.selectById(problemId);
+        String checkerSource = problem == null ? null : problem.checkerSource;
+        List<ProblemTestCase> normalized = normalizeReplacementTestCases(problemId, testCases, sample, checkerSource);
         problemTestCaseMapper.delete(
             new QueryWrapper<ProblemTestCase>().eq("problem_id", problemId).eq("sample", sample)
         );
@@ -389,10 +398,37 @@ public class ProblemService {
         redisTemplate.delete(RedisKeys.problem(problemId));
     }
 
+    public String checkerSource(long problemId) {
+        Problem problem = requireOwnerOrSuperAdmin(problemId);
+        return problem.checkerSource == null ? "" : problem.checkerSource;
+    }
+
+    String normalizeCheckerSource(String source) {
+        if (source == null || source.isBlank()) {
+            return null;
+        }
+        return source.replace("\r\n", "\n").replace('\r', '\n');
+    }
+
+    private static boolean isSpecialJudge(String checkerSource) {
+        return checkerSource != null && !checkerSource.isBlank();
+    }
+
+    static boolean requiresExpectedOutput(boolean sample, String checkerSource) {
+        return sample || !isSpecialJudge(checkerSource);
+    }
+
+    private static void validateExpectedOutput(boolean sample, String checkerSource, String output, int caseNo) {
+        if (requiresExpectedOutput(sample, checkerSource) && (output == null || output.isBlank())) {
+            throw new BizException(400, (sample ? "样例" : "测试点") + " " + caseNo + " 的输出数据不能为空");
+        }
+    }
+
     private List<ProblemTestCase> normalizeReplacementTestCases(
         Long problemId,
         List<ProblemTestCase> testCases,
-        boolean sample
+        boolean sample,
+        String checkerSource
     ) {
         List<ProblemTestCase> normalized = new java.util.ArrayList<>();
         Set<Integer> usedCaseNos = new HashSet<>();
@@ -423,12 +459,7 @@ public class ProblemService {
                  */
                 throw new BizException(400, "样例 " + caseNo + " 的输入数据不能为空");
             }
-            if (item.outputData == null || item.outputData.isBlank()) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(400, (sample ? "样例" : "测试点") + " " + caseNo + " 的输出数据不能为空");
-            }
+            validateExpectedOutput(sample, checkerSource, item.outputData, caseNo);
             usedCaseNos.add(caseNo);
             nextCaseNo = Math.max(nextCaseNo, caseNo + 1);
 
@@ -438,7 +469,7 @@ public class ProblemService {
             testCase.sample = sample;
             testCase.caseNo = caseNo;
             testCase.inputData = item.inputData == null ? "" : item.inputData;
-            testCase.outputData = item.outputData;
+            testCase.outputData = item.outputData == null ? "" : item.outputData;
             testCase.explanation = item.explanation;
             normalized.add(testCase);
         }
@@ -501,7 +532,8 @@ public class ProblemService {
         testCase.problemId = problem.id;
         testCase.caseNo = request.caseNo() == null ? nextHiddenCaseNo(problem.id) : request.caseNo();
         testCase.inputData = request.input() == null ? "" : request.input();
-        testCase.outputData = request.output();
+        validateExpectedOutput(false, problem.checkerSource, request.output(), testCase.caseNo);
+        testCase.outputData = request.output() == null ? "" : request.output();
         testCase.sample = false;
         problemTestCaseMapper.insert(testCase);
         redisTemplate.delete(RedisKeys.problem(problemId));
@@ -513,7 +545,7 @@ public class ProblemService {
 
     @Transactional
     public ProblemTestCaseVO updateTestCase(long problemId, long testCaseId, com.qoj.module.problem.dto.ProblemTestCaseRequest request) {
-        requireOwnerOrSuperAdmin(problemId);
+        Problem problem = requireOwnerOrSuperAdmin(problemId);
         ProblemTestCase testCase = problemTestCaseMapper.selectById(testCaseId);
         if (testCase == null || !Long.valueOf(problemId).equals(testCase.problemId) || Boolean.TRUE.equals(testCase.sample)) {
             /**
@@ -523,8 +555,11 @@ public class ProblemService {
         }
         testCase.caseNo = request.caseNo();
         testCase.inputData = request.input() == null ? "" : request.input();
-        testCase.outputData = request.output();
+        validateExpectedOutput(false, problem.checkerSource, request.output(), testCase.caseNo);
+        testCase.outputData = request.output() == null ? "" : request.output();
         problemTestCaseMapper.updateById(testCase);
+        problem.updatedAt = java.time.LocalDateTime.now();
+        problemMapper.updateById(problem);
         redisTemplate.delete(RedisKeys.problem(problemId));
         /**
          * 构造或转换Test测试点VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
@@ -534,7 +569,7 @@ public class ProblemService {
 
     @Transactional
     public void deleteTestCase(long problemId, long testCaseId) {
-        requireOwnerOrSuperAdmin(problemId);
+        Problem problem = requireOwnerOrSuperAdmin(problemId);
         ProblemTestCase testCase = problemTestCaseMapper.selectById(testCaseId);
         if (testCase == null || !Long.valueOf(problemId).equals(testCase.problemId) || Boolean.TRUE.equals(testCase.sample)) {
             /**
@@ -543,15 +578,22 @@ public class ProblemService {
             throw new BizException(404, "测试点不存在");
         }
         problemTestCaseMapper.deleteById(testCaseId);
+        problem.updatedAt = java.time.LocalDateTime.now();
+        problemMapper.updateById(problem);
         redisTemplate.delete(RedisKeys.problem(problemId));
     }
 
     @Transactional
     public void importHiddenTestCases(long problemId, MultipartFile file, boolean overwrite) {
         Problem problem = requireOwnerOrSuperAdmin(problemId);
-        List<ProblemTestCase> parsed = parseZipTestCases(file);
+        List<ProblemTestCase> parsed = parseZipTestCases(
+            file,
+            !requiresExpectedOutput(false, problem.checkerSource)
+        );
         if (overwrite) {
             replaceHiddenTestCases(problem.id, parsed);
+            problem.updatedAt = java.time.LocalDateTime.now();
+            problemMapper.updateById(problem);
             return;
         }
         int nextCaseNo = nextHiddenCaseNo(problem.id);
@@ -559,8 +601,12 @@ public class ProblemService {
             testCase.problemId = problem.id;
             testCase.sample = false;
             testCase.caseNo = nextCaseNo++;
+            validateExpectedOutput(false, problem.checkerSource, testCase.outputData, testCase.caseNo);
+            testCase.outputData = testCase.outputData == null ? "" : testCase.outputData;
             problemTestCaseMapper.insert(testCase);
         }
+        problem.updatedAt = java.time.LocalDateTime.now();
+        problemMapper.updateById(problem);
         redisTemplate.delete(RedisKeys.problem(problem.id));
     }
 
@@ -620,7 +666,8 @@ public class ProblemService {
                 new QueryWrapper<ProblemTestCase>().eq("problem_id", problem.id).eq("sample", false)
             ),
             ownerName(problem.ownerId, problem.ownerAccountType),
-            null
+            null,
+            isSpecialJudge(problem.checkerSource)
         );
     }
 
@@ -645,13 +692,19 @@ public class ProblemService {
                 new QueryWrapper<ProblemTestCase>().eq("problem_id", problem.id).eq("sample", false)
             ),
             ownerName(problem.ownerId, problem.ownerAccountType),
-            null
+            null,
+            isSpecialJudge(problem.checkerSource)
         );
     }
 
     private AdminProblemVO toAdminVO(Problem problem) {
         AuthUser user = CurrentUser.get();
         boolean owner = user != null && resourceAccessService.isOwner(user, problem.ownerAccountType, problem.ownerId);
+        Long totalSubmissions = submissionMapper.countByProblemId(problem.id);
+        Long acceptedSubmissions = submissionMapper.countAcceptedByProblemId(problem.id);
+        BigDecimal acRate = (totalSubmissions == null || totalSubmissions == 0)
+            ? BigDecimal.ZERO
+            : BigDecimal.valueOf((int) Math.round((acceptedSubmissions == null ? 0 : acceptedSubmissions) * 100.0 / totalSubmissions));
         return new AdminProblemVO(
             problem.id,
             problem.title,
@@ -665,7 +718,9 @@ public class ProblemService {
             readTags(problem.tags),
             problem.folderId,
             folderName(problem.folderId),
-            computedAcRate(problem.id),
+            acRate,
+            totalSubmissions == null ? 0L : totalSubmissions,
+            acceptedSubmissions == null ? 0L : acceptedSubmissions,
             problem.createdAt,
             sampleCases(problem.id),
             problemTestCaseMapper.selectCount(
@@ -682,7 +737,8 @@ public class ProblemService {
             majorName(problem.majorId),
             problem.studentPublishStatus,
             owner,
-            owner || resourceAccessService.isSuperAdmin(user)
+            owner || resourceAccessService.isSuperAdmin(user),
+            isSpecialJudge(problem.checkerSource)
         );
     }
 
@@ -703,6 +759,8 @@ public class ProblemService {
             problem.folderId,
             folderName(problem.folderId),
             problem.acRate == null ? BigDecimal.ZERO : problem.acRate,
+            null,
+            null,
             problem.createdAt,
             sampleCases(problem.id),
             problemTestCaseMapper.selectCount(
@@ -719,7 +777,8 @@ public class ProblemService {
             majorName(problem.majorId),
             problem.studentPublishStatus,
             owner,
-            owner || resourceAccessService.isSuperAdmin(user)
+            owner || resourceAccessService.isSuperAdmin(user),
+            isSpecialJudge(problem.checkerSource)
         );
     }
 
@@ -759,7 +818,8 @@ public class ProblemService {
             vo.samples(),
             vo.testCaseCount(),
             vo.ownerName(),
-            attemptStatus
+            attemptStatus,
+            vo.specialJudge()
         );
     }
 
@@ -778,6 +838,8 @@ public class ProblemService {
             vo.folderId(),
             vo.folderName(),
             vo.acRate(),
+            vo.submissionCount(),
+            vo.acceptedCount(),
             vo.createdAt(),
             vo.samples(),
             vo.testCaseCount(),
@@ -792,7 +854,8 @@ public class ProblemService {
             vo.majorName(),
             vo.studentPublishStatus(),
             vo.owner(),
-            vo.canEdit()
+            vo.canEdit(),
+            vo.specialJudge()
         );
     }
 
@@ -893,7 +956,8 @@ public class ProblemService {
             vo.samples(),
             vo.testCaseCount(),
             vo.ownerName(),
-            attemptStatus
+            attemptStatus,
+            vo.specialJudge()
         );
     }
 
@@ -1130,7 +1194,21 @@ public class ProblemService {
             .orElse(1);
     }
 
-    private List<ProblemTestCase> parseZipTestCases(MultipartFile file) {
+    private void ensureHiddenTestCasesHaveExpectedOutput(Problem problem, String checkerSource) {
+        if (!requiresExpectedOutput(false, checkerSource)) {
+            return;
+        }
+        boolean hasBlankOutput = problemTestCaseMapper.selectList(
+            new QueryWrapper<ProblemTestCase>()
+                .eq("problem_id", problem.id)
+                .eq("sample", false)
+        ).stream().anyMatch(item -> item.outputData == null || item.outputData.isBlank());
+        if (hasBlankOutput) {
+            throw new BizException(400, "当前存在空输出测试点，不能关闭 SPJ");
+        }
+    }
+
+    private List<ProblemTestCase> parseZipTestCases(MultipartFile file, boolean allowMissingOutput) {
         Map<Integer, String> inputs = new HashMap<>();
         Map<Integer, String> outputs = new HashMap<>();
         int[] counters = new int[] {0, 0};
@@ -1183,7 +1261,7 @@ public class ProblemService {
         for (Integer caseNo : caseNos) {
             String input = inputs.get(caseNo);
             String output = outputs.get(caseNo);
-            if (output == null) {
+            if (output == null && !allowMissingOutput) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */
@@ -1192,7 +1270,7 @@ public class ProblemService {
             ProblemTestCase testCase = new ProblemTestCase();
             testCase.caseNo = caseNo;
             testCase.inputData = input;
-            testCase.outputData = output;
+            testCase.outputData = output == null ? "" : output;
             testCases.add(testCase);
         }
         return testCases;

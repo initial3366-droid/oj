@@ -79,6 +79,8 @@ export interface ContestScoreboard {
     label: string;
     title: string;
     score?: number | null;
+    submissionCount?: number;
+    acceptedCount?: number;
   }>;
   rows: Array<{
     rank: number;
@@ -97,9 +99,13 @@ export interface ContestScoreboard {
       penalty: number;
       score: number;
       acceptedAt?: string | null;
+      hasHiddenSubmissions?: boolean;
+      hiddenAttempts?: number;
     }>;
     identityType?: "PERSONAL";
     identityId?: number | null;
+    teamName?: string;
+    studentNo?: string | null;
   }>;
 }
 
@@ -112,6 +118,19 @@ export async function fetchContests(
 ): Promise<{ total: number; list: Contest[] }> {
   return apiGet<{ total: number; list: Contest[] }>(
     `/api/v1/contests?page=${page}&pageSize=${pageSize}`
+  );
+}
+
+/**
+ * 获取我的比赛（已报名参加）列表
+ */
+export async function fetchMyContests(
+  page = 1,
+  pageSize = 10
+): Promise<{ total: number; list: Contest[] }> {
+  return apiGet<{ total: number; list: Contest[] }>(
+    `/api/v1/contests/my?page=${page}&pageSize=${pageSize}`,
+    true
   );
 }
 

@@ -7,6 +7,8 @@ public record ContestScoreboardProblemVO(
     Long problemId,
     String label,
     String title,
-    Integer score
+    Integer score,
+    Long submissionCount,
+    Long acceptedCount
 ) {
 }

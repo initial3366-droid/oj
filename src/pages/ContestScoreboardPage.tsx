@@ -1,8 +1,8 @@
 /**
  * 比赛榜单页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Card, Tag, Typography, Spin, Banner, Button } from '@douyinfe/semi-ui';
-import { IconChevronLeft, IconTreeTriangleDown } from '@douyinfe/semi-icons';
+import { Alert, Button, Card, Spin, Tag, Typography } from 'antd';
+import { CaretDownOutlined, LeftOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchContestScoreboard, type ContestScoreboard } from '../data/apiClient';
@@ -19,7 +19,8 @@ function statusText(status: ContestScoreboard['status']) {
 /**
  * 封装cell班级相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
-function cellClass(accepted: boolean, attempts: number, score: number, type: ContestScoreboard['type']) {
+function cellClass(hasHiddenSubmissions: boolean, accepted: boolean, attempts: number, score: number, type: ContestScoreboard['type']) {
+  if (hasHiddenSubmissions) return 'scoreboard-cell-hidden';
   if (accepted) return 'scoreboard-cell-accepted';
   if (type === 'OI' && score > 0) return 'scoreboard-cell-partial';
   if (attempts > 0) return 'scoreboard-cell-failed';
@@ -38,9 +39,9 @@ function identityBadge(type?: string | null) {
  */
 function medalTag(medal?: ContestScoreboard['rows'][number]['medal']) {
   if (medal === 'GOLD') return <Tag color="orange">金</Tag>;
-  if (medal === 'SILVER') return <Tag color="grey">银</Tag>;
+  if (medal === 'SILVER') return <Tag color="default">银</Tag>;
   if (medal === 'BRONZE') return <Tag color="yellow">铜</Tag>;
-  return <Typography.Text type="tertiary">-</Typography.Text>;
+  return <Typography.Text type="secondary">-</Typography.Text>;
 }
 
 /**
@@ -48,6 +49,10 @@ function medalTag(medal?: ContestScoreboard['rows'][number]['medal']) {
  */
 function rankText(rank?: number | null, starred?: boolean | null) {
   return starred ? '打星' : rank ?? '-';
+}
+
+function attemptText(attempts: number) {
+  return attempts === 1 ? '1 try' : `${attempts} tries`;
 }
 
 /**
@@ -96,17 +101,17 @@ export function ContestScoreboardPage() {
   if (loading) {
     return (
       <div style={{ display: 'grid', placeItems: 'center', minHeight: '50vh' }}>
-        <Spin tip="榜单加载中" />
+        <Spin />
+        <Typography.Text type="secondary">榜单加载中</Typography.Text>
       </div>
     );
   }
 
   if (!scoreboard) {
     return (
-      <Banner
-        type="danger"
-        description={message || '榜单不存在'}
-        closeIcon={null}
+      <Alert
+        type="error"
+        message={message || '榜单不存在'}
       />
     );
   }
@@ -114,8 +119,7 @@ export function ContestScoreboardPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <Button
-        icon={<IconChevronLeft />}
-        theme="borderless"
+        icon={<LeftOutlined />}
         onClick={() => {
           window.location.href = '/contests';
         }}
@@ -125,9 +129,9 @@ export function ContestScoreboardPage() {
 
       <Card
         style={{
-          border: '1px solid var(--semi-color-border)',
+          border: '1px solid var(--qoj-color-border)',
         }}
-        bodyStyle={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}
+        styles={{ body: { padding: 24, display: 'flex', flexDirection: 'column', gap: 16 } }}
       >
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
           <div>
@@ -135,10 +139,10 @@ export function ContestScoreboardPage() {
               <Tag color="blue">{scoreboard.type}</Tag>
               <Tag>{statusText(scoreboard.status)}</Tag>
             </div>
-            <Typography.Title heading={2} style={{ marginTop: 12, marginBottom: 0 }}>
+            <Typography.Title level={2} style={{ marginTop: 12, marginBottom: 0 }}>
               {scoreboard.title}
             </Typography.Title>
-            <Typography.Text type="tertiary" style={{ marginTop: 8, display: 'block', fontSize: 14 }}>
+            <Typography.Text type="secondary" style={{ marginTop: 8, display: 'block', fontSize: 14 }}>
               {formatDateTime(scoreboard.startTime)} - {formatDateTime(scoreboard.endTime)} · {scoreboard.durationMinutes} 分钟
             </Typography.Text>
           </div>
@@ -148,28 +152,34 @@ export function ContestScoreboardPage() {
               alignItems: 'center',
               gap: 8,
               borderRadius: 8,
-              backgroundColor: 'var(--semi-color-warning-light-default)',
+              backgroundColor: 'var(--qoj-color-warning-light-default)',
               padding: '12px 16px',
-              color: 'var(--semi-color-warning-dark)',
+              color: 'var(--qoj-color-warning-dark)',
             }}
           >
-            <IconTreeTriangleDown size="large" />
+            <CaretDownOutlined />
             <Typography.Text style={{ fontSize: 14, fontWeight: 500 }}>Public Scoreboard</Typography.Text>
           </div>
         </div>
       </Card>
 
-      <div style={{ overflowX: 'auto', borderRadius: 8, border: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-0)' }}>
+      {scoreboard.boardState === 'FROZEN' && (
+        <div style={{ color: '#d48806', fontSize: 14, fontWeight: 600 }}>
+          已经封榜
+        </div>
+      )}
+
+      <div style={{ overflowX: 'auto', borderRadius: 8, border: '1px solid var(--qoj-color-border)', background: 'var(--qoj-color-bg-0)' }}>
         <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr style={{ backgroundColor: 'var(--semi-color-fill-1)' }}>
+            <tr style={{ backgroundColor: 'var(--qoj-color-fill-1)' }}>
               <th
                 style={{
                   position: 'sticky',
                   left: 0,
                   zIndex: 10,
-                  backgroundColor: 'var(--semi-color-fill-1)',
-                  borderBottom: '1px solid var(--semi-color-border)',
+                  backgroundColor: 'var(--qoj-color-fill-1)',
+                  borderBottom: '1px solid var(--qoj-color-border)',
                   padding: '12px',
                   textAlign: 'left',
                   fontWeight: 600,
@@ -177,27 +187,27 @@ export function ContestScoreboardPage() {
               >
                 Rank
               </th>
-              <th style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
+              <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
                 Medal
               </th>
-              <th style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
+              <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
                 User
               </th>
-              <th style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
+              <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
                 Solved
               </th>
-              <th style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
+              <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
                 {scoreboard.type === 'OI' ? 'Score' : 'Penalty'}
               </th>
               {scoreboard.problems.map((problem) => (
                 <th
                   key={scoreboardProblemId(problem)}
-                  style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}
+                  style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}
                   title={problem.title}
                 >
                   <div>{problem.label}</div>
                   {scoreboard.type === 'OI' && (
-                    <div style={{ marginTop: 2, fontSize: 11, fontWeight: 400, color: 'var(--semi-color-text-2)' }}>
+                    <div style={{ marginTop: 2, fontSize: 11, fontWeight: 400, color: 'var(--qoj-color-text-2)' }}>
                       {problem.score ?? 0}
                     </div>
                   )}
@@ -213,30 +223,30 @@ export function ContestScoreboardPage() {
                     position: 'sticky',
                     left: 0,
                     zIndex: 10,
-                    backgroundColor: 'var(--semi-color-bg-0)',
-                    borderBottom: '1px solid var(--semi-color-border)',
+                    backgroundColor: 'var(--qoj-color-bg-0)',
+                    borderBottom: '1px solid var(--qoj-color-border)',
                     padding: '12px',
                     fontWeight: 600,
                   }}
                 >
                   {rankText(row.rank, row.starred)}
                 </td>
-                <td style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px', textAlign: 'center' }}>
+                <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center' }}>
                   {medalTag(row.medal)}
                 </td>
-                <td style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px 16px', fontWeight: 500 }}>
+                <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', fontWeight: 500 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <span>{row.displayName || row.userId}</span>
-                    <Typography.Text type="tertiary" style={{ fontSize: 12 }}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                       {identityBadge(row.identityType)}
                       {row.starred ? ' · 打星' : ''}
                     </Typography.Text>
                   </div>
                 </td>
-                <td style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px', textAlign: 'center' }}>
+                <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center' }}>
                   {row.solved}
                 </td>
-                <td style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
+                <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
                   {scoreboard.type === 'OI' ? row.score : row.penalty}
                 </td>
                 {scoreboard.problems.map((problem) => {
@@ -245,18 +255,27 @@ export function ContestScoreboardPage() {
                   const attempts = cell?.attempts ?? 0;
                   const accepted = Boolean(cell?.accepted);
                   const score = cell?.score ?? 0;
+                  const hasHiddenSubmissions = Boolean(cell?.hasHiddenSubmissions);
+                  const hiddenAttempts = cell?.hiddenAttempts ?? 0;
                   return (
-                    <td key={problemKey} style={{ borderBottom: '1px solid var(--semi-color-border)', padding: '8px', textAlign: 'center' }}>
-                      <div className={cellClass(accepted, attempts, score, scoreboard.type)}>
-                        {scoreboard.type === 'OI'
-                          ? attempts > 0
-                            ? score
-                            : '-'
-                          : accepted
-                            ? `+${attempts > 1 ? attempts - 1 : ''}`
-                            : attempts > 0
-                              ? `-${attempts}`
-                              : '-'}
+                    <td key={problemKey} style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '8px', textAlign: 'center' }}>
+                      <div className={cellClass(hasHiddenSubmissions, accepted, attempts, score, scoreboard.type)}>
+                        {hasHiddenSubmissions ? (
+                          <>
+                            <span className="scoreboard-cell-hidden-status" aria-hidden="true">+</span>
+                            <span>{attemptText(hiddenAttempts)}</span>
+                          </>
+                        ) : (
+                          scoreboard.type === 'OI'
+                            ? attempts > 0
+                              ? score
+                              : '-'
+                            : accepted
+                              ? `+${attempts > 1 ? attempts - 1 : ''}`
+                              : attempts > 0
+                                ? `-${attempts}`
+                                : '-'
+                        )}
                       </div>
                     </td>
                   );
@@ -267,7 +286,7 @@ export function ContestScoreboardPage() {
               <tr>
                 <td
                   colSpan={5 + scoreboard.problems.length}
-                  style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--semi-color-text-2)' }}
+                  style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--qoj-color-text-2)' }}
                 >
                   暂无提交数据
                 </td>
@@ -279,50 +298,73 @@ export function ContestScoreboardPage() {
 
       <style>{`
         .scoreboard-row:hover {
-          background-color: var(--semi-color-fill-0);
+          background-color: var(--qoj-color-fill-0);
         }
         .scoreboard-row:hover td:first-child {
-          background-color: var(--semi-color-fill-0);
+          background-color: var(--qoj-color-fill-0);
         }
         .scoreboard-cell-accepted {
           margin: 0 auto;
           min-width: 56px;
           border-radius: 6px;
           padding: 6px 8px;
-          fontSize: 12px;
-          fontWeight: 600;
-          backgroundColor: var(--semi-color-success-light-default);
-          color: var(--semi-color-success-dark);
+          font-size: 12px;
+          font-weight: 600;
+          background-color: var(--qoj-color-success-light-default);
+          color: var(--qoj-color-success-dark);
+        }
+        .scoreboard-cell-hidden {
+          margin: 0 auto;
+          min-width: 56px;
+          min-height: 48px;
+          border-radius: 6px;
+          padding: 6px 8px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 3px;
+          font-size: 12px;
+          font-weight: 600;
+          background-color: #e6f4ff;
+          border: 1px solid #91caff;
+          color: #1677ff;
+        }
+        .scoreboard-cell-hidden-status {
+          display: block;
+          min-height: 18px;
+          line-height: 18px;
+          font-size: 18px;
         }
         .scoreboard-cell-partial {
           margin: 0 auto;
           min-width: 56px;
           border-radius: 6px;
           padding: 6px 8px;
-          fontSize: 12px;
-          fontWeight: 600;
-          backgroundColor: var(--semi-color-warning-light-default);
-          color: var(--semi-color-warning-dark);
+          font-size: 12px;
+          font-weight: 600;
+          background-color: var(--qoj-color-warning-light-default);
+          color: var(--qoj-color-warning-dark);
         }
         .scoreboard-cell-failed {
           margin: 0 auto;
           min-width: 56px;
           border-radius: 6px;
           padding: 6px 8px;
-          fontSize: 12px;
-          fontWeight: 600;
-          backgroundColor: var(--semi-color-danger-light-default);
-          color: var(--semi-color-danger-dark);
+          font-size: 12px;
+          font-weight: 600;
+          background-color: var(--qoj-color-danger-light-default);
+          color: var(--qoj-color-danger-dark);
         }
         .scoreboard-cell-empty {
           margin: 0 auto;
           min-width: 56px;
           border-radius: 6px;
           padding: 6px 8px;
-          fontSize: 12px;
-          fontWeight: 600;
-          backgroundColor: var(--semi-color-fill-0);
-          color: var(--semi-color-text-2);
+          font-size: 12px;
+          font-weight: 600;
+          background-color: var(--qoj-color-fill-0);
+          color: var(--qoj-color-text-2);
         }
       `}</style>
     </div>

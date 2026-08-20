@@ -1,4 +1,4 @@
-import { IconChevronRight } from '@douyinfe/semi-icons';
+import { RightOutlined } from '@ant-design/icons';
 import type { LabFrame, LabModel, StructureDefinition } from './types';
 
 const RANGE_TREE_KEYS = new Set(['segment-tree', 'lazy-segment-tree', 'dynamic-segment-tree', 'interval-tree', 'fenwick-tree', 'merge-sort-tree', 'wavelet-tree', 'range-tree', 'van-emde-boas']);
@@ -46,7 +46,7 @@ function renderLinked(definition: StructureDefinition, model: LabModel, focusIds
               <strong>{value}</strong>
               <span className="lab-node-next">{doubly ? 'prev · next' : definition.key.includes('xor') ? 'XOR' : 'next'}</span>
             </div>
-            {index < model.values.length - 1 ? <IconChevronRight className="lab-linked-arrow" aria-hidden="true" /> : <span className="lab-null-pointer">{circular ? '↺ head' : 'null'}</span>}
+            {index < model.values.length - 1 ? <RightOutlined className="lab-linked-arrow" aria-hidden="true" /> : <span className="lab-null-pointer">{circular ? '↺ head' : 'null'}</span>}
           </div>
         ))}
       </div>
@@ -93,7 +93,7 @@ function renderQueue(definition: StructureDefinition, model: LabModel, focusIds:
           ))}
         </div>
       )}
-      <div className="lab-queue-direction"><IconChevronRight aria-hidden="true" /> {circular ? `到达末尾后回到开头（head=${model.headIndex}，tail=${model.tailIndex}，容量=${model.capacity}）` : '数据流动方向'}</div>
+      <div className="lab-queue-direction"><RightOutlined aria-hidden="true" /> {circular ? `到达末尾后回到开头（head=${model.headIndex}，tail=${model.tailIndex}，容量=${model.capacity}）` : '数据流动方向'}</div>
     </div>
   );
 }

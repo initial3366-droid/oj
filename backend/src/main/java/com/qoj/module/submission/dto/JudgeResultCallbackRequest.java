@@ -8,6 +8,8 @@ import java.util.List;
  */
 public class JudgeResultCallbackRequest {
     public Long submissionId;
+    /** Internal ownership token used to ignore results from reclaimed GO_JUDGE workers. */
+    public String workerId;
     public String status;
     public Integer timeUsed;
     public Integer memoryUsed;

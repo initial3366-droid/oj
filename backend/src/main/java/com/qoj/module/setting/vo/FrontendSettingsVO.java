@@ -9,6 +9,7 @@ public class FrontendSettingsVO {
     public Boolean maintenanceMode;
     public String footerText;
     public String icpNumber;
+    public String mpsNumber;
     public String footerLink1Text;
     public String footerLink1Url;
     public String footerLink2Text;

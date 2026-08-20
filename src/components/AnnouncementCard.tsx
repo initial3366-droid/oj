@@ -1,11 +1,13 @@
 /**
  * 公告Card组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Card, Modal, Typography } from '@douyinfe/semi-ui';
-import { IconBell } from '@douyinfe/semi-icons';
+import { Card, Modal, Typography } from 'antd';
+import { BellOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { fetchLatestAnnouncements, type Announcement } from '../data/apiClient';
 import { AnnouncementContent, announcementPlainText } from './AnnouncementContent';
+
+const { Paragraph, Title } = Typography;
 
 /**
  * 渲染公告Card组件，并协调其数据加载、状态和交互。
@@ -43,10 +45,10 @@ export function AnnouncementCard() {
     <>
       <Card
         style={{
-          border: '1px solid var(--semi-color-border)',
-          background: 'var(--semi-color-bg-0)',
+          border: '1px solid #f0f0f0',
+          background: '#ffffff',
         }}
-        bodyStyle={{ padding: '20px 24px' }}
+        styles={{ body: { padding: '20px 24px' } }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <div
@@ -61,11 +63,11 @@ export function AnnouncementCard() {
               color: 'rgb(59, 130, 246)',
             }}
           >
-            <IconBell size="large" />
+            <BellOutlined style={{ fontSize: 20 }} />
           </div>
-          <Typography.Title heading={5} style={{ margin: 0 }}>
+          <Title level={5} style={{ margin: 0 }}>
             公告
-          </Typography.Title>
+          </Title>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -75,9 +77,8 @@ export function AnnouncementCard() {
               style={{
                 cursor: 'pointer',
                 borderRadius: 8,
-                border: '1px solid var(--semi-color-border)',
+                border: '1px solid #f0f0f0',
                 padding: 16,
-                transition: 'all 0.2s',
               }}
               className="announcement-item"
               role="button"
@@ -91,14 +92,14 @@ export function AnnouncementCard() {
               }}
             >
               <AnnouncementContent content={announcement.title} className="announcement-list-title" />
-              <Typography.Paragraph
+              <Paragraph
                 ellipsis={{ rows: 2 }}
                 style={{ margin: 0, fontSize: 14 }}
                 type="secondary"
               >
                 {announcementPlainText(announcement.content)}
-              </Typography.Paragraph>
-              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+              </Paragraph>
+              <div style={{ marginTop: 8, fontSize: 12, color: 'rgba(0, 0, 0, 0.45)' }}>
                 更新于 {new Date(announcement.updatedAt || announcement.createdAt).toLocaleDateString('zh-CN')}
               </div>
             </div>
@@ -110,12 +111,12 @@ export function AnnouncementCard() {
         title={selectedAnnouncement ? (
           <AnnouncementContent content={selectedAnnouncement.title} className="announcement-modal-title" />
         ) : undefined}
-        visible={isModalOpen}
+        open={isModalOpen}
         onCancel={() => setIsModalOpen(false)}
         footer={null}
         width={920}
         style={{ maxWidth: 'calc(100vw - 32px)' }}
-        bodyStyle={{ padding: '24px 32px 36px' }}
+        styles={{ body: { padding: '24px 32px 36px' } }}
       >
         {selectedAnnouncement && (
           <div style={{ paddingBottom: 12 }}>
@@ -125,10 +126,10 @@ export function AnnouncementCard() {
                 alignItems: 'center',
                 gap: 12,
                 fontSize: 14,
-                color: 'var(--semi-color-text-2)',
+                color: 'rgba(0, 0, 0, 0.45)',
                 marginBottom: 22,
                 paddingBottom: 18,
-                borderBottom: '1px solid var(--semi-color-border)',
+                borderBottom: '1px solid #f0f0f0',
               }}
             >
               <span>
@@ -142,15 +143,15 @@ export function AnnouncementCard() {
 
       <style>{`
         .announcement-item:hover {
-          border-color: var(--semi-color-primary) !important;
-          background-color: var(--semi-color-primary-light-default) !important;
+          border-color: #1677ff !important;
+          background-color: #e6f4ff !important;
         }
         .announcement-item:focus-visible {
-          outline: 2px solid var(--semi-color-primary);
+          outline: 2px solid #1677ff;
           outline-offset: 2px;
         }
         .announcement-item:hover .announcement-list-title {
-          color: var(--semi-color-primary) !important;
+          color: #1677ff !important;
         }
         .announcement-list-title {
           margin-bottom: 8px;

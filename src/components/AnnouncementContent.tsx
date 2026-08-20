@@ -13,6 +13,9 @@ const SAFE_INLINE_STYLE_PROPERTIES = [
   'text-decoration',
   'text-align',
   'white-space',
+  'max-width',
+  'width',
+  'height',
 ] as const;
 
 const UNSAFE_STYLE_VALUE = /url\s*\(|expression\s*\(|@import|javascript:|var\s*\(/i;

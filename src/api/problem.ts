@@ -34,6 +34,7 @@ export interface BackendProblem {
   updatedAt?: string;
   acRate: number;
   attemptStatus?: string | null;
+  specialJudge?: boolean;
 }
 
 /**
@@ -70,6 +71,7 @@ export function mapProblem(problem: BackendProblem): Problem {
     createdAt: problem.createdAt,
     updatedAt: problem.updatedAt,
     attemptStatus: problem.attemptStatus ?? null,
+    isSpecialJudge: Boolean(problem.specialJudge),
     score: 100,
   };
 }
@@ -98,6 +100,7 @@ export function mapContestProblem(problem: BackendProblem & { contestProblemId?:
     createdAt: problem.createdAt,
     updatedAt: problem.updatedAt,
     attemptStatus: problem.attemptStatus ?? null,
+    isSpecialJudge: Boolean(problem.specialJudge),
     score: 100,
   };
 }

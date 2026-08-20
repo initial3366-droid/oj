@@ -24,6 +24,7 @@ import { AdminSubmissionListPage } from '../pages/submissions/AdminSubmissionLis
 import { AdminSubmissionStatisticsPage } from '../pages/submissions/AdminSubmissionStatisticsPage';
 import { AdminLeaderboardPage } from '../pages/leaderboard/AdminLeaderboardPage';
 import { AdminClassDetailPage, AdminClassManagementPage } from '../pages/classes/AdminClassManagementPage';
+import { AdminTeamManagementPage } from '../pages/teams/AdminTeamManagementPage';
 import { AdminTeacherManagementPage } from '../pages/classes/AdminTeacherManagementPage';
 import { AdminMajorManagementPage } from '../pages/classes/AdminMajorManagementPage';
 import { AdminProfilePage } from '../pages/profile/AdminProfilePage';
@@ -77,7 +78,7 @@ export function AdminRoutes() {
                 {/* 比赛管理 */}
                 <Route path="/contests" element={<AdminContestManagementPage />} />
                 <Route path="/contests/new" element={<AdminContestManagementPage />} />
-                <Route path="/contests/rankings" element={<AdminContestManagementPage />} />
+                <Route path="/contests/rankings" element={<Navigate to={adminPath('/contests')} replace />} />
                 <Route path="/contests/:contestId/edit" element={<AdminContestManagementPage />} />
                 <Route path="/contests/:contestId/submissions" element={<AdminSubmissionListPage />} />
                 <Route path="/contests/:contestId/judge/queue" element={<AdminSubmissionQueuePage />} />
@@ -98,6 +99,9 @@ export function AdminRoutes() {
                 {/* 班级管理 */}
                 <Route path="/classes" element={<AdminClassManagementPage />} />
                 <Route path="/classes/:classId" element={<AdminClassDetailPage />} />
+
+                {/* 队伍管理 */}
+                <Route path="/teams" element={<AdminTeamManagementPage />} />
 
                 {/* 系统设置 */}
                 <Route path="/settings/frontend" element={<AdminSystemSettingsPage section="frontend" />} />

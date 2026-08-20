@@ -23,6 +23,7 @@ class ProblemDraftRequestValidationTest {
             "",
             null,
             null,
+            null,
             List.of(),
             0,
             null,
@@ -47,7 +48,7 @@ class ProblemDraftRequestValidationTest {
     }
 
     @Test
-    void testCasesReportChineseFieldMessages() {
+    void testCasesAllowBlankExpectedOutputUntilProblemTypeIsKnown() {
         ProblemDraftTestCasesRequest request = new ProblemDraftTestCasesRequest(
             List.of(new ProblemTestCaseRequest(1, "", ""))
         );
@@ -56,9 +57,9 @@ class ProblemDraftRequestValidationTest {
             .map(violation -> violation.getMessage())
             .collect(Collectors.toSet());
 
-        // 测试点输入数据允许为空（仅有输出数据），仅输出为必填
+        // Output requirements depend on whether the problem uses an SPJ checker.
         assertFalse(messages.contains("测试点输入数据不能为空"));
-        assertTrue(messages.contains("测试点输出数据不能为空"));
+        assertFalse(messages.contains("测试点输出数据不能为空"));
     }
 
     @Test

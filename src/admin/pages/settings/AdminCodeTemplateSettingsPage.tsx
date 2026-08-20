@@ -11,14 +11,13 @@ import { decodeCodeTemplateSettings, type CodeTemplateSettings } from '../../../
 const TextArea = Input.TextArea;
 const TabPane = Tabs.TabPane;
 
-type TemplateKey = 'c' | 'cpp' | 'python' | 'java' | 'csharp';
+type TemplateKey = 'c' | 'cpp' | 'python' | 'java';
 
 const emptyTemplates: CodeTemplateSettings = {
   c: '',
   cpp: '',
   python: '',
   java: '',
-  csharp: '',
 };
 
 const languageTabs: Array<{ key: TemplateKey; label: string }> = [
@@ -26,7 +25,6 @@ const languageTabs: Array<{ key: TemplateKey; label: string }> = [
   { key: 'cpp', label: 'C++' },
   { key: 'python', label: 'Python' },
   { key: 'java', label: 'Java' },
-  { key: 'csharp', label: 'C#' },
 ];
 
 /**

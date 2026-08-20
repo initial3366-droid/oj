@@ -68,33 +68,34 @@
   min-width: 0;
 }
 
-.practice-assignment-table .semi-table-container {
-  overflow-x: auto;
+.practice-assignment-table .ant-table-container {
+  overflow-x: hidden;
+  overflow-y: hidden;
   border: 1px solid #e5e6eb;
   border-radius: 8px;
   background: #fff;
 }
 
-.practice-assignment-table .semi-table-container table {
+.practice-assignment-table .ant-table-container table {
   min-width: 840px;
 }
 
-.practice-assignment-table .semi-table-pagination-outer {
+.practice-assignment-table .ant-table-pagination.ant-pagination {
   margin-top: 16px;
   padding: 0 4px;
 }
 
-.practice-assignment-table .semi-table-tbody .semi-table-row-cell {
+.practice-assignment-table .ant-table-tbody .ant-table-cell {
   padding: 20px 22px !important;
   vertical-align: middle;
 }
 
-.practice-assignment-table .semi-table-thead .semi-table-row-head {
+.practice-assignment-table .ant-table-thead .ant-table-cell {
   padding-right: 22px !important;
   padding-left: 22px !important;
 }
 
-.practice-assignment-table .semi-table-thead > .semi-table-row {
+.practice-assignment-table .ant-table-thead > tr {
   height: 52px;
 }
 
@@ -134,7 +135,7 @@
     justify-content: flex-start;
   }
 
-  .practice-assignment-table .semi-table-container table {
+  .practice-assignment-table .ant-table-container table {
     min-width: 760px;
   }
 }

@@ -1,9 +1,10 @@
 /**
  * FrontFooter组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Typography } from '@douyinfe/semi-ui';
+import { Layout, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 
+const { Footer } = Layout;
 const { Text } = Typography;
 
 /**
@@ -12,10 +13,18 @@ const { Text } = Typography;
 interface FooterSettings {
   footerText?: string;
   icpNumber?: string;
+  mpsNumber?: string;
   footerLink1Text?: string;
   footerLink1Url?: string;
   footerLink2Text?: string;
   footerLink2Url?: string;
+}
+
+/**
+ * 从公安备案号文本中提取纯数字 recordcode（例如“京公网安备 11010502012345号” → 11010502012345）。
+ */
+function mpsRecordCode(mpsNumber?: string) {
+  return (mpsNumber || '').replace(/\D/g, '');
 }
 
 /**
@@ -25,6 +34,7 @@ export function FrontFooter() {
   const [settings, setSettings] = useState<FooterSettings>({
     footerText: 'QOJ 在线评测系统',
     icpNumber: '',
+    mpsNumber: '',
     footerLink1Text: '',
     footerLink1Url: '',
     footerLink2Text: '',
@@ -40,6 +50,7 @@ export function FrontFooter() {
         setSettings({
           footerText: body.data?.footerText || 'QOJ 在线评测系统',
           icpNumber: body.data?.icpNumber || '',
+          mpsNumber: body.data?.mpsNumber || '',
           footerLink1Text: body.data?.footerLink1Text || '',
           footerLink1Url: body.data?.footerLink1Url || '',
           footerLink2Text: body.data?.footerLink2Text || '',
@@ -53,13 +64,13 @@ export function FrontFooter() {
   }, []);
 
   return (
-    <footer className="front-footer">
+    <Footer className="front-footer">
       <style>{`
         .front-footer {
           margin-top: 48px;
           padding: 16px 24px;
-          background: var(--semi-color-bg-2);
-          border-top: 1px solid var(--semi-color-border);
+          background: #ffffff;
+          border-top: 1px solid #f0f0f0;
         }
 
         .front-footer-content {
@@ -93,9 +104,31 @@ export function FrontFooter() {
 
         .front-footer-text,
         .front-footer-icp,
+        .front-footer-mps,
         .front-footer-link {
-          color: var(--semi-color-text-2);
+          color: rgba(0, 0, 0, 0.45);
           font-size: 13px;
+        }
+
+        .front-footer-mps {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          text-decoration: none;
+          transition: color 0.2s ease;
+        }
+
+        .front-footer-mps:hover {
+          color: #1677ff;
+        }
+
+        .front-footer-icp {
+          text-decoration: none;
+          transition: color 0.2s ease;
+        }
+
+        .front-footer-icp:hover {
+          color: #1677ff;
         }
 
         .front-footer-link {
@@ -104,11 +137,11 @@ export function FrontFooter() {
         }
 
         .front-footer-link:hover {
-          color: var(--semi-color-primary);
+          color: #1677ff;
         }
 
         .front-footer-separator {
-          color: var(--semi-color-text-3);
+          color: rgba(0, 0, 0, 0.25);
           font-size: 13px;
         }
 
@@ -128,7 +161,34 @@ export function FrontFooter() {
         <div className="front-footer-main">
           <Text className="front-footer-text">{settings.footerText}</Text>
           {settings.icpNumber ? <span className="front-footer-separator">|</span> : null}
-          {settings.icpNumber ? <Text className="front-footer-icp">{settings.icpNumber}</Text> : null}
+          {settings.icpNumber ? (
+            <a
+              className="front-footer-icp"
+              href="https://beian.miit.gov.cn/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {settings.icpNumber}
+            </a>
+          ) : null}
+          {settings.mpsNumber ? <span className="front-footer-separator">|</span> : null}
+          {settings.mpsNumber ? (
+            <a
+              className="front-footer-mps"
+              href={`http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=${mpsRecordCode(settings.mpsNumber)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <img
+                src="/gongan-beian.ico"
+                alt="公安备案"
+                width="16"
+                height="16"
+                style={{ flexShrink: 0 }}
+              />
+              <span>{settings.mpsNumber}</span>
+            </a>
+          ) : null}
         </div>
         <div className="front-footer-links">
           {settings.footerLink1Text && settings.footerLink1Url ? (
@@ -143,6 +203,6 @@ export function FrontFooter() {
           ) : null}
         </div>
       </div>
-    </footer>
+    </Footer>
   );
 }

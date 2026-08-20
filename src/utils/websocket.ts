@@ -326,7 +326,11 @@ class WebSocketClient {
 
     return () => {
       subscription.unsubscribe();
-      this.subscriptions.delete(key);
+      // 异步订阅在 React StrictMode 或路由切换时可能晚于新订阅完成，
+      // 只有当前仍是这条订阅时才允许清理 Map，避免误删新订阅。
+      if (this.subscriptions.get(key) === subscription) {
+        this.subscriptions.delete(key);
+      }
     };
   }
 }

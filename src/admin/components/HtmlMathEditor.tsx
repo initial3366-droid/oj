@@ -4,8 +4,8 @@
  * 中部为 HTML 源码输入框，下方为实时预览（复用前台渲染组件 HtmlMath）。
  * 工具栏直接修改输入框现有内容（在光标处插入或包裹选中文本），作为受控组件接入 Arco 的 Form.Item。
  */
-import { Button, Input, Select, Space, Tooltip } from '@arco-design/web-react';
-import { useRef, useState } from 'react';
+import { Button, Input, InputNumber, Message, Modal, Radio, Select, Space, Tooltip } from '@arco-design/web-react';
+import { useRef, useState, type ChangeEvent } from 'react';
 import { HtmlMath } from '../../components/HtmlMath';
 import { FormulaInsertModal } from './FormulaInsertModal';
 
@@ -26,7 +26,17 @@ interface HtmlMathEditorProps {
  */
 export function HtmlMathEditor({ value = '', onChange, placeholder, rows = 10 }: HtmlMathEditorProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const imageInsertToken = useRef(0);
   const [formulaModalVisible, setFormulaModalVisible] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [imageMode, setImageMode] = useState<'upload' | 'url'>('url');
+  const [imageUrl, setImageUrl] = useState('');
+  const [imageWidth, setImageWidth] = useState<number | undefined>();
+  const [imageHeight, setImageHeight] = useState<number | undefined>();
 
   /** 取得底层原生 textarea 元素，以便读取/设置光标位置。 */
   function getTextarea(): HTMLTextAreaElement | null {
@@ -98,6 +108,132 @@ export function HtmlMathEditor({ value = '', onChange, placeholder, rows = 10 }:
     }
   }
 
+  /** 选择本地图片后上传，成功则把 <img> 插入到光标处。 */
+  async function handleImageSelect(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const uploadToken = ++imageInsertToken.current;
+    setUploadingImage(true);
+    try {
+      const token = window.localStorage.getItem('qoj.accessToken');
+      const form = new FormData();
+      form.append('file', file);
+      const response = await fetch('/api/v1/uploads/images', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || body?.code !== 200 || !body?.data?.url) {
+        throw new Error(body?.message || '图片上传失败');
+      }
+      if (uploadToken !== imageInsertToken.current) return;
+      insertImgAtCursor(`<img src="${escapeAttr(body.data.url)}" alt="图片" style="max-width:100%" />`);
+      setImageModalVisible(false);
+    } catch (error) {
+      if (uploadToken !== imageInsertToken.current) return;
+      Message.error(error instanceof Error ? error.message : '图片上传失败');
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  /** 转义 HTML 属性值，避免 src 中的引号/尖括号注入。 */
+  function escapeAttr(value: string) {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  /** 在光标处插入图片标签：实时读取最新值与光标位置，避免异步回调覆盖用户输入。 */
+  function insertImgAtCursor(imgTag: string) {
+    const current = valueRef.current;
+    const textarea = getTextarea();
+    const start = textarea?.selectionStart ?? current.length;
+    const end = textarea?.selectionEnd ?? current.length;
+    onChange?.(current.slice(0, start) + imgTag + current.slice(end));
+    requestAnimationFrame(() => {
+      const target = getTextarea();
+      if (target) {
+        target.focus();
+        const caret = start + imgTag.length;
+        target.setSelectionRange(caret, caret);
+      }
+    });
+  }
+
+  /** 用图片链接插入 <img>。宽度/高度独立生效：只填一项时，另一项保持图片原始尺寸（自然宽高）。 */
+  function handleInsertImageUrl() {
+    const url = imageUrl.trim();
+    if (!url) {
+      Message.warning('请输入图片链接');
+      return;
+    }
+    const width = imageWidth != null && imageWidth > 0 ? imageWidth : null;
+    const height = imageHeight != null && imageHeight > 0 ? imageHeight : null;
+    const token = ++imageInsertToken.current;
+    const safeUrl = escapeAttr(url);
+
+    /** 清空弹窗并复位。 */
+    const closeModal = () => {
+      setImageModalVisible(false);
+      setImageUrl('');
+      setImageWidth(undefined);
+      setImageHeight(undefined);
+    };
+
+    if (!width && !height) {
+      insertImgAtCursor(`<img src="${safeUrl}" alt="图片" style="max-width:100%" />`);
+      closeModal();
+      return;
+    }
+    if (width && height) {
+      insertImgAtCursor(
+        `<img src="${safeUrl}" alt="图片" style="max-width:100%; width: ${width}px; height: ${height}px" width="${width}" height="${height}" />`,
+      );
+      closeModal();
+      return;
+    }
+
+    // 只填了一个维度：加载图片取得自然尺寸，缺失维度用原始尺寸补齐（保持原宽/原高）。
+    const probe = new Image();
+    probe.onload = () => {
+      if (token !== imageInsertToken.current) return;
+      const naturalWidth = probe.naturalWidth;
+      const naturalHeight = probe.naturalHeight;
+      if (naturalWidth > 0 && naturalHeight > 0) {
+        const finalWidth = width ?? naturalWidth;
+        const finalHeight = height ?? naturalHeight;
+        insertImgAtCursor(
+          `<img src="${safeUrl}" alt="图片" style="max-width:100%; width: ${finalWidth}px; height: ${finalHeight}px" width="${finalWidth}" height="${finalHeight}" />`,
+        );
+      } else {
+        // 无内在尺寸（如 SVG）：只写用户填写的维度，保持比例。
+        let style = 'max-width:100%';
+        let attrs = '';
+        if (width) {
+          style += `; width: ${width}px`;
+          attrs += ` width="${width}"`;
+        }
+        if (height) {
+          style += `; height: ${height}px`;
+          attrs += ` height="${height}"`;
+        }
+        insertImgAtCursor(`<img src="${safeUrl}" alt="图片" style="${style}"${attrs} />`);
+      }
+      closeModal();
+    };
+    probe.onerror = () => {
+      if (token !== imageInsertToken.current) return;
+      Message.error('图片加载失败，请检查链接');
+      closeModal();
+    };
+    probe.src = url;
+  }
+
   return (
     <div ref={wrapperRef}>
       <div
@@ -150,6 +286,9 @@ export function HtmlMathEditor({ value = '', onChange, placeholder, rows = 10 }:
           <Tooltip content="链接">
             <Button size="small" onClick={() => surround('<a href="https://" target="_blank">', '</a>', '链接文字')}>链接</Button>
           </Tooltip>
+          <Tooltip content="插入图片（上传本地图片或图片链接）">
+            <Button size="small" onClick={() => setImageModalVisible(true)}>🖼 图片</Button>
+          </Tooltip>
         </Space>
       </div>
       <TextArea
@@ -179,6 +318,80 @@ export function HtmlMathEditor({ value = '', onChange, placeholder, rows = 10 }:
         onClose={() => setFormulaModalVisible(false)}
         onInsert={handleInsertFormula}
       />
+
+      <Modal
+        title="插入图片"
+        visible={imageModalVisible}
+        onCancel={() => {
+          imageInsertToken.current += 1;
+          setImageModalVisible(false);
+          setImageUrl('');
+          setImageWidth(undefined);
+          setImageHeight(undefined);
+        }}
+        footer={null}
+        style={{ width: 480 }}
+      >
+        <Radio.Group
+          type="button"
+          value={imageMode}
+          onChange={(value) => setImageMode(value as 'upload' | 'url')}
+          style={{ marginBottom: 16 }}
+        >
+          <Radio value="upload">上传本地图片</Radio>
+          <Radio value="url">图片链接</Radio>
+        </Radio.Group>
+        {imageMode === 'upload' ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={(event) => void handleImageSelect(event)}
+            />
+            <Button
+              type="primary"
+              loading={uploadingImage}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploadingImage ? '上传中…' : '选择本地图片上传'}
+            </Button>
+            <span style={{ fontSize: 12, color: '#86909c' }}>支持 JPG/PNG/GIF/WEBP/BMP，最大 5MB</span>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <Input
+              value={imageUrl}
+              onChange={setImageUrl}
+              placeholder="https://example.com/image.png"
+              onPressEnter={() => handleInsertImageUrl()}
+            />
+            <div style={{ display: 'flex', gap: 12 }}>
+              <InputNumber
+                value={imageWidth}
+                onChange={setImageWidth}
+                placeholder="宽度（可选，px）"
+                min={1}
+                style={{ width: '100%' }}
+              />
+              <InputNumber
+                value={imageHeight}
+                onChange={setImageHeight}
+                placeholder="高度（可选，px）"
+                min={1}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <span style={{ fontSize: 12, color: '#86909c' }}>
+              宽度与高度独立生效：只填一项时，另一项保持图片原始尺寸。
+            </span>
+            <Button type="primary" onClick={() => handleInsertImageUrl()}>
+              插入图片
+            </Button>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

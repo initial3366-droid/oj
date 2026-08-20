@@ -97,6 +97,11 @@ public class AdminProblemController {
         return ApiResponse.ok(problemService.update(id, request));
     }
 
+    @GetMapping("/{id}/checker-source")
+    public ApiResponse<String> checkerSource(@PathVariable long id) {
+        return ApiResponse.ok(problemService.checkerSource(id));
+    }
+
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable long id) {
         Problem problem = problemMapper.selectById(id);

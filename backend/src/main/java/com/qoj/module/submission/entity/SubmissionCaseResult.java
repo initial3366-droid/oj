@@ -15,7 +15,6 @@ public class SubmissionCaseResult {
 
     public Long submissionId;
     public Integer caseNo;
-    public Integer subtaskNo;
 
     public String status;
     public Integer score;
@@ -24,9 +23,6 @@ public class SubmissionCaseResult {
     public Integer timeUsed; // ms
     public Integer memoryUsed; // KB
 
-    public String inputPreview;
-    public String outputPreview;
-    public String expectedPreview;
     public String judgeMessage;
 
     public LocalDateTime createdAt;

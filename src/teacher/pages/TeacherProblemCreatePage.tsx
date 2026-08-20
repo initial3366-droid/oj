@@ -46,6 +46,7 @@ interface BasicFormData {
   statement: string;
   inputFormat?: string;
   outputFormat?: string;
+  checkerSource?: string;
   tags?: string[];
   difficulty?: number;
   folderId?: number;
@@ -126,6 +127,7 @@ function normalizeBasicPayload(values: Partial<BasicFormData>, tags: string[]) {
     statement: values.statement?.trim() || '',
     inputFormat: values.inputFormat?.trim() || '',
     outputFormat: values.outputFormat?.trim() || '',
+    checkerSource: values.checkerSource || '',
     tags,
     difficulty: values.difficulty ?? null,
     folderId: values.folderId || undefined,
@@ -232,7 +234,10 @@ export function TeacherProblemCreatePage() {
   async function loadProblem(id: number) {
     try {
       setLoading(true);
-      const result = await teacherGet<any>(`/api/admin/v1/problems/${id}`);
+      const [result, checkerSource] = await Promise.all([
+        teacherGet<any>(`/api/admin/v1/problems/${id}`),
+        teacherGet<string>(`/api/admin/v1/problems/${id}/checker-source`),
+      ]);
       form.setFieldsValue({
         title: result.title,
         timeLimit: result.timeLimit,
@@ -240,6 +245,7 @@ export function TeacherProblemCreatePage() {
         statement: result.statement,
         inputFormat: result.inputFormat || '',
         outputFormat: result.outputFormat || '',
+        checkerSource: checkerSource || '',
         tags: result.tags || [],
         difficulty: result.difficulty ?? 1,
         folderId: result.folderId || undefined,
@@ -341,8 +347,10 @@ export function TeacherProblemCreatePage() {
       }
 
       const seenCaseNos = new Set<number>();
+      const checkerSource = form.getFieldValue('checkerSource');
+      const hasChecker = typeof checkerSource === 'string' && checkerSource.trim().length > 0;
       for (const testCase of normalized) {
-        if (!testCase.output) {
+        if (!hasChecker && !testCase.output) {
           Message.warning(`测试点 ${testCase.caseNo} 的输出数据不能为空`);
           return false;
         }
@@ -489,7 +497,7 @@ export function TeacherProblemCreatePage() {
             wrapperCol={{ span: 18 }}
             labelAlign="left"
             requiredSymbol={false}
-            initialValues={{ timeLimit: 1000, memoryLimit: 256, isPublic: true, accessScope: 'ALL', studentPublishStatus: 'PUBLISHED', difficulty: 1, samples: [] }}
+            initialValues={{ timeLimit: 1000, memoryLimit: 256, isPublic: true, accessScope: 'ALL', studentPublishStatus: 'PUBLISHED', difficulty: 1, checkerSource: '', samples: [] }}
             style={{ maxWidth: '1200px', margin: '0 auto' }}
           >
             <FormItem label="题目名称" field="title" rules={[{ required: true, message: '请输入题目名称' }]}>
@@ -561,6 +569,17 @@ export function TeacherProblemCreatePage() {
             </FormItem>
             <FormItem label="输出格式" field="outputFormat" style={{ marginBottom: '20px' }}>
               <HtmlMathEditor placeholder="输出格式说明（支持 HTML 与 LaTeX）" rows={3} />
+            </FormItem>
+            <FormItem
+              label="SPJ 代码"
+              field="checkerSource"
+              extra="留空使用默认 token 比较；填写 C++ testlib checker 后由 Go Judge 在隔离沙箱中执行。"
+            >
+              <TextArea
+                placeholder={'#include "testlib.h"\n\nint main(int argc, char* argv[]) {\n    registerTestlibCmd(argc, argv);\n    ...\n}'}
+                rows={14}
+                style={{ fontFamily: 'monospace' }}
+              />
             </FormItem>
             <FormItem label="样例">
               <Form.List
@@ -642,11 +661,11 @@ export function TeacherProblemCreatePage() {
                 />
               </div>
               <div style={{ marginBottom: '16px' }}>
-                <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>输出数据</div>
+                <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>输出数据（SPJ 可留空）</div>
                 <TextArea
                   value={testCase.output}
                   onChange={(value: string) => updateTestCase(index, 'output', value)}
-                  placeholder="测试点输出数据"
+                  placeholder="测试点输出数据（SPJ 可留空）"
                   rows={4}
                 />
               </div>

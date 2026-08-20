@@ -1,8 +1,8 @@
 /**
  * 练习Assignment页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Button, Card, Divider, Input, Table, Tag, Typography } from "@douyinfe/semi-ui";
-import { IconCode, IconLock } from "@douyinfe/semi-icons";
+import { Button, Card, Divider, Input, Table, Tag, Typography } from "antd";
+import { CodeOutlined, LockOutlined } from "@ant-design/icons";
 import { FormEvent, useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { fetchPracticeDetail, type Practice } from "../data/apiClient";
@@ -71,19 +71,19 @@ export function PracticeAssignmentPage() {
       <div className="grid min-h-[520px] place-items-center">
         <Card
           className="w-full max-w-md border border-slate-200 shadow-soft"
-          bodyStyle={{ padding: 0 }}
+          styles={{ body: { padding: 0 } }}
         >
           <div style={{ padding: "24px 28px" }}>
             <div
               className="grid place-items-center rounded-lg bg-primary/10 text-primary"
               style={{ height: 44, width: 44, marginBottom: 16 }}
             >
-              <IconLock style={{ fontSize: 22 }} />
+              <LockOutlined style={{ fontSize: 22 }} />
             </div>
-            <Typography.Title heading={4} style={{ margin: 0 }}>
+            <Typography.Title level={4} style={{ margin: 0 }}>
               题单访问
             </Typography.Title>
-            <Typography.Text type="tertiary" style={{ marginTop: 10, display: "block", fontSize: 14, lineHeight: 1.6 }}>
+            <Typography.Text type="secondary" style={{ marginTop: 10, display: "block", fontSize: 14, lineHeight: 1.6 }}>
               {message}
             </Typography.Text>
           </div>
@@ -95,15 +95,15 @@ export function PracticeAssignmentPage() {
                 <Input
                   type="password"
                   value={password}
-                  onChange={setPassword}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="请输入题单密码"
                 />
               </label>
               <div style={{ display: "grid", gap: 10 }}>
-                <Button type="primary" theme="solid" htmlType="submit" block>
+                <Button type="primary" htmlType="submit" block>
                   进入题单
                 </Button>
-                <Button theme="light" block onClick={() => navigate("/practice")}>
+                <Button block onClick={() => navigate("/practice")}>
                   返回题单列表
                 </Button>
               </div>
@@ -134,7 +134,7 @@ export function PracticeAssignmentPage() {
       render: (_: unknown, problem: Practice["problems"][number]) => (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {(problem.tags ?? []).map((tag) => (
-            <Tag key={tag} size="small" type="ghost">{tag}</Tag>
+            <Tag key={tag} style={{ fontSize: 12 }}>{tag}</Tag>
           ))}
         </div>
       ),
@@ -144,7 +144,7 @@ export function PracticeAssignmentPage() {
       dataIndex: "difficulty",
       width: 100,
       render: (_: string, problem: Practice["problems"][number]) => (
-        <Tag color={difficultyColor(problem.difficulty)} size="small">
+        <Tag color={difficultyColor(problem.difficulty)} style={{ fontSize: 12 }}>
           {problem.difficulty}
         </Tag>
       ),
@@ -156,9 +156,10 @@ export function PracticeAssignmentPage() {
       render: (_: unknown, problem: Practice["problems"][number]) => (
         <Button
           type="primary"
-          theme="light"
-          icon={<IconCode />}
-          onClick={() => navigate(`/practice/problem/${problem.id}?practiceId=${practice.id}`)}
+          icon={<CodeOutlined />}
+          href={`/practice/problem/${problem.id}?practiceId=${practice.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
         >
           写代码
         </Button>
@@ -171,15 +172,15 @@ export function PracticeAssignmentPage() {
       <header className="practice-assignment-header">
         <div className="practice-assignment-heading-row">
           <div className="practice-assignment-copy">
-            <Typography.Text type="tertiary" className="practice-assignment-eyebrow">题单</Typography.Text>
+            <Typography.Text type="secondary" className="practice-assignment-eyebrow">题单</Typography.Text>
             <h1 className="practice-assignment-title">{practice.title}</h1>
             <p className="practice-assignment-description">
               {practice.description || "暂无说明"}
             </p>
           </div>
           <div className="practice-assignment-meta">
-            <Tag color="blue" size="large">{practice.problems.length} 题</Tag>
-            {practice.hasPassword ? <Tag color="orange" size="large">已验证</Tag> : null}
+            <Tag color="blue">{practice.problems.length} 题</Tag>
+            {practice.hasPassword ? <Tag color="orange">已验证</Tag> : null}
           </div>
         </div>
       </header>
@@ -192,15 +193,14 @@ export function PracticeAssignmentPage() {
           dataSource={practice.problems}
           rowKey="id"
           pagination={{
-            position: "bottom",
-            currentPage: problemPage,
+            current: problemPage,
             pageSize: problemPageSize,
             total: practice.problems.length,
             showSizeChanger: true,
-            pageSizeOpts: [10, 20, 50],
-            showTotal: true,
-            onPageChange: setProblemPage,
-            onPageSizeChange: (size) => {
+            pageSizeOptions: [10, 20, 50],
+            showTotal: (total) => `共 ${total} 条`,
+            onChange: (page) => setProblemPage(page),
+            onShowSizeChange: (_current, size) => {
               setProblemPageSize(size);
               setProblemPage(1);
             },

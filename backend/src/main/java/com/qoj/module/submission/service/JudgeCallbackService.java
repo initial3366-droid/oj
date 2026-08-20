@@ -84,6 +84,11 @@ public class JudgeCallbackService {
              */
             throw new BizException(404, "提交记录不存在");
         }
+        // A stale embedded worker may finish after its claim has been reclaimed.
+        // Its result must not overwrite the newer attempt now owning this row.
+        if (request.workerId != null && !ownsGoJudgeClaim(submission, request.workerId)) {
+            return;
+        }
         if (isFinalStatus(submission.status)) {
             return;
         }
@@ -150,15 +155,11 @@ public class JudgeCallbackService {
             SubmissionCaseResult caseResult = new SubmissionCaseResult();
             caseResult.submissionId = submissionId;
             caseResult.caseNo = item.caseNo;
-            caseResult.subtaskNo = item.subtaskNo;
             caseResult.status = caseStatus;
             caseResult.score = nonNegativeOrNull(item.score);
             caseResult.maxScore = nonNegativeOrNull(item.maxScore);
             caseResult.timeUsed = positiveOrNull(item.timeUsed);
             caseResult.memoryUsed = positiveOrNull(item.memoryUsed);
-            caseResult.inputPreview = preview(item.inputPreview);
-            caseResult.outputPreview = preview(item.outputPreview);
-            caseResult.expectedPreview = preview(item.expectedPreview);
             caseResult.judgeMessage = Utf8TextLimiter.fitMysqlText(item.judgeMessage);
             caseResult.createdAt = createdAt;
             caseResults.add(caseResult);
@@ -209,6 +210,18 @@ public class JudgeCallbackService {
         };
     }
 
+    private boolean ownsGoJudgeClaim(Submission submission, String workerId) {
+        if (!"GO_JUDGE".equals(submission.judgeBackend)
+            || workerId.isBlank()
+            || !workerId.equals(submission.judgeWorkerId)) {
+            return false;
+        }
+        return switch (submission.status == null ? "" : submission.status) {
+            case "JUDGING", "COMPILING", "RUNNING" -> true;
+            default -> false;
+        };
+    }
+
     private String normalizeStatus(String status) {
         if (status == null || status.isBlank()) {
             return null;
@@ -244,13 +257,6 @@ public class JudgeCallbackService {
             }
         }
         return maximum;
-    }
-
-    private String preview(String value) {
-        if (value == null || value.length() <= 200) {
-            return value;
-        }
-        return value.substring(0, 200) + "...";
     }
 
     private Integer maxCaseMemoryUsed(List<JudgeResultCallbackRequest.CaseResultDTO> caseResults) {

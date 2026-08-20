@@ -18,6 +18,7 @@ public class User {
     public String passwordHash;
     public String role;
     public Long classId;
+    public Long teamId;
     public String displayName;
     public String avatarUrl;
     public LocalDateTime createdAt;

@@ -11,6 +11,7 @@ public record JudgeTask(
     String code,
     Integer timeLimit,      // ms
     Integer memoryLimit,    // MB
+    String checkerSource,
     List<TestCase> testCases
 ) {
     /**

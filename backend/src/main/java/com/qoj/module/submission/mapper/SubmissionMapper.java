@@ -18,13 +18,13 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
     /**
      * 计算By题目标识。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
-    @Select("SELECT COUNT(*) FROM submissions WHERE problem_id = #{problemId} AND contest_id IS NULL")
+    @Select("SELECT COUNT(*) FROM submissions WHERE problem_id = #{problemId}")
     Long countByProblemId(@Param("problemId") Long problemId);
 
     /**
      * 计算AcceptedBy题目标识。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
-    @Select("SELECT COUNT(*) FROM submissions WHERE problem_id = #{problemId} AND contest_id IS NULL AND status = 'AC'")
+    @Select("SELECT COUNT(*) FROM submissions WHERE problem_id = #{problemId} AND status = 'AC'")
     Long countAcceptedByProblemId(@Param("problemId") Long problemId);
 
     /**
@@ -130,7 +130,6 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
             OR (#{acceptCpp} = TRUE AND LOWER(TRIM(s.language)) IN ('cpp', 'c++', 'cxx', 'g++'))
             OR (#{acceptJava} = TRUE AND LOWER(TRIM(s.language)) = 'java')
             OR (#{acceptPython} = TRUE AND LOWER(TRIM(s.language)) IN ('python', 'python3', 'py'))
-            OR (#{acceptCsharp} = TRUE AND LOWER(TRIM(s.language)) IN ('c#', 'csharp', 'cs'))
           )
         ORDER BY s.priority DESC, s.submit_time ASC
         LIMIT #{limit}
@@ -145,7 +144,6 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
         @Param("acceptCpp") boolean acceptCpp,
         @Param("acceptJava") boolean acceptJava,
         @Param("acceptPython") boolean acceptPython,
-        @Param("acceptCsharp") boolean acceptCsharp,
         @Param("staleBefore") LocalDateTime staleBefore
     );
 
@@ -184,7 +182,7 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
               (#{oiWorker} = TRUE AND UPPER(COALESCE(c.scoring_mode, c.type, 'ACM')) = 'OI')
               OR (#{oiWorker} = FALSE AND UPPER(COALESCE(c.scoring_mode, c.type, 'ACM')) <> 'OI')
           )
-          AND LOWER(TRIM(s.language)) IN ('c', 'cpp', 'c++', 'cxx', 'g++', 'java', 'python', 'python3', 'py', 'c#', 'csharp', 'cs')
+          AND LOWER(TRIM(s.language)) IN ('c', 'cpp', 'c++', 'cxx', 'g++', 'java', 'python', 'python3', 'py')
         """)
     int claimForCcpcoj(
         @Param("id") Long id,
@@ -274,6 +272,73 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
     );
 
     /**
+     * Requeues embedded-judge claims left behind by a crashed backend process.
+     * The stale-time predicate prevents an active task from being reclaimed
+     * immediately, while clearing the worker ownership lets a new process claim it.
+     */
+    @Update("""
+        UPDATE submissions
+        SET status = 'WAITING',
+            judge_worker_id = NULL,
+            judge_start_time = NULL,
+            judge_end_time = NULL,
+            judge_server = NULL,
+            judge_message = NULL,
+            error_message = NULL,
+            retry_count = COALESCE(retry_count, 0) + 1,
+            updated_at = #{recoveredAt}
+        WHERE judge_backend = 'GO_JUDGE'
+          AND judge_worker_id IS NOT NULL
+          AND status IN ('JUDGING', 'COMPILING', 'RUNNING')
+          AND COALESCE(judge_start_time, updated_at, submit_time) < #{staleBefore}
+        """)
+    int requeueStaleGoJudgeClaims(
+        @Param("staleBefore") LocalDateTime staleBefore,
+        @Param("recoveredAt") LocalDateTime recoveredAt
+    );
+
+    /** Updates completion metadata only while the same embedded worker owns the row. */
+    @Update("""
+        UPDATE submissions
+        SET judge_server = 'GO_JUDGE',
+            judge_message = #{judgeMessage},
+            error_message = #{errorMessage},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND judge_backend = 'GO_JUDGE'
+          AND judge_worker_id = #{workerId}
+        """)
+    int updateGoJudgeCompletionMetadata(
+        @Param("id") Long id,
+        @Param("workerId") String workerId,
+        @Param("judgeMessage") String judgeMessage,
+        @Param("errorMessage") String errorMessage,
+        @Param("updatedAt") LocalDateTime updatedAt
+    );
+
+    /** Marks a go-judge execution as failed only while its worker claim is valid. */
+    @Update("""
+        UPDATE submissions
+        SET status = 'SE',
+            judge_server = 'GO_JUDGE',
+            judge_end_time = #{judgeEndTime},
+            judge_message = #{judgeMessage},
+            error_message = #{errorMessage},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND judge_backend = 'GO_JUDGE'
+          AND judge_worker_id = #{workerId}
+        """)
+    int markGoJudgeFailure(
+        @Param("id") Long id,
+        @Param("workerId") String workerId,
+        @Param("judgeEndTime") LocalDateTime judgeEndTime,
+        @Param("judgeMessage") String judgeMessage,
+        @Param("errorMessage") String errorMessage,
+        @Param("updatedAt") LocalDateTime updatedAt
+    );
+
+    /**
      * 按状态和 workerId 查询任务（用于恢复启动时检查当前 worker 处理的任务）
      */
     @Select("SELECT * FROM submissions WHERE judge_worker_id = #{workerId} AND status IN ('JUDGING', 'RUNNING', 'COMPILING')")
@@ -282,8 +347,16 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
     /**
      * 清除指定提交的 workerId（判题完成后释放）
      */
-    @Update("UPDATE submissions SET judge_worker_id = NULL, updated_at = #{releasedAt} WHERE id = #{id}")
-    int releaseWorker(@Param("id") Long id, @Param("releasedAt") java.time.LocalDateTime releasedAt);
+    @Update("""
+        UPDATE submissions
+        SET judge_worker_id = NULL, updated_at = #{releasedAt}
+        WHERE id = #{id} AND judge_worker_id = #{workerId}
+        """)
+    int releaseWorker(
+        @Param("id") Long id,
+        @Param("workerId") String workerId,
+        @Param("releasedAt") LocalDateTime releasedAt
+    );
 
     // ── Dashboard aggregation queries ──
 

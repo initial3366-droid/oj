@@ -46,6 +46,7 @@ interface FrontendSettings {
   maintenanceMode: boolean;
   footerText: string;
   icpNumber: string;
+  mpsNumber: string;
   footerLink1Text: string;
   footerLink1Url: string;
   footerLink2Text: string;
@@ -292,6 +293,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
         maintenanceMode: values.maintenanceMode,
         footerText: values.footerText || '',
         icpNumber: values.icpNumber || '',
+        mpsNumber: values.mpsNumber || '',
         footerLink1Text: values.footerLink1Text || '',
         footerLink1Url: values.footerLink1Url || '',
         footerLink2Text: values.footerLink2Text || '',
@@ -666,9 +668,17 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
             <FormItem
               label="备案号"
               field="icpNumber"
-              extra="显示在前台页面底部，可填写 ICP 备案号或公安备案号"
+              extra="显示在前台页面底部，点击跳转工信部备案查询（beian.miit.gov.cn）"
             >
               <Input placeholder="例如：粤ICP备xxxxxxxx号" />
+            </FormItem>
+
+            <FormItem
+              label="公安备案号"
+              field="mpsNumber"
+              extra="显示在前台页面底部，带公安备案图标，点击按备案号中的数字跳转公安备案查询页"
+            >
+              <Input placeholder="例如：京公网安备 110105020xxxxx号" />
             </FormItem>
 
             <Divider orientation="left">
@@ -910,9 +920,9 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
             </FormItem>
 
             <FormItem
-              label="失联重领时间"
+              label="判题失联重领时间"
               field="ccpcojStaleTaskMinutes"
-              rules={[{ required: true, message: '请输入 CCPCOJ 任务失联重领时间' }]}
+              rules={[{ required: true, message: '请输入判题任务失联重领时间' }]}
             >
               <InputNumber min={2} max={1440} step={1} suffix="分钟" style={{ width: '100%' }} />
             </FormItem>
@@ -920,7 +930,7 @@ export function AdminSystemSettingsPage({ section }: AdminSystemSettingsPageProp
 
           <Divider />
           <Paragraph style={{ margin: 0, fontSize: 13, color: '#86909c' }}>
-            普通题和练习固定使用 go-judge；比赛在创建或首个提交前选择 go-judge 或 CCPCOJ。go-judge 地址和鉴权令牌仅从后端部署环境读取。
+            普通题和练习固定使用 go-judge；比赛在创建或首个提交前选择 go-judge 或 CCPCOJ。失联重领时间同时适用于两种判题后端。go-judge 地址和鉴权令牌仅从后端部署环境读取。
             CCPCOJ 密码只保存哈希，留空时保留原值；线程池大小在后端重启后重新初始化。
           </Paragraph>
         </Card>

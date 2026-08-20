@@ -20,6 +20,8 @@ public record ContestScoreboardRowVO(
     Boolean starred,
     String medal,
     Long classId,
-    String className
+    String className,
+    String teamName,
+    String studentNo
 ) {
 }

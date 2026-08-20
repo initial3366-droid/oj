@@ -1,0 +1,126 @@
+/* 比赛详情顶部概览 Card 样式。布局与响应式按重构方案执行，颜色由组件内 theme token 提供。 */
+
+.contest-overview-card {
+  border-radius: 8px;
+}
+
+.contest-overview-card .ant-card-body {
+  padding: 24px;
+}
+
+.contest-overview-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 32px;
+  align-items: start;
+}
+
+.contest-overview-content {
+  min-width: 0;
+  max-width: 760px;
+}
+
+.contest-overview-title {
+  margin: 16px 0 0 !important;
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 600;
+}
+
+.contest-overview-description {
+  margin: 12px 0 0 !important;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.contest-overview-times {
+  margin-top: 12px;
+}
+
+.contest-overview-time-item {
+  font-size: 14px;
+}
+
+.contest-overview-alert {
+  margin-top: 12px;
+}
+
+.contest-overview-clock {
+  border-radius: 8px;
+  padding: 16px;
+  min-height: 104px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.contest-overview-footer {
+  margin-top: 0;
+}
+
+.contest-overview-meta {
+  font-size: 14px;
+}
+
+.contest-overview-register-reason {
+  font-size: 13px;
+}
+
+/* 平板端 769–1024px */
+@media (max-width: 1024px) {
+  .contest-overview-main {
+    grid-template-columns: minmax(0, 1fr) 220px;
+    gap: 24px;
+  }
+}
+
+/* 移动端 <=768px */
+@media (max-width: 768px) {
+  .contest-overview-card .ant-card-body {
+    padding: 16px;
+  }
+
+  .contest-overview-main {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .contest-overview-title {
+    font-size: 22px;
+    line-height: 30px;
+  }
+
+  /* 倒计时改全宽横向面板：标题在左、数值在右 */
+  .contest-overview-clock {
+    min-height: 0;
+    padding: 12px 16px;
+    text-align: left;
+  }
+
+  .contest-overview-clock .ant-statistic {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .contest-overview-clock .ant-statistic-title {
+    margin-bottom: 0;
+  }
+
+  /* Footer 纵向：信息在上、按钮组在下，按钮 block 全宽 */
+  .contest-overview-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .contest-overview-actions {
+    flex-direction: column;
+  }
+
+  .contest-overview-actions .ant-btn {
+    width: 100%;
+  }
+}

@@ -1,12 +1,12 @@
 /**
  * 编码Viewer组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Typography, Select } from '@douyinfe/semi-ui';
-import { IconCopy } from '@douyinfe/semi-icons';
-import { Toast } from '@douyinfe/semi-ui';
+import { Typography, Select, message } from 'antd';
+import { CopyOutlined } from '@ant-design/icons';
 import Editor from '@monaco-editor/react';
 import { useState } from 'react';
 import '../../utils/monacoSetup';
+import { copyTextToClipboard } from '../../utils/clipboard';
 
 /**
  * 编码ViewerProps接口，明确该模块内部及 API 边界使用的数据结构。
@@ -23,7 +23,6 @@ interface CodeViewerProps {
 const LANGUAGE_MAP: Record<string, string> = {
   cpp: 'C++',
   c: 'C',
-  csharp: 'C#',
   java: 'Java',
   python: 'Python',
   javascript: 'JavaScript',
@@ -51,11 +50,11 @@ export function CodeViewer({
    * 处理Copy。包含异步流程并由调用方处理完成或失败状态。
    */
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(code);
-      Toast.success('已复制到剪贴板');
-    } catch (err) {
-      Toast.error('复制失败');
+    const ok = await copyTextToClipboard(code);
+    if (ok) {
+      message.success('已复制到剪贴板');
+    } else {
+      message.error('复制失败，请手动选择代码复制');
     }
   };
 
@@ -67,7 +66,7 @@ export function CodeViewer({
   return (
     <div
       style={{
-        border: '1px solid var(--semi-color-border)',
+        border: '1px solid var(--qoj-color-border)',
         borderRadius: '8px',
         overflow: 'hidden',
       }}
@@ -75,8 +74,8 @@ export function CodeViewer({
       <div
         style={{
           padding: '8px 16px',
-          backgroundColor: 'var(--semi-color-fill-1)',
-          borderBottom: '1px solid var(--semi-color-border)',
+          backgroundColor: 'var(--qoj-color-fill-1)',
+          borderBottom: '1px solid var(--qoj-color-border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -94,21 +93,21 @@ export function CodeViewer({
               onChange={(value) => setSelectedLanguage(value as string)}
               style={{ width: 120 }}
               size="small"
-              optionList={languageOptions}
+              options={languageOptions}
             />
           )}
           {!showLanguageSelect && (
-            <Typography.Text type="tertiary" style={{ fontSize: 14 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 14 }}>
               {LANGUAGE_MAP[language] || language}
             </Typography.Text>
           )}
         </div>
-        <IconCopy
+        <CopyOutlined
           onClick={handleCopy}
           style={{
             cursor: 'pointer',
             fontSize: 16,
-            color: 'var(--semi-color-text-2)',
+            color: 'var(--qoj-color-text-2)',
           }}
         />
       </div>

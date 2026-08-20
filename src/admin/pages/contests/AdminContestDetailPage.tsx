@@ -20,7 +20,7 @@ import {
   Select,
   Switch,
 } from '@arco-design/web-react';
-import { IconDownload, IconLeft, IconEdit } from '@arco-design/web-react/icon';
+import { IconDownload, IconLeft, IconEdit, IconUnlock } from '@arco-design/web-react/icon';
 import { adminDownload, adminGet, adminPost, adminPut } from '../../api/adminClient';
 
 const { Row, Col } = Grid;
@@ -65,12 +65,11 @@ interface ContestDetail {
  * 比赛题目接口，明确该模块内部及 API 边界使用的数据结构。
  */
 interface ContestProblem {
-  id: number;
   contestProblemId: number;
   label: string;
   title: string;
   score: number;
-  order: number;
+  displayOrder: number;
   submissionCount: number;
   acceptedCount: number;
 }
@@ -160,6 +159,7 @@ export function AdminContestDetailPage() {
   const [xcpcioSyncing, setXcpcioSyncing] = useState(false);
   const [rollingState, setRollingState] = useState<RollingState | null>(null);
   const [rollingLoading, setRollingLoading] = useState(false);
+  const [unbinding, setUnbinding] = useState(false);
   const [scoreboardExporting, setScoreboardExporting] = useState(false);
   const [submissionsExporting, setSubmissionsExporting] = useState(false);
   const [registrationExporting, setRegistrationExporting] = useState(false);
@@ -356,6 +356,20 @@ export function AdminContestDetailPage() {
     }
   }
 
+  async function unbindContest() {
+    if (!contestId || !contest?.frozen) return;
+    setUnbinding(true);
+    try {
+      await adminPost<ContestDetail>(`/api/admin/v1/contests/${contestId}/unbind`);
+      await loadContestDetail();
+      setNotice({ type: 'success', content: '比赛已解绑，前台榜单、提交统计和提交列表已恢复实时数据' });
+    } catch (error) {
+      setNotice({ type: 'error', content: error instanceof Error ? error.message : '比赛解绑失败' });
+    } finally {
+      setUnbinding(false);
+    }
+  }
+
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
@@ -392,7 +406,7 @@ export function AdminContestDetailPage() {
   const problemColumns = [
     {
       title: '序号',
-      dataIndex: 'order',
+      dataIndex: 'displayOrder',
       width: 80,
       align: 'center' as const,
     },
@@ -527,6 +541,15 @@ export function AdminContestDetailPage() {
           <Button type="primary" icon={<IconEdit />} onClick={() => navigate(`/admin/contests/${contestId}/edit`)}>
             编辑比赛
           </Button>
+          <Button
+            status="warning"
+            icon={<IconUnlock />}
+            loading={unbinding}
+            disabled={!contest.frozen}
+            onClick={() => void unbindContest()}
+          >
+            解绑
+          </Button>
         </Space>
       </Card>
 
@@ -568,7 +591,7 @@ export function AdminContestDetailPage() {
             { label: '奖牌比例', value: `${contest.goldRatio ?? 10}% / ${contest.silverRatio ?? 20}% / ${contest.bronzeRatio ?? 30}%` },
             { label: '赛后查看题目', value: contest.allowAfterEndViewProblem !== false ? '允许' : '关闭' },
             { label: '赛后查看他人代码', value: contest.allowAfterEndViewCode ? '允许' : '关闭' },
-            { label: '公共榜单', value: contest.publicScoreboardEnabled !== false ? '开启' : '关闭' },
+            { label: '外榜', value: contest.publicScoreboardEnabled === true ? '开启' : '关闭' },
             { label: '榜单显示班级', value: contest.showClassOnScoreboard ? '显示' : '隐藏' },
             { label: '全屏模式', value: contest.allowFullscreen ? '开启' : '关闭' },
             { label: '反作弊', value: contest.antiCheatEnabled ? '开启' : '关闭' },
@@ -591,7 +614,7 @@ export function AdminContestDetailPage() {
               columns={problemColumns}
               data={problems}
               pagination={false}
-              rowKey="id"
+              rowKey="contestProblemId"
             />
           </TabPane>
 
@@ -678,15 +701,17 @@ export function AdminContestDetailPage() {
                   </Card>
                 </Col>
                 <Col span={12}>
-                  <Card title="Public Scoreboard">
+                  <Card title="外榜">
                     <Space direction="vertical" style={{ width: '100%' }}>
-                      <div>公开榜单地址与前台同步，未登录用户也可以访问。</div>
-                      <Button
-                        type="primary"
-                        onClick={() => window.open(`/contests/${contestId}/public-scoreboard`, '_blank')}
-                      >
-                        打开公开榜单
-                      </Button>
+                      <div>{contest.publicScoreboardEnabled === true ? '外榜已开放，未登录用户也可以访问。' : '外榜未开启，前台入口和外榜地址均不可用。'}</div>
+                      {contest.publicScoreboardEnabled === true && (
+                        <Button
+                          type="primary"
+                          onClick={() => window.open(`/contests/${contestId}/public-scoreboard`, '_blank')}
+                        >
+                          打开外榜
+                        </Button>
+                      )}
                       <Button icon={<IconDownload />} loading={scoreboardExporting} onClick={exportScoreboard}>
                         导出排行榜 CSV
                       </Button>

@@ -1,8 +1,8 @@
 /**
  * ErrorState组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Empty, Button } from '@douyinfe/semi-ui';
-import { IllustrationFailure } from '@douyinfe/semi-illustrations';
+import { Empty, Button } from 'antd';
+import { CloseCircleOutlined } from '@ant-design/icons';
 
 /**
  * ErrorStateProps接口，明确该模块内部及 API 边界使用的数据结构。
@@ -35,9 +35,13 @@ export function ErrorState({
       }}
     >
       <Empty
-        image={<IllustrationFailure style={{ width: 150, height: 150 }} />}
-        title={title}
-        description={message}
+        image={<CloseCircleOutlined style={{ fontSize: 150, color: '#f5222d' }} />}
+        description={
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 16 }}>{title}</div>
+            {message && <div style={{ marginTop: 8 }}>{message}</div>}
+          </div>
+        }
       >
         {onRetry && (
           <Button

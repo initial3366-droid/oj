@@ -1,8 +1,13 @@
 /**
  * 提交状态Tag组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Tag } from '@douyinfe/semi-ui';
-import { IconTick, IconClock, IconClose, IconAlertTriangle } from '@douyinfe/semi-icons';
+import { Tag } from 'antd';
+import {
+  CheckOutlined,
+  ClockCircleOutlined,
+  CloseOutlined,
+  WarningOutlined,
+} from '@ant-design/icons';
 
 /**
  * 提交状态类型别名，明确该模块内部及 API 边界使用的数据结构。
@@ -40,8 +45,8 @@ export function SubmissionStatusTag({
     if (normalized === 'AC' || normalized === 'ACCEPTED') {
       return {
         color: 'green' as const,
-        text: 'AC',
-        icon: <IconTick />,
+        text: 'Accepted',
+        icon: <CheckOutlined />,
       };
     }
 
@@ -49,8 +54,8 @@ export function SubmissionStatusTag({
     if (normalized === 'WA' || normalized === 'WRONG_ANSWER') {
       return {
         color: 'red' as const,
-        text: 'WA',
-        icon: <IconClose />,
+        text: 'Wrong Answer',
+        icon: <CloseOutlined />,
       };
     }
 
@@ -58,8 +63,8 @@ export function SubmissionStatusTag({
     if (normalized === 'TLE' || normalized === 'TIME_LIMIT_EXCEEDED') {
       return {
         color: 'orange' as const,
-        text: 'TLE',
-        icon: <IconClock />,
+        text: 'Time Limit Exceeded',
+        icon: <ClockCircleOutlined />,
       };
     }
 
@@ -67,8 +72,8 @@ export function SubmissionStatusTag({
     if (normalized === 'MLE' || normalized === 'MEMORY_LIMIT_EXCEEDED') {
       return {
         color: 'orange' as const,
-        text: 'MLE',
-        icon: <IconAlertTriangle />,
+        text: 'Memory Limit Exceeded',
+        icon: <WarningOutlined />,
       };
     }
 
@@ -76,8 +81,8 @@ export function SubmissionStatusTag({
     if (normalized === 'RE' || normalized === 'RUNTIME_ERROR') {
       return {
         color: 'red' as const,
-        text: 'RE',
-        icon: <IconClose />,
+        text: 'Runtime Error',
+        icon: <CloseOutlined />,
       };
     }
 
@@ -85,8 +90,8 @@ export function SubmissionStatusTag({
     if (normalized === 'CE' || normalized === 'COMPILE_ERROR' || normalized === 'COMPILATION_ERROR') {
       return {
         color: 'red' as const,
-        text: 'CE',
-        icon: <IconClose />,
+        text: 'Compile Error',
+        icon: <CloseOutlined />,
       };
     }
 
@@ -94,8 +99,8 @@ export function SubmissionStatusTag({
     if (normalized === 'WAITING') {
       return {
         color: 'blue' as const,
-        text: '队列中',
-        icon: <IconClock />,
+        text: 'Waiting',
+        icon: <ClockCircleOutlined />,
       };
     }
 
@@ -103,8 +108,8 @@ export function SubmissionStatusTag({
     if (normalized === 'PENDING' || normalized === 'QUEUED') {
       return {
         color: 'blue' as const,
-        text: '等待测评',
-        icon: <IconClock />,
+        text: 'Pending',
+        icon: <ClockCircleOutlined />,
       };
     }
 
@@ -112,8 +117,8 @@ export function SubmissionStatusTag({
     if (normalized === 'REJUDGE_PENDING') {
       return {
         color: 'blue' as const,
-        text: '等待重判',
-        icon: <IconClock />,
+        text: 'Rejudge Pending',
+        icon: <ClockCircleOutlined />,
       };
     }
 
@@ -121,8 +126,8 @@ export function SubmissionStatusTag({
     if (normalized === 'COMPILING') {
       return {
         color: 'blue' as const,
-        text: '编译中',
-        icon: <IconClock />,
+        text: 'Compiling',
+        icon: <ClockCircleOutlined />,
       };
     }
 
@@ -130,8 +135,8 @@ export function SubmissionStatusTag({
     if (normalized === 'JUDGING' || normalized === 'RUNNING') {
       return {
         color: 'blue' as const,
-        text: '测评中',
-        icon: <IconClock />,
+        text: normalized === 'RUNNING' ? 'Running' : 'Judging',
+        icon: <ClockCircleOutlined />,
       };
     }
 
@@ -139,8 +144,8 @@ export function SubmissionStatusTag({
     if (normalized === 'SYSTEM_ERROR' || normalized === 'SE') {
       return {
         color: 'grey' as const,
-        text: '系统错误',
-        icon: <IconAlertTriangle />,
+        text: 'System Error',
+        icon: <WarningOutlined />,
       };
     }
 
@@ -156,10 +161,9 @@ export function SubmissionStatusTag({
 
   return (
     <Tag
-      color={config.color}
-      size={size}
-      prefixIcon={showIcon ? config.icon : undefined}
-      style={{ fontWeight: 500 }}
+      color={config.color === 'grey' ? 'default' : config.color}
+      icon={showIcon ? config.icon : undefined}
+      style={{ fontWeight: 500, fontSize: size === 'small' ? 12 : undefined }}
     >
       {config.text}
     </Tag>

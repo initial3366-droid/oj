@@ -1,9 +1,9 @@
 /**
  * 提交队列页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Banner, Button, Card, Input, Select, Spin, Table, Tag, Typography } from '@douyinfe/semi-ui';
-import { IconRefresh } from '@douyinfe/semi-icons';
-import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { Alert, Button, Card, Input, Select, Spin, Table, Tag, Typography } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
+import type { TableColumnsType } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchSubmissionQueue,
@@ -11,6 +11,8 @@ import {
   type SubmissionQueueRecord,
 } from '../data/apiClient';
 import { PageContainer } from '../components/common';
+
+const { Text } = Typography;
 
 const statusOptions = [
   'Waiting',
@@ -40,13 +42,13 @@ function queueErrorMessage(error: unknown) {
 /**
  * 封装状态Color相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
-function statusColor(status?: string | null): 'green' | 'red' | 'orange' | 'blue' | 'grey' {
+function statusColor(status?: string | null): 'success' | 'error' | 'warning' | 'processing' | 'default' {
   const normalized = (status || '').toUpperCase();
-  if (normalized === 'AC' || normalized === 'ACCEPTED') return 'green';
-  if (normalized === 'PENDING' || normalized === 'WAITING' || normalized === 'JUDGING' || normalized === 'COMPILING' || normalized === 'RUNNING' || normalized === 'REJUDGE_PENDING') return 'blue';
-  if (normalized === 'TLE' || normalized === 'MLE' || normalized.includes('LIMIT')) return 'orange';
-  if (normalized === 'SE' || normalized === 'SYSTEM_ERROR' || normalized === 'FAILED') return 'grey';
-  return 'red';
+  if (normalized === 'AC' || normalized === 'ACCEPTED') return 'success';
+  if (normalized === 'PENDING' || normalized === 'WAITING' || normalized === 'JUDGING' || normalized === 'COMPILING' || normalized === 'RUNNING' || normalized === 'REJUDGE_PENDING') return 'processing';
+  if (normalized === 'TLE' || normalized === 'MLE' || normalized.includes('LIMIT')) return 'warning';
+  if (normalized === 'SE' || normalized === 'SYSTEM_ERROR' || normalized === 'FAILED') return 'default';
+  return 'error';
 }
 
 /**
@@ -55,6 +57,18 @@ function statusColor(status?: string | null): 'green' | 'red' | 'orange' | 'blue
 function isActive(status?: string | null) {
   const normalized = (status || '').toUpperCase();
   return normalized === 'JUDGING' || normalized === 'RUNNING' || normalized === 'COMPILING';
+}
+
+/**
+ * 格式化提交时间到分钟（MM-DD HH:mm）。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ */
+function formatSubmitTime(dateTime: string): string {
+  const date = new Date(dateTime);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${month}-${day} ${hours}:${minutes}`;
 }
 
 /**
@@ -100,7 +114,7 @@ export function SubmissionQueuePage() {
   /**
    * 封装columns相关逻辑。对原始数据进行派生或聚合。
    */
-  const columns = useMemo<ColumnProps<SubmissionQueueRecord>[]>(() => [
+  const columns = useMemo<TableColumnsType<SubmissionQueueRecord>>(() => [
     { title: '提交 ID', dataIndex: 'submissionId', width: 130, fixed: 'left' },
     {
       title: '提交者',
@@ -113,10 +127,10 @@ export function SubmissionQueuePage() {
       dataIndex: 'problemTitle',
       width: 260,
       render: (_text, record) => (
-        <Typography.Text>
+        <Text>
           {record.problemLabel ? `${record.problemLabel}. ` : ''}
           {record.problemTitle || `#${record.problemId}`}
-        </Typography.Text>
+        </Text>
       ),
     },
     { title: '语言', dataIndex: 'language', width: 120 },
@@ -127,84 +141,99 @@ export function SubmissionQueuePage() {
       render: (_text, record) => (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           {isActive(record.status) && <Spin size="small" />}
-          <Tag color={statusColor(record.status)}>{record.statusText || record.status || '-'}</Tag>
+          <Tag color={statusColor(record.status)} style={{ marginInlineEnd: 0 }}>{record.statusText || record.status || '-'}</Tag>
         </span>
+      ),
+    },
+    {
+      title: '提交时间',
+      dataIndex: 'submitTime',
+      width: 140,
+      render: (submitTime: string) => (
+        <Text type="secondary" style={{ fontSize: 13 }}>
+          {submitTime ? formatSubmitTime(submitTime) : '-'}
+        </Text>
       ),
     },
   ], []);
 
   return (
-    <PageContainer title="提交队列" subtitle="Submission Queue">
-      {message && <Banner type="danger" description={message} closeIcon={null} style={{ marginBottom: 16 }} />}
+    <PageContainer title="提交队列">
+      {message && <Alert type="error" message={message} showIcon={false} banner style={{ marginBottom: 16 }} />}
 
-      <Card style={{ border: '1px solid var(--semi-color-border)', marginBottom: 16 }}>
+      <Card style={{ border: '1px solid #f0f0f0', marginBottom: 16 }} styles={{ body: { padding: 20 } }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <Input
             placeholder="题目 ID"
             value={query.problemId ? String(query.problemId) : ''}
-            onChange={(value) => setQuery((current) => ({ ...current, page: 1, problemId: Number(value) || null }))}
+            onChange={(event) => {
+              const value = event.target.value;
+              setQuery((current) => ({ ...current, page: 1, problemId: value ? Number(value) || null : null }));
+            }}
             style={{ width: 120 }}
           />
           <Input
             placeholder="用户 ID"
             value={query.userId ? String(query.userId) : ''}
-            onChange={(value) => setQuery((current) => ({ ...current, page: 1, userId: Number(value) || null }))}
+            onChange={(event) => {
+              const value = event.target.value;
+              setQuery((current) => ({ ...current, page: 1, userId: value ? Number(value) || null : null }));
+            }}
             style={{ width: 120 }}
           />
           <Input
             placeholder="语言"
             value={query.language ?? ''}
-            onChange={(language) => setQuery((current) => ({ ...current, page: 1, language }))}
+            onChange={(event) => setQuery((current) => ({ ...current, page: 1, language: event.target.value }))}
             style={{ width: 120 }}
           />
           <Select
             placeholder="状态"
-            value={query.status}
+            value={query.status || undefined}
             onChange={(status) => setQuery((current) => ({ ...current, page: 1, status: String(status || '') }))}
             style={{ width: 180 }}
-            showClear
-          >
-            {statusOptions.map((status) => (
-              <Select.Option key={status} value={status}>{status}</Select.Option>
-            ))}
-          </Select>
+            allowClear
+            options={statusOptions.map((status) => ({ value: status, label: status }))}
+          />
           <Select
             value={query.sortBy}
             onChange={(sortBy) => setQuery((current) => ({ ...current, sortBy: String(sortBy) }))}
             style={{ width: 150 }}
-          >
-            <Select.Option value="submitTime">提交时间</Select.Option>
-            <Select.Option value="priority">优先级</Select.Option>
-            <Select.Option value="status">状态</Select.Option>
-            <Select.Option value="startJudgeTime">开始时间</Select.Option>
-            <Select.Option value="finishTime">结束时间</Select.Option>
-          </Select>
+            options={[
+              { value: 'submitTime', label: '提交时间' },
+              { value: 'priority', label: '优先级' },
+              { value: 'status', label: '状态' },
+              { value: 'startJudgeTime', label: '开始时间' },
+              { value: 'finishTime', label: '结束时间' },
+            ]}
+          />
           <Select
             value={query.sortOrder}
             onChange={(sortOrder) => setQuery((current) => ({ ...current, sortOrder: sortOrder as 'asc' | 'desc' }))}
             style={{ width: 110 }}
-          >
-            <Select.Option value="desc">降序</Select.Option>
-            <Select.Option value="asc">升序</Select.Option>
-          </Select>
-          <Button icon={<IconRefresh />} onClick={load} loading={loading}>
+            options={[
+              { value: 'desc', label: '降序' },
+              { value: 'asc', label: '升序' },
+            ]}
+          />
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
             刷新
           </Button>
         </div>
       </Card>
 
       <Card
-        style={{ border: '1px solid var(--semi-color-border)' }}
-        bodyStyle={{ padding: '0 clamp(12px, 2vw, 24px) 18px' }}
+        style={{ border: '1px solid #f0f0f0' }}
+        styles={{ body: { padding: '0 0 18px' } }}
       >
         <Table
           columns={columns}
           dataSource={rows}
           rowKey="queueId"
           loading={loading}
-          scroll={{ x: 860 }}
+          scroll={{ x: 1000 }}
           pagination={{
-            currentPage: query.page ?? 1,
+            current: query.page ?? 1,
             pageSize: query.pageSize ?? 20,
             total,
             showSizeChanger: true,

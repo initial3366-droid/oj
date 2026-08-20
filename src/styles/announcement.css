@@ -1,5 +1,5 @@
 .announcement-html {
-  color: var(--semi-color-text-0);
+  color: var(--qoj-color-text-0);
   font-size: 15px;
   line-height: 1.9;
   overflow-wrap: anywhere;
@@ -16,15 +16,14 @@
 .announcement-html img,
 .announcement-html video {
   max-width: 100%;
-  height: auto;
 }
 
 .announcement-html pre {
   max-width: 100%;
   overflow-x: auto;
-  border: 1px solid var(--semi-color-border);
+  border: 1px solid var(--qoj-color-border);
   border-radius: 6px;
-  background: var(--semi-color-fill-0);
+  background: var(--qoj-color-fill-0);
   padding: 12px 14px;
 }
 
@@ -41,16 +40,16 @@
 
 .announcement-html th,
 .announcement-html td {
-  border: 1px solid var(--semi-color-border);
+  border: 1px solid var(--qoj-color-border);
   padding: 8px 12px;
 }
 
 .announcement-html a {
-  color: var(--semi-color-primary);
+  color: var(--qoj-color-primary);
 }
 
 .announcement-html-empty {
-  color: var(--semi-color-text-2);
+  color: var(--qoj-color-text-2);
 }
 
 .announcement-modal-content {

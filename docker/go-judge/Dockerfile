@@ -29,8 +29,6 @@ RUN set -eu; \
         curl \
         gcc \
         g++ \
-        mono-mcs \
-        mono-runtime \
         openjdk-17-jdk-headless \
         python3 \
     && rm -rf /var/lib/apt/lists/*
@@ -55,18 +53,10 @@ RUN set -eu; \
     echo "${checksum}  /usr/local/bin/go-judge" | sha256sum -c -; \
     chmod 0755 /usr/local/bin/go-judge
 
-# Java compilation and C# process shutdown use fixed image-owned helpers. The
+# Java compilation uses a fixed image-owned helper. The
 # REST request never supplies shell text or file names in command arguments.
 COPY qoj-java-compile /usr/local/bin/qoj-java-compile
-COPY qoj-csharp-launcher.cs /tmp/qoj-csharp-launcher.cs
-RUN chmod 0755 /usr/local/bin/qoj-java-compile \
-    && /usr/bin/mcs -optimize+ \
-        -out:/usr/bin/qoj-csharp-launcher.exe \
-        /tmp/qoj-csharp-launcher.cs \
-    && rm /tmp/qoj-csharp-launcher.cs \
-    && mkdir -p /usr/local/lib \
-    && ln -sf /usr/bin/qoj-csharp-launcher.exe /usr/local/lib/qoj-csharp-launcher.exe \
-    && test -s /usr/bin/qoj-csharp-launcher.exe
+RUN chmod 0755 /usr/local/bin/qoj-java-compile
 
 EXPOSE 5050
 ENTRYPOINT ["/usr/local/bin/go-judge"]

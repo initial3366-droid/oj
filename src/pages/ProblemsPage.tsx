@@ -1,14 +1,16 @@
 /**
  * Problems页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Button, Card, Input, Pagination, Select, Table, Tag, Typography, Banner } from '@douyinfe/semi-ui';
-import { IconSearch } from '@douyinfe/semi-icons';
-import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { Alert, Button, Card, Input, Pagination, Select, Table, Tag, Typography } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
+import type { TableColumnsType } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { fetchProblems } from '../data/apiClient';
 import type { Difficulty, Problem } from '../data/types';
 import { PageContainer } from '../components/common';
+
+const { Text } = Typography;
 
 const DIFFICULTY_OPTIONS: Array<{ value: Difficulty; label: Difficulty }> = [
   { value: '入门', label: '入门' },
@@ -20,27 +22,45 @@ const DIFFICULTY_OPTIONS: Array<{ value: Difficulty; label: Difficulty }> = [
 
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
+type AttemptState = 'passed' | 'failed' | 'unattempted';
+
+const ATTEMPT_STATE_OPTIONS: Array<{ value: AttemptState; label: string }> = [
+  { value: 'failed', label: '未通过' },
+  { value: 'passed', label: '通过' },
+  { value: 'unattempted', label: '未尝试' },
+];
+
+/**
+ * 归一化题目提交状态，供状态标签和筛选共用，避免两处规则不一致。
+ */
+function getAttemptState(status?: string | null): AttemptState {
+  const normalized = status?.trim().toUpperCase();
+  if (!normalized) return 'unattempted';
+  if (normalized === 'AC' || normalized === 'ACCEPTED') return 'passed';
+  return 'failed';
+}
 
 /**
  * 封装attemptBadge相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
 function attemptBadge(problem: Problem) {
-  if (problem.attemptStatus === 'AC') {
+  const state = getAttemptState(problem.attemptStatus);
+  if (state === 'passed') {
     return (
-      <Tag color="green" size="small">
+      <Tag color="success" style={{ marginInlineEnd: 0 }}>
         已通过
       </Tag>
     );
   }
-  if (problem.attemptStatus) {
+  if (state === 'failed') {
     return (
-      <Tag color="red" size="small">
+      <Tag color="error" style={{ marginInlineEnd: 0 }}>
         未通过
       </Tag>
     );
   }
   return (
-    <Tag color="grey" size="small" type="ghost">
+    <Tag style={{ marginInlineEnd: 0 }}>
       未尝试
     </Tag>
   );
@@ -54,6 +74,7 @@ export function ProblemsPage() {
   const [keyword, setKeyword] = useState('');
   const [selectedDifficulties, setSelectedDifficulties] = useState<Difficulty[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedAttemptState, setSelectedAttemptState] = useState<AttemptState | null>(null);
   const [message, setMessage] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -126,14 +147,17 @@ export function ProblemsPage() {
       ) {
         return false;
       }
+      if (selectedAttemptState && getAttemptState(problem.attemptStatus) !== selectedAttemptState) {
+        return false;
+      }
       return true;
     });
-  }, [keyword, sourceProblems, selectedDifficulties, selectedTags]);
+  }, [keyword, sourceProblems, selectedDifficulties, selectedTags, selectedAttemptState]);
 
   // 筛选条件变化后从第一页重新展示，避免保留一个已经越界的页码。
   useEffect(() => {
     setCurrentPage(1);
-  }, [keyword, selectedDifficulties, selectedTags]);
+  }, [keyword, selectedDifficulties, selectedTags, selectedAttemptState]);
 
   const pagedProblems = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -148,17 +172,17 @@ export function ProblemsPage() {
    */
   const getDifficultyColor = (
     difficulty: string,
-  ): 'green' | 'orange' | 'red' | 'grey' => {
+  ): 'success' | 'warning' | 'error' | 'default' => {
     const normalized = difficulty.toLowerCase();
     if (normalized.includes('简单') || normalized === 'easy' || normalized === '入门')
-      return 'green';
-    if (normalized.includes('中等') || normalized === 'medium') return 'orange';
+      return 'success';
+    if (normalized.includes('中等') || normalized === 'medium') return 'warning';
     if (normalized.includes('困难') || normalized === 'hard' || normalized === '地狱')
-      return 'red';
-    return 'grey';
+      return 'error';
+    return 'default';
   };
 
-  const columns: ColumnProps<Problem>[] = [
+  const columns: TableColumnsType<Problem> = [
     {
       title: '题目',
       dataIndex: 'title',
@@ -169,7 +193,7 @@ export function ProblemsPage() {
           target="_blank"
           rel="noopener noreferrer"
           style={{
-            color: 'var(--semi-color-primary)',
+            color: '#1677ff',
             fontSize: 14,
             fontWeight: 600,
             textDecoration: 'none',
@@ -186,7 +210,7 @@ export function ProblemsPage() {
       render: (tags: string[]) => (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {tags.map((tag) => (
-            <Tag key={tag} size="small" type="ghost">
+            <Tag key={tag} style={{ marginInlineEnd: 0 }}>
               {tag}
             </Tag>
           ))}
@@ -198,7 +222,7 @@ export function ProblemsPage() {
       dataIndex: 'difficulty',
       width: 100,
       render: (difficulty: string) => (
-        <Tag color={getDifficultyColor(difficulty)} size="small">
+        <Tag color={getDifficultyColor(difficulty)} style={{ marginInlineEnd: 0 }}>
           {difficulty}
         </Tag>
       ),
@@ -214,7 +238,7 @@ export function ProblemsPage() {
       dataIndex: 'acRate',
       width: 100,
       render: (acRate: number) => (
-        <Typography.Text style={{ fontSize: 14 }}>{acRate}%</Typography.Text>
+        <Text style={{ fontSize: 14 }}>{acRate}%</Text>
       ),
     },
     {
@@ -226,7 +250,7 @@ export function ProblemsPage() {
           to={`/practice/problem/${record.id}`}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: 'var(--semi-color-primary)', textDecoration: 'none' }}
+          style={{ color: '#1677ff', textDecoration: 'none' }}
         >
           答题
         </NavLink>
@@ -237,14 +261,13 @@ export function ProblemsPage() {
   return (
     <PageContainer
       title="题库"
-      subtitle="Problem Bank"
-      description="Markdown + LaTeX 题面、标签、难度和通过率集中管理。"
     >
       {message && (
-        <Banner
-          type="danger"
-          description={message}
-          closeIcon={null}
+        <Alert
+          type="error"
+          message={message}
+          showIcon={false}
+          banner
           style={{ marginBottom: 24 }}
         />
       )}
@@ -259,90 +282,100 @@ export function ProblemsPage() {
         }}
       >
         <Input
-          prefix={<IconSearch />}
+          prefix={<SearchOutlined />}
           placeholder="搜索题目或标签"
           value={keyword}
-          onChange={setKeyword}
-          style={{ width: 280 }}
-          showClear
+          onChange={(event) => setKeyword(event.target.value)}
+          allowClear
           onClear={() => setKeyword('')}
+          style={{ width: 280 }}
         />
         <Select
-          multiple
-          filter
+          mode="multiple"
           placeholder="难度"
           value={selectedDifficulties}
-          onChange={(value) => setSelectedDifficulties((value ?? []) as Difficulty[])}
+          onChange={(value) => setSelectedDifficulties(value as Difficulty[])}
           style={{ minWidth: 160 }}
-          optionList={DIFFICULTY_OPTIONS}
-          emptyContent="无匹配难度"
+          options={DIFFICULTY_OPTIONS}
+          notFoundContent="无匹配难度"
         />
         <Select
-          multiple
-          filter
+          mode="multiple"
+          showSearch
           placeholder="标签"
           value={selectedTags}
-          onChange={(value) => setSelectedTags((value ?? []) as string[])}
+          onChange={(value) => setSelectedTags(value as string[])}
           style={{ minWidth: 200, maxWidth: 360 }}
-          optionList={allTags.map((tag) => ({ value: tag, label: tag }))}
-          emptyContent="无匹配标签"
+          options={allTags.map((tag) => ({ value: tag, label: tag }))}
+          notFoundContent="无匹配标签"
         />
-        {(selectedDifficulties.length > 0 || selectedTags.length > 0 || keyword) && (
+        <Select
+          placeholder="是否通过"
+          value={selectedAttemptState ?? undefined}
+          onChange={(value) => setSelectedAttemptState((value as AttemptState | undefined) ?? null)}
+          allowClear
+          style={{ minWidth: 140 }}
+          options={ATTEMPT_STATE_OPTIONS}
+        />
+        {(selectedDifficulties.length > 0 || selectedTags.length > 0 || selectedAttemptState || keyword) && (
           <Button
-            theme="borderless"
-            type="tertiary"
             onClick={() => {
               setKeyword('');
               setSelectedDifficulties([]);
               setSelectedTags([]);
+              setSelectedAttemptState(null);
             }}
           >
             清除筛选
           </Button>
         )}
-        <Typography.Text type="tertiary" style={{ marginLeft: 'auto', fontSize: 13 }}>
+        <Text type="secondary" style={{ marginLeft: 'auto', fontSize: 13 }}>
           共 {problems.length} 题
-        </Typography.Text>
+        </Text>
       </div>
 
       <Card
         style={{
-          border: '1px solid var(--semi-color-border)',
+          border: '1px solid #f0f0f0',
         }}
-        bodyStyle={{ padding: 0 }}
+        styles={{ body: { padding: 0 } }}
       >
         <Table
           columns={columns}
           dataSource={pagedProblems}
           rowKey="id"
           pagination={false}
-          empty={
-            <div style={{ padding: '40px 0', textAlign: 'center' }}>
-              <Typography.Text type="tertiary">
-                {(keyword || selectedDifficulties.length > 0 || selectedTags.length > 0)
-                  ? '未找到匹配的题目，试试调整筛选条件'
-                  : '暂无题目'}
-              </Typography.Text>
-            </div>
-          }
+          locale={{
+            emptyText: (
+              <div style={{ padding: '40px 0', textAlign: 'center' }}>
+                <Text type="secondary">
+                  {(keyword || selectedDifficulties.length > 0 || selectedTags.length > 0 || selectedAttemptState)
+                    ? '未找到匹配的题目，试试调整筛选条件'
+                    : '暂无题目'}
+                </Text>
+              </div>
+            ),
+          }}
         />
       </Card>
 
       {problems.length > 0 && (
         <div className="front-table-pagination">
-          <Typography.Text type="tertiary">
+          <Text type="secondary">
             显示第 {currentStart} 条-第 {currentEnd} 条，共 {problems.length} 条
-          </Typography.Text>
+          </Text>
           <Pagination
-            currentPage={currentPage}
+            current={currentPage}
             pageSize={pageSize}
-            pageSizeOpts={PAGE_SIZE_OPTIONS}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
             total={problems.length}
             showSizeChanger
-            onPageChange={setCurrentPage}
-            onPageSizeChange={(nextPageSize) => {
-              setPageSize(nextPageSize);
-              setCurrentPage(1);
+            onChange={(page, nextPageSize) => {
+              setCurrentPage(page);
+              if (nextPageSize !== pageSize) {
+                setPageSize(nextPageSize);
+                setCurrentPage(1);
+              }
             }}
           />
         </div>

@@ -1,8 +1,8 @@
 /**
  * 提交Table组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Table, Typography } from '@douyinfe/semi-ui';
-import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { Table, Typography } from 'antd';
+import type { TableColumnsType } from 'antd';
 import { SubmissionStatusTag } from './SubmissionStatusTag';
 import { UserAvatar } from './UserAvatar';
 import { TimeText } from './TimeText';
@@ -55,14 +55,14 @@ export function SubmissionTable({
   pagination,
   style,
 }: SubmissionTableProps) {
-  const columns: ColumnProps<Submission>[] = [
+  const columns: TableColumnsType<Submission> = [
     {
       title: '提交 ID',
       dataIndex: 'id',
       width: 100,
       render: (id: number) => (
         <Typography.Text
-          type="tertiary"
+          type="secondary"
           style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13 }}
         >
           #{id}
@@ -76,16 +76,16 @@ export function SubmissionTable({
       title: '题目',
       dataIndex: 'problemTitle',
       width: 200,
-      ellipsis: { showTitle: true },
+      ellipsis: true,
       render: (title: string, record: Submission) => (
         <div>
           <Typography.Text
-            type="tertiary"
+            type="secondary"
             style={{ fontSize: 12, display: 'block', marginBottom: 2 }}
           >
             #{record.problemId}
           </Typography.Text>
-          <Typography.Text ellipsis={{ showTooltip: true }} style={{ fontSize: 14 }}>
+          <Typography.Text ellipsis={{ tooltip: <span>{title}</span> }} style={{ fontSize: 14 }}>
             {title}
           </Typography.Text>
         </div>
@@ -101,7 +101,7 @@ export function SubmissionTable({
       render: (username: string) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <UserAvatar username={username} size="extra-small" showTooltip={false} />
-          <Typography.Text ellipsis={{ showTooltip: true }} style={{ fontSize: 14 }}>
+          <Typography.Text ellipsis={{ tooltip: <span>{username}</span> }} style={{ fontSize: 14 }}>
             {username}
           </Typography.Text>
         </div>
@@ -121,7 +121,7 @@ export function SubmissionTable({
     {
       title: '状态',
       dataIndex: 'status',
-      width: 120,
+      width: 200,
       render: (status: string) => <SubmissionStatusTag status={status} size="small" />,
     },
     {
@@ -132,7 +132,7 @@ export function SubmissionTable({
         time !== undefined ? (
           <Typography.Text style={{ fontSize: 14 }}>{time} ms</Typography.Text>
         ) : (
-          <Typography.Text type="tertiary" style={{ fontSize: 14 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 14 }}>
             -
           </Typography.Text>
         ),
@@ -147,7 +147,7 @@ export function SubmissionTable({
             {(memory / 1024).toFixed(1)} MB
           </Typography.Text>
         ) : (
-          <Typography.Text type="tertiary" style={{ fontSize: 14 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 14 }}>
             -
           </Typography.Text>
         ),
@@ -160,7 +160,7 @@ export function SubmissionTable({
         length !== undefined ? (
           <Typography.Text style={{ fontSize: 14 }}>{length} B</Typography.Text>
         ) : (
-          <Typography.Text type="tertiary" style={{ fontSize: 14 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 14 }}>
             -
           </Typography.Text>
         ),
@@ -182,12 +182,11 @@ export function SubmissionTable({
       pagination={
         pagination
           ? {
-              currentPage: pagination.currentPage,
+              current: pagination.currentPage,
               pageSize: pagination.pageSize,
               total: pagination.total,
               onChange: pagination.onPageChange,
               showSizeChanger: false,
-              position: 'bottom',
             }
           : false
       }

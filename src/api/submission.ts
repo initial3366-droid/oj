@@ -18,6 +18,7 @@ export interface SubmissionRecord {
   createdAt: string;
   passedCaseCount?: number | null;
   totalCaseCount?: number | null;
+  codeLength?: number | null;
   code?: string | null;
   cases?: Array<{
     id?: number;

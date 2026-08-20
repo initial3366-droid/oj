@@ -1,23 +1,23 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Button, Card, Input, Select, Tag, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Input, Select, Tag, Typography } from 'antd';
 import {
-  IconBranch,
-  IconChevronLeft,
-  IconChevronRight,
-  IconCode,
-  IconFile,
-  IconLayers,
-  IconList,
-  IconOrderedList,
-  IconPause,
-  IconPlay,
-  IconPlus,
-  IconRefresh,
-  IconSearch,
-  IconStackBarChartStroked,
-  IconTreeTriangleDown,
-  IconUpload,
-} from '@douyinfe/semi-icons';
+  BarChartOutlined,
+  CaretDownOutlined,
+  CaretRightOutlined,
+  CodeOutlined,
+  FileOutlined,
+  ForkOutlined,
+  AppstoreOutlined,
+  LeftOutlined,
+  OrderedListOutlined,
+  PauseOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  RightOutlined,
+  SearchOutlined,
+  UnorderedListOutlined,
+  UploadOutlined,
+} from '@ant-design/icons';
 import { PageContainer } from '../components/common';
 import { LAB_CATEGORIES, STRUCTURE_CATALOG, getStructureDefinition } from './data-structure-lab/catalog';
 import { createInitialFrame, executeOperation, MAX_HISTORY_FRAMES } from './data-structure-lab/engine';
@@ -29,19 +29,19 @@ const DEFAULT_CATEGORY: LabCategory = 'linear';
 
 function iconFor(iconKey: string): ReactNode {
   switch (iconKey) {
-    case 'linked': return <IconBranch />;
-    case 'stack': return <IconStackBarChartStroked />;
-    case 'queue': return <IconOrderedList />;
-    case 'hash': return <IconSearch />;
-    case 'tree': return <IconTreeTriangleDown />;
-    case 'heap': return <IconLayers />;
-    case 'graph': return <IconBranch />;
-    case 'text': return <IconFile />;
-    case 'matrix': return <IconList />;
-    case 'bits': return <IconCode />;
-    case 'filter': return <IconSearch />;
-    case 'sketch': return <IconLayers />;
-    default: return <IconList />;
+    case 'linked': return <ForkOutlined />;
+    case 'stack': return <BarChartOutlined />;
+    case 'queue': return <OrderedListOutlined />;
+    case 'hash': return <SearchOutlined />;
+    case 'tree': return <CaretDownOutlined />;
+    case 'heap': return <AppstoreOutlined />;
+    case 'graph': return <ForkOutlined />;
+    case 'text': return <FileOutlined />;
+    case 'matrix': return <UnorderedListOutlined />;
+    case 'bits': return <CodeOutlined />;
+    case 'filter': return <SearchOutlined />;
+    case 'sketch': return <AppstoreOutlined />;
+    default: return <UnorderedListOutlined />;
   }
 }
 
@@ -191,8 +191,8 @@ export function DataStructureLabPage() {
 
           <section className="lab-catalog-section" aria-labelledby="lab-catalog-heading">
             <div className="lab-section-heading">
-              <div><Typography.Title heading={4} id="lab-catalog-heading" style={{ margin: 0 }}>数据结构目录</Typography.Title><Typography.Text type="tertiary">共 {STRUCTURE_CATALOG.length} 种结构，按知识类别组织。</Typography.Text></div>
-              <Input prefix={<IconSearch />} value={searchText} onChange={setSearchText} placeholder="搜索结构名称" showClear onClear={() => setSearchText('')} style={{ width: 240 }} />
+              <div><Typography.Title level={4} id="lab-catalog-heading" style={{ margin: 0 }}>数据结构目录</Typography.Title><Typography.Text type="secondary">共 {STRUCTURE_CATALOG.length} 种结构，按知识类别组织。</Typography.Text></div>
+              <Input prefix={<SearchOutlined />} value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="搜索结构名称" allowClear style={{ width: 240 }} />
             </div>
             <div className="lab-category-tabs" role="tablist" aria-label="数据结构类别">
               {LAB_CATEGORIES.map((category) => <button type="button" role="tab" aria-selected={categoryKey === category.key} className={`lab-category-tab ${categoryKey === category.key ? 'is-selected' : ''}`} key={category.key} onClick={() => handleCategoryChange(category.key)}><strong>{category.label}</strong><small>{category.description}</small><em>{STRUCTURE_CATALOG.filter((item) => item.category === category.key).length}</em></button>)}
@@ -205,26 +205,26 @@ export function DataStructureLabPage() {
 
           <div className="lab-workspace">
             <Card className="lab-control-card" title="实验设置" bordered>
-              <div className="lab-control-group"><label className="lab-control-label" htmlFor="lab-initial-data">输入数据</label><Input id="lab-initial-data" value={inputText} onChange={setInputText} placeholder={definition.inputHint} showClear onClear={() => setInputText('')} /><Typography.Text type="tertiary" size="small">{definition.inputHint}</Typography.Text><div className="lab-inline-actions"><Button theme="solid" type="primary" icon={<IconUpload />} onClick={handleLoadInput}>加载数据</Button><Button theme="borderless" type="tertiary" icon={<IconRefresh />} onClick={handleRandomInput}>随机生成</Button></div></div>
+              <div className="lab-control-group"><label className="lab-control-label" htmlFor="lab-initial-data">输入数据</label><Input id="lab-initial-data" value={inputText} onChange={(event) => setInputText(event.target.value)} placeholder={definition.inputHint} allowClear /><Typography.Text type="secondary">{definition.inputHint}</Typography.Text><div className="lab-inline-actions"><Button type="primary" icon={<UploadOutlined />} onClick={handleLoadInput}>加载数据</Button><Button icon={<ReloadOutlined />} onClick={handleRandomInput}>随机生成</Button></div></div>
               <div className="lab-control-divider" />
-              <div className="lab-control-group"><div className="lab-control-label">选择操作</div><Select value={operationKey} onChange={(value) => handleOperationChange(String(value))} optionList={definition.operations.map((operation) => ({ value: operation.key, label: operation.label }))} style={{ width: '100%' }} /><Typography.Text type="tertiary" size="small">{currentOperation.description}</Typography.Text>{(currentOperation.fields ?? []).map((field) => <div className="lab-field-row" key={field.key}><label className="lab-field-label" htmlFor={`lab-field-${field.key}`}>{field.label}</label><Input id={`lab-field-${field.key}`} type={field.type} value={fieldValues[field.key] ?? ''} onChange={(value) => setFieldValues((current) => ({ ...current, [field.key]: value }))} placeholder={field.placeholder} /></div>)}{errorMessage ? <div className="lab-error-message" role="alert">{errorMessage}</div> : null}<Button className="lab-execute-button" theme="solid" type="primary" block icon={<IconPlay />} onClick={handleExecute}>执行操作</Button></div>
+              <div className="lab-control-group"><div className="lab-control-label">选择操作</div><Select value={operationKey} onChange={(value) => handleOperationChange(String(value))} options={definition.operations.map((operation) => ({ value: operation.key, label: operation.label }))} style={{ width: '100%' }} /><Typography.Text type="secondary">{currentOperation.description}</Typography.Text>{(currentOperation.fields ?? []).map((field) => <div className="lab-field-row" key={field.key}><label className="lab-field-label" htmlFor={`lab-field-${field.key}`}>{field.label}</label><Input id={`lab-field-${field.key}`} type={field.type} value={fieldValues[field.key] ?? ''} onChange={(event) => setFieldValues((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} /></div>)}{errorMessage ? <div className="lab-error-message" role="alert">{errorMessage}</div> : null}<Button className="lab-execute-button" type="primary" block icon={<CaretRightOutlined />} onClick={handleExecute}>执行操作</Button></div>
               <div className="lab-control-divider" />
               <div className="lab-control-summary"><span>当前结构</span><strong>{definition.name}</strong></div><div className="lab-complexity-row"><span>复杂度提示</span><code>{definition.complexity}</code></div>
             </Card>
 
-            <Card className="lab-stage-card" title={<div className="lab-stage-title"><span>{definition.name} · 结构状态</span><Tag color={currentFrame.status === 'warning' ? 'orange' : 'green'} size="small">{frameStatusLabel(currentFrame)}</Tag></div>} bordered>
+            <Card className="lab-stage-card" title={<div className="lab-stage-title"><span>{definition.name} · 结构状态</span><Tag color={currentFrame.status === 'warning' ? 'orange' : 'green'} style={{ fontSize: 12 }}>{frameStatusLabel(currentFrame)}</Tag></div>} bordered>
               <div className="lab-stage-meta"><span>{definition.beginnerNote}</span><span>动画第 {stepIndex} / {history.length - 1} 步</span></div>
               <div className="lab-visual-stage"><StructureVisual definition={definition} frame={currentFrame} /></div>
               <div className={`lab-stage-detail is-${currentFrame.status}`}><span className="lab-detail-marker" aria-hidden="true" /><div><strong>{currentFrame.operationLabel}</strong><p>{currentFrame.detail}</p></div></div>
-              <div className="lab-stage-controls" aria-label="步骤控制"><Button theme="borderless" type="tertiary" icon={<IconRefresh />} onClick={() => resetWithInput(loadedInput)}>重置实验</Button><div className="lab-step-actions"><Button theme="light" type="tertiary" icon={<IconChevronLeft />} disabled={stepIndex === 0} aria-label="上一步" onClick={() => { setIsPlaying(false); setStepIndex((current) => Math.max(0, current - 1)); }} /><Button theme="light" type="tertiary" icon={isPlaying ? <IconPause /> : <IconPlay />} disabled={!isPlaying && stepIndex >= history.length - 1} aria-label={isPlaying ? '暂停播放' : '自动播放'} onClick={() => setIsPlaying((current) => !current)}>{isPlaying ? '暂停' : '自动播放'}</Button><Button theme="light" type="tertiary" icon={<IconChevronRight />} disabled={stepIndex >= history.length - 1} aria-label="下一步" onClick={() => { setIsPlaying(false); setStepIndex((current) => Math.min(history.length - 1, current + 1)); }} /></div></div>
+              <div className="lab-stage-controls" aria-label="步骤控制"><Button icon={<ReloadOutlined />} onClick={() => resetWithInput(loadedInput)}>重置实验</Button><div className="lab-step-actions"><Button icon={<LeftOutlined />} disabled={stepIndex === 0} aria-label="上一步" onClick={() => { setIsPlaying(false); setStepIndex((current) => Math.max(0, current - 1)); }} /><Button icon={isPlaying ? <PauseOutlined /> : <CaretRightOutlined />} disabled={!isPlaying && stepIndex >= history.length - 1} aria-label={isPlaying ? '暂停播放' : '自动播放'} onClick={() => setIsPlaying((current) => !current)}>{isPlaying ? '暂停' : '自动播放'}</Button><Button icon={<RightOutlined />} disabled={stepIndex >= history.length - 1} aria-label="下一步" onClick={() => { setIsPlaying(false); setStepIndex((current) => Math.min(history.length - 1, current + 1)); }} /></div></div>
             </Card>
 
-            <Card className="lab-history-card" title={<div className="lab-history-title"><span>动画时间线</span><Tag size="small">{history.length - 1} 个步骤</Tag></div>} bordered>
-              <div className="lab-history-list" aria-label="动画时间线">{history.map((frame, index) => <button type="button" className={`lab-history-item ${index === stepIndex ? 'is-current' : ''}`} aria-current={index === stepIndex ? 'step' : undefined} key={`${frame.operationLabel}-${index}`} onClick={() => { setIsPlaying(false); setStepIndex(index); }}><span className="lab-history-index">{index}</span><span className="lab-history-content"><strong>{frame.operationLabel}</strong><small>{frame.detail}</small></span></button>)}</div><div className="lab-history-tip"><IconLayers aria-hidden="true" /><span>点击某一步，回看这个时刻的结构状态；自动播放会按顺序重放所有步骤。</span></div>
+            <Card className="lab-history-card" title={<div className="lab-history-title"><span>动画时间线</span><Tag style={{ fontSize: 12 }}>{history.length - 1} 个步骤</Tag></div>} bordered>
+              <div className="lab-history-list" aria-label="动画时间线">{history.map((frame, index) => <button type="button" className={`lab-history-item ${index === stepIndex ? 'is-current' : ''}`} aria-current={index === stepIndex ? 'step' : undefined} key={`${frame.operationLabel}-${index}`} onClick={() => { setIsPlaying(false); setStepIndex(index); }}><span className="lab-history-index">{index}</span><span className="lab-history-content"><strong>{frame.operationLabel}</strong><small>{frame.detail}</small></span></button>)}</div><div className="lab-history-tip"><AppstoreOutlined aria-hidden="true" /><span>点击某一步，回看这个时刻的结构状态；自动播放会按顺序重放所有步骤。</span></div>
             </Card>
           </div>
 
-          <section className="lab-learning-strip" aria-label="当前结构学习重点"><div className="lab-learning-icon" aria-hidden="true">{iconFor(definition.iconKey)}</div><div><Typography.Text strong>{definition.name}：新生学习重点</Typography.Text><Typography.Text type="tertiary">{definition.learn}</Typography.Text></div><div className="lab-learning-points"><span><IconPlus aria-hidden="true" /> 先观察结构</span><span><IconPlay aria-hidden="true" /> 再执行操作</span><span><IconLayers aria-hidden="true" /> 最后回放动画</span></div></section>
+          <section className="lab-learning-strip" aria-label="当前结构学习重点"><div className="lab-learning-icon" aria-hidden="true">{iconFor(definition.iconKey)}</div><div><Typography.Text strong>{definition.name}：新生学习重点</Typography.Text><Typography.Text type="secondary">{definition.learn}</Typography.Text></div><div className="lab-learning-points"><span><PlusOutlined aria-hidden="true" /> 先观察结构</span><span><CaretRightOutlined aria-hidden="true" /> 再执行操作</span><span><AppstoreOutlined aria-hidden="true" /> 最后回放动画</span></div></section>
         </div>
       </PageContainer>
     </main>

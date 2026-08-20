@@ -1,8 +1,8 @@
 /**
  * 用户Center页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Avatar, Button, Progress, Typography, Tabs, TabPane, Table, Tag, Input, Modal, Toast, TextArea, Spin, Select } from '@douyinfe/semi-ui';
-import { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { Avatar, Button, Typography, Tabs, Table, Tag, Input, Modal, Spin, Select, message as antdMessage } from 'antd';
+import type { TableColumnsType } from 'antd';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CodeViewer } from '../components/common/CodeViewer';
@@ -22,6 +22,8 @@ import {
 } from '../data/apiClient';
 import type { UserProfile } from '../data/types';
 import { useOjData } from '../data/OjDataProvider';
+import { fetchMyContests, type Contest } from '../api/contest';
+import { ContestStatusTag } from '../components/common/ContestStatusTag';
 
 /**
  * 格式化DateTime。保持输入与返回值转换集中，避免调用处重复实现同一规则。
@@ -49,7 +51,7 @@ export function UserCenterPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [submissions, setSubmissions] = useState<SubmissionRecord[]>([]);
   const [message, setMessage] = useState('');
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('submissions');
 
   // 设置相关状态
   const [profileForm, setProfileForm] = useState({
@@ -94,6 +96,12 @@ export function UserCenterPage() {
   const [subPageSize, setSubPageSize] = useState(20);
   const [classPracticeKeyword, setClassPracticeKeyword] = useState('');
   const [classPracticeLoading, setClassPracticeLoading] = useState(false);
+
+  // 我的比赛：列表、分页与加载状态
+  const [myContests, setMyContests] = useState<Contest[]>([]);
+  const [myContestsTotal, setMyContestsTotal] = useState(0);
+  const [myContestsPage, setMyContestsPage] = useState(1);
+  const [myContestsLoading, setMyContestsLoading] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -124,9 +132,7 @@ export function UserCenterPage() {
   // 根据 URL 参数设置活动选项卡和提交筛选
   useEffect(() => {
     const tab = searchParams.get('tab');
-    if (tab) {
-      setActiveTab(tab);
-    }
+    setActiveTab(tab === 'overview' ? 'submissions' : (tab || 'submissions'));
     const sp = searchParams.get('subPage');
     if (sp) setSubPage(Number(sp) || 1);
     const ss = searchParams.get('subStatus');
@@ -191,6 +197,61 @@ export function UserCenterPage() {
     setSubPage(1);
   }, [subKeyword, subStatusFilter, subLangFilter]);
 
+  // 我的比赛：仅在进入该 Tab 时按页加载
+  useEffect(() => {
+    if (activeTab !== 'my-contests') return;
+    setMyContestsLoading(true);
+    fetchMyContests(myContestsPage, 10)
+      .then(({ total, list }) => {
+        setMyContestsTotal(total);
+        setMyContests(list);
+      })
+      .catch(() => {
+        setMyContestsTotal(0);
+        setMyContests([]);
+      })
+      .finally(() => setMyContestsLoading(false));
+  }, [activeTab, myContestsPage]);
+
+  // 我的比赛列定义
+  const myContestColumns = useMemo<TableColumnsType<Contest>>(() => [
+    {
+      title: '比赛名称',
+      dataIndex: 'title',
+      render: (title: string, record) => (
+        <button
+          type="button"
+          className="uc-contest-button"
+          onClick={() => navigate(`/contests/${record.id}`)}
+        >
+          {title}
+        </button>
+      ),
+    },
+    {
+      title: '类型',
+      dataIndex: 'type',
+      width: 100,
+      render: (type: string) => (
+        <Tag color={type === 'ACM' ? 'blue' : 'purple'} style={{ fontWeight: 500 }}>
+          {type}
+        </Tag>
+      ),
+    },
+    {
+      title: '比赛时间',
+      dataIndex: 'startTime',
+      width: 340,
+      render: (start: string, record) => `${formatDateTime(start)} ~ ${formatDateTime(record.endTime)}`,
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 110,
+      render: (status: string) => <ContestStatusTag status={status} size="small" />,
+    },
+  ], [navigate]);
+
   // 邮箱验证码倒计时
   useEffect(() => {
     if (emailCountdown > 0) {
@@ -209,18 +270,18 @@ export function UserCenterPage() {
         setCaptchaId(result.data.captchaId);
       }
     } catch (error) {
-      Toast.error('验证码加载失败');
+      antdMessage.error('验证码加载失败');
     }
   };
 
   // 发送邮箱验证码
   const sendEmailCode = async () => {
     if (!captchaInput || !captchaId) {
-      Toast.error('请先输入图形验证码');
+      antdMessage.error('请先输入图形验证码');
       return;
     }
     if (!user?.email) {
-      Toast.error('您的账号未绑定邮箱');
+      antdMessage.error('您的账号未绑定邮箱');
       return;
     }
     try {
@@ -235,15 +296,15 @@ export function UserCenterPage() {
       });
       const result = await response.json();
       if (result.code === 200) {
-        Toast.success('验证码已发送到您的邮箱');
+        antdMessage.success('验证码已发送到您的邮箱');
         setEmailCountdown(result.data.remainingSeconds || 60);
         fetchCaptcha();
       } else {
-        Toast.error(result.message || '发送失败');
+        antdMessage.error(result.message || '发送失败');
         fetchCaptcha();
       }
     } catch (error) {
-      Toast.error('发送失败，请稍后重试');
+      antdMessage.error('发送失败，请稍后重试');
       fetchCaptcha();
     }
   };
@@ -257,7 +318,7 @@ export function UserCenterPage() {
     event.target.value = '';
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      Toast.error('请选择图片文件');
+      antdMessage.error('请选择图片文件');
       return;
     }
     try {
@@ -277,9 +338,9 @@ export function UserCenterPage() {
             : rating,
         ),
       }));
-      Toast.success('头像已更新');
+      antdMessage.success('头像已更新');
     } catch (error) {
-      Toast.error(error instanceof Error ? error.message : '头像上传失败');
+      antdMessage.error(error instanceof Error ? error.message : '头像上传失败');
     } finally {
       setAvatarUploading(false);
     }
@@ -296,7 +357,7 @@ export function UserCenterPage() {
 
     if (username !== user?.username) {
       if (profileForm.username.length < 3 || profileForm.username.length > 15) {
-        Toast.error('用户名长度必须在3-15之间');
+        antdMessage.error('用户名长度必须在3-15之间');
         return;
       }
       payload.username = username;
@@ -304,14 +365,14 @@ export function UserCenterPage() {
 
     if (displayName !== user?.displayName) {
       if (!displayName) {
-        Toast.error('显示名称不能为空');
+        antdMessage.error('显示名称不能为空');
         return;
       }
       payload.displayName = displayName;
     }
 
     if (!payload.username && !payload.displayName) {
-      Toast.warning('没有修改任何信息');
+      antdMessage.warning('没有修改任何信息');
       return;
     }
 
@@ -324,7 +385,7 @@ export function UserCenterPage() {
   // 确认修改个人信息
   const confirmProfileUpdate = async () => {
     if (!pendingProfileUpdate || !emailCode) {
-      Toast.error('请输入邮箱验证码');
+      antdMessage.error('请输入邮箱验证码');
       return;
     }
 
@@ -337,7 +398,7 @@ export function UserCenterPage() {
         emailVerificationCode: emailCode,
       }, token);
 
-      Toast.success('修改成功');
+      antdMessage.success('修改成功');
       setEmailModalVisible(false);
       setEmailCode('');
       setCaptchaInput('');
@@ -352,24 +413,24 @@ export function UserCenterPage() {
         displayName: newUser.displayName,
       });
     } catch (error) {
-      Toast.error(error instanceof Error ? error.message : '修改失败');
+      antdMessage.error(error instanceof Error ? error.message : '修改失败');
     }
   };
 
   // 提交密码修改
   const handlePasswordSubmit = async () => {
     if (!passwordForm.oldPassword || !passwordForm.newPassword) {
-      Toast.error('请填写完整信息');
+      antdMessage.error('请填写完整信息');
       return;
     }
 
     if (passwordForm.newPassword.length < 6 || passwordForm.newPassword.length > 20) {
-      Toast.error('新密码长度必须在6-20之间');
+      antdMessage.error('新密码长度必须在6-20之间');
       return;
     }
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      Toast.error('两次密码不一致');
+      antdMessage.error('两次密码不一致');
       return;
     }
 
@@ -382,14 +443,14 @@ export function UserCenterPage() {
         newPassword: passwordForm.newPassword,
       }, token);
 
-      Toast.success('密码修改成功');
+      antdMessage.success('密码修改成功');
       setPasswordForm({
         oldPassword: '',
         newPassword: '',
         confirmPassword: '',
       });
     } catch (error) {
-      Toast.error(error instanceof Error ? error.message : '修改失败');
+      antdMessage.error(error instanceof Error ? error.message : '修改失败');
     }
   };
 
@@ -408,7 +469,7 @@ export function UserCenterPage() {
       })
       .catch((error) => {
         if (!cancelled) {
-          Toast.error(error instanceof Error ? error.message : '班级题单加载失败');
+          antdMessage.error(error instanceof Error ? error.message : '班级题单加载失败');
         }
       })
       .finally(() => {
@@ -427,18 +488,18 @@ export function UserCenterPage() {
   const handleApplyToClass = async () => {
     const classId = Number(classJoinForm.classId);
     if (!Number.isInteger(classId) || classId <= 0) {
-      Toast.error('请输入有效的班级 ID');
+      antdMessage.error('请输入有效的班级 ID');
       return;
     }
     setClassJoinLoading(true);
     setApplySuccess(false);
     try {
       await applyToClass(classId, { reason: classJoinForm.reason.trim() || undefined });
-      Toast.success('入班申请已发送，请等待教师审核');
+      antdMessage.success('入班申请已发送，请等待教师审核');
       setClassJoinForm({ classId: '', reason: '' });
       setApplySuccess(true);
     } catch (error) {
-      Toast.error(error instanceof Error ? error.message : '申请发送失败');
+      antdMessage.error(error instanceof Error ? error.message : '申请发送失败');
     } finally {
       setClassJoinLoading(false);
     }
@@ -451,29 +512,55 @@ export function UserCenterPage() {
         <div className="uc-login-desc">{message || '登录后查看真实用户信息和提交数据。'}</div>
         <div className="uc-login-actions">
           <Button type="primary" onClick={() => { window.location.href = '/login'; }}>登录</Button>
-          <Button theme="borderless" onClick={() => { window.location.href = '/register'; }}>注册</Button>
+          <Button type="text" onClick={() => { window.location.href = '/register'; }}>注册</Button>
         </div>
       </div>
     );
   }
 
   const acRatio = user.totalSubmissions ? Math.round((user.totalSolved / user.totalSubmissions) * 100) : 0;
-  const favoriteLanguage = submissions.reduce<Record<string, number>>((count, submission) => {
-    count[submission.language] = (count[submission.language] ?? 0) + 1;
-    return count;
-  }, {});
-  const topLanguage = Object.entries(favoriteLanguage).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '暂无';
-
   /**
    * 读取状态Color并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
    */
-  const getStatusColor = (status: string): 'green' | 'red' | 'orange' | 'blue' | 'grey' => {
+  const getStatusColor = (status: string): 'green' | 'red' | 'orange' | 'blue' | 'default' => {
     const normalized = status.toUpperCase();
     if (normalized === 'AC' || normalized === 'ACCEPTED') return 'green';
     if (normalized === 'WA' || normalized === 'WRONG_ANSWER' || normalized === 'RE' || normalized === 'RUNTIME_ERROR' || normalized === 'CE' || normalized === 'COMPILE_ERROR') return 'red';
     if (normalized === 'TLE' || normalized === 'TIME_LIMIT_EXCEEDED' || normalized === 'MLE' || normalized === 'MEMORY_LIMIT_EXCEEDED') return 'orange';
     if (['WAITING', 'PENDING', 'QUEUED', 'REJUDGE_PENDING', 'JUDGING', 'COMPILING', 'RUNNING'].includes(normalized)) return 'blue';
-    return 'grey';
+    return 'default';
+  };
+
+  /**
+   * 读取状态Label并返回给调用方。将后端返回的状态缩写映射为英文全称。
+   */
+  const statusLabel = (status: string): string => {
+    const normalized = status.toUpperCase();
+    const labels: Record<string, string> = {
+      AC: 'Accepted',
+      ACCEPTED: 'Accepted',
+      WA: 'Wrong Answer',
+      WRONG_ANSWER: 'Wrong Answer',
+      TLE: 'Time Limit Exceeded',
+      TIME_LIMIT_EXCEEDED: 'Time Limit Exceeded',
+      MLE: 'Memory Limit Exceeded',
+      MEMORY_LIMIT_EXCEEDED: 'Memory Limit Exceeded',
+      RE: 'Runtime Error',
+      RUNTIME_ERROR: 'Runtime Error',
+      CE: 'Compile Error',
+      COMPILE_ERROR: 'Compile Error',
+      COMPILATION_ERROR: 'Compile Error',
+      SE: 'System Error',
+      SYSTEM_ERROR: 'System Error',
+      WAITING: 'Waiting',
+      PENDING: 'Pending',
+      QUEUED: 'Pending',
+      REJUDGE_PENDING: 'Rejudge Pending',
+      COMPILING: 'Compiling',
+      JUDGING: 'Judging',
+      RUNNING: 'Running',
+    };
+    return labels[normalized] ?? status;
   };
 
   /**
@@ -496,7 +583,7 @@ export function UserCenterPage() {
     }
   };
 
-  const submissionColumns: ColumnProps<SubmissionRecord>[] = [
+  const submissionColumns: TableColumnsType<SubmissionRecord> = [
     {
       title: '题目',
       dataIndex: 'problemTitle',
@@ -512,10 +599,10 @@ export function UserCenterPage() {
     {
       title: '结果',
       dataIndex: 'status',
-      width: 120,
+      width: 200,
       render: (status: string) => (
-        <Tag color={getStatusColor(status)} size="small">
-          {status}
+        <Tag color={getStatusColor(status)} style={{ fontSize: 12 }}>
+          {statusLabel(status)}
         </Tag>
       ),
     },
@@ -530,7 +617,7 @@ export function UserCenterPage() {
       dataIndex: 'submitTime',
       width: 180,
       render: (_time: string, record: SubmissionRecord) => (
-        <Typography.Text type="tertiary" style={{ fontSize: 14 }}>
+        <Typography.Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(submissionTime(record))}
         </Typography.Text>
       ),
@@ -544,14 +631,14 @@ export function UserCenterPage() {
       })
     : classPractices;
 
-  const classPracticeColumns: ColumnProps<Practice>[] = [
+  const classPracticeColumns: TableColumnsType<Practice> = [
     {
       title: '题单名称',
       dataIndex: 'title',
       render: (title: string, record: Practice) => (
         <div style={{ minWidth: 0 }}>
-          <Typography.Text strong ellipsis={{ showTooltip: true }}>{title}</Typography.Text>
-          <Typography.Paragraph type="tertiary" ellipsis={{ rows: 1, showTooltip: true }} style={{ margin: '4px 0 0', fontSize: 13 }}>
+          <Typography.Text strong ellipsis={{ tooltip: <span>{title}</span> }}>{title}</Typography.Text>
+          <Typography.Paragraph type="secondary" ellipsis={{ rows: 1, tooltip: <span>{record.description || '暂无说明'}</span> }} style={{ margin: '4px 0 0', fontSize: 13 }}>
             {record.description || '暂无说明'}
           </Typography.Paragraph>
         </div>
@@ -577,7 +664,6 @@ export function UserCenterPage() {
           className="uc-practice-view-button"
           size="small"
           type="primary"
-          theme="solid"
           onClick={() => navigate(`/practice/${record.id}`)}
         >
           查看
@@ -592,7 +678,7 @@ export function UserCenterPage() {
       <div className="uc-profile-card">
         <div className="uc-profile-inner">
           <div className="uc-avatar-section">
-            <Avatar size="extra-large" color="blue" src={user.avatarUrl || undefined}>
+            <Avatar size={64} src={user.avatarUrl || undefined} style={{ backgroundColor: '#3b82f6' }}>
               {!user.avatarUrl && (user.name?.charAt(0).toUpperCase() || 'U')}
             </Avatar>
             <div>
@@ -613,7 +699,6 @@ export function UserCenterPage() {
                   className="uc-avatar-button"
                   size="small"
                   type="primary"
-                  theme="solid"
                   loading={avatarUploading}
                   onClick={() => avatarInputRef.current?.click()}
                 >
@@ -624,9 +709,9 @@ export function UserCenterPage() {
           </div>
 
           <div className="uc-stats">
-            <div className="uc-stat-card uc-stat-card--lang">
-              <div className="uc-stat-label">常用语言</div>
-              <div className="uc-stat-value">{topLanguage}</div>
+            <div className="uc-stat-card uc-stat-card--rate">
+              <div className="uc-stat-label">通过率</div>
+              <div className="uc-stat-value">{acRatio}%</div>
             </div>
             <div className="uc-stat-card uc-stat-card--ac">
               <div className="uc-stat-label">非比赛 AC</div>
@@ -642,237 +727,276 @@ export function UserCenterPage() {
 
       {/* Tabs card */}
       <div className="uc-tabs-card">
-        <Tabs type="line" activeKey={activeTab} onChange={(key) => {
-          setActiveTab(key);
-          const params = new URLSearchParams(searchParams);
-          params.set('tab', key);
-          if (key !== 'submissions') {
-            params.delete('subPage');
-            params.delete('subStatus');
-            params.delete('subLang');
-            params.delete('subSearch');
-          }
-          navigate(`/user-center?${params.toString()}`, { replace: true });
-        }}>
-          <TabPane tab="训练概览" itemKey="overview">
-            <div className="uc-over-section">
-              <div className="uc-over-row">
-                <span>通过率</span>
-                <span className="uc-over-pct">{acRatio}%</span>
-              </div>
-              <Progress percent={acRatio} stroke="var(--semi-color-success)" showInfo={false} />
-            </div>
-          </TabPane>
-          <TabPane tab="最近提交" itemKey="submissions">
-            <div className="uc-filter-bar">
-              <Input
-                placeholder="搜索题目 ID 或名称"
-                value={subKeyword}
-                onChange={(v) => { setSubKeyword(v); updateSubUrl({ subSearch: v, subPage: 1 }); }}
-                style={{ width: 200 }}
-                showClear
-              />
-              <Select
-                placeholder="状态筛选"
-                value={subStatusFilter || undefined}
-                onChange={(v) => { const val = (typeof v === 'string' ? v : '') as string; setSubStatusFilter(val); updateSubUrl({ subStatus: val, subPage: 1 }); }}
-                style={{ width: 130 }}
-                showClear
-                optionList={[
-                  { label: 'AC', value: 'AC' },
-                  { label: 'WA', value: 'WA' },
-                  { label: 'TLE', value: 'TLE' },
-                  { label: 'MLE', value: 'MLE' },
-                  { label: 'RE', value: 'RE' },
-                  { label: 'CE', value: 'CE' },
-                  { label: 'SE', value: 'SE' },
-                ]}
-              />
-              <Select
-                placeholder="语言筛选"
-                value={subLangFilter || undefined}
-                onChange={(v) => { const val = (typeof v === 'string' ? v : '') as string; setSubLangFilter(val); updateSubUrl({ subLang: val, subPage: 1 }); }}
-                style={{ width: 130 }}
-                showClear
-                optionList={
-                  Array.from(new Set(submissions.map(s => s.language)))
-                    .sort()
-                    .map(lang => ({ label: lang, value: lang }))
-                }
-              />
-            </div>
-            <Table
-              columns={submissionColumns}
-              dataSource={pagedSubmissions}
-              rowKey="id"
-              pagination={{
-                currentPage: subPage,
-                pageSize: subPageSize,
-                total: filteredSubmissions.length,
-                showSizeChanger: true,
-                pageSizeOpts: [10, 20, 50],
-                showTotal: true,
-                onPageChange: (page) => { setSubPage(page); updateSubUrl({ subPage: page }); },
-                onPageSizeChange: (size) => { setSubPageSize(size); setSubPage(1); updateSubUrl({ subPage: 1 }); },
-              }}
-              empty={<div className="uc-empty">{subKeyword || subStatusFilter || subLangFilter ? '没有匹配的记录' : '暂无提交记录'}</div>}
-            />
-          </TabPane>
-          {user.classId && (
-            <TabPane tab="班级题单" itemKey="class-practices">
-              <div className="uc-filter-bar">
-                <Input
-                  placeholder="筛选题单"
-                  value={classPracticeKeyword}
-                  onChange={setClassPracticeKeyword}
-                  style={{ width: 240 }}
+        <Tabs
+          type="line"
+          activeKey={activeTab}
+          onChange={(key) => {
+            setActiveTab(key);
+            const params = new URLSearchParams(searchParams);
+            params.set('tab', key);
+            if (key !== 'submissions') {
+              params.delete('subPage');
+              params.delete('subStatus');
+              params.delete('subLang');
+              params.delete('subSearch');
+            }
+            navigate(`/user-center?${params.toString()}`, { replace: true });
+          }}
+          items={[
+            {
+              key: 'submissions',
+              label: '最近提交',
+              children: (
+                <>
+                  <div className="uc-filter-bar">
+                    <Input
+                      placeholder="搜索题目 ID 或名称"
+                      value={subKeyword}
+                      onChange={(e) => { const v = e.target.value; setSubKeyword(v); updateSubUrl({ subSearch: v, subPage: 1 }); }}
+                      style={{ width: 200 }}
+                      allowClear
+                    />
+                    <Select
+                      placeholder="状态筛选"
+                      value={subStatusFilter || undefined}
+                      onChange={(v) => { const val = (typeof v === 'string' ? v : '') as string; setSubStatusFilter(val); updateSubUrl({ subStatus: val, subPage: 1 }); }}
+                      style={{ width: 200 }}
+                      allowClear
+                      options={[
+                        { label: statusLabel('AC'), value: 'AC' },
+                        { label: statusLabel('WA'), value: 'WA' },
+                        { label: statusLabel('TLE'), value: 'TLE' },
+                        { label: statusLabel('MLE'), value: 'MLE' },
+                        { label: statusLabel('RE'), value: 'RE' },
+                        { label: statusLabel('CE'), value: 'CE' },
+                        { label: statusLabel('SE'), value: 'SE' },
+                      ]}
+                    />
+                    <Select
+                      placeholder="语言筛选"
+                      value={subLangFilter || undefined}
+                      onChange={(v) => { const val = (typeof v === 'string' ? v : '') as string; setSubLangFilter(val); updateSubUrl({ subLang: val, subPage: 1 }); }}
+                      style={{ width: 130 }}
+                      allowClear
+                      options={
+                        Array.from(new Set(submissions.map(s => s.language)))
+                          .sort()
+                          .map(lang => ({ label: lang, value: lang }))
+                      }
+                    />
+                  </div>
+                  <Table
+                    columns={submissionColumns}
+                    dataSource={pagedSubmissions}
+                    rowKey="id"
+                    pagination={{
+                      current: subPage,
+                      pageSize: subPageSize,
+                      total: filteredSubmissions.length,
+                      showSizeChanger: true,
+                      pageSizeOptions: [10, 20, 50],
+                      showTotal: (total) => `共 ${total} 条`,
+                      onChange: (page) => { setSubPage(page); updateSubUrl({ subPage: page }); },
+                      onShowSizeChange: (_current, size) => { setSubPageSize(size); setSubPage(1); updateSubUrl({ subPage: 1 }); },
+                    }}
+                    locale={{ emptyText: <div className="uc-empty">{subKeyword || subStatusFilter || subLangFilter ? '没有匹配的记录' : '暂无提交记录'}</div> }}
+                  />
+                </>
+              ),
+            },
+            {
+              key: 'my-contests',
+              label: '我的比赛',
+              children: (
+                <Table
+                  columns={myContestColumns}
+                  dataSource={myContests}
+                  rowKey="id"
+                  loading={myContestsLoading}
+                  pagination={{
+                    current: myContestsPage,
+                    pageSize: 10,
+                    total: myContestsTotal,
+                    showSizeChanger: false,
+                    showTotal: (total) => `共 ${total} 场`,
+                    onChange: (page) => setMyContestsPage(page),
+                  }}
+                  locale={{ emptyText: <div className="uc-empty">暂无比赛记录</div> }}
                 />
-              </div>
-              <Table
-                columns={classPracticeColumns}
-                dataSource={filteredClassPractices}
-                rowKey="id"
-                loading={classPracticeLoading}
-                pagination={{
-                  currentPage: classPracticePage,
-                  pageSize: classPracticePageSize,
-                  total: classPracticeTotal,
-                  showSizeChanger: true,
-                  pageSizeOpts: [10, 20, 50],
-                  onPageChange: setClassPracticePage,
-                  onPageSizeChange: (size) => {
-                    setClassPracticePageSize(size);
-                    setClassPracticePage(1);
+              ),
+            },
+            ...(user.classId
+              ? [
+                  {
+                    key: 'class-practices',
+                    label: '班级题单',
+                    children: (
+                      <>
+                        <div className="uc-filter-bar">
+                          <Input
+                            placeholder="筛选题单"
+                            value={classPracticeKeyword}
+                            onChange={(e) => setClassPracticeKeyword(e.target.value)}
+                            style={{ width: 240 }}
+                          />
+                        </div>
+                        <Table
+                          columns={classPracticeColumns}
+                          dataSource={filteredClassPractices}
+                          rowKey="id"
+                          loading={classPracticeLoading}
+                          pagination={{
+                            current: classPracticePage,
+                            pageSize: classPracticePageSize,
+                            total: classPracticeTotal,
+                            showSizeChanger: true,
+                            pageSizeOptions: [10, 20, 50],
+                            showTotal: (total) => `共 ${total} 条`,
+                            onChange: (page) => setClassPracticePage(page),
+                            onShowSizeChange: (_current, size) => {
+                              setClassPracticePageSize(size);
+                              setClassPracticePage(1);
+                            },
+                          }}
+                        />
+                      </>
+                    ),
                   },
-                }}
-              />
-            </TabPane>
-          )}
-          {user.classId ? (
-            <TabPane tab="我的班级" itemKey="my-class">
-              <div className="uc-form-section">
-                <div className="uc-form-title">我的班级</div>
-                <div className="uc-class-card">
-                  <div className="uc-class-icon">🏫</div>
-                  <div>
-                    <div className="uc-class-name">{user.className || `班级 #${user.classId}`}</div>
-                    <div className="uc-class-id">班级 ID：{user.classId}</div>
-                  </div>
-                </div>
-              </div>
-            </TabPane>
-          ) : (
-            <TabPane tab="加入班级" itemKey="join-class">
-              <div className="uc-form-section">
-                <div className="uc-form-title">发送入班申请</div>
+                  {
+                    key: 'my-class',
+                    label: '我的班级',
+                    children: (
+                      <div className="uc-form-section">
+                        <div className="uc-form-title">我的班级</div>
+                        <div className="uc-class-card">
+                          <div className="uc-class-icon">🏫</div>
+                          <div>
+                            <div className="uc-class-name">{user.className || `班级 #${user.classId}`}</div>
+                            <div className="uc-class-id">班级 ID：{user.classId}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ),
+                  },
+                ]
+              : [
+                  {
+                    key: 'join-class',
+                    label: '加入班级',
+                    children: (
+                      <div className="uc-form-section">
+                        <div className="uc-form-title">发送入班申请</div>
 
-                {applySuccess && (
-                  <div className="uc-success-banner">
-                    申请已发送成功！请等待教师审核，审核结果会在此页面显示。
-                  </div>
-                )}
+                        {applySuccess && (
+                          <div className="uc-success-banner">
+                            申请已发送成功！请等待教师审核，审核结果会在此页面显示。
+                          </div>
+                        )}
 
-                <div className="uc-form-group">
-                  <div>
-                    <label className="uc-field-label">班级 ID <span className="uc-required">*</span></label>
-                    <Input
-                      placeholder="请输入班级 ID"
-                      value={classJoinForm.classId}
-                      onChange={(classId) => setClassJoinForm({ ...classJoinForm, classId })}
-                    />
+                        <div className="uc-form-group">
+                          <div>
+                            <label className="uc-field-label">班级 ID <span className="uc-required">*</span></label>
+                            <Input
+                              placeholder="请输入班级 ID"
+                              value={classJoinForm.classId}
+                              onChange={(e) => setClassJoinForm({ ...classJoinForm, classId: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="uc-field-label">申请备注</label>
+                            <Input.TextArea
+                              placeholder="可以简单说明你的姓名、学号或加入原因"
+                              value={classJoinForm.reason}
+                              autoSize={{ minRows: 3, maxRows: 6 }}
+                              maxLength={500}
+                              showCount
+                              onChange={(e) => setClassJoinForm({ ...classJoinForm, reason: e.target.value })}
+                            />
+                          </div>
+                          <Button type="primary" loading={classJoinLoading} onClick={handleApplyToClass}>
+                            发送申请
+                          </Button>
+                        </div>
+                      </div>
+                    ),
+                  },
+                ]),
+            {
+              key: 'settings',
+              label: '设置',
+              children: (
+                <div className="uc-settings">
+                  <div className="uc-settings-section">
+                    <div className="uc-settings-title">个人信息</div>
+                    <div className="uc-settings-form">
+                      <div>
+                        <label className="uc-field-label">用户名</label>
+                        <Input
+                          placeholder="请输入用户名（3-15个字符）"
+                          value={profileForm.username}
+                          onChange={(e) => setProfileForm({ ...profileForm, username: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="uc-field-label">显示名称</label>
+                        <Input
+                          placeholder="请输入显示名称"
+                          value={profileForm.displayName}
+                          onChange={(e) => setProfileForm({ ...profileForm, displayName: e.target.value })}
+                        />
+                      </div>
+                      <Button type="primary" className="uc-btn-primary" onClick={handleProfileSubmit}>
+                        保存个人信息
+                      </Button>
+                    </div>
                   </div>
-                  <div>
-                    <label className="uc-field-label">申请备注</label>
-                    <TextArea
-                      placeholder="可以简单说明你的姓名、学号或加入原因"
-                      value={classJoinForm.reason}
-                      autosize={{ minRows: 3, maxRows: 6 }}
-                      maxCount={500}
-                      showCounter
-                      onChange={(reason) => setClassJoinForm({ ...classJoinForm, reason })}
-                    />
-                  </div>
-                  <Button type="primary" loading={classJoinLoading} onClick={handleApplyToClass}>
-                    发送申请
-                  </Button>
-                </div>
-              </div>
-            </TabPane>
-          )}
-          <TabPane tab="设置" itemKey="settings">
-            <div className="uc-settings">
-              <div className="uc-settings-section">
-                <div className="uc-settings-title">个人信息</div>
-                <div className="uc-settings-form">
-                  <div>
-                    <label className="uc-field-label">用户名</label>
-                    <Input
-                      placeholder="请输入用户名（3-15个字符）"
-                      value={profileForm.username}
-                      onChange={(username) => setProfileForm({ ...profileForm, username })}
-                    />
-                  </div>
-                  <div>
-                    <label className="uc-field-label">显示名称</label>
-                    <Input
-                      placeholder="请输入显示名称"
-                      value={profileForm.displayName}
-                      onChange={(displayName) => setProfileForm({ ...profileForm, displayName })}
-                    />
-                  </div>
-                  <Button type="primary" className="uc-btn-primary" onClick={handleProfileSubmit}>
-                    保存个人信息
-                  </Button>
-                </div>
-              </div>
 
-              <div className="uc-settings-section">
-                <div className="uc-settings-title">修改密码</div>
-                <div className="uc-settings-form">
-                  <div>
-                    <label className="uc-field-label">旧密码</label>
-                    <Input
-                      type="password"
-                      mode="password"
-                      placeholder="请输入旧密码"
-                      value={passwordForm.oldPassword}
-                      onChange={(oldPassword) => setPasswordForm({ ...passwordForm, oldPassword })}
-                    />
+                  <div className="uc-settings-section">
+                    <div className="uc-settings-title">修改密码</div>
+                    <div className="uc-settings-form">
+                      <div>
+                        <label className="uc-field-label">旧密码</label>
+                        <Input
+                          type="password"
+                          placeholder="请输入旧密码"
+                          value={passwordForm.oldPassword}
+                          onChange={(e) => setPasswordForm({ ...passwordForm, oldPassword: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="uc-field-label">新密码</label>
+                        <Input
+                          type="password"
+                          placeholder="请输入新密码（6-20个字符）"
+                          value={passwordForm.newPassword}
+                          onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="uc-field-label">确认新密码</label>
+                        <Input
+                          type="password"
+                          placeholder="请再次输入新密码"
+                          value={passwordForm.confirmPassword}
+                          onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                        />
+                      </div>
+                      <Button type="primary" className="uc-btn-primary" onClick={handlePasswordSubmit}>
+                        修改密码
+                      </Button>
+                    </div>
                   </div>
-                  <div>
-                    <label className="uc-field-label">新密码</label>
-                    <Input
-                      type="password"
-                      mode="password"
-                      placeholder="请输入新密码（6-20个字符）"
-                      value={passwordForm.newPassword}
-                      onChange={(newPassword) => setPasswordForm({ ...passwordForm, newPassword })}
-                    />
-                  </div>
-                  <div>
-                    <label className="uc-field-label">确认新密码</label>
-                    <Input
-                      type="password"
-                      mode="password"
-                      placeholder="请再次输入新密码"
-                      value={passwordForm.confirmPassword}
-                      onChange={(confirmPassword) => setPasswordForm({ ...passwordForm, confirmPassword })}
-                    />
-                  </div>
-                  <Button type="primary" className="uc-btn-primary" onClick={handlePasswordSubmit}>
-                    修改密码
-                  </Button>
                 </div>
-              </div>
-            </div>
-          </TabPane>
-        </Tabs>
+              ),
+            },
+          ]}
+        />
       </div>
 
       {/* 邮箱验证码弹窗 */}
       <Modal
         title="邮箱验证码"
-        visible={emailModalVisible}
+        open={emailModalVisible}
         onOk={confirmProfileUpdate}
         onCancel={() => {
           setEmailModalVisible(false);
@@ -887,16 +1011,16 @@ export function UserCenterPage() {
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 120px' }}>
             <div>
               <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>验证码</Typography.Text>
-              <Input placeholder="请输入验证码" value={captchaInput} onChange={setCaptchaInput} />
+              <Input placeholder="请输入验证码" value={captchaInput} onChange={(e) => setCaptchaInput(e.target.value)} />
             </div>
             {captchaImage && (
-              <img src={captchaImage} alt="验证码" style={{ marginTop: 28, height: 40, borderRadius: 6, border: '1px solid var(--semi-color-border)', cursor: 'pointer' }} onClick={fetchCaptcha} />
+              <img src={captchaImage} alt="验证码" style={{ marginTop: 28, height: 40, borderRadius: 6, border: '1px solid var(--qoj-color-border)', cursor: 'pointer' }} onClick={fetchCaptcha} />
             )}
           </div>
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr auto' }}>
             <div>
               <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>邮箱验证码</Typography.Text>
-              <Input placeholder="请输入邮箱验证码" value={emailCode} onChange={setEmailCode} />
+              <Input placeholder="请输入邮箱验证码" value={emailCode} onChange={(e) => setEmailCode(e.target.value)} />
             </div>
             <Button style={{ marginTop: 28, height: 40, minWidth: 120 }} onClick={sendEmailCode} disabled={emailCountdown > 0}>
               {emailCountdown > 0 ? `${emailCountdown}秒后重试` : '发送验证码'}
@@ -908,16 +1032,17 @@ export function UserCenterPage() {
       {/* 提交代码查看弹窗 */}
       <Modal
         title={codeModalTitle}
-        visible={codeModalVisible}
+        open={codeModalVisible}
         onCancel={() => setCodeModalVisible(false)}
         footer={null}
-        width={900}
+        width="60%"
         style={{ top: 40 }}
-        bodyStyle={{ padding: '16px 24px 24px' }}
+        styles={{ body: { padding: '16px 24px 24px' } }}
       >
         {codeModalLoading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
-            <Spin size="large" tip="加载代码中..." />
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: 400, gap: 8 }}>
+            <Spin size="large" />
+            <Typography.Text type="secondary">加载代码中...</Typography.Text>
           </div>
         ) : (
           <CodeViewer code={codeModalCode} language={codeModalLanguage} height="60vh" />

@@ -3,11 +3,11 @@
  */
 import Editor, { type OnMount } from "@monaco-editor/react";
 import "../utils/monacoSetup";
-import { Alert, Button, Card, ConfigProvider, Empty, Flex, Input, Result, Select, Space, Spin, Typography, theme as antTheme } from "antd";
-import { Tag } from "@douyinfe/semi-ui";
-import { IconClose, IconCode, IconFile, IconMinus, IconPlus, IconSend } from "@douyinfe/semi-icons";
+import { Alert, Button, Card, ConfigProvider, Empty, Flex, Input, Result, Select, Space, Spin, Tag, Typography, theme as antTheme, message } from "antd";
+import { CloseOutlined, CodeOutlined, CopyOutlined, FileOutlined, HistoryOutlined, MinusOutlined, PlusOutlined, SendOutlined } from "@ant-design/icons";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { copyTextToClipboard } from "../utils/clipboard";
 import { MarkdownMath } from "../components/MarkdownMath";
 import { HtmlMath } from "../components/HtmlMath";
 import { useOjData } from "../data/OjDataProvider";
@@ -22,16 +22,28 @@ import { decryptIdFromUrl } from "../utils/cipher";
 /**
  * 练习Language类型别名，明确该模块内部及 API 边界使用的数据结构。
  */
-type PracticeLanguage = "C" | "C++" | "Python" | "Java" | "C#";
+type PracticeLanguage = "C" | "C++" | "Python" | "Java";
 
 /**
  * DebugAlert类型别名，明确该模块内部及 API 边界使用的数据结构。
  */
 type DebugAlert = {
-  type: "success" | "danger" | "neutral" | "info";
+  type: "success" | "danger" | "neutral" | "info" | "warning";
   title: string;
   detail?: string;
   source?: "debug" | "submit";
+};
+
+/**
+ * 调试资源指标。限制值按当前语言保留 C/C++ 与其他语言的不同倍率，
+ * 实际值来自沙箱执行结果。
+ */
+type DebugMetrics = {
+  language: PracticeLanguage;
+  timeUsed: number | null;
+  memoryUsed: number | null;
+  timeLimit: number;
+  memoryLimit: number;
 };
 
 /**
@@ -68,7 +80,6 @@ const languageOptions: Array<{ label: PracticeLanguage; apiValue: string }> = [
   { label: "C++", apiValue: "cpp" },
   { label: "Python", apiValue: "python" },
   { label: "Java", apiValue: "java" },
-  { label: "C#", apiValue: "csharp" },
 ];
 
 const monacoLanguages: Record<PracticeLanguage, string> = {
@@ -76,7 +87,6 @@ const monacoLanguages: Record<PracticeLanguage, string> = {
   "C++": "cpp",
   Python: "python",
   Java: "java",
-  "C#": "csharp",
 };
 
 const templateSettingKeys: Record<PracticeLanguage, keyof CodeTemplateSettings> = {
@@ -84,7 +94,6 @@ const templateSettingKeys: Record<PracticeLanguage, keyof CodeTemplateSettings> 
   "C++": "cpp",
   Python: "python",
   Java: "java",
-  "C#": "csharp",
 };
 
 /**
@@ -235,6 +244,57 @@ function formatMetric(value: number | null | undefined, unit: string) {
 }
 
 /**
+ * 判断是否为 C/C++。题目限制对其他语言按现有题面规则翻倍。
+ */
+function isNativeLanguage(language: PracticeLanguage) {
+  return language === "C" || language === "C++";
+}
+
+/**
+ * 计算当前语言对应的题目最大资源限制。
+ */
+function debugResourceLimits(problem: Problem, language: PracticeLanguage) {
+  const multiplier = isNativeLanguage(language) ? 1 : 2;
+  return {
+    timeLimit: problem.timeLimit * multiplier,
+    memoryLimit: problem.memoryLimit * multiplier,
+  };
+}
+
+/**
+ * 格式化调试时间限制，整数秒使用秒展示，避免出现不必要的小数。
+ */
+function formatTimeLimit(value: number) {
+  if (value % 1000 === 0) return `${value / 1000} 秒`;
+  return `${value} ms`;
+}
+
+/**
+ * 格式化调试内存限制。
+ */
+function formatMemoryLimit(value: number) {
+  return `${value} MB`;
+}
+
+/**
+ * 按题目限制截断实际运行时间；超限时展示题目允许的最大值。
+ */
+function formatCappedTimeUsed(value: number | null | undefined, limit: number) {
+  const actual = positiveMetric(value);
+  return formatMetric(actual == null ? null : Math.min(actual, limit), "ms");
+}
+
+/**
+ * 按题目限制截断实际运行内存；未超限显示实际 KB，超限显示题目限制 MB。
+ */
+function formatCappedMemoryUsed(value: number | null | undefined, limitMb: number) {
+  const actual = positiveMetric(value);
+  if (actual == null) return "-";
+  const limitKb = limitMb * 1024;
+  return actual > limitKb ? formatMemoryLimit(limitMb) : `${actual} KB`;
+}
+
+/**
  * 格式化提交Alert。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
 function formatSubmissionAlert(data: SubmissionResult): DebugAlert {
@@ -303,6 +363,7 @@ export function PracticePage() {
   const [debugLoading, setDebugLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [debugAlert, setDebugAlert] = useState<DebugAlert | null>(null);
+  const [debugMetrics, setDebugMetrics] = useState<DebugMetrics | null>(null);
   const [sampleIndex, setSampleIndex] = useState<number | "custom">("custom");
   const [leftPanePercent, setLeftPanePercent] = useState(50);
   const [paneResizing, setPaneResizing] = useState(false);
@@ -316,6 +377,7 @@ export function PracticePage() {
   const [lastSubmissionId, setLastSubmissionId] = useState<number | null>(null);
   const practiceId = searchParams.get("practiceId");
   const contestId = searchParams.get("contestId");
+  const contestProblemLabel = searchParams.get("contestProblemLabel")?.trim();
   const isContestMode = Boolean(contestId);
   const canUseDefaultCodeTemplates = !isContestMode || contestCodeTemplatesEnabled;
   const defaultCodeTemplate = canUseDefaultCodeTemplates && codeTemplates
@@ -349,8 +411,11 @@ export function PracticePage() {
     if (!problem?.title) {
       return;
     }
-    window.dispatchEvent(new CustomEvent("qoj:document-title", { detail: { title: problem.title } }));
-  }, [problem?.title]);
+    const title = isContestMode && contestProblemLabel
+      ? `${contestProblemLabel} - ${problem.title}`
+      : problem.title;
+    window.dispatchEvent(new CustomEvent("qoj:document-title", { detail: { title } }));
+  }, [contestProblemLabel, isContestMode, problem?.title]);
 
   useEffect(() => {
     setRemoteProblem(null);
@@ -482,6 +547,7 @@ export function PracticePage() {
       window.localStorage.setItem(codeStorageKey(problem.id, language), code);
     }
     setLanguage(next);
+    setDebugMetrics(null);
   };
 
   /**
@@ -491,6 +557,19 @@ export function PracticePage() {
     setCode(next);
     if (problem?.id) {
       window.localStorage.setItem(codeStorageKey(problem.id, language), next);
+    }
+  };
+
+  /**
+   * 复制样例内容到剪贴板，并反馈复制结果。
+   */
+  const copySample = async (value: string) => {
+    try {
+      const copied = await copyTextToClipboard(value);
+      if (!copied) throw new Error("Clipboard write was rejected");
+      message.success("已复制到剪贴板");
+    } catch {
+      message.error("复制失败");
     }
   };
 
@@ -736,7 +815,7 @@ export function PracticePage() {
     try {
     const src = model.getValue();
     const lang = monacoLanguages[languageRef.current];
-    const isSemicolonLang = lang === "c" || lang === "cpp" || lang === "java" || lang === "csharp";
+    const isSemicolonLang = lang === "c" || lang === "cpp" || lang === "java";
 
     /* ── strip comments and strings to avoid false positives ── */
     const stripped: string[] = [];
@@ -1099,7 +1178,19 @@ export function PracticePage() {
       });
       return;
     }
+    if (!problem) {
+      setDebugOpen(true);
+      setDebugMetrics(null);
+      setDebugAlert({
+        type: "danger",
+        title: "调试失败",
+        detail: "题目尚未加载完成，请稍后再试。",
+        source: "debug",
+      });
+      return;
+    }
     setDebugOpen(true);
+    setDebugMetrics(null);
 
     const option = languageOptions.find((item) => item.label === language);
     setDebugLoading(true);
@@ -1115,6 +1206,13 @@ export function PracticePage() {
       const actualOutput = String(result.output ?? "");
       const displayOutput = actualOutput || (status ? `运行状态：${status}` : "(无输出)");
       setDebugOutput(displayOutput);
+      const limits = debugResourceLimits(problem, language);
+      setDebugMetrics({
+        language,
+        timeUsed: positiveMetric(result.timeUsed),
+        memoryUsed: positiveMetric(result.memoryUsed),
+        ...limits,
+      });
 
       if (status === "CE") {
         setDebugAlert({
@@ -1125,7 +1223,13 @@ export function PracticePage() {
         return;
       }
 
-      if (selectedSample) {
+      if (problem?.isSpecialJudge) {
+        setDebugAlert({
+          type: "warning",
+          title: "当前题目使用特殊判题，调试结果无法自动判断正误，请自行核实输出是否满足题目要求。",
+          source: "debug",
+        });
+      } else if (selectedSample) {
         const expectedOutput = selectedSample.output ?? "";
         const accepted = normalizeOutput(actualOutput) === normalizeOutput(expectedOutput);
         setDebugAlert({
@@ -1139,6 +1243,7 @@ export function PracticePage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "调试失败，请检查后端服务。";
       setDebugOutput(message);
+      setDebugMetrics(null);
       setDebugAlert({ type: "danger", title: "调试失败", detail: message, source: "debug" });
     } finally {
       setDebugLoading(false);
@@ -1153,6 +1258,7 @@ export function PracticePage() {
       setSampleIndex("custom");
       setDebugOutput("");
       setDebugAlert(null);
+      setDebugMetrics(null);
       setDebugOpen(true);
       return;
     }
@@ -1163,6 +1269,7 @@ export function PracticePage() {
       setDebugInput("");
       setDebugOutput("调试结果会显示在这里。");
       setDebugAlert(null);
+      setDebugMetrics(null);
       setDebugOpen(true);
       return;
     }
@@ -1170,6 +1277,7 @@ export function PracticePage() {
     setDebugInput(sample.input ?? "");
     setDebugOutput("");
     setDebugAlert(null);
+    setDebugMetrics(null);
     setDebugOpen(true);
   };
 
@@ -1181,6 +1289,7 @@ export function PracticePage() {
       return;
     }
     setDebugOpen(true);
+    setDebugMetrics(null);
 
     if (state.judgeSettings && !state.judgeSettings.enabled) {
       setDebugAlert({
@@ -1269,16 +1378,17 @@ export function PracticePage() {
         gridTemplateColumns: `minmax(0, ${leftPanePercent}fr) 6px minmax(0, ${100 - leftPanePercent}fr)`,
       }}
     >
-      <section className="practice-pane flex min-h-0 min-w-0 flex-col overflow-hidden bg-white">
+      <section className="practice-pane practice-problem-pane flex min-h-0 min-w-0 flex-col overflow-hidden bg-white">
         <div className="practice-pane-header practice-problem-header flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 text-slate-800">
           <div className="flex min-w-0 items-center gap-2">
             <Tag color="blue">
               <span className="inline-flex items-center gap-1 text-base font-semibold text-blue-800">
-                <IconFile style={{ fontSize: 16 }} />
+                <FileOutlined style={{ fontSize: 16 }} />
                 {isContestMode ? "比赛题目" : "题目"}
               </span>
             </Tag>
             <h1 className="truncate text-base font-semibold leading-7">{problem.title}</h1>
+            {problem.isSpecialJudge ? <Tag color="blue" style={{ fontSize: 12 }}>Special Judge</Tag> : null}
           </div>
           {isContestMode && contestId && (
             <Button
@@ -1331,11 +1441,33 @@ export function PracticePage() {
               <section key={`${sample.caseNo}-${index}`} className="practice-sample mt-6">
                 <h2 className="practice-problem-heading mb-3 text-base font-bold text-slate-700">示例{index + 1}</h2>
                 <div className="practice-sample-card overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-                  <div className="practice-sample-label px-4 py-3 font-semibold text-slate-600">输入</div>
+                  <div className="practice-sample-label flex items-center justify-between px-4 py-3 font-semibold text-slate-600">
+                    <span>输入</span>
+                    <button
+                      type="button"
+                      className="practice-sample-copy-button"
+                      aria-label="复制输入样例"
+                      title="复制输入样例"
+                      onClick={() => copySample(sample.input)}
+                    >
+                      <CopyOutlined aria-hidden="true" />
+                    </button>
+                  </div>
                   <pre className="practice-sample-value overflow-x-auto whitespace-pre-wrap border-l-4 border-blue-500 bg-white px-7 py-4 font-mono text-slate-700">
                     {sample.input}
                   </pre>
-                  <div className="practice-sample-label px-4 py-3 font-semibold text-slate-600">输出</div>
+                  <div className="practice-sample-label flex items-center justify-between px-4 py-3 font-semibold text-slate-600">
+                    <span>输出</span>
+                    <button
+                      type="button"
+                      className="practice-sample-copy-button"
+                      aria-label="复制输出样例"
+                      title="复制输出样例"
+                      onClick={() => copySample(sample.output)}
+                    >
+                      <CopyOutlined aria-hidden="true" />
+                    </button>
+                  </div>
                   <pre className="practice-sample-value overflow-x-auto whitespace-pre-wrap border-l-4 border-blue-500 bg-white px-7 py-4 font-mono text-slate-700">
                     {sample.output}
                   </pre>
@@ -1381,7 +1513,7 @@ export function PracticePage() {
             <div className="flex items-center gap-2 text-sm text-slate-700">
               <Button
                 aria-label="减小文字大小"
-                icon={<IconMinus />}
+                icon={<MinusOutlined />}
                 size="small"
                 className="!bg-slate-100 !text-slate-700 hover:!bg-slate-200"
                 onClick={() => changeFontSize(-1)}
@@ -1389,7 +1521,7 @@ export function PracticePage() {
               <span className="min-w-[56px] text-center">{fontSize}px</span>
               <Button
                 aria-label="增大文字大小"
-                icon={<IconPlus />}
+                icon={<PlusOutlined />}
                 size="small"
                 className="!bg-slate-100 !text-slate-700 hover:!bg-slate-200"
                 onClick={() => changeFontSize(1)}
@@ -1404,6 +1536,11 @@ export function PracticePage() {
           </div>
           <div className="flex shrink-0 items-center gap-3">
             {!isContestMode && (
+              <Button icon={<HistoryOutlined />} onClick={() => problemId && navigate(`/practice/history/${problemId}`)}>
+                历史提交
+              </Button>
+            )}
+            {!isContestMode && (
               <Button
                 aria-expanded={agentOpen}
                 loading={agentLoading}
@@ -1414,7 +1551,7 @@ export function PracticePage() {
             )}
             <Button
               className={`!bg-slate-100 !text-slate-700 hover:!bg-slate-200 ${debugLoading ? 'opacity-70' : ''}`}
-              icon={<IconCode />}
+              icon={<CodeOutlined />}
               onClick={() => !debugLoading && setDebugOpen((open) => !open)}
             >
               {debugLoading ? "调试中..." : "调试"}
@@ -1422,7 +1559,7 @@ export function PracticePage() {
             <Button
               type="primary"
               className={submitLoading ? 'opacity-70' : ''}
-              icon={<IconSend />}
+              icon={<SendOutlined />}
               onClick={() => !submitLoading && submitCodeAction()}
             >
               {submitLoading ? "提交中" : "提交"}
@@ -1605,7 +1742,7 @@ export function PracticePage() {
               />
               <div className="flex min-h-0 w-full flex-1 flex-col">
                 <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4">
-                  <h2 className="font-semibold">调试面板</h2>
+                  <h2 className="font-semibold" style={{ marginLeft: 20 }}>调试面板</h2>
                   <div className="flex items-center gap-2">
                     <Select
                       size="small"
@@ -1625,7 +1762,7 @@ export function PracticePage() {
                     </Button>
                     <Button
                       aria-label="关闭调试面板"
-                      icon={<IconClose />}
+                      icon={<CloseOutlined />}
                       size="small"
                       type="text"
                       className="!text-slate-600 hover:!bg-slate-100"
@@ -1648,6 +1785,7 @@ export function PracticePage() {
                             setSampleIndex("custom");
                             setDebugOutput("");
                             setDebugAlert(null);
+                            setDebugMetrics(null);
                           }}
                         />
                       </label>
@@ -1661,6 +1799,21 @@ export function PracticePage() {
                           autoSize={false}
                         />
                       </label>
+                    </div>
+                  ) : null}
+                  {debugMetrics ? (
+                    <div className="grid shrink-0 gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 sm:grid-cols-[auto_1fr_1fr] sm:items-center sm:gap-x-5">
+                      <span className="font-semibold text-slate-800">
+                        运行资源（{isNativeLanguage(debugMetrics.language) ? "C/C++" : "其他语言"}）
+                      </span>
+                      <span>
+                        运行时间：<strong>{formatCappedTimeUsed(debugMetrics.timeUsed, debugMetrics.timeLimit)}</strong>
+                        <span className="ml-2 text-slate-500">/ 上限 {formatTimeLimit(debugMetrics.timeLimit)}</span>
+                      </span>
+                      <span>
+                        运行内存：<strong>{formatCappedMemoryUsed(debugMetrics.memoryUsed, debugMetrics.memoryLimit)}</strong>
+                        <span className="ml-2 text-slate-500">/ 上限 {formatMemoryLimit(debugMetrics.memoryLimit)}</span>
+                      </span>
                     </div>
                   ) : null}
                   {debugAlert ? (

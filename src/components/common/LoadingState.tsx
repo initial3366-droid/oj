@@ -1,7 +1,7 @@
 /**
  * LoadingState组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Spin, Skeleton } from '@douyinfe/semi-ui';
+import { Spin, Skeleton, Typography } from 'antd';
 
 /**
  * LoadingStateProps接口，明确该模块内部及 API 边界使用的数据结构。
@@ -28,8 +28,7 @@ export function LoadingState({
   if (type === 'skeleton') {
     return (
       <div style={{ padding: '24px', ...style }}>
-        <Skeleton.Title style={{ marginBottom: 12 }} />
-        <Skeleton.Paragraph rows={rows} />
+        <Skeleton active paragraph={{ rows }} title={{ style: { marginBottom: 12 } }} />
       </div>
     );
   }
@@ -40,13 +39,16 @@ export function LoadingState({
     <div
       style={{
         display: 'flex',
+        flexDirection: 'column',
         justifyContent: 'center',
         alignItems: 'center',
+        gap: 16,
         padding: '48px 24px',
         ...style,
       }}
     >
-      <Spin size={spinSize} tip={tip} />
+      <Spin size={spinSize} />
+      <Typography.Text type="secondary">{tip}</Typography.Text>
     </div>
   );
 }

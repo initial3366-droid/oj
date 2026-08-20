@@ -26,6 +26,7 @@ public record PublicProblemVO(
     List<ProblemSampleCaseVO> samples,
     Long testCaseCount,
     String ownerName,
-    String attemptStatus
+    String attemptStatus,
+    Boolean specialJudge
 ) {
 }

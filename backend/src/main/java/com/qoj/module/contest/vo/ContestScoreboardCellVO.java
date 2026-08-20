@@ -12,6 +12,8 @@ public record ContestScoreboardCellVO(
     Boolean accepted,
     Integer penalty,
     Integer score,
-    LocalDateTime acceptedAt
+    LocalDateTime acceptedAt,
+    Boolean hasHiddenSubmissions,
+    Integer hiddenAttempts
 ) {
 }

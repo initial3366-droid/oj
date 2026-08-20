@@ -21,8 +21,9 @@ services:
       JUDGE_IGNORE_ESOL: ${CCPCOJ_IGNORE_ESOL:-1}
       JUDGE_TOP_DIFF_BYTES: ${CCPCOJ_TOP_DIFF_BYTES:-2048}
       JUDGE_SHM_RUN: ${CCPCOJ_SHM_RUN:-0}
-      JUDGE_V_TIME_BONUS: ${CCPCOJ_JAVA_TIME_BONUS:-2}
-      JUDGE_V_MEM_BONUS: ${CCPCOJ_JAVA_MEMORY_BONUS:-512}
+      # QOJ already doubles both limits for every non-C/C++ submission.
+      JUDGE_V_TIME_BONUS: ${CCPCOJ_JAVA_TIME_BONUS:-1}
+      JUDGE_V_MEM_BONUS: ${CCPCOJ_JAVA_MEMORY_BONUS:-0}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

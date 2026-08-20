@@ -1,8 +1,9 @@
 /**
  * FrontMobileNav组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { SideSheet, Nav, Button, Space, Divider } from '@douyinfe/semi-ui';
-import { IconHome, IconList, IconTreeTriangleDown, IconUser, IconClose } from '@douyinfe/semi-icons';
+import { Button, Divider, Drawer, Menu, Space } from 'antd';
+import type { MenuProps } from 'antd';
+import { CaretDownOutlined, CloseOutlined, HomeOutlined, UnorderedListOutlined, UserOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useOjData } from '../data/OjDataProvider';
 import { logout as logoutFrontend } from '../api/auth';
@@ -25,12 +26,12 @@ export function FrontMobileNav({ visible, onClose }: FrontMobileNavProps) {
   const isLoggedIn = state.activeUser !== null;
 
   const navItems = [
-    { itemKey: 'home', text: '首页', icon: <IconHome />, path: '/' },
-    { itemKey: 'problems', text: '题库', icon: <IconList />, path: '/problems' },
-    { itemKey: 'practice', text: '题单', icon: <IconList />, path: '/practice' },
-    { itemKey: 'contests', text: '比赛', icon: <IconTreeTriangleDown />, path: '/contests' },
-    { itemKey: 'submission-queue', text: '提交队列', icon: <IconList />, path: '/submission-queue' },
-    { itemKey: 'leaderboard', text: '排行榜', icon: <IconTreeTriangleDown />, path: '/leaderboard' },
+    { itemKey: 'home', text: '首页', icon: <HomeOutlined />, path: '/' },
+    { itemKey: 'problems', text: '题库', icon: <UnorderedListOutlined />, path: '/problems' },
+    { itemKey: 'practice', text: '题单', icon: <UnorderedListOutlined />, path: '/practice' },
+    { itemKey: 'contests', text: '比赛', icon: <CaretDownOutlined />, path: '/contests' },
+    { itemKey: 'submission-queue', text: '提交队列', icon: <UnorderedListOutlined />, path: '/submission-queue' },
+    { itemKey: 'leaderboard', text: '排行榜', icon: <CaretDownOutlined />, path: '/leaderboard' },
   ];
 
   /**
@@ -50,8 +51,8 @@ export function FrontMobileNav({ visible, onClose }: FrontMobileNavProps) {
   /**
    * 处理NavClick。可能改变当前路由或查询参数。
    */
-  const handleNavClick = (data: any) => {
-    const item = navItems.find(item => item.itemKey === data.itemKey);
+  const handleNavClick: MenuProps['onClick'] = ({ key }) => {
+    const item = navItems.find(item => item.itemKey === key);
     if (item) {
       navigate(item.path);
       onClose();
@@ -92,19 +93,19 @@ export function FrontMobileNav({ visible, onClose }: FrontMobileNavProps) {
   };
 
   return (
-    <SideSheet
+    <Drawer
       title="菜单"
-      visible={visible}
-      onCancel={onClose}
+      open={visible}
+      onClose={onClose}
       placement="left"
       width={280}
-      closeIcon={<IconClose />}
-      bodyStyle={{ padding: 0 }}
+      closeIcon={<CloseOutlined />}
+      styles={{ body: { padding: 0 } }}
     >
       <style>{`
         .front-mobile-nav-header {
           padding: 24px 20px;
-          background: linear-gradient(135deg, var(--semi-color-primary), #60A5FA);
+          background: linear-gradient(135deg, var(--qoj-color-primary), #60A5FA);
           color: white;
         }
 
@@ -128,16 +129,9 @@ export function FrontMobileNav({ visible, onClose }: FrontMobileNavProps) {
         }
 
         /* 自定义 Nav 样式 */
-        .semi-navigation-vertical .semi-navigation-item {
-          padding: 12px 20px;
-          font-size: 15px;
-        }
-
-        .semi-navigation-vertical .semi-navigation-item-selected {
-          background: var(--semi-color-primary-light-default);
-          color: var(--semi-color-primary);
-          border-left: 3px solid var(--semi-color-primary);
-        }
+        .front-mobile-nav-content .ant-menu { border-inline-end: none; }
+        .front-mobile-nav-content .ant-menu-item { padding: 12px 20px !important; font-size: 15px; height: auto; line-height: normal; }
+        .front-mobile-nav-content .ant-menu-item-selected { background: var(--qoj-color-primary-light-default); color: var(--qoj-color-primary); border-left: 3px solid var(--qoj-color-primary); border-radius: 0; }
       `}</style>
 
       {/* 用户信息头部 */}
@@ -163,11 +157,11 @@ export function FrontMobileNav({ visible, onClose }: FrontMobileNavProps) {
 
       {/* 导航菜单 */}
       <div className="front-mobile-nav-content">
-        <Nav
+        <Menu
           mode="vertical"
           selectedKeys={[getActiveKey()]}
-          onSelect={handleNavClick}
-          items={navItems}
+          onClick={handleNavClick}
+          items={navItems.map((item) => ({ key: item.itemKey, label: item.text, icon: item.icon }))}
         />
       </div>
 
@@ -176,24 +170,24 @@ export function FrontMobileNav({ visible, onClose }: FrontMobileNavProps) {
       {/* 底部操作按钮 */}
       <div className="front-mobile-nav-actions">
         {isLoggedIn ? (
-          <Space vertical style={{ width: '100%' }}>
+          <Space direction="vertical" style={{ width: '100%' }}>
             <Button
               block
-              icon={<IconUser />}
+              icon={<UserOutlined />}
               onClick={handleProfile}
             >
               个人中心
             </Button>
             <Button
               block
-              type="danger"
-                onClick={() => { void handleLogout(); }}
+              danger
+              onClick={() => { void handleLogout(); }}
             >
               退出登录
             </Button>
           </Space>
         ) : (
-          <Space vertical style={{ width: '100%' }}>
+          <Space direction="vertical" style={{ width: '100%' }}>
             <Button
               block
               onClick={handleLogin}
@@ -210,6 +204,6 @@ export function FrontMobileNav({ visible, onClose }: FrontMobileNavProps) {
           </Space>
         )}
       </div>
-    </SideSheet>
+    </Drawer>
   );
 }

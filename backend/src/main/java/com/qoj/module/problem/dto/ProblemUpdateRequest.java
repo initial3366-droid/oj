@@ -19,6 +19,7 @@ public record ProblemUpdateRequest(
     @NotBlank(message = "请输入题目描述") String statement,
     String inputFormat,
     String outputFormat,
+    @Size(max = 200_000, message = "特殊判题代码不能超过200000个字符") String checkerSource,
     @Min(value = 1, message = "难度不能小于1") @Max(value = 5, message = "难度不能大于5") Integer difficulty,
     List<String> tags,
     Long folderId,

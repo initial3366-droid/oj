@@ -23,6 +23,7 @@ public record SubmissionVO(
     Long identityId,
     LocalDateTime submitTime,
     LocalDateTime createdAt,
+    Integer codeLength,
     Integer passedCaseCount,
     Integer totalCaseCount,
     String code,

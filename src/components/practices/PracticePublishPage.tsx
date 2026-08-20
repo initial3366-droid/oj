@@ -147,7 +147,8 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
         return;
       }
       const practiceRequest = getRequest<PageResult<Practice>>('/api/admin/v1/practices?page=1&pageSize=200');
-      const [practiceResult, classResult] = await Promise.all([practiceRequest, loadClasses()]);
+      const poolRequest = getRequest<PageResult<Problem>>('/api/admin/v1/problems?page=1&pageSize=500');
+      const [practiceResult, classResult, poolResult] = await Promise.all([practiceRequest, loadClasses(), poolRequest]);
       const source = practiceResult.list.find((item) => item.id === sourceId);
       if (!source || !source.canPublish) {
         throw new Error('题单不存在或无权发布');
@@ -155,6 +156,7 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
       setPractice(source);
       setProblems(source.problems ?? []);
       setClasses(classResult);
+      setPool(poolResult.list);
       setVisibility(Object.fromEntries((source.problems ?? []).map((problem) => [problem.id, true])));
       form.setFieldsValue({
         title: source.title,
@@ -310,23 +312,24 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
         title="题目公开设置"
         extra={<Tag color="arcoblue">公开 {visibleCount} / {problems.length}</Tag>}
       >
-        {isEdit && (
-          <Space style={{ marginBottom: 16 }}>
-            <Select
-              showSearch
-              allowClear
-              placeholder="选择要添加的题目"
-              style={{ width: 320 }}
-              value={addProblemId}
-              onChange={(value) => setAddProblemId(value)}
-            >
-              {addableProblems.map((problem) => (
-                <Select.Option key={problem.id} value={problem.id}>{problem.id}. {problem.title}</Select.Option>
-              ))}
-            </Select>
-            <Button type="primary" icon={<IconPlus />} disabled={addProblemId == null} onClick={addProblem}>添加题目</Button>
-          </Space>
-        )}
+        <Typography.Paragraph style={{ color: 'var(--color-text-3)', fontSize: 13, marginTop: 0 }}>
+          可在此新增或移除题目，仅影响本次发布，不会改动原题单。
+        </Typography.Paragraph>
+        <Space style={{ marginBottom: 16 }}>
+          <Select
+            showSearch
+            allowClear
+            placeholder="选择要添加的题目"
+            style={{ width: 320 }}
+            value={addProblemId}
+            onChange={(value) => setAddProblemId(value)}
+          >
+            {addableProblems.map((problem) => (
+              <Select.Option key={problem.id} value={problem.id}>{problem.id}. {problem.title}</Select.Option>
+            ))}
+          </Select>
+          <Button type="primary" icon={<IconPlus />} disabled={addProblemId == null} onClick={addProblem}>添加题目</Button>
+        </Space>
         <Table
           rowKey="id"
           pagination={false}
@@ -348,14 +351,14 @@ export function PracticePublishPage({ variant }: { variant: Variant }) {
                 />
               ),
             },
-            ...(isEdit ? [{
+            {
               title: '操作',
               width: 100,
               align: 'center' as const,
               render: (_: unknown, problem: Problem) => (
                 <Button type="text" size="small" status="danger" icon={<IconDelete />} onClick={() => removeProblem(problem.id)}>移除</Button>
               ),
-            }] : []),
+            },
           ]}
         />
       </Card>

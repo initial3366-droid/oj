@@ -1,8 +1,8 @@
 /**
  * 比赛状态Tag组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Tag } from '@douyinfe/semi-ui';
-import { IconClock, IconPlay, IconStop } from '@douyinfe/semi-icons';
+import { Tag } from 'antd';
+import { ClockCircleOutlined, CaretRightOutlined, StopOutlined } from '@ant-design/icons';
 
 /**
  * 比赛状态类型别名，明确该模块内部及 API 边界使用的数据结构。
@@ -37,7 +37,7 @@ export function ContestStatusTag({
       return {
         color: 'blue' as const,
         text: '未开始',
-        icon: <IconClock />,
+        icon: <ClockCircleOutlined />,
       };
     }
 
@@ -45,7 +45,7 @@ export function ContestStatusTag({
       return {
         color: 'green' as const,
         text: '进行中',
-        icon: <IconPlay />,
+        icon: <CaretRightOutlined />,
       };
     }
 
@@ -53,7 +53,7 @@ export function ContestStatusTag({
       return {
         color: 'grey' as const,
         text: '已结束',
-        icon: <IconStop />,
+        icon: <StopOutlined />,
       };
     }
 
@@ -68,10 +68,9 @@ export function ContestStatusTag({
 
   return (
     <Tag
-      color={config.color}
-      size={size}
-      prefixIcon={showIcon ? config.icon : undefined}
-      style={{ fontWeight: 500 }}
+      color={config.color === 'grey' ? 'default' : config.color}
+      icon={showIcon ? config.icon : undefined}
+      style={{ fontWeight: 500, fontSize: size === 'small' ? 12 : undefined }}
     >
       {config.text}
     </Tag>

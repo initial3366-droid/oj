@@ -1,0 +1,10 @@
+{
+  "base_url": "http://localhost:8080",
+  "contest_id": 1,
+  "problem_id": 1,
+  "num_users": 100,
+  "username_prefix": "testuser",
+  "password": "test123456",
+  "use_proxy": true,
+  "concurrent_batch": 20
+}

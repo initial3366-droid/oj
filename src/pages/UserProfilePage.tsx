@@ -1,8 +1,8 @@
 /**
  * 用户资料页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Avatar, Banner, Card, Spin, Tag, Typography } from '@douyinfe/semi-ui';
-import { IconUser } from '@douyinfe/semi-icons';
+import { Alert, Avatar, Card, Spin, Tag, Typography } from 'antd';
+import { UserOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchPublicUserProfile, type PublicUserProfile } from '../data/apiClient';
@@ -57,23 +57,35 @@ export function UserProfilePage() {
 
   return (
     <PageContainer title={profile?.displayName ?? '用户主页'} subtitle="User Profile">
-      {message && <Banner type="danger" description={message} closeIcon={null} style={{ marginBottom: 24 }} />}
-      <Card style={{ border: '1px solid var(--semi-color-border)' }}>
+      {message && <Alert type="error" message={message} showIcon={false} style={{ marginBottom: 24 }} />}
+      <Card style={{ border: '1px solid var(--qoj-color-border)' }}>
         {loading ? (
-          <div style={{ minHeight: 240, display: 'grid', placeItems: 'center' }}>
-            <Spin size="large" tip="加载中..." />
+          <div
+            style={{
+              minHeight: 240,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 12,
+            }}
+          >
+            <Spin size="large" />
+            <Typography.Text type="secondary">
+              加载中...
+            </Typography.Text>
           </div>
         ) : profile ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-              <Avatar size="large" color="blue">
-                {profile.displayName?.charAt(0)?.toUpperCase() || <IconUser />}
+              <Avatar size={56} style={{ backgroundColor: '#3b82f6' }}>
+                {profile.displayName?.charAt(0)?.toUpperCase() || <UserOutlined />}
               </Avatar>
               <div>
-                <Typography.Title heading={3} style={{ margin: 0 }}>
+                <Typography.Title level={3} style={{ margin: 0 }}>
                   {profile.displayName}
                 </Typography.Title>
-                <Typography.Text type="tertiary" style={{ display: 'block', marginTop: 6 }}>
+                <Typography.Text type="secondary" style={{ display: 'block', marginTop: 6 }}>
                   @{profile.username}
                 </Typography.Text>
               </div>
@@ -92,19 +104,19 @@ export function UserProfilePage() {
                 ['提交', profile.submitCount],
                 ['总分', profile.totalScore],
               ].map(([label, value]) => (
-                <div key={label} style={{ padding: 16, border: '1px solid var(--semi-color-border)', borderRadius: 8 }}>
-                  <Typography.Text type="tertiary" style={{ fontSize: 13 }}>{label}</Typography.Text>
-                  <Typography.Title heading={4} style={{ margin: '6px 0 0' }}>{value}</Typography.Title>
+                <div key={label} style={{ padding: 16, border: '1px solid var(--qoj-color-border)', borderRadius: 8 }}>
+                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>{label}</Typography.Text>
+                  <Typography.Title level={4} style={{ margin: '6px 0 0' }}>{value}</Typography.Title>
                 </div>
               ))}
             </div>
 
-            <Typography.Text type="tertiary">
+            <Typography.Text type="secondary">
               加入时间：{formatDate(profile.createdAt)}
             </Typography.Text>
           </div>
         ) : (
-          <Typography.Text type="tertiary">用户不存在</Typography.Text>
+          <Typography.Text type="secondary">用户不存在</Typography.Text>
         )}
       </Card>
     </PageContainer>

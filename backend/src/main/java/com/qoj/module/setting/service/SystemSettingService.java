@@ -49,7 +49,7 @@ public class SystemSettingService {
     private static final int DEFAULT_JUDGE_QUEUE_BATCH_SIZE = 2;
     private static final long DEFAULT_JUDGE_POLL_INTERVAL_MS = 1000L;
     private static final int DEFAULT_CCPCOJ_SESSION_TTL_MINUTES = 720;
-    private static final int DEFAULT_CCPCOJ_STALE_TASK_MINUTES = 15;
+    private static final int DEFAULT_JUDGE_STALE_TASK_MINUTES = 15;
     private static final Pattern CCPCOJ_USERNAME = Pattern.compile("[A-Za-z0-9._-]{1,60}");
     private static final Pattern CCPCOJ_PASSWORD = Pattern.compile("[A-Za-z0-9._~-]{12,128}");
     private static final Pattern COS_BUCKET = Pattern.compile("[a-z0-9][a-z0-9-]{0,49}-[0-9]{5,20}");
@@ -78,8 +78,7 @@ public class SystemSettingService {
         "c", "#include <stdio.h>\n\nint main(void) {\n    return 0;\n}",
         "cpp", "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    return 0;\n}",
         "python", "import sys\n\ndef solve():\n    pass\n\nif __name__ == \"__main__\":\n    solve()\n",
-        "java", "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    public static void main(String[] args) throws Exception {\n    }\n}",
-        "csharp", "using System;\n\npublic static class Program\n{\n    public static void Main()\n    {\n    }\n}"
+        "java", "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    public static void main(String[] args) throws Exception {\n    }\n}"
     );
 
     private final SystemSettingMapper settingMapper;
@@ -125,6 +124,9 @@ public class SystemSettingService {
 
         SystemSetting icpNumber = settingMapper.selectById("frontend.icp_number");
         vo.icpNumber = icpNumber != null ? icpNumber.settingValue : "";
+
+        SystemSetting mpsNumber = settingMapper.selectById("frontend.mps_number");
+        vo.mpsNumber = mpsNumber != null ? mpsNumber.settingValue : "";
 
         SystemSetting footerLink1Text = settingMapper.selectById("frontend.footer_link1_text");
         vo.footerLink1Text = footerLink1Text != null ? footerLink1Text.settingValue : "";
@@ -209,8 +211,10 @@ public class SystemSettingService {
         vo.hasCcpcojJudgePassword = hasText(vo.ccpcojJudgePassword);
         vo.ccpcojSessionTtlMinutes = positiveIntSetting(
             "judge.ccpcoj_session_ttl_minutes", DEFAULT_CCPCOJ_SESSION_TTL_MINUTES);
+        // Kept under the existing key for backward compatibility; it applies
+        // to both CCPCOJ pull claims and embedded GO_JUDGE claims.
         vo.ccpcojStaleTaskMinutes = positiveIntSetting(
-            "judge.ccpcoj_stale_task_minutes", DEFAULT_CCPCOJ_STALE_TASK_MINUTES);
+            "judge.ccpcoj_stale_task_minutes", DEFAULT_JUDGE_STALE_TASK_MINUTES);
         return vo;
     }
 
@@ -275,7 +279,6 @@ public class SystemSettingService {
         vo.cpp = codeTemplateValue(config, "cpp");
         vo.python = codeTemplateValue(config, "python");
         vo.java = codeTemplateValue(config, "java");
-        vo.csharp = codeTemplateValue(config, "csharp");
         return vo;
     }
 
@@ -535,7 +538,6 @@ public class SystemSettingService {
         config.put("cpp", validateCodeTemplate(request.cpp, "C++"));
         config.put("python", validateCodeTemplate(request.python, "Python"));
         config.put("java", validateCodeTemplate(request.java, "Java"));
-        config.put("csharp", validateCodeTemplate(request.csharp, "C#"));
         String serialized = toJson(config);
         if (serialized.getBytes(StandardCharsets.UTF_8).length > MAX_CODE_TEMPLATE_CONFIG_BYTES) {
             throw new BizException(ErrorCode.BAD_REQUEST, "全部默认代码合计不能超过 60000 字节");
@@ -593,6 +595,7 @@ public class SystemSettingService {
         Boolean maintenanceMode,
         String footerText,
         String icpNumber,
+        String mpsNumber,
         String footerLink1Text,
         String footerLink1Url,
         String footerLink2Text,
@@ -604,6 +607,7 @@ public class SystemSettingService {
         updateMaintenanceMode(maintenanceMode, authUser);
         updateFooterText(footerText, authUser);
         updateIcpNumber(icpNumber, authUser);
+        updateMpsNumber(mpsNumber, authUser);
         updateFooterLinks(
             footerLink1Text,
             footerLink1Url,
@@ -627,6 +631,14 @@ public class SystemSettingService {
     @Transactional
     public void updateIcpNumber(String icpNumber, AuthUser authUser) {
         updateSetting("frontend.icp_number", icpNumber == null ? "" : icpNumber, authUser.getUsername());
+    }
+
+    /**
+     * 更新公安备案号
+     */
+    @Transactional
+    public void updateMpsNumber(String mpsNumber, AuthUser authUser) {
+        updateSetting("frontend.mps_number", mpsNumber == null ? "" : mpsNumber, authUser.getUsername());
     }
 
     /**
@@ -777,6 +789,7 @@ public class SystemSettingService {
             case "frontend.site_logo" -> "站点Logo";
             case "frontend.footer_text" -> "底部文案";
             case "frontend.icp_number" -> "备案号";
+            case "frontend.mps_number" -> "公安备案号";
             case "frontend.footer_link1_text" -> "底部链接1文字";
             case "frontend.footer_link1_url" -> "底部链接1地址";
             case "frontend.footer_link2_text" -> "底部链接2文字";
@@ -792,7 +805,7 @@ public class SystemSettingService {
             case "judge.ccpcoj_username" -> "CCPCOJ 评测机账号";
             case "judge.ccpcoj_password_hash" -> "CCPCOJ 评测机密码哈希";
             case "judge.ccpcoj_session_ttl_minutes" -> "CCPCOJ 评测机会话有效期";
-            case "judge.ccpcoj_stale_task_minutes" -> "CCPCOJ 任务失联重取时间";
+            case "judge.ccpcoj_stale_task_minutes" -> "判题任务失联重取时间";
             case AGENT_CONFIG_KEY -> "AI助手配置";
             case OSS_CONFIG_KEY -> "OSS配置";
             case CODE_TEMPLATE_CONFIG_KEY -> "各语言默认代码模板";
@@ -836,7 +849,7 @@ public class SystemSettingService {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常；可能调用外部判题或网关服务。
              */
-            throw new BizException(ErrorCode.BAD_REQUEST, "CCPCOJ 任务失联时间必须在 2-1440 分钟之间");
+            throw new BizException(ErrorCode.BAD_REQUEST, "判题任务失联时间必须在 2-1440 分钟之间");
         }
         if (!"go-judge".equals(settings.mode) || !"per-contest".equals(settings.contestMode)) {
             /**

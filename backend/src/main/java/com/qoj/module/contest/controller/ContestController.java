@@ -5,6 +5,7 @@ import com.qoj.common.PageResult;
 import com.qoj.module.contest.dto.ContestRegisterRequest;
 import com.qoj.module.contest.service.ContestService;
 import com.qoj.module.contest.vo.ContestRegistrationOptionVO;
+import com.qoj.module.contest.vo.ContestAcceptedProblemVO;
 import com.qoj.module.problem.vo.ProblemVO;
 import com.qoj.module.contest.vo.ContestScoreboardVO;
 import com.qoj.module.contest.vo.ContestVO;
@@ -45,6 +46,14 @@ public class ContestController {
         return ApiResponse.ok(contestService.list(page, pageSize));
     }
 
+    @GetMapping("/my")
+    public ApiResponse<PageResult<ContestVO>> myContests(
+        @RequestParam(defaultValue = "1") int page,
+        @RequestParam(defaultValue = "10") int pageSize
+    ) {
+        return ApiResponse.ok(contestService.myContests(page, pageSize));
+    }
+
     @GetMapping("/{id}")
     public ApiResponse<ContestVO> detail(@PathVariable long id) {
         return ApiResponse.ok(contestService.detail(id));
@@ -59,6 +68,11 @@ public class ContestController {
     @GetMapping("/{id}/registration-options")
     public ApiResponse<List<ContestRegistrationOptionVO>> registrationOptions(@PathVariable long id) {
         return ApiResponse.ok(contestService.registrationOptions(id));
+    }
+
+    @GetMapping("/{id}/my-accepted-problems")
+    public ApiResponse<List<ContestAcceptedProblemVO>> myAcceptedProblems(@PathVariable long id) {
+        return ApiResponse.ok(contestService.myAcceptedProblems(id));
     }
 
     @GetMapping("/{id}/problems/{contestProblemId}")

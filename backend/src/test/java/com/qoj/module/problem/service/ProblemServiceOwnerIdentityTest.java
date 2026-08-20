@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.module.problem.mapper.ProblemFolderMapper;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.mapper.ProblemTestCaseMapper;
+import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.submission.mapper.SubmissionMapper;
 import com.qoj.module.submission.mapper.UserProblemStatusMapper;
 import com.qoj.module.user.entity.AdminUser;
@@ -13,15 +14,23 @@ import com.qoj.module.teacher.mapper.MajorMapper;
 import com.qoj.module.teacher.mapper.TeacherMapper;
 import com.qoj.security.policy.ProblemAccessPolicy;
 import com.qoj.security.policy.ResourceAccessService;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -76,5 +85,43 @@ class ProblemServiceOwnerIdentityTest {
 
         assertEquals("题库管理员", ownerName);
         verify(userMapper, never()).selectById(3L);
+    }
+
+    @Test
+    void hiddenSpjCasesMayOmitTheJuryOutput() {
+        assertTrue(ProblemService.requiresExpectedOutput(false, null));
+        assertTrue(ProblemService.requiresExpectedOutput(true, "#include \"testlib.h\""));
+        assertFalse(ProblemService.requiresExpectedOutput(false, "#include \"testlib.h\""));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void spjZipMayOmitOutputFiles() throws IOException {
+        MockMultipartFile file = new MockMultipartFile(
+            "file",
+            "tests.zip",
+            "application/zip",
+            zipWithEntry("1.in", "")
+        );
+
+        List<ProblemTestCase> testCases = ReflectionTestUtils.invokeMethod(
+            problemService,
+            "parseZipTestCases",
+            file,
+            true
+        );
+
+        assertEquals(1, testCases.size());
+        assertEquals("", testCases.get(0).outputData);
+    }
+
+    private byte[] zipWithEntry(String name, String content) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            zip.putNextEntry(new ZipEntry(name));
+            zip.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+        return bytes.toByteArray();
     }
 }

@@ -1,0 +1,526 @@
+/* QOJ design tokens (converted from Semi theme variable dump). */
+:root {
+  --qoj-amber-0: 254,251,235;
+  --qoj-amber-1: 252,245,206;
+  --qoj-amber-2: 249,232,158;
+  --qoj-amber-3: 246,216,111;
+  --qoj-amber-4: 243,198,65;
+  --qoj-amber-5: 240,177,20;
+  --qoj-amber-6: 200,138,15;
+  --qoj-amber-7: 160,102,10;
+  --qoj-amber-8: 120,70,6;
+  --qoj-amber-9: 80,43,3;
+  --qoj-black: 0,0,0;
+  --qoj-blue-0: 234,245,255;
+  --qoj-blue-1: 203,231,254;
+  --qoj-blue-2: 152,205,253;
+  --qoj-blue-3: 101,178,252;
+  --qoj-blue-4: 50,149,251;
+  --qoj-blue-5: 0,100,250;
+  --qoj-blue-6: 0,98,214;
+  --qoj-blue-7: 0,79,179;
+  --qoj-blue-8: 0,61,143;
+  --qoj-blue-9: 0,44,107;
+  --qoj-cyan-0: 229,247,248;
+  --qoj-cyan-1: 194,239,240;
+  --qoj-cyan-2: 138,221,226;
+  --qoj-cyan-3: 88,203,211;
+  --qoj-cyan-4: 44,184,197;
+  --qoj-cyan-5: 5,164,182;
+  --qoj-cyan-6: 3,134,152;
+  --qoj-cyan-7: 1,105,121;
+  --qoj-cyan-8: 0,77,91;
+  --qoj-cyan-9: 0,50,61;
+  --qoj-green-0: 236,247,236;
+  --qoj-green-1: 208,240,209;
+  --qoj-green-2: 164,224,167;
+  --qoj-green-3: 125,209,130;
+  --qoj-green-4: 90,194,98;
+  --qoj-green-5: 59,179,70;
+  --qoj-green-6: 48,149,59;
+  --qoj-green-7: 37,119,47;
+  --qoj-green-8: 27,89,36;
+  --qoj-green-9: 17,60,24;
+  --qoj-grey-0: 249,249,249;
+  --qoj-grey-1: 230,232,234;
+  --qoj-grey-2: 198,202,205;
+  --qoj-grey-3: 167,171,176;
+  --qoj-grey-4: 136,141,146;
+  --qoj-grey-5: 107,112,117;
+  --qoj-grey-6: 85,91,97;
+  --qoj-grey-7: 65,70,76;
+  --qoj-grey-8: 46,50,56;
+  --qoj-grey-9: 28,31,35;
+  --qoj-indigo-0: 236,239,248;
+  --qoj-indigo-1: 209,216,240;
+  --qoj-indigo-2: 167,179,225;
+  --qoj-indigo-3: 128,144,211;
+  --qoj-indigo-4: 94,111,196;
+  --qoj-indigo-5: 63,81,181;
+  --qoj-indigo-6: 51,66,161;
+  --qoj-indigo-7: 40,52,140;
+  --qoj-indigo-8: 31,40,120;
+  --qoj-indigo-9: 23,29,99;
+  --qoj-light-blue-0: 233,247,253;
+  --qoj-light-blue-1: 201,236,252;
+  --qoj-light-blue-2: 149,216,248;
+  --qoj-light-blue-3: 98,195,245;
+  --qoj-light-blue-4: 48,172,241;
+  --qoj-light-blue-5: 0,149,238;
+  --qoj-light-blue-6: 0,123,202;
+  --qoj-light-blue-7: 0,99,167;
+  --qoj-light-blue-8: 0,75,131;
+  --qoj-light-blue-9: 0,53,95;
+  --qoj-light-green-0: 243,248,236;
+  --qoj-light-green-1: 227,240,208;
+  --qoj-light-green-2: 200,226,165;
+  --qoj-light-green-3: 173,211,126;
+  --qoj-light-green-4: 147,197,91;
+  --qoj-light-green-5: 123,182,60;
+  --qoj-light-green-6: 100,152,48;
+  --qoj-light-green-7: 78,121,38;
+  --qoj-light-green-8: 57,91,27;
+  --qoj-light-green-9: 37,61,18;
+  --qoj-lime-0: 242,250,230;
+  --qoj-lime-1: 227,246,197;
+  --qoj-lime-2: 203,237,142;
+  --qoj-lime-3: 183,227,91;
+  --qoj-lime-4: 167,218,44;
+  --qoj-lime-5: 155,209,0;
+  --qoj-lime-6: 126,174,0;
+  --qoj-lime-7: 99,139,0;
+  --qoj-lime-8: 72,104,0;
+  --qoj-lime-9: 47,70,0;
+  --qoj-orange-0: 255,248,234;
+  --qoj-orange-1: 254,238,204;
+  --qoj-orange-2: 254,217,152;
+  --qoj-orange-3: 253,193,101;
+  --qoj-orange-4: 253,166,51;
+  --qoj-orange-5: 252,136,0;
+  --qoj-orange-6: 210,103,0;
+  --qoj-orange-7: 168,74,0;
+  --qoj-orange-8: 126,49,0;
+  --qoj-orange-9: 84,29,0;
+  --qoj-pink-0: 253,236,239;
+  --qoj-pink-1: 251,207,216;
+  --qoj-pink-2: 246,160,181;
+  --qoj-pink-3: 242,115,150;
+  --qoj-pink-4: 237,72,123;
+  --qoj-pink-5: 233,30,99;
+  --qoj-pink-6: 197,19,86;
+  --qoj-pink-7: 162,11,72;
+  --qoj-pink-8: 126,5,58;
+  --qoj-pink-9: 90,1,43;
+  --qoj-purple-0: 247,233,247;
+  --qoj-purple-1: 239,202,240;
+  --qoj-purple-2: 221,155,224;
+  --qoj-purple-3: 201,111,209;
+  --qoj-purple-4: 180,73,194;
+  --qoj-purple-5: 158,40,179;
+  --qoj-purple-6: 135,30,158;
+  --qoj-purple-7: 113,22,138;
+  --qoj-purple-8: 92,15,117;
+  --qoj-purple-9: 73,10,97;
+  --qoj-red-0: 254,242,237;
+  --qoj-red-1: 254,221,210;
+  --qoj-red-2: 253,183,165;
+  --qoj-red-3: 251,144,120;
+  --qoj-red-4: 250,102,76;
+  --qoj-red-5: 249,57,32;
+  --qoj-red-6: 213,37,21;
+  --qoj-red-7: 178,20,12;
+  --qoj-red-8: 142,8,5;
+  --qoj-red-9: 106,1,3;
+  --qoj-teal-0: 228,247,244;
+  --qoj-teal-1: 192,240,232;
+  --qoj-teal-2: 135,224,211;
+  --qoj-teal-3: 84,209,193;
+  --qoj-teal-4: 39,194,176;
+  --qoj-teal-5: 0,179,161;
+  --qoj-teal-6: 0,149,137;
+  --qoj-teal-7: 0,119,111;
+  --qoj-teal-8: 0,89,85;
+  --qoj-teal-9: 0,60,58;
+  --qoj-violet-0: 243,237,249;
+  --qoj-violet-1: 226,209,244;
+  --qoj-violet-2: 196,167,233;
+  --qoj-violet-3: 166,127,221;
+  --qoj-violet-4: 136,91,210;
+  --qoj-violet-5: 106,58,199;
+  --qoj-violet-6: 87,47,179;
+  --qoj-violet-7: 70,37,158;
+  --qoj-violet-8: 54,28,138;
+  --qoj-violet-9: 40,20,117;
+  --qoj-white: 255,255,255;
+  --qoj-yellow-0: 255,253,234;
+  --qoj-yellow-1: 254,251,203;
+  --qoj-yellow-2: 253,243,152;
+  --qoj-yellow-3: 252,232,101;
+  --qoj-yellow-4: 251,218,50;
+  --qoj-yellow-5: 250,200,0;
+  --qoj-yellow-6: 208,170,0;
+  --qoj-yellow-7: 167,139,0;
+  --qoj-yellow-8: 125,106,0;
+  --qoj-yellow-9: 83,72,0;
+  --qoj-ai-purple-0: 248,237,255;
+  --qoj-ai-purple-1: 242,218,255;
+  --qoj-ai-purple-2: 227,181,255;
+  --qoj-ai-purple-3: 209,145,255;
+  --qoj-ai-purple-4: 189,108,255;
+  --qoj-ai-purple-5: 166,71,255;
+  --qoj-ai-purple-6: 134,54,219;
+  --qoj-ai-purple-7: 105,40,184;
+  --qoj-ai-purple-8: 78,28,148;
+  --qoj-ai-purple-9: 54,18,112;
+  --qoj-ai-general-0-3: 239,247,255;
+  --qoj-ai-general-0-2: 244,244,255;
+  --qoj-ai-general-0-1: 248,237,255;
+  --qoj-ai-general-0-0: 255,242,255;
+  --qoj-ai-general-1-3: 213,235,255;
+  --qoj-ai-general-1-2: 223,224,255;
+  --qoj-ai-general-1-1: 242,218,255;
+  --qoj-ai-general-1-0: 255,218,254;
+  --qoj-ai-general-2-3: 171,213,255;
+  --qoj-ai-general-2-2: 193,192,255;
+  --qoj-ai-general-2-1: 227,181,255;
+  --qoj-ai-general-2-0: 254,181,255;
+  --qoj-ai-general-3-3: 130,190,255;
+  --qoj-ai-general-3-2: 163,160,255;
+  --qoj-ai-general-3-1: 209,145,255;
+  --qoj-ai-general-3-0: 249,143,255;
+  --qoj-ai-general-4-3: 88,166,255;
+  --qoj-ai-general-4-2: 134,129,255;
+  --qoj-ai-general-4-1: 189,108,255;
+  --qoj-ai-general-4-0: 242,106,255;
+  --qoj-ai-general-5-3: 46,140,255;
+  --qoj-ai-general-5-2: 107,97,255;
+  --qoj-ai-general-5-1: 166,71,255;
+  --qoj-ai-general-5-0: 233,69,255;
+  --qoj-ai-general-6-3: 33,114,219;
+  --qoj-ai-general-6-2: 88,77,219;
+  --qoj-ai-general-6-1: 134,54,219;
+  --qoj-ai-general-6-0: 194,53,219;
+  --qoj-ai-general-7-3: 22,89,184;
+  --qoj-ai-general-7-2: 71,59,184;
+  --qoj-ai-general-7-1: 105,40,184;
+  --qoj-ai-general-7-0: 157,39,184;
+  --qoj-ai-general-8-3: 13,67,148;
+  --qoj-ai-general-8-2: 55,43,148;
+  --qoj-ai-general-8-1: 78,28,148;
+  --qoj-ai-general-8-0: 121,27,148;
+  --qoj-ai-general-9-3: 7,47,112;
+  --qoj-ai-general-9-2: 40,29,112;
+  --qoj-ai-general-9-1: 54,18,112;
+  --qoj-ai-general-9-0: 88,17,112;
+  --qoj-ai-general-0: linear-gradient(278deg, rgba(var(--qoj-ai-general-0-0)) 0%, rgba(var(--qoj-ai-general-0-1)) 30%, rgba(var(--qoj-ai-general-0-2)) 60%, rgba(var(--qoj-ai-general-0-3)) 100%);
+  --qoj-ai-general-1: linear-gradient(278deg, rgba(var(--qoj-ai-general-1-0)) 0%, rgba(var(--qoj-ai-general-1-1)) 30%, rgba(var(--qoj-ai-general-1-2)) 60%, rgba(var(--qoj-ai-general-1-3)) 100%);
+  --qoj-ai-general-2: linear-gradient(278deg, rgba(var(--qoj-ai-general-2-0)) 0%, rgba(var(--qoj-ai-general-2-1)) 30%, rgba(var(--qoj-ai-general-2-2)) 60%, rgba(var(--qoj-ai-general-2-3)) 100%);
+  --qoj-ai-general-3: linear-gradient(278deg, rgba(var(--qoj-ai-general-3-0)) 0%, rgba(var(--qoj-ai-general-3-1)) 30%, rgba(var(--qoj-ai-general-3-2)) 60%, rgba(var(--qoj-ai-general-3-3)) 100%);
+  --qoj-ai-general-4: linear-gradient(278deg, rgba(var(--qoj-ai-general-4-0)) 0%, rgba(var(--qoj-ai-general-4-1)) 30%, rgba(var(--qoj-ai-general-4-2)) 60%, rgba(var(--qoj-ai-general-4-3)) 100%);
+  --qoj-ai-general-5: linear-gradient(278deg, rgba(var(--qoj-ai-general-5-0)) 0%, rgba(var(--qoj-ai-general-5-1)) 30%, rgba(var(--qoj-ai-general-5-2)) 60%, rgba(var(--qoj-ai-general-5-3)) 100%);
+  --qoj-ai-general-6: linear-gradient(278deg, rgba(var(--qoj-ai-general-6-0)) 0%, rgba(var(--qoj-ai-general-6-1)) 30%, rgba(var(--qoj-ai-general-6-2)) 60%, rgba(var(--qoj-ai-general-6-3)) 100%);
+  --qoj-ai-general-7: linear-gradient(278deg, rgba(var(--qoj-ai-general-7-0)) 0%, rgba(var(--qoj-ai-general-7-1)) 30%, rgba(var(--qoj-ai-general-7-2)) 60%, rgba(var(--qoj-ai-general-7-3)) 100%);
+  --qoj-ai-general-8: linear-gradient(278deg, rgba(var(--qoj-ai-general-8-0)) 0%, rgba(var(--qoj-ai-general-8-1)) 30%, rgba(var(--qoj-ai-general-8-2)) 60%, rgba(var(--qoj-ai-general-8-3)) 100%);
+  --qoj-ai-general-9: linear-gradient(278deg, rgba(var(--qoj-ai-general-9-0)) 0%, rgba(var(--qoj-ai-general-9-1)) 30%, rgba(var(--qoj-ai-general-9-2)) 60%, rgba(var(--qoj-ai-general-9-3)) 100%);
+
+}
+
+:root[data-theme="dark"] {
+  --qoj-red-0: 108,9,11;
+  --qoj-red-1: 144,17,16;
+  --qoj-red-2: 180,32,25;
+  --qoj-red-3: 215,51,36;
+  --qoj-red-4: 251,73,50;
+  --qoj-red-5: 252,114,90;
+  --qoj-red-6: 253,153,131;
+  --qoj-red-7: 253,190,172;
+  --qoj-red-8: 254,224,213;
+  --qoj-red-9: 255,243,239;
+  --qoj-pink-0: 92,7,48;
+  --qoj-pink-1: 128,14,65;
+  --qoj-pink-2: 164,23,81;
+  --qoj-pink-3: 199,34,97;
+  --qoj-pink-4: 235,47,113;
+  --qoj-pink-5: 239,86,134;
+  --qoj-pink-6: 243,126,159;
+  --qoj-pink-7: 247,168,188;
+  --qoj-pink-8: 251,211,220;
+  --qoj-pink-9: 253,238,241;
+  --qoj-purple-0: 74,16,97;
+  --qoj-purple-1: 94,23,118;
+  --qoj-purple-2: 115,31,138;
+  --qoj-purple-3: 137,40,159;
+  --qoj-purple-4: 160,51,179;
+  --qoj-purple-5: 181,83,194;
+  --qoj-purple-6: 202,120,209;
+  --qoj-purple-7: 221,160,225;
+  --qoj-purple-8: 239,206,240;
+  --qoj-purple-9: 247,235,247;
+  --qoj-violet-0: 64,27,119;
+  --qoj-violet-1: 76,36,140;
+  --qoj-violet-2: 88,46,160;
+  --qoj-violet-3: 100,57,181;
+  --qoj-violet-4: 114,70,201;
+  --qoj-violet-5: 136,101,212;
+  --qoj-violet-6: 162,136,223;
+  --qoj-violet-7: 190,173,233;
+  --qoj-violet-8: 221,212,244;
+  --qoj-violet-9: 241,238,250;
+  --qoj-indigo-0: 23,30,101;
+  --qoj-indigo-1: 32,41,122;
+  --qoj-indigo-2: 41,54,142;
+  --qoj-indigo-3: 52,68,163;
+  --qoj-indigo-4: 64,83,183;
+  --qoj-indigo-5: 95,113,197;
+  --qoj-indigo-6: 129,145,212;
+  --qoj-indigo-7: 167,180,226;
+  --qoj-indigo-8: 209,216,241;
+  --qoj-indigo-9: 237,239,248;
+  --qoj-blue-0: 5,49,112;
+  --qoj-blue-1: 10,70,148;
+  --qoj-blue-2: 19,92,184;
+  --qoj-blue-3: 29,117,219;
+  --qoj-blue-4: 41,144,255;
+  --qoj-blue-5: 84,169,255;
+  --qoj-blue-6: 127,193,255;
+  --qoj-blue-7: 169,215,255;
+  --qoj-blue-8: 212,236,255;
+  --qoj-blue-9: 239,248,255;
+  --qoj-light-blue-0: 0,55,97;
+  --qoj-light-blue-1: 0,77,133;
+  --qoj-light-blue-2: 3,102,169;
+  --qoj-light-blue-3: 10,129,204;
+  --qoj-light-blue-4: 19,159,240;
+  --qoj-light-blue-5: 64,180,243;
+  --qoj-light-blue-6: 110,200,246;
+  --qoj-light-blue-7: 157,220,249;
+  --qoj-light-blue-8: 206,238,252;
+  --qoj-light-blue-9: 235,248,254;
+  --qoj-cyan-0: 4,52,61;
+  --qoj-cyan-1: 7,79,92;
+  --qoj-cyan-2: 10,108,123;
+  --qoj-cyan-3: 14,137,153;
+  --qoj-cyan-4: 19,168,184;
+  --qoj-cyan-5: 56,187,198;
+  --qoj-cyan-6: 98,205,212;
+  --qoj-cyan-7: 145,223,227;
+  --qoj-cyan-8: 198,239,241;
+  --qoj-cyan-9: 231,247,248;
+  --qoj-teal-0: 2,60,57;
+  --qoj-teal-1: 4,90,85;
+  --qoj-teal-2: 7,119,111;
+  --qoj-teal-3: 10,149,136;
+  --qoj-teal-4: 14,179,161;
+  --qoj-teal-5: 51,194,176;
+  --qoj-teal-6: 94,209,193;
+  --qoj-teal-7: 142,225,211;
+  --qoj-teal-8: 196,240,232;
+  --qoj-teal-9: 230,247,244;
+  --qoj-green-0: 18,60,25;
+  --qoj-green-1: 28,90,37;
+  --qoj-green-2: 39,119,49;
+  --qoj-green-3: 50,149,61;
+  --qoj-green-4: 62,179,73;
+  --qoj-green-5: 93,194,100;
+  --qoj-green-6: 127,209,132;
+  --qoj-green-7: 166,225,168;
+  --qoj-green-8: 208,240,209;
+  --qoj-green-9: 236,247,236;
+  --qoj-light-green-0: 38,61,19;
+  --qoj-light-green-1: 59,92,29;
+  --qoj-light-green-2: 81,123,40;
+  --qoj-light-green-3: 103,153,52;
+  --qoj-light-green-4: 127,184,64;
+  --qoj-light-green-5: 151,198,95;
+  --qoj-light-green-6: 176,212,129;
+  --qoj-light-green-7: 201,227,167;
+  --qoj-light-green-8: 228,241,209;
+  --qoj-light-green-9: 243,248,237;
+  --qoj-lime-0: 49,70,3;
+  --qoj-lime-1: 75,105,5;
+  --qoj-lime-2: 103,141,9;
+  --qoj-lime-3: 132,176,12;
+  --qoj-lime-4: 162,211,17;
+  --qoj-lime-5: 174,220,58;
+  --qoj-lime-6: 189,229,102;
+  --qoj-lime-7: 207,237,150;
+  --qoj-lime-8: 229,246,201;
+  --qoj-lime-9: 243,251,233;
+  --qoj-yellow-0: 84,73,3;
+  --qoj-yellow-1: 126,108,6;
+  --qoj-yellow-2: 168,142,10;
+  --qoj-yellow-3: 210,175,15;
+  --qoj-yellow-4: 252,206,20;
+  --qoj-yellow-5: 253,222,67;
+  --qoj-yellow-6: 253,235,113;
+  --qoj-yellow-7: 254,245,160;
+  --qoj-yellow-8: 254,251,208;
+  --qoj-yellow-9: 255,254,236;
+  --qoj-amber-0: 81,46,9;
+  --qoj-amber-1: 121,75,15;
+  --qoj-amber-2: 161,107,22;
+  --qoj-amber-3: 202,143,30;
+  --qoj-amber-4: 242,183,38;
+  --qoj-amber-5: 245,202,80;
+  --qoj-amber-6: 247,219,122;
+  --qoj-amber-7: 250,234,166;
+  --qoj-amber-8: 252,246,210;
+  --qoj-amber-9: 254,251,237;
+  --qoj-orange-0: 85,31,3;
+  --qoj-orange-1: 128,53,6;
+  --qoj-orange-2: 170,80,10;
+  --qoj-orange-3: 213,111,15;
+  --qoj-orange-4: 255,146,20;
+  --qoj-orange-5: 255,174,67;
+  --qoj-orange-6: 255,199,114;
+  --qoj-orange-7: 255,221,161;
+  --qoj-orange-8: 255,239,208;
+  --qoj-orange-9: 255,249,237;
+  --qoj-grey-0: 28,31,35;
+  --qoj-grey-1: 46,50,56;
+  --qoj-grey-2: 65,70,76;
+  --qoj-grey-3: 85,91,97;
+  --qoj-grey-4: 107,112,117;
+  --qoj-grey-5: 136,141,146;
+  --qoj-grey-6: 167,171,176;
+  --qoj-grey-7: 198,202,205;
+  --qoj-grey-8: 230,232,234;
+  --qoj-grey-9: 249,249,249;
+  --qoj-white: 255, 255, 255;
+  --qoj-black: 0, 0, 0;
+  --qoj-ai-purple-0: 58,23,112;
+  --qoj-ai-purple-1: 83,35,148;
+  --qoj-ai-purple-2: 111,49,184;
+  --qoj-ai-purple-3: 141,65,219;
+  --qoj-ai-purple-4: 167,68,255;
+  --qoj-ai-purple-5: 195,117,255;
+  --qoj-ai-purple-6: 213,152,255;
+  --qoj-ai-purple-7: 229,186,255;
+  --qoj-ai-purple-8: 243,221,255;
+  --qoj-ai-purple-9: 251,243,255;
+  --qoj-ai-general-0-0: 9,44,100;
+  --qoj-ai-general-0-1: 39,29,108;
+  --qoj-ai-general-0-2: 58,23,112;
+  --qoj-ai-general-0-3: 80,18,101;
+  --qoj-ai-general-1-0: 17,64,136;
+  --qoj-ai-general-1-1: 54,43,144;
+  --qoj-ai-general-1-2: 83,35,148;
+  --qoj-ai-general-1-3: 113,28,137;
+  --qoj-ai-general-2-0: 26,86,172;
+  --qoj-ai-general-2-1: 70,59,180;
+  --qoj-ai-general-2-2: 111,49,184;
+  --qoj-ai-general-2-3: 148,41,173;
+  --qoj-ai-general-3-0: 38,111,207;
+  --qoj-ai-general-3-1: 88,78,215;
+  --qoj-ai-general-3-2: 141,65,219;
+  --qoj-ai-general-3-3: 185,55,208;
+  --qoj-ai-general-4-0: 35,127,240;
+  --qoj-ai-general-4-1: 94,84,248;
+  --qoj-ai-general-4-2: 167,68,255;
+  --qoj-ai-general-4-3: 219,56,241;
+  --qoj-ai-general-5-0: 91,162,245;
+  --qoj-ai-general-5-1: 134,129,252;
+  --qoj-ai-general-5-2: 195,117,255;
+  --qoj-ai-general-5-3: 234,107,246;
+  --qoj-ai-general-6-0: 131,187,248;
+  --qoj-ai-general-6-1: 163,160,253;
+  --qoj-ai-general-6-2: 213,152,255;
+  --qoj-ai-general-6-3: 243,143,248;
+  --qoj-ai-general-7-0: 172,210,250;
+  --qoj-ai-general-7-1: 192,192,253;
+  --qoj-ai-general-7-2: 229,186,255;
+  --qoj-ai-general-7-3: 249,180,251;
+  --qoj-ai-general-8-0: 213,233,253;
+  --qoj-ai-general-8-1: 223,223,254;
+  --qoj-ai-general-8-2: 243,221,255;
+  --qoj-ai-general-8-3: 253,217,252;
+  --qoj-ai-general-9-0: 239,247,254;
+  --qoj-ai-general-9-1: 244,244,255;
+  --qoj-ai-general-9-2: 251,243,255;
+  --qoj-ai-general-9-3: 254,241,254;
+  --qoj-ai-general-0: linear-gradient(278deg, rgba(var(--qoj-ai-general-0-0)) 0%, rgba(var(--qoj-ai-general-0-1)) 30%, rgba(var(--qoj-ai-general-0-2)) 60%, rgba(var(--qoj-ai-general-0-3)) 100%);
+  --qoj-ai-general-1: linear-gradient(278deg, rgba(var(--qoj-ai-general-1-0)) 0%, rgba(var(--qoj-ai-general-1-1)) 30%, rgba(var(--qoj-ai-general-1-2)) 60%, rgba(var(--qoj-ai-general-1-3)) 100%);
+  --qoj-ai-general-2: linear-gradient(278deg, rgba(var(--qoj-ai-general-2-0)) 0%, rgba(var(--qoj-ai-general-2-1)) 30%, rgba(var(--qoj-ai-general-2-2)) 60%, rgba(var(--qoj-ai-general-2-3)) 100%);
+  --qoj-ai-general-3: linear-gradient(278deg, rgba(var(--qoj-ai-general-3-0)) 0%, rgba(var(--qoj-ai-general-3-1)) 30%, rgba(var(--qoj-ai-general-3-2)) 60%, rgba(var(--qoj-ai-general-3-3)) 100%);
+  --qoj-ai-general-4: linear-gradient(278deg, rgba(var(--qoj-ai-general-4-0)) 0%, rgba(var(--qoj-ai-general-4-1)) 30%, rgba(var(--qoj-ai-general-4-2)) 60%, rgba(var(--qoj-ai-general-4-3)) 100%);
+  --qoj-ai-general-5: linear-gradient(278deg, rgba(var(--qoj-ai-general-5-0)) 0%, rgba(var(--qoj-ai-general-5-1)) 30%, rgba(var(--qoj-ai-general-5-2)) 60%, rgba(var(--qoj-ai-general-5-3)) 100%);
+  --qoj-ai-general-6: linear-gradient(278deg, rgba(var(--qoj-ai-general-6-0)) 0%, rgba(var(--qoj-ai-general-6-1)) 30%, rgba(var(--qoj-ai-general-6-2)) 60%, rgba(var(--qoj-ai-general-6-3)) 100%);
+  --qoj-ai-general-7: linear-gradient(278deg, rgba(var(--qoj-ai-general-7-0)) 0%, rgba(var(--qoj-ai-general-7-1)) 30%, rgba(var(--qoj-ai-general-7-2)) 60%, rgba(var(--qoj-ai-general-7-3)) 100%);
+  --qoj-ai-general-8: linear-gradient(278deg, rgba(var(--qoj-ai-general-8-0)) 0%, rgba(var(--qoj-ai-general-8-1)) 30%, rgba(var(--qoj-ai-general-8-2)) 60%, rgba(var(--qoj-ai-general-8-3)) 100%);
+  --qoj-ai-general-9: linear-gradient(278deg, rgba(var(--qoj-ai-general-9-0)) 0%, rgba(var(--qoj-ai-general-9-1)) 30%, rgba(var(--qoj-ai-general-9-2)) 60%, rgba(var(--qoj-ai-general-9-3)) 100%);
+
+}
+
+/* Brand palette overrides */
+:root {
+  
+  /* 主色调 */
+  --qoj-color-primary: #0066ff;
+  
+  --qoj-color-primary-hover: #0052cc;
+  
+  --qoj-color-primary-active: #0047b3;
+  
+  --qoj-color-primary-light-default: rgba(0, 102, 255, 0.1);
+  
+  --qoj-color-primary-light-hover: rgba(0, 102, 255, 0.2);
+  
+  --qoj-color-primary-light-active: rgba(0, 102, 255, 0.3);
+  
+
+  /* 成功色 */
+  --qoj-color-success: #10b981;
+  
+  --qoj-color-success-light-default: rgba(16, 185, 129, 0.1);
+  
+  --qoj-color-success-dark: #059669;
+  
+
+  /* 警告色 */
+  --qoj-color-warning: #f59e0b;
+  
+  --qoj-color-warning-light-default: rgba(245, 158, 11, 0.1);
+  
+  --qoj-color-warning-dark: #d97706;
+  
+
+  /* 危险色 */
+  --qoj-color-danger: #ef4444;
+  
+  --qoj-color-danger-light-default: rgba(239, 68, 68, 0.1);
+  
+  --qoj-color-danger-dark: #dc2626;
+  
+
+  /* 文本颜色 */
+  --qoj-color-text-0: rgba(0, 0, 0, 0.9);
+  
+  --qoj-color-text-1: rgba(0, 0, 0, 0.7);
+  
+  --qoj-color-text-2: rgba(0, 0, 0, 0.5);
+  
+  --qoj-color-text-3: rgba(0, 0, 0, 0.35);
+  
+
+  /* 背景色 */
+  --qoj-color-bg-0: #ffffff;
+  
+  --qoj-color-bg-1: #fafafa;
+  
+  --qoj-color-bg-2: #f5f5f5;
+  
+  --qoj-color-bg-3: #f0f0f0;
+  
+
+  /* 填充色 */
+  --qoj-color-fill-0: rgba(0, 0, 0, 0.04);
+  
+  --qoj-color-fill-1: rgba(0, 0, 0, 0.06);
+  
+  --qoj-color-fill-2: rgba(0, 0, 0, 0.08);
+  
+
+  /* 边框色 */
+  --qoj-color-border: rgba(0, 0, 0, 0.08);
+
+}

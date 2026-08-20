@@ -38,16 +38,15 @@ const PATHS = {
   problemsNew: adminPath('/problems/new'),
   problemFolders: adminPath('/problem-folders'),
   practices: adminPath('/practices'),
-  practicesNew: adminPath('/practices/new'),
   contests: adminPath('/contests'),
   contestsNew: adminPath('/contests/new'),
-  contestsRankings: adminPath('/contests/rankings'),
   submissions: adminPath('/submissions'),
   submissionsStats: adminPath('/submissions/statistics'),
   judgeQueue: adminPath('/judge/queue'),
   judgeConfig: adminPath('/judge/config'),
   leaderboard: adminPath('/leaderboard'),
   classes: adminPath('/classes'),
+  teams: adminPath('/teams'),
   settingsFrontend: adminPath('/settings/frontend'),
   settingsRegister: adminPath('/settings/register'),
   settingsSystem: adminPath('/settings/system'),
@@ -88,7 +87,6 @@ export function AdminSider({ userRole }: AdminSiderProps) {
       [PATHS.users]: 'users-menu',
       [PATHS.problems]: 'problems-menu',
       [PATHS.problemFolders]: 'problems-menu',
-      [PATHS.practices]: 'practices-menu',
       [PATHS.contests]: 'contests-menu',
       [PATHS.submissions]: 'submissions-menu',
       [adminPath('/judge')]: 'judge-menu',
@@ -151,17 +149,16 @@ export function AdminSider({ userRole }: AdminSiderProps) {
       )}
 
       {isMenuVisible('practices-menu') && (
-        <SubMenu key="practices-menu" title={<><IconFile />题单管理</>}>
-          <MenuItem key={PATHS.practices}>题单列表</MenuItem>
-          <MenuItem key={PATHS.practicesNew}>创建题单</MenuItem>
-        </SubMenu>
+        <MenuItem key={PATHS.practices}>
+          <IconFile />
+          题单列表
+        </MenuItem>
       )}
 
       {isMenuVisible('contests-menu') && (
         <SubMenu key="contests-menu" title={<><IconCalendar />比赛管理</>}>
           <MenuItem key={PATHS.contests}>比赛列表</MenuItem>
           <MenuItem key={PATHS.contestsNew}>创建比赛</MenuItem>
-          <MenuItem key={PATHS.contestsRankings}>比赛排行</MenuItem>
         </SubMenu>
       )}
 
@@ -197,6 +194,13 @@ export function AdminSider({ userRole }: AdminSiderProps) {
         <MenuItem key={PATHS.classes}>
           <IconUserGroup />
           班级管理
+        </MenuItem>
+      )}
+
+      {isMenuVisible('teams-menu') && (
+        <MenuItem key={PATHS.teams}>
+          <IconUserGroup />
+          队伍管理
         </MenuItem>
       )}
 
