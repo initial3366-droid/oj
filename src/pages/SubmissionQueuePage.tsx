@@ -11,6 +11,7 @@ import {
   type SubmissionQueueRecord,
 } from '../data/apiClient';
 import { PageContainer } from '../components/common';
+import { languageLabel } from '../data/languages';
 
 const { Text } = Typography;
 
@@ -133,7 +134,12 @@ export function SubmissionQueuePage() {
         </Text>
       ),
     },
-    { title: '语言', dataIndex: 'language', width: 120 },
+    {
+      title: '语言',
+      dataIndex: 'language',
+      width: 120,
+      render: (language: string) => languageLabel(language),
+    },
     {
       title: '状态',
       dataIndex: 'statusText',
@@ -237,6 +243,8 @@ export function SubmissionQueuePage() {
             pageSize: query.pageSize ?? 20,
             total,
             showSizeChanger: true,
+            // 卡片 body 无水平内边距，分页需要自留右边距避免贴住卡片边框
+            style: { marginRight: 16 },
             onChange: (page, pageSize) => setQuery((current) => ({ ...current, page, pageSize })),
           }}
         />

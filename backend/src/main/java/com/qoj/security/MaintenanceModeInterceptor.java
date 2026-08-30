@@ -6,6 +6,7 @@ import com.qoj.module.setting.service.SystemSettingService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.nio.charset.StandardCharsets;
@@ -16,6 +17,8 @@ import java.nio.charset.StandardCharsets;
  */
 @Component
 public class MaintenanceModeInterceptor implements HandlerInterceptor {
+    @Value("${admin.api-prefix:/api/admin/v1}")
+    private String adminApiPrefix;
     private final SystemSettingService settingService;
     private final ObjectMapper objectMapper;
 
@@ -34,7 +37,7 @@ public class MaintenanceModeInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         // 允许管理员 API 和设置 API 通过
         String requestUri = request.getRequestURI();
-        if (requestUri.startsWith("/api/admin/") || requestUri.startsWith("/api/v1/settings/maintenance-mode")) {
+        if (requestUri.startsWith(adminApiPrefix + "/") || requestUri.startsWith("/api/v1/settings/maintenance-mode")) {
             return true;
         }
 

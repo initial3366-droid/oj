@@ -20,6 +20,7 @@ import { adminGet } from '../../admin/api/adminClient';
 import { teacherGet } from '../../teacher/teacherApi';
 import { adminPath } from '../../utils/adminPath';
 import { CodeViewer } from '../common/CodeViewer';
+import { languageLabel } from '../../data/languages';
 
 const { Row, Col } = Grid;
 
@@ -202,7 +203,7 @@ export function PracticePublicationReportPage({ variant }: { variant: Variant })
                 { title: 'ID', dataIndex: 'id', width: 80, align: 'center' },
                 { title: '用户', dataIndex: 'displayName', width: 120 },
                 { title: '题目', dataIndex: 'problemTitle', width: 200 },
-                { title: '语言', dataIndex: 'language', width: 80, align: 'center' },
+                { title: '语言', dataIndex: 'language', width: 80, align: 'center', render: (value: string) => languageLabel(value) },
                 {
                   title: '状态', dataIndex: 'status', width: 100, align: 'center',
                   render: (status: string) => <Tag color={statusColors[status] || 'gray'}>{status}</Tag>,

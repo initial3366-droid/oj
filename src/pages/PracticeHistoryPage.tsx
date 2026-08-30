@@ -8,6 +8,7 @@ import { decryptIdFromUrl } from "../utils/cipher";
 import { fetchProblemDetail } from "../api/problem";
 import { fetchProblemSubmissions, fetchSubmissionDetail, type SubmissionRecord } from "../api/submission";
 import { CodeViewer } from "../components/common";
+import { languageLabel } from "../data/languages";
 
 /**
  * 解码题目路由标识为后端题目 ID（与 PracticePage 一致）。
@@ -181,7 +182,7 @@ export function PracticeHistoryPage() {
       />
 
       <Modal
-        title={historyModal ? `提交代码 #${historyModal.submissionId}（${historyModal.language}）` : "提交代码"}
+        title={historyModal ? `提交代码 #${historyModal.submissionId}（${languageLabel(historyModal.language)}）` : "提交代码"}
         open={Boolean(historyModal)}
         onCancel={() => setHistoryModal(null)}
         footer={null}

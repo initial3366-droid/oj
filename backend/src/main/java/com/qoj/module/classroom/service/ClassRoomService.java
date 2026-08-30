@@ -572,11 +572,11 @@ public class ClassRoomService {
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "不能移除班级教师");
         }
         classMemberMapper.delete(new QueryWrapper<ClassMember>().eq("class_id", classId).eq("user_id", userId));
-        User user = userMapper.selectById(userId);
-        if (user != null && Objects.equals(user.classId, classId)) {
-            user.classId = null;
-            userMapper.updateById(user);
-        }
+        // updateById 默认跳过 null 字段，清空 class_id 必须显式 set null，否则接口成功但数据未变
+        userMapper.update(null, new UpdateWrapper<User>()
+            .eq("id", userId)
+            .eq("class_id", classId)
+            .set("class_id", null));
         /**
          * 构造或转换VO。从持久化层读取数据。
          */

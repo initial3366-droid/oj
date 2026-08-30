@@ -38,15 +38,26 @@ DIFFICULTY_MIN, DIFFICULTY_MAX = 1, 5
 DEFAULT_FOLDER_ID = 7
 MAX_CHECKER_SOURCE_CHARS = 200000
 MAX_ZIP_TEST_CASES = 200
-MAX_ZIP_ENTRY_BYTES = 2 * 1024 * 1024
+MAX_ZIP_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_ZIP_ENTRY_BYTES = MAX_ZIP_UPLOAD_BYTES
 MAX_ZIP_TOTAL_BYTES = 50 * 1024 * 1024
 CASE_NAME_RE = re.compile(r"^(\d+)\.(in|out)$")
 CACHE_DIR = os.path.expanduser("~/.qoj-publish")
 
 LANG_SPEC = {
-    "cpp": {
+    "cpp17": {
         "src": "main.cpp",
         "compile": ["/usr/bin/g++", "-std=c++17", "-O2", "-pipe", "main.cpp", "-o", "main"],
+        "run": ["./main"],
+    },
+    "cpp20": {
+        "src": "main.cpp",
+        "compile": ["/usr/bin/g++", "-std=c++20", "-O2", "-pipe", "main.cpp", "-o", "main"],
+        "run": ["./main"],
+    },
+    "cpp23": {
+        "src": "main.cpp",
+        "compile": ["/usr/bin/g++", "-std=c++23", "-O2", "-pipe", "main.cpp", "-o", "main"],
         "run": ["./main"],
     },
     "c": {
@@ -67,11 +78,14 @@ LANG_SPEC = {
 }
 LANG_ALIAS = {
     "c": "c",
-    "cpp": "cpp", "c++": "cpp", "cxx": "cpp", "g++": "cpp",
+    "cpp": "cpp17", "cpp17": "cpp17", "c++": "cpp17", "c++17": "cpp17",
+    "cxx": "cpp17", "g++": "cpp17",
+    "cpp20": "cpp20", "c++20": "cpp20",
+    "cpp23": "cpp23", "c++23": "cpp23",
     "python": "python", "python3": "python", "py": "python",
     "java": "java",
 }
-EXT_LANG = {".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".c": "c",
+EXT_LANG = {".cpp": "cpp17", ".cc": "cpp17", ".cxx": "cpp17", ".c": "c",
             ".py": "python", ".java": "java"}
 
 
@@ -335,6 +349,12 @@ def inspect_zip(zip_path, errors, warnings, *, allow_missing_output=False):
     if not zipfile.is_zipfile(zip_path):
         errors.append(f"{zip_path} 不是合法的 zip")
         return []
+    if hasattr(zip_path, "getbuffer"):
+        upload_size = zip_path.getbuffer().nbytes
+    else:
+        upload_size = os.path.getsize(zip_path)
+    if upload_size > MAX_ZIP_UPLOAD_BYTES:
+        errors.append(f"data.zip 文件大小 {upload_size} 字节 > 50MB 上传上限")
     inputs, outputs, total = {}, {}, 0
     with zipfile.ZipFile(zip_path) as archive:
         for info in archive.infolist():
@@ -352,7 +372,7 @@ def inspect_zip(zip_path, errors, warnings, *, allow_missing_output=False):
             size = info.file_size
             total += size
             if size > MAX_ZIP_ENTRY_BYTES:
-                errors.append(f"{name} 单文件 {size} 字节 > 2MB 判题上限")
+                errors.append(f"{name} 单文件 {size} 字节 > 50MB 判题上限")
             (inputs if kind == "in" else outputs)[number] = size
 
     input_numbers, output_numbers = set(inputs), set(outputs)
@@ -744,7 +764,7 @@ def build_parser():
                         help="problem.json，用于读取 checkerSource；默认 problem.json")
     verify.add_argument("--solution", required=True, help="std 源文件")
     verify.add_argument("--data", default="data.zip")
-    verify.add_argument("--lang", help="c/cpp/python/java；缺省按扩展名推断")
+    verify.add_argument("--lang", help="c/cpp17/cpp20/cpp23/python/java；缺省按扩展名推断")
     verify.add_argument("--time-limit", type=int, help="每个用例时限(ms)，默认 10000")
     verify.add_argument("--testlib", help="testlib.h 路径，默认使用仓库 docker/judge/testlib.h")
     verify.set_defaults(func=cmd_verify)

@@ -1,3 +1,5 @@
+import { adminPath } from '../utils/adminPath';
+
 /**
  * 教师Api接口封装。集中处理请求参数、响应类型与后端 API 调用边界。
  */
@@ -200,6 +202,9 @@ export function clearTeacherTokens() {
  * 读取WithTimeout并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；失败时向调用方传播异常。
  */
 async function fetchWithTimeout(url: string, init: RequestInit) {
+  if (url.startsWith('/api/admin/v1')) {
+    url = adminPath(url);
+  }
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
   try {

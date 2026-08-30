@@ -11,10 +11,10 @@ import {
   Input,
   Select,
   Card,
-  Message,
   Popconfirm,
   Tag,
 } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconPlus, IconSearch } from '@arco-design/web-react/icon';
 import { adminGet, adminDelete } from '../../api/adminClient';
 import { encryptId } from '../../../utils/cipher';
@@ -127,7 +127,7 @@ export function AdminProblemListPage() {
       setTotal(result.total);
     } catch (error) {
       if (sequence !== requestSequence.current) return;
-      Message.error('加载题目列表失败');
+      toast.error('加载题目列表失败');
       console.error(error);
     } finally {
       if (sequence === requestSequence.current) setLoading(false);
@@ -153,14 +153,14 @@ export function AdminProblemListPage() {
    * 处理Edit。可能改变当前路由或查询参数。
    */
   function handleEdit(id: number) {
-    navigate(`/admin/problems/${encryptId(id)}/edit`);
+    navigate(adminPath(`/problems/${encryptId(id)}/edit`));
   }
 
   /**
    * 处理TestCases。可能改变当前路由或查询参数。
    */
   function handleTestCases(id: number) {
-    navigate(`/admin/problems/${encryptId(id)}/test-cases`);
+    navigate(adminPath(`/problems/${encryptId(id)}/test-cases`));
   }
 
   /**
@@ -169,10 +169,10 @@ export function AdminProblemListPage() {
   async function handleDelete(id: number) {
     try {
       await adminDelete(`/api/admin/v1/problems/${id}`);
-      Message.success('删除成功');
+      toast.success('删除成功');
       loadProblems();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '删除失败');
+      toast.error(error instanceof Error ? error.message : '删除失败');
     }
   }
 

@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 管理员首页接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
  */
 @RestController
-@RequestMapping("/api/admin/v1/home")
+@RequestMapping("${admin.api-prefix:/api/admin/v1}/home")
 @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminHomeController {
     private final HomeService homeService;

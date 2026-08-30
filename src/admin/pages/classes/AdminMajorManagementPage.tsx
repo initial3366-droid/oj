@@ -1,4 +1,5 @@
-import { Button, Card, Form, Input, Message, Modal, Popconfirm, Select, Space, Table, Tag } from '@arco-design/web-react';
+import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconDelete, IconEdit, IconPlus, IconSearch } from '@arco-design/web-react/icon';
 import { useCallback, useEffect, useState } from 'react';
 import { adminDelete, adminGet, adminPost, adminPut } from '../../api/adminClient';
@@ -34,7 +35,7 @@ export function AdminMajorManagementPage() {
       if (keyword.trim()) params.set('keyword', keyword.trim());
       setRows(await adminGet<Major[]>(`/api/admin/v1/majors?${params.toString()}`));
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '专业列表加载失败');
+      toast.error(error instanceof Error ? error.message : '专业列表加载失败');
     } finally {
       setLoading(false);
     }
@@ -52,21 +53,21 @@ export function AdminMajorManagementPage() {
     try {
       if (editing) await adminPut(`/api/admin/v1/majors/${editing.id}`, values);
       else await adminPost('/api/admin/v1/majors', values);
-      Message.success(editing ? '专业已更新' : '专业已创建');
+      toast.success(editing ? '专业已更新' : '专业已创建');
       setVisible(false);
       load();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '保存失败');
+      toast.error(error instanceof Error ? error.message : '保存失败');
     }
   }
 
   async function remove(id: number) {
     try {
       await adminDelete(`/api/admin/v1/majors/${id}`);
-      Message.success('专业已删除');
+      toast.success('专业已删除');
       load();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '删除失败');
+      toast.error(error instanceof Error ? error.message : '删除失败');
     }
   }
 

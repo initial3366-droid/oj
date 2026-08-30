@@ -34,7 +34,8 @@ public class SpaForwardController {
         return "forward:/index.html";
     }
 
-    @GetMapping({"/{path:^(?!ws)[a-z]+}", "/{path:^(?!ws)[a-z]+}/**"})
+    // API 路径必须交给 RestController；否则旧接口或未匹配接口会被 SPA fallback 返回 index.html。
+    @GetMapping({"/{path:^(?!ws|api)[a-z]+}", "/{path:^(?!ws|api)[a-z]+}/**"})
     public String forwardAdminPaths() {
         return "forward:/index.html";
     }

@@ -5,6 +5,7 @@ import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
+import { isCppLanguage, languageLabel } from '../../../data/languages';
 
 // ── Verdict Colors ──
 const VERDICT_COLORS: Record<string, string> = {
@@ -91,7 +92,7 @@ export function VerdictDonutChart({ data }: { data?: Array<{ verdict: string; co
         {chartData.map((d, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#4e5969' }}>
             <span style={{ width: 8, height: 8, borderRadius: 2, background: d.color, flexShrink: 0 }} />
-            {d.name} <span style={{ color: '#86909c' }}>{total > 0 ? (d.value / total * 100).toFixed(1) : 0}%</span>
+            {languageLabel(d.name)} <span style={{ color: '#86909c' }}>{total > 0 ? (d.value / total * 100).toFixed(1) : 0}%</span>
           </div>
         ))}
       </div>
@@ -100,12 +101,41 @@ export function VerdictDonutChart({ data }: { data?: Array<{ verdict: string; co
 }
 
 // ── Language Usage (Progress Bars) ──
+type LanguageUsage = { language: string; count: number; percentage: number };
+
+/** 判断历史数据中的 C# 语言标识，避免已移除的语言出现在仪表盘统计中。 */
+function isCSharpLanguage(language: string): boolean {
+  return ['c#', 'csharp', 'c-sharp', 'cs', 'dotnet'].includes(language.trim().toLowerCase());
+}
+
+/** 将不同标准的 C++ 语言标识合并为后台首页统一的 C++ 统计，并排除已移除的 C#。 */
+function mergeCppLanguageUsage(data: LanguageUsage[] | undefined): LanguageUsage[] {
+  if (!data?.length) return [];
+
+  const counts = new Map<string, number>();
+  for (const item of data) {
+    if (isCSharpLanguage(item.language)) continue;
+    const language = isCppLanguage(item.language) ? 'C++' : item.language;
+    counts.set(language, (counts.get(language) || 0) + item.count);
+  }
+
+  const total = Array.from(counts.values()).reduce((sum, count) => sum + count, 0);
+  return Array.from(counts.entries())
+    .sort((left, right) => right[1] - left[1])
+    .map(([language, count]) => ({
+      language,
+      count,
+      percentage: total > 0 ? Number((count * 100 / total).toFixed(1)) : 0,
+    }));
+}
+
 export function LanguageProgressBars({ data }: { data?: Array<{ language: string; count: number; percentage: number }> }) {
-  if (!data?.length) return <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c0c4cc' }}>暂无数据</div>;
+  const languageUsage = mergeCppLanguageUsage(data);
+  if (!languageUsage.length) return <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c0c4cc' }}>暂无数据</div>;
   const colors = ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingTop: 8 }}>
-      {data.map((d, i) => (
+      {languageUsage.map((d, i) => (
         <div key={d.language}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 13 }}>
             <span style={{ fontWeight: 500, color: '#1d2129' }}>{d.language}</span>

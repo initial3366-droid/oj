@@ -80,7 +80,7 @@ go-judge:
 
 ### 2.3 请求和命令约束
 
-- 后端只允许 C、C++17、Java 17 和 Python 3。
+- 后端只允许 C、C++17、C++20、C++23、Java 17 和 Python 3。
 - 可执行路径、参数、环境变量和文件名固定，用户输入只进入源码内容或标准输入。
 - 每个测试点单独请求，避免 go-judge 多命令并发组放大 CPU/内存占用。
 - 编译产物使用短期缓存并在成功或异常后删除。
@@ -315,11 +315,9 @@ if (now.isBefore(contest.startTime)) {
 - 只有超管和创建者能查看实时榜单
 - 通过 `ContestScoreboardSnapshot`（FROZEN/FINAL/CUSTOM 快照）实现
 
-### 6.6 防作弊
+### 6.6 已移除的比赛安全控制
 
-- `tab_switch_logs` 记录参赛者切屏行为
-- `antiCheatEnabled` / `maxSwitches` 控制切屏次数限制
-- `allowFullscreen` 强制全屏模式
+全屏模式、反作弊切屏限制及 `tab_switch_logs` 已从比赛模型和运行代码中移除，现有数据库会通过 Flyway `V89__remove_contest_anti_cheat_fields` 清理对应字段和日志表。
 
 ---
 

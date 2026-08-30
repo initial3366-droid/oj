@@ -12,11 +12,11 @@ import {
   Input,
   Switch,
   Tabs,
-  Message,
   Tag,
   Popconfirm,
   TableColumnProps,
 } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconPlus, IconEdit, IconRefresh } from '@arco-design/web-react/icon';
 import { AdminPageContainer } from '../../layout/AdminPageContainer';
 import { AnnouncementContent, announcementPlainText } from '../../../components/AnnouncementContent';
@@ -66,7 +66,7 @@ export function AnnouncementManagementPage() {
       setCurrentPage(page);
     } catch (error) {
       console.error('加载公告列表失败:', error);
-      Message.error(error instanceof Error ? error.message : '加载公告列表失败');
+      toast.error(error instanceof Error ? error.message : '加载公告列表失败');
     } finally {
       setLoading(false);
     }
@@ -80,7 +80,7 @@ export function AnnouncementManagementPage() {
       setPinnedAnnouncement(await fetchPinnedAnnouncement());
     } catch (error) {
       console.error('加载置顶公告失败:', error);
-      Message.error(error instanceof Error ? error.message : '加载置顶公告失败');
+      toast.error(error instanceof Error ? error.message : '加载置顶公告失败');
     }
   };
 
@@ -145,11 +145,11 @@ export function AnnouncementManagementPage() {
 
       if (modalType === 'create') {
         await createAnnouncement(payload as AnnouncementCreateRequest);
-        Message.success('创建公告成功');
+        toast.success('创建公告成功');
         await Promise.all([loadData(1), loadPinned()]);
       } else if (editingRecord) {
         await updateAnnouncement(editingRecord.id, payload as AnnouncementUpdateRequest);
-        Message.success('更新公告成功');
+        toast.success('更新公告成功');
         await Promise.all([loadData(), loadPinned()]);
       }
 
@@ -157,7 +157,7 @@ export function AnnouncementManagementPage() {
       form.resetFields();
     } catch (error) {
       if (error instanceof Error) {
-        Message.error(error.message);
+        toast.error(error.message);
       }
     } finally {
       setSubmitLoading(false);
@@ -171,10 +171,10 @@ export function AnnouncementManagementPage() {
     if (!pinnedAnnouncement) return;
     try {
       await updateAnnouncement(pinnedAnnouncement.id, { isPinned: false });
-      Message.success('已取消置顶，公告已移入普通公告列表');
+      toast.success('已取消置顶，公告已移入普通公告列表');
       await Promise.all([loadPinned(), loadData(1)]);
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '取消置顶失败');
+      toast.error(error instanceof Error ? error.message : '取消置顶失败');
     }
   };
 
@@ -182,7 +182,7 @@ export function AnnouncementManagementPage() {
   const handleDelete = async (id: number) => {
     try {
       await deleteAnnouncement(id);
-      Message.success('删除公告成功');
+      toast.success('删除公告成功');
 
       // 如果当前页只有一条数据且不是第一页，则返回上一页
       if (dataSource.length === 1 && currentPage > 1) {
@@ -192,7 +192,7 @@ export function AnnouncementManagementPage() {
       }
     } catch (error) {
       console.error('删除公告失败:', error);
-      Message.error(error instanceof Error ? error.message : '删除公告失败');
+      toast.error(error instanceof Error ? error.message : '删除公告失败');
     }
   };
 

@@ -1,6 +1,7 @@
 package com.qoj.module.team.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.qoj.common.exception.BizException;
 import com.qoj.module.team.entity.Team;
 import com.qoj.module.team.mapper.TeamMapper;
@@ -95,11 +96,11 @@ public class TeamService {
     @Transactional
     public TeamVO removeMember(long teamId, long userId) {
         Team team = requireTeam(teamId);
-        User user = userMapper.selectById(userId);
-        if (user != null && team.id.equals(user.teamId)) {
-            user.teamId = null;
-            userMapper.updateById(user);
-        }
+        // updateById 默认跳过 null 字段，清空 team_id 必须显式 set null，否则接口成功但数据未变
+        userMapper.update(null, new UpdateWrapper<User>()
+            .eq("id", userId)
+            .eq("team_id", team.id)
+            .set("team_id", null));
         return toVO(team);
     }
 

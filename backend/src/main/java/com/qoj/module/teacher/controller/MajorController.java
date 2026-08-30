@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/admin/v1/majors")
+@RequestMapping("${admin.api-prefix:/api/admin/v1}/majors")
 @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class MajorController {
     private final MajorService majorService;

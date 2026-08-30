@@ -21,7 +21,6 @@ type RouteTitle = {
 const routeTitles: RouteTitle[] = [
   { pattern: "/", title: "首页", end: true },
   { pattern: "/problems", title: "题库", end: true },
-  { pattern: "/data-structures", title: "数据结构实验室", end: true },
   { pattern: "/problems/:problemId/submissions", title: "题目提交记录" },
   { pattern: "/practice", title: "题单", end: true },
   { pattern: "/practice/problem/:problemId", title: "写代码" },
@@ -41,7 +40,7 @@ const routeTitles: RouteTitle[] = [
 
   /* ── Admin ── */
   { pattern: `/${ADMIN_PREFIX}/login`, title: "后台登录", hideSiteTitle: true },
-  { pattern: `/${ADMIN_PREFIX}/dashboard`, title: "Dashboard", end: true, hideSiteTitle: true },
+  { pattern: `/${ADMIN_PREFIX}/dashboard`, title: "后台首页", end: true, hideSiteTitle: true },
   { pattern: `/${ADMIN_PREFIX}/users/students`, title: "学生列表", end: true, hideSiteTitle: true },
   { pattern: `/${ADMIN_PREFIX}/users/teachers`, title: "教师列表", end: true, hideSiteTitle: true },
   { pattern: `/${ADMIN_PREFIX}/majors`, title: "专业管理", end: true, hideSiteTitle: true },

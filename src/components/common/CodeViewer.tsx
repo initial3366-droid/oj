@@ -7,6 +7,7 @@ import Editor from '@monaco-editor/react';
 import { useState } from 'react';
 import '../../utils/monacoSetup';
 import { copyTextToClipboard } from '../../utils/clipboard';
+import { languageLabel, monacoLanguage } from '../../data/languages';
 
 /**
  * 编码ViewerProps接口，明确该模块内部及 API 边界使用的数据结构。
@@ -21,7 +22,10 @@ interface CodeViewerProps {
 }
 
 const LANGUAGE_MAP: Record<string, string> = {
-  cpp: 'C++',
+  cpp: 'C++17',
+  cpp17: 'C++17',
+  cpp20: 'C++20',
+  cpp23: 'C++23',
   c: 'C',
   java: 'Java',
   python: 'Python',
@@ -98,7 +102,7 @@ export function CodeViewer({
           )}
           {!showLanguageSelect && (
             <Typography.Text type="secondary" style={{ fontSize: 14 }}>
-              {LANGUAGE_MAP[language] || language}
+              {languageLabel(language) || LANGUAGE_MAP[language] || language}
             </Typography.Text>
           )}
         </div>
@@ -114,7 +118,7 @@ export function CodeViewer({
       <div className="monaco-container">
         <Editor
           height={height}
-          language={selectedLanguage}
+          language={monacoLanguage(selectedLanguage)}
           value={code}
           theme="vs-light"
           options={{

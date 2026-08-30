@@ -129,7 +129,7 @@ export function AdminSider({ userRole }: AdminSiderProps) {
     >
       <MenuItem key={PATHS.dashboard}>
         <IconDashboard />
-        Dashboard
+        后台首页
       </MenuItem>
 
       {isMenuVisible('users-menu') && (

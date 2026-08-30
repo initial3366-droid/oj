@@ -4,7 +4,8 @@
  * 中部为 HTML 源码输入框，下方为实时预览（复用前台渲染组件 HtmlMath）。
  * 工具栏直接修改输入框现有内容（在光标处插入或包裹选中文本），作为受控组件接入 Arco 的 Form.Item。
  */
-import { Button, Input, InputNumber, Message, Modal, Radio, Select, Space, Tooltip } from '@arco-design/web-react';
+import { Button, Input, InputNumber, Modal, Radio, Select, Space, Tooltip } from '@arco-design/web-react';
+import { toast } from '../utils/toast';
 import { useRef, useState, type ChangeEvent } from 'react';
 import { HtmlMath } from '../../components/HtmlMath';
 import { FormulaInsertModal } from './FormulaInsertModal';
@@ -119,7 +120,7 @@ export function HtmlMathEditor({ value = '', onChange, placeholder, rows = 10 }:
       const token = window.localStorage.getItem('qoj.accessToken');
       const form = new FormData();
       form.append('file', file);
-      const response = await fetch('/api/v1/uploads/images', {
+    const response = await fetch('/api/v1/uploads/images', {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: form,
@@ -133,7 +134,7 @@ export function HtmlMathEditor({ value = '', onChange, placeholder, rows = 10 }:
       setImageModalVisible(false);
     } catch (error) {
       if (uploadToken !== imageInsertToken.current) return;
-      Message.error(error instanceof Error ? error.message : '图片上传失败');
+      toast.error(error instanceof Error ? error.message : '图片上传失败');
     } finally {
       setUploadingImage(false);
     }
@@ -169,7 +170,7 @@ export function HtmlMathEditor({ value = '', onChange, placeholder, rows = 10 }:
   function handleInsertImageUrl() {
     const url = imageUrl.trim();
     if (!url) {
-      Message.warning('请输入图片链接');
+      toast.info('请输入图片链接');
       return;
     }
     const width = imageWidth != null && imageWidth > 0 ? imageWidth : null;
@@ -228,7 +229,7 @@ export function HtmlMathEditor({ value = '', onChange, placeholder, rows = 10 }:
     };
     probe.onerror = () => {
       if (token !== imageInsertToken.current) return;
-      Message.error('图片加载失败，请检查链接');
+      toast.error('图片加载失败，请检查链接');
       closeModal();
     };
     probe.src = url;

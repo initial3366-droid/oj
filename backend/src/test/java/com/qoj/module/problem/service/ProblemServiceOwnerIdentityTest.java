@@ -115,6 +115,28 @@ class ProblemServiceOwnerIdentityTest {
         assertEquals("", testCases.get(0).outputData);
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void zipEntryLargerThanTwoMegabytesIsAllowedWithinFiftyMegabytes() throws IOException {
+        String largeInput = "x".repeat(3 * 1024 * 1024);
+        MockMultipartFile file = new MockMultipartFile(
+            "file",
+            "tests.zip",
+            "application/zip",
+            zipWithEntry("1.in", largeInput)
+        );
+
+        List<ProblemTestCase> testCases = ReflectionTestUtils.invokeMethod(
+            problemService,
+            "parseZipTestCases",
+            file,
+            true
+        );
+
+        assertEquals(1, testCases.size());
+        assertEquals(largeInput.length(), testCases.get(0).inputData.length());
+    }
+
     private byte[] zipWithEntry(String name, String content) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes)) {

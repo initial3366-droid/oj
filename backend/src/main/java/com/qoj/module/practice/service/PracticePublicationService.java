@@ -29,15 +29,18 @@ import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.service.ProblemService;
 import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.mapper.SubmissionMapper;
+import com.qoj.module.submission.service.UserProblemStatusService;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
 import com.qoj.security.policy.ResourceAccessService;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -64,6 +67,7 @@ public class PracticePublicationService {
     private final StringRedisTemplate redisTemplate;
     private final SubmissionMapper submissionMapper;
     private final UserMapper userMapper;
+    private final UserProblemStatusService userProblemStatusService;
 
     public PracticePublicationService(
         PracticePublicationMapper publicationMapper,
@@ -79,7 +83,8 @@ public class PracticePublicationService {
         PasswordEncoder passwordEncoder,
         StringRedisTemplate redisTemplate,
         SubmissionMapper submissionMapper,
-        UserMapper userMapper
+        UserMapper userMapper,
+        UserProblemStatusService userProblemStatusService
     ) {
         this.publicationMapper = publicationMapper;
         this.publicationClassMapper = publicationClassMapper;
@@ -95,6 +100,7 @@ public class PracticePublicationService {
         this.redisTemplate = redisTemplate;
         this.submissionMapper = submissionMapper;
         this.userMapper = userMapper;
+        this.userProblemStatusService = userProblemStatusService;
     }
 
     @Transactional
@@ -342,6 +348,36 @@ public class PracticePublicationService {
     @Transactional
     public void delete(long publicationId) {
         PracticePublication publication = requireManaged(publicationId);
+        // 删除发布实例时连同学生提交一起彻底清理（判题明细随 submissions 行级联删除），
+        // 否则 submissions 外键（ON DELETE RESTRICT）会拒绝删除，且残留孤儿数据
+        List<Submission> submissions = submissionMapper.selectList(
+            new QueryWrapper<Submission>()
+                .select("id", "user_id", "problem_id")
+                .eq("practice_publication_id", publication.id)
+        );
+        submissionMapper.delete(
+            new QueryWrapper<Submission>().eq("practice_publication_id", publication.id)
+        );
+        // 重算受影响用户的刷题状态：该题已无其余提交时整行清除，避免留下"已解决"的脏状态
+        Set<String> recomputedPairs = new HashSet<>();
+        for (Submission submission : submissions) {
+            if (submission.userId == null || submission.problemId == null) {
+                continue;
+            }
+            if (recomputedPairs.add(submission.userId + ":" + submission.problemId)) {
+                userProblemStatusService.recompute(submission.userId, submission.problemId);
+            }
+        }
+        // 重算受影响题目的通过率（提交被删除后原统计已失真）
+        Set<Long> affectedProblemIds = new LinkedHashSet<>();
+        for (Submission submission : submissions) {
+            if (submission.problemId != null) {
+                affectedProblemIds.add(submission.problemId);
+            }
+        }
+        for (Long problemId : affectedProblemIds) {
+            refreshProblemAcRate(problemId);
+        }
         publicationProblemMapper.delete(
             new QueryWrapper<PracticePublicationProblem>().eq("publication_id", publication.id)
         );
@@ -349,6 +385,24 @@ public class PracticePublicationService {
             new QueryWrapper<PracticePublicationClass>().eq("publication_id", publication.id)
         );
         publicationMapper.deleteById(publication.id);
+    }
+
+    /**
+     * 按删除后的剩余提交重算题目通过率并清除题目缓存，与判题完成时的统计口径一致。
+     */
+    private void refreshProblemAcRate(Long problemId) {
+        Problem problem = problemMapper.selectById(problemId);
+        if (problem == null) {
+            return;
+        }
+        Long total = submissionMapper.countByProblemId(problemId);
+        Long accepted = submissionMapper.countAcceptedByProblemId(problemId);
+        int rate = total == null || total == 0
+            ? 0
+            : (int) Math.round((accepted == null ? 0 : accepted) * 100.0 / total);
+        problem.acRate = BigDecimal.valueOf(rate);
+        problemMapper.updateById(problem);
+        redisTemplate.delete(RedisKeys.problem(problemId));
     }
 
     public PageResult<PracticePublicationVO> publicList(int page, int pageSize, String scope) {

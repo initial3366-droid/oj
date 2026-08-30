@@ -14,15 +14,21 @@ import { useOjData } from "../data/OjDataProvider";
 import { chatWithAgent, fetchAgentQuota, type AgentQuota } from "../api/agent";
 import { fetchContestProblemDetail, fetchProblemDetail } from "../api/problem";
 import { fetchCodeTemplateSettings, fetchContest, fetchPracticeDetail, type CodeTemplateSettings } from "../data/apiClient";
-import { fetchSubmissionDetail, runCodeInSandbox, submitCode, type SubmissionRecord } from "../api/submission";
+import { fetchMyProblemSubmissions, fetchSubmissionDetail, runCodeInSandbox, submitCode, type SubmissionRecord } from "../api/submission";
 import type { Problem } from "../data/types";
+import {
+  isCppLanguage,
+  SUBMISSION_LANGUAGE_OPTIONS,
+  submissionLanguageFromValue,
+  type SubmissionLanguage,
+} from "../data/languages";
 import { wsClient } from "../utils/websocket";
 import { decryptIdFromUrl } from "../utils/cipher";
 
 /**
  * 练习Language类型别名，明确该模块内部及 API 边界使用的数据结构。
  */
-type PracticeLanguage = "C" | "C++" | "Python" | "Java";
+type PracticeLanguage = SubmissionLanguage;
 
 /**
  * DebugAlert类型别名，明确该模块内部及 API 边界使用的数据结构。
@@ -75,23 +81,22 @@ type AgentMessage = {
   content: string;
 };
 
-const languageOptions: Array<{ label: PracticeLanguage; apiValue: string }> = [
-  { label: "C", apiValue: "c" },
-  { label: "C++", apiValue: "cpp" },
-  { label: "Python", apiValue: "python" },
-  { label: "Java", apiValue: "java" },
-];
+const languageOptions = SUBMISSION_LANGUAGE_OPTIONS;
 
 const monacoLanguages: Record<PracticeLanguage, string> = {
   C: "c",
-  "C++": "cpp",
+  "C++17": "cpp",
+  "C++20": "cpp",
+  "C++23": "cpp",
   Python: "python",
   Java: "java",
 };
 
 const templateSettingKeys: Record<PracticeLanguage, keyof CodeTemplateSettings> = {
   C: "c",
-  "C++": "cpp",
+  "C++17": "cpp",
+  "C++20": "cpp",
+  "C++23": "cpp",
   Python: "python",
   Java: "java",
 };
@@ -136,7 +141,7 @@ function codeStorageKey(problemId: string, language: PracticeLanguage) {
  * 封装clampHeight相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
 function clampHeight(value: number) {
-  return Math.min(Math.max(value, 180), Math.floor(window.innerHeight * 0.68));
+  return Math.min(Math.max(value, 220), Math.floor(window.innerHeight * 0.8));
 }
 
 /**
@@ -247,7 +252,7 @@ function formatMetric(value: number | null | undefined, unit: string) {
  * 判断是否为 C/C++。题目限制对其他语言按现有题面规则翻倍。
  */
 function isNativeLanguage(language: PracticeLanguage) {
-  return language === "C" || language === "C++";
+  return language === "C" || isCppLanguage(language);
 }
 
 /**
@@ -281,7 +286,8 @@ function formatMemoryLimit(value: number) {
  */
 function formatCappedTimeUsed(value: number | null | undefined, limit: number) {
   const actual = positiveMetric(value);
-  return formatMetric(actual == null ? null : Math.min(actual, limit), "ms");
+  if (actual == null) return "-";
+  return actual > limit ? formatTimeLimit(limit) : formatMetric(actual, "ms");
 }
 
 /**
@@ -352,12 +358,12 @@ export function PracticePage() {
     }
     return state.problems.find((item) => item.id === problemId) ?? (remoteProblem?.id === problemId ? remoteProblem : null);
   }, [problemId, remoteProblem, state.problems]);
-  const [language, setLanguage] = useState<PracticeLanguage>("C++");
+  const [language, setLanguage] = useState<PracticeLanguage>("C++17");
   const languageRef = useRef<PracticeLanguage>(language);
   languageRef.current = language;
   const [code, setCode] = useState("");
   const [debugOpen, setDebugOpen] = useState(false);
-  const [debugHeight, setDebugHeight] = useState(280);
+  const [debugHeight, setDebugHeight] = useState(() => Math.max(220, Math.floor(window.innerHeight / 3)));
   const [debugInput, setDebugInput] = useState("");
   const [debugOutput, setDebugOutput] = useState("调试结果会显示在这里。");
   const [debugLoading, setDebugLoading] = useState(false);
@@ -375,6 +381,7 @@ export function PracticePage() {
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentQuota, setAgentQuota] = useState<AgentQuota | null>(null);
   const [lastSubmissionId, setLastSubmissionId] = useState<number | null>(null);
+  const languageTouchedRef = useRef(false);
   const practiceId = searchParams.get("practiceId");
   const contestId = searchParams.get("contestId");
   const contestProblemLabel = searchParams.get("contestProblemLabel")?.trim();
@@ -528,6 +535,30 @@ export function PracticePage() {
   }, [language, problem?.id, codeTemplatesReady, defaultCodeTemplate]);
 
   useEffect(() => {
+    if (!numericProblemId) {
+      return;
+    }
+    let cancelled = false;
+    languageTouchedRef.current = false;
+    setLanguage("C++17");
+
+    fetchMyProblemSubmissions(numericProblemId, contestId ? Number(contestId) : null)
+      .then((submissions) => {
+        const latestLanguage = submissionLanguageFromValue(submissions[0]?.language);
+        if (!cancelled && !languageTouchedRef.current && latestLanguage) {
+          setLanguage(latestLanguage);
+        }
+      })
+      .catch(() => {
+        // 未登录或没有历史提交时使用 C++17 默认语言。
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contestId, numericProblemId]);
+
+  useEffect(() => {
     if (typeof sampleIndex === "number" && !samples[sampleIndex]) {
       setSampleIndex("custom");
       setDebugInput("");
@@ -543,6 +574,7 @@ export function PracticePage() {
    * 封装changeLanguage相关逻辑。会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
    */
   const changeLanguage = (next: PracticeLanguage) => {
+    languageTouchedRef.current = true;
     if (problem?.id) {
       window.localStorage.setItem(codeStorageKey(problem.id, language), code);
     }
@@ -1734,7 +1766,7 @@ export function PracticePage() {
           >
             <div
               className="flex shrink-0 flex-col border-t border-slate-200 bg-white text-slate-800"
-              style={{ height: debugHeight }}
+              style={{ height: debugHeight, maxHeight: "80vh" }}
             >
               <div
                 className="h-2 cursor-row-resize bg-slate-200 hover:bg-blue-500"
@@ -1770,10 +1802,39 @@ export function PracticePage() {
                     />
                   </div>
                 </div>
-                <div className="practice-debug-body flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
+                <div className="practice-debug-body flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto p-4">
+                  {debugMetrics ? (
+                    <div className="grid min-h-[64px] shrink-0 gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 sm:grid-cols-[auto_1fr_1fr] sm:items-center sm:gap-x-5">
+                      <span className="font-semibold text-slate-800">
+                        运行资源（{isNativeLanguage(debugMetrics.language) ? "C/C++" : "其他语言"}）
+                      </span>
+                      <span>
+                        运行时间：<strong>{formatCappedTimeUsed(debugMetrics.timeUsed, debugMetrics.timeLimit)}</strong>
+                      </span>
+                      <span>
+                        运行内存：<strong>{formatCappedMemoryUsed(debugMetrics.memoryUsed, debugMetrics.memoryLimit)}</strong>
+                      </span>
+                    </div>
+                  ) : null}
+                  {debugAlert ? (
+                    <div
+                      className={debugAlert.source === "submit"
+                        ? "shrink-0 pr-1"
+                        : "max-h-16 shrink-0 overflow-y-auto pr-1"}
+                    >
+                      <Alert
+                        type={toAntAlertType(debugAlert.type)}
+                        message={debugAlert.title}
+                        description={debugAlert.detail ? (
+                          <pre className="m-0 whitespace-pre-wrap font-mono text-xs leading-5">{debugAlert.detail}</pre>
+                        ) : undefined}
+                        showIcon
+                      />
+                    </div>
+                  ) : null}
                   {showDebugFields ? (
-                    <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                      <label className="flex min-h-0 flex-col gap-2 text-sm font-medium text-slate-700">
+                    <div className="grid min-h-[160px] min-w-0 flex-1 gap-3 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                      <label className="flex min-h-0 min-w-0 flex-col gap-2 text-sm font-medium text-slate-700">
                         输入
                         <Input.TextArea
                           className={debugTextareaClassName}
@@ -1789,7 +1850,7 @@ export function PracticePage() {
                           }}
                         />
                       </label>
-                      <label className="flex min-h-0 flex-col gap-2 text-sm font-medium text-slate-700">
+                      <label className="flex min-h-0 min-w-0 flex-col gap-2 text-sm font-medium text-slate-700">
                         输出
                         <Input.TextArea
                           readOnly
@@ -1800,32 +1861,6 @@ export function PracticePage() {
                         />
                       </label>
                     </div>
-                  ) : null}
-                  {debugMetrics ? (
-                    <div className="grid shrink-0 gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 sm:grid-cols-[auto_1fr_1fr] sm:items-center sm:gap-x-5">
-                      <span className="font-semibold text-slate-800">
-                        运行资源（{isNativeLanguage(debugMetrics.language) ? "C/C++" : "其他语言"}）
-                      </span>
-                      <span>
-                        运行时间：<strong>{formatCappedTimeUsed(debugMetrics.timeUsed, debugMetrics.timeLimit)}</strong>
-                        <span className="ml-2 text-slate-500">/ 上限 {formatTimeLimit(debugMetrics.timeLimit)}</span>
-                      </span>
-                      <span>
-                        运行内存：<strong>{formatCappedMemoryUsed(debugMetrics.memoryUsed, debugMetrics.memoryLimit)}</strong>
-                        <span className="ml-2 text-slate-500">/ 上限 {formatMemoryLimit(debugMetrics.memoryLimit)}</span>
-                      </span>
-                    </div>
-                  ) : null}
-                  {debugAlert ? (
-                    <Alert
-                      className="shrink-0"
-                      type={toAntAlertType(debugAlert.type)}
-                      message={debugAlert.title}
-                      description={debugAlert.detail ? (
-                        <pre className="m-0 whitespace-pre-wrap font-mono text-xs leading-5">{debugAlert.detail}</pre>
-                      ) : undefined}
-                      showIcon
-                    />
                   ) : null}
                 </div>
               </div>

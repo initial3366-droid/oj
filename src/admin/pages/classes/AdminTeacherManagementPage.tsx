@@ -1,7 +1,8 @@
 /**
  * 管理员教师Management页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Button, Card, Form, Input, Message, Modal, Popconfirm, Select, Space, Table, Tag } from '@arco-design/web-react';
+import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconDelete, IconEdit, IconPlus, IconSearch } from '@arco-design/web-react/icon';
 import { useCallback, useEffect, useState } from 'react';
 import { adminDelete, adminGet, adminPost, adminPut } from '../../api/adminClient';
@@ -67,7 +68,7 @@ export function AdminTeacherManagementPage() {
       if (keyword.trim()) params.set('keyword', keyword.trim());
       setTeachers(await adminGet<Teacher[]>(`/api/admin/v1/teachers?${params.toString()}`));
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '教师列表加载失败');
+      toast.error(error instanceof Error ? error.message : '教师列表加载失败');
     } finally {
       setLoading(false);
     }
@@ -120,15 +121,15 @@ export function AdminTeacherManagementPage() {
       };
       if (editing) {
         await adminPut(`/api/admin/v1/teachers/${editing.id}`, payload);
-        Message.success('教师已更新');
+        toast.success('教师已更新');
       } else {
         await adminPost('/api/admin/v1/teachers', payload);
-        Message.success('教师已创建');
+        toast.success('教师已创建');
       }
       setModalVisible(false);
       load();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '保存失败');
+      toast.error(error instanceof Error ? error.message : '保存失败');
     }
   }
 
@@ -138,10 +139,10 @@ export function AdminTeacherManagementPage() {
   async function remove(id: number) {
     try {
       await adminDelete(`/api/admin/v1/teachers/${id}`);
-      Message.success('教师已删除');
+      toast.success('教师已删除');
       load();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '删除失败');
+      toast.error(error instanceof Error ? error.message : '删除失败');
     }
   }
 

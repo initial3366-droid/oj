@@ -2,7 +2,8 @@
  * 管理员资料页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
 import { useEffect, useState } from 'react';
-import { Button, Card, Form, Input, Message, Space, Typography } from '@arco-design/web-react';
+import { Button, Card, Form, Input, Space, Typography } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconSave, IconUser } from '@arco-design/web-react/icon';
 import { adminGet, adminPut } from '../../api/adminClient';
 import { AdminPageContainer } from '../../layout/AdminPageContainer';
@@ -52,7 +53,7 @@ export function AdminProfilePage() {
         email: result.email || '',
       });
     } catch (error) {
-      Message.error('加载个人信息失败');
+      toast.error('加载个人信息失败');
     } finally {
       setLoading(false);
     }
@@ -69,10 +70,10 @@ export function AdminProfilePage() {
         displayName: values.displayName.trim(),
         email: values.email?.trim() || '',
       });
-      Message.success('个人信息已更新');
+      toast.success('个人信息已更新');
       loadProfile();
     } catch (error) {
-      if (error instanceof Error) Message.error(error.message);
+      if (error instanceof Error) toast.error(error.message);
     } finally {
       setSaving(false);
     }

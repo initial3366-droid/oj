@@ -40,7 +40,9 @@ import com.qoj.module.contest.vo.ContestAudienceVO;
 import com.qoj.module.contest.vo.ContestAcceptedProblemVO;
 import com.qoj.module.contest.vo.ContestProblemCaseScoreVO;
 import com.qoj.module.contest.vo.ContestProblemVO;
+import com.qoj.module.contest.vo.ContestRegistrationCandidateVO;
 import com.qoj.module.contest.vo.ContestRegistrationOptionVO;
+import com.qoj.module.contest.vo.ContestRegistrationVO;
 import com.qoj.module.contest.vo.ContestRollingStepVO;
 import com.qoj.module.contest.vo.ContestScoreboardCellVO;
 import com.qoj.module.contest.vo.ContestScoreboardProblemVO;
@@ -439,9 +441,6 @@ public class ContestService {
         contest.goldRatio = normalizeRatio(request.goldRatio(), DEFAULT_GOLD_RATIO);
         contest.silverRatio = normalizeRatio(request.silverRatio(), DEFAULT_SILVER_RATIO);
         contest.bronzeRatio = normalizeRatio(request.bronzeRatio(), DEFAULT_BRONZE_RATIO);
-        contest.allowFullscreen = Boolean.TRUE.equals(request.allowFullscreen());
-        contest.antiCheatEnabled = Boolean.TRUE.equals(request.antiCheatEnabled());
-        contest.maxSwitches = request.maxSwitches() == null ? 3 : request.maxSwitches();
         contest.allowAfterEndSubmit = Boolean.TRUE.equals(request.allowAfterEndSubmit());
         contest.allowAfterEndViewProblem = request.allowAfterEndViewProblem() == null || Boolean.TRUE.equals(request.allowAfterEndViewProblem());
         contest.allowAfterEndViewCode = Boolean.TRUE.equals(request.allowAfterEndViewCode());
@@ -550,15 +549,6 @@ public class ContestService {
         }
         if (request.bronzeRatio() != null) {
             contest.bronzeRatio = normalizeRatio(request.bronzeRatio(), DEFAULT_BRONZE_RATIO);
-        }
-        if (request.allowFullscreen() != null) {
-            contest.allowFullscreen = request.allowFullscreen();
-        }
-        if (request.antiCheatEnabled() != null) {
-            contest.antiCheatEnabled = request.antiCheatEnabled();
-        }
-        if (request.maxSwitches() != null) {
-            contest.maxSwitches = request.maxSwitches();
         }
         if (request.allowAfterEndSubmit() != null) {
             contest.allowAfterEndSubmit = request.allowAfterEndSubmit();
@@ -669,9 +659,6 @@ public class ContestService {
         replay.goldRatio = source.goldRatio;
         replay.silverRatio = source.silverRatio;
         replay.bronzeRatio = source.bronzeRatio;
-        replay.allowFullscreen = source.allowFullscreen;
-        replay.antiCheatEnabled = source.antiCheatEnabled;
-        replay.maxSwitches = source.maxSwitches;
         replay.allowAfterEndSubmit = source.allowAfterEndSubmit;
         replay.allowAfterEndViewProblem = source.allowAfterEndViewProblem;
         replay.allowAfterEndViewCode = source.allowAfterEndViewCode;
@@ -868,6 +855,131 @@ public class ContestService {
         ));
 
         return options;
+    }
+
+    /**
+     * 查询可由比赛管理员添加的学生账号。
+     */
+    public List<ContestRegistrationCandidateVO> registrationCandidates(long contestId, String keyword) {
+        requireManageRegistrationContest(contestId);
+        Set<Long> registeredUserIds = registrationMapper.selectList(
+            new QueryWrapper<ContestRegistration>().select("user_id").eq("contest_id", contestId)
+        ).stream().map(registration -> registration.userId).collect(Collectors.toSet());
+
+        QueryWrapper<User> wrapper = new QueryWrapper<User>()
+            .eq("role", "STUDENT")
+            .eq("is_deleted", false);
+        String normalizedKeyword = keyword == null ? "" : keyword.trim();
+        if (!normalizedKeyword.isBlank()) {
+            wrapper.and(item -> item
+                .like("username", normalizedKeyword)
+                .or()
+                .like("display_name", normalizedKeyword)
+                .or()
+                .like("student_no", normalizedKeyword)
+                .or()
+                .like("email", normalizedKeyword)
+            );
+        }
+        if (!registeredUserIds.isEmpty()) {
+            wrapper.notIn("id", registeredUserIds);
+        }
+        wrapper.orderByAsc("display_name").orderByAsc("username").last("LIMIT 50");
+
+        return userMapper.selectList(wrapper).stream()
+            .filter(user -> user.id != null)
+            .map(user -> new ContestRegistrationCandidateVO(user.id, user.username, user.displayName, user.studentNo))
+            .toList();
+    }
+
+    /**
+     * 由比赛管理员直接添加一名学生报名，跳过公开报名时间和报名密码限制。
+     */
+    @Transactional
+    public ContestRegistrationVO addRegistration(long contestId, Long userId, Boolean starred) {
+        Contest contest = requireManageRegistrationContest(contestId);
+        if (userId == null) {
+            throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "请选择要添加的学生");
+        }
+        User user = userMapper.selectOne(
+            new QueryWrapper<User>()
+                .eq("id", userId)
+                .eq("role", "STUDENT")
+                .eq("is_deleted", false)
+        );
+        if (user == null) {
+            throw new BizException(ErrorCode.NOT_FOUND.getCode(), "学生账号不存在或已停用");
+        }
+        ContestRegistration existing = registrationMapper.selectOne(
+            new QueryWrapper<ContestRegistration>()
+                .eq("contest_id", contestId)
+                .eq("user_id", user.id)
+                .last("LIMIT 1")
+        );
+        if (existing != null) {
+            throw new BizException(ErrorCode.CONFLICT.getCode(), "该学生已经报名");
+        }
+
+        ContestRegistration registration = new ContestRegistration();
+        registration.contestId = contestId;
+        registration.userId = user.id;
+        registration.username = user.username;
+        registration.displayName = user.displayName;
+        registration.identityType = IdentityType.PERSONAL.name();
+        registration.identityId = user.id;
+        registration.starred = Boolean.TRUE.equals(contest.allowStarRegistration) && Boolean.TRUE.equals(starred);
+        registration.status = "APPROVED";
+        registration.registeredAt = LocalDateTime.now();
+        registrationMapper.insert(registration);
+        upsertParticipant(contest, registration);
+        updateContestStats(contestId);
+        return toRegistrationVO(registration);
+    }
+
+    /**
+     * 由比赛管理员移除一名报名人员，同时撤销其本场参赛资格。
+     */
+    @Transactional
+    public void removeRegistration(long contestId, long registrationId) {
+        requireManageRegistrationContest(contestId);
+        ContestRegistration registration = registrationMapper.selectById(registrationId);
+        if (registration == null || !Long.valueOf(contestId).equals(registration.contestId)) {
+            throw new BizException(ErrorCode.NOT_FOUND.getCode(), "报名记录不存在");
+        }
+        registrationMapper.deleteById(registration.id);
+        participantMapper.delete(
+            new QueryWrapper<ContestParticipant>()
+                .eq("contest_id", contestId)
+                .eq("user_id", registration.userId)
+        );
+        updateContestStats(contestId);
+    }
+
+    private Contest requireManageRegistrationContest(long contestId) {
+        Contest contest = contestMapper.selectById(contestId);
+        if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
+            throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
+        }
+        AuthUser user = CurrentUser.required();
+        if (!contestAccessPolicy.can(user, Permission.MANAGE_REGISTRATION, contest)) {
+            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无权管理该比赛报名");
+        }
+        return contest;
+    }
+
+    private ContestRegistrationVO toRegistrationVO(ContestRegistration registration) {
+        ContestRegistrationVO vo = new ContestRegistrationVO();
+        vo.id = registration.id;
+        vo.contestId = registration.contestId;
+        vo.userId = registration.userId;
+        vo.username = registration.username;
+        vo.displayName = registration.displayName;
+        vo.identityType = registration.identityType;
+        vo.identityId = registration.identityId;
+        vo.starred = registration.starred;
+        vo.status = registration.status;
+        vo.registeredAt = registration.registeredAt;
+        return vo;
     }
 
 
@@ -1652,9 +1764,6 @@ public class ContestService {
             ratioOrDefault(contest.goldRatio, DEFAULT_GOLD_RATIO),
             ratioOrDefault(contest.silverRatio, DEFAULT_SILVER_RATIO),
             ratioOrDefault(contest.bronzeRatio, DEFAULT_BRONZE_RATIO),
-            contest.allowFullscreen,
-            contest.antiCheatEnabled,
-            contest.maxSwitches,
             Boolean.TRUE.equals(contest.allowAfterEndSubmit),
             contest.allowAfterEndViewProblem == null || Boolean.TRUE.equals(contest.allowAfterEndViewProblem),
             Boolean.TRUE.equals(contest.allowAfterEndViewCode),

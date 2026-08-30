@@ -1,6 +1,7 @@
 package com.qoj.module.problem.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -65,8 +66,9 @@ import org.springframework.web.multipart.MultipartFile;
 public class ProblemService {
     private static final int MAX_ZIP_TEST_CASES = 200;
     private static final int MAX_ZIP_ENTRIES = 500;
-    private static final int MAX_ZIP_ENTRY_BYTES = 2 * 1024 * 1024;
-    private static final int MAX_ZIP_TOTAL_BYTES = 50 * 1024 * 1024;
+    private static final long MAX_TEST_CASE_UPLOAD_BYTES = 50L * 1024 * 1024;
+    private static final long MAX_ZIP_ENTRY_BYTES = MAX_TEST_CASE_UPLOAD_BYTES;
+    private static final long MAX_ZIP_TOTAL_BYTES = MAX_TEST_CASE_UPLOAD_BYTES;
 
     private final ProblemMapper problemMapper;
     private final ProblemTestCaseMapper problemTestCaseMapper;
@@ -330,10 +332,12 @@ public class ProblemService {
         problem.statement = request.statement();
         problem.inputFormat = request.inputFormat();
         problem.outputFormat = request.outputFormat();
+        boolean clearCheckerSource = false;
         if (request.checkerSource() != null) {
             String checkerSource = normalizeCheckerSource(request.checkerSource());
             ensureHiddenTestCasesHaveExpectedOutput(problem, checkerSource);
             problem.checkerSource = checkerSource;
+            clearCheckerSource = checkerSource == null;
         }
         problem.sampleCases = writeSampleCases(samples);
         problem.timeLimit = request.timeLimit();
@@ -363,6 +367,15 @@ public class ProblemService {
         }
         problem.updatedAt = java.time.LocalDateTime.now();
         problemMapper.updateById(problem);
+        // MyBatis-Plus skips null fields by default; explicitly persist a cleared checker.
+        if (clearCheckerSource) {
+            problemMapper.update(
+                null,
+                new UpdateWrapper<Problem>()
+                    .eq("id", id)
+                    .set("checker_source", null)
+            );
+        }
         if (request.folderId() != null) {
             problemFolderService.assignOwnedProblem(request.folderId(), problem);
         }
@@ -1209,6 +1222,12 @@ public class ProblemService {
     }
 
     private List<ProblemTestCase> parseZipTestCases(MultipartFile file, boolean allowMissingOutput) {
+        if (file == null || file.isEmpty()) {
+            throw new BizException(400, "测试点 ZIP 不能为空");
+        }
+        if (file.getSize() > MAX_TEST_CASE_UPLOAD_BYTES) {
+            throw new BizException(400, "测试点 ZIP 文件不能超过 50MB");
+        }
         Map<Integer, String> inputs = new HashMap<>();
         Map<Integer, String> outputs = new HashMap<>();
         int[] counters = new int[] {0, 0};

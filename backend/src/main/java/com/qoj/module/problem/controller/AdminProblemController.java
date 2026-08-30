@@ -34,7 +34,7 @@ import org.springframework.web.multipart.MultipartFile;
  * 管理员题目接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
  */
 @RestController
-@RequestMapping("/api/admin/v1/problems")
+@RequestMapping("${admin.api-prefix:/api/admin/v1}/problems")
 @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminProblemController {
     private final ProblemService problemService;

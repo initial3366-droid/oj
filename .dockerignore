@@ -1,0 +1,14 @@
+# 前端镜像构建上下文裁剪：只保留源码与配置，密钥文件一律不进入构建上下文。
+.git
+.env
+.env.*
+.runtime
+.reasonix
+.tsbuild
+tsconfig.tsbuildinfo
+backend
+dist
+docs
+node_modules
+tools
+*.md

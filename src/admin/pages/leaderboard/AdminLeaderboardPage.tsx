@@ -2,7 +2,8 @@
  * 管理员排行榜页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Card, Grid, Message, Statistic, Table, Tag } from '@arco-design/web-react';
+import { Card, Grid, Statistic, Table, Tag } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconTrophy } from '@arco-design/web-react/icon';
 import { adminGet } from '../../api/adminClient';
 
@@ -50,7 +51,7 @@ export function AdminLeaderboardPage() {
       setGlobalRows(globalRank || []);
       setClassRows(classRank || []);
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '榜单数据加载失败');
+      toast.error(error instanceof Error ? error.message : '榜单数据加载失败');
     } finally {
       setLoading(false);
     }

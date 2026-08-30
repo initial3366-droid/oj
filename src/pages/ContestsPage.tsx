@@ -1,15 +1,12 @@
 /**
  * Contests页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Alert, Button, Checkbox, Input, Modal, Select, Space, Spin, Table, Tag, Typography } from 'antd';
-import { CodeOutlined, SafetyCertificateOutlined, SearchOutlined } from '@ant-design/icons';
+import { Alert, Input, Select, Spin, Table, Tag, Typography } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
 import type { TableColumnsType } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  fetchContestRegistrationOptions,
   fetchContests,
-  registerContest,
-  type ContestRegistrationOption,
   type PublicContest,
 } from '../data/apiClient';
 import { PageContainer } from '../components/common';
@@ -73,12 +70,6 @@ export function ContestsPage() {
   const [contests, setContests] = useState<PublicContest[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
-  const [activeContest, setActiveContest] = useState<PublicContest | null>(null);
-  const [options, setOptions] = useState<ContestRegistrationOption[]>([]);
-  const [starred, setStarred] = useState(false);
-  const [registrationPassword, setRegistrationPassword] = useState('');
-  const [optionLoading, setOptionLoading] = useState(false);
-  const [registering, setRegistering] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('');
 
@@ -114,55 +105,6 @@ export function ContestsPage() {
   useEffect(() => {
     loadContests();
   }, []);
-
-  /**
-   * 封装open注册相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
-   */
-  const openRegister = async (contest: PublicContest) => {
-    setActiveContest(contest);
-    setOptions([]);
-    setStarred(Boolean(contest.registeredStarred));
-    setRegistrationPassword('');
-    setMessage('');
-    setOptionLoading(true);
-    try {
-      const visibleOptions = await fetchContestRegistrationOptions(contest.id);
-      setOptions(visibleOptions);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : '报名选项加载失败');
-      setActiveContest(null);
-    } finally {
-      setOptionLoading(false);
-    }
-  };
-
-  /**
-   * 创建或提交注册。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染。
-   */
-  const submitRegister = async () => {
-    const option = options[0];
-    if (!activeContest || !option?.available) {
-      return;
-    }
-    setRegistering(true);
-    try {
-      await registerContest(activeContest.id, {
-        identityType: 'PERSONAL',
-        starred: activeContest.allowStarRegistration ? starred : false,
-        password: activeContest.hasPassword ? registrationPassword : undefined,
-      });
-      setActiveContest(null);
-      setOptions([]);
-      setRegistrationPassword('');
-      setStarred(false);
-      setMessage('报名信息已保存。');
-      loadContests();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : '报名失败');
-    } finally {
-      setRegistering(false);
-    }
-  };
 
   const columns: TableColumnsType<PublicContest> = [
     {
@@ -213,49 +155,6 @@ export function ContestsPage() {
       dataIndex: 'participantCount',
       width: 110,
       render: (count: number) => <Text>{count} 人</Text>,
-    },
-    {
-      title: '操作',
-      width: 260,
-      render: (_: unknown, contest) => (
-        <Space size={8} wrap>
-          {contest.status === 'ENDED' ? (
-            <Button
-              type="primary"
-              icon={<CodeOutlined />}
-              onClick={() => {
-                window.location.href = `/contests/${contest.id}`;
-              }}
-            >
-              查看
-            </Button>
-          ) : (
-            <Button type="primary" onClick={() => openRegister(contest)}>
-              {contest.registered ? '修改报名' : '报名'}
-            </Button>
-          )}
-          {contest.registered && contest.status !== 'ENDED' && (
-            <Button
-              icon={<CodeOutlined />}
-              onClick={() => {
-                window.location.href = `/contests/${contest.id}`;
-              }}
-            >
-              进入
-            </Button>
-          )}
-          {contest.publicScoreboardEnabled === true && (
-            <Button
-              icon={<SafetyCertificateOutlined />}
-              onClick={() => {
-                window.location.href = `/contests/${contest.id}/public-scoreboard`;
-              }}
-            >
-              外榜
-            </Button>
-          )}
-        </Space>
-      ),
     },
   ];
 
@@ -314,6 +213,7 @@ export function ContestsPage() {
             rowKey="id"
             dataSource={filteredContests}
             columns={columns}
+            showHeader={false}
             pagination={{ pageSize: 20 }}
           />
         </>
@@ -333,99 +233,6 @@ export function ContestsPage() {
         </div>
       )}
 
-      <Modal
-        title="比赛报名"
-        open={!!activeContest}
-        onCancel={() => {
-          if (!registering) {
-            setActiveContest(null);
-            setRegistrationPassword('');
-            setStarred(false);
-          }
-        }}
-        footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-            <Button onClick={() => {
-              setActiveContest(null);
-              setRegistrationPassword('');
-              setStarred(false);
-            }}>取消</Button>
-            <Button
-              type="primary"
-              disabled={!options[0]?.available || registering || Boolean(activeContest?.hasPassword && !registrationPassword.trim())}
-              loading={registering}
-              onClick={submitRegister}
-            >
-              {registering ? '保存中' : '确认报名'}
-            </Button>
-          </div>
-        }
-      >
-        {activeContest && (
-          <div>
-            <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-              {activeContest.title}
-            </Text>
-
-            {optionLoading ? (
-              <div
-                style={{
-                  borderRadius: 6,
-                  border: '1px solid #f0f0f0',
-                  backgroundColor: '#fafafa',
-                  padding: '32px 16px',
-                  textAlign: 'center',
-                }}
-              >
-                <Spin tip="报名信息加载中" />
-              </div>
-            ) : (
-              <>
-                <div
-                  style={{
-                    marginBottom: 16,
-                    borderRadius: 6,
-                    border: '1px solid #f0f0f0',
-                    backgroundColor: '#fafafa',
-                    padding: '12px 16px',
-                  }}
-                >
-                  <Text strong>将以账号 {options[0]?.name || '-'} 报名</Text>
-                </div>
-                {options[0] && !options[0].available && options[0].disabledReason && (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    message={options[0].disabledReason}
-                    style={{ marginBottom: 16 }}
-                  />
-                )}
-              </>
-            )}
-
-            {activeContest.hasPassword && (
-              <label style={{ display: 'block', marginBottom: 16 }}>
-                <Text strong style={{ display: 'block', marginBottom: 6 }}>
-                  比赛密码
-                </Text>
-                <Input.Password
-                  value={registrationPassword}
-                  onChange={(event) => setRegistrationPassword(event.target.value)}
-                  placeholder="请输入比赛密码"
-                />
-              </label>
-            )}
-
-            {activeContest.allowStarRegistration && (
-              <label style={{ display: 'block', marginBottom: 16 }}>
-                <Checkbox checked={starred} onChange={(event) => setStarred(event.target.checked)}>
-                  打星报名
-                </Checkbox>
-              </label>
-            )}
-          </div>
-        )}
-      </Modal>
     </PageContainer>
   );
 }

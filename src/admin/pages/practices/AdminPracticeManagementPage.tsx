@@ -5,7 +5,6 @@ import {
   Form,
   Grid,
   Input,
-  Message,
   Popconfirm,
   Radio,
   Select,
@@ -15,6 +14,7 @@ import {
   Tag,
   Typography,
 } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import {
   IconDelete,
   IconLeft,
@@ -167,7 +167,7 @@ export function AdminPracticeManagementPage() {
       setPracticeTotal(result.total);
       setPublications(publicationResult);
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '题单列表加载失败');
+      toast.error(error instanceof Error ? error.message : '题单列表加载失败');
     } finally {
       setLoading(false);
     }
@@ -203,7 +203,7 @@ export function AdminPracticeManagementPage() {
         form.setFieldsValue({ title: '', description: '', accessScope: 'ALL', majorId: undefined });
       }
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '题单数据加载失败');
+      toast.error(error instanceof Error ? error.message : '题单数据加载失败');
       navigate(adminPath('/practices'));
     } finally {
       setLoading(false);
@@ -214,11 +214,11 @@ export function AdminPracticeManagementPage() {
     try {
       const values = await form.validate();
       if (selectedProblemIds.length === 0) {
-        Message.warning('请至少选择一道题目');
+        toast.info('请至少选择一道题目');
         return;
       }
       if (values.accessScope === 'MAJOR' && !values.majorId) {
-        Message.warning('请选择专业');
+        toast.info('请选择专业');
         return;
       }
       setSubmitting(true);
@@ -231,14 +231,14 @@ export function AdminPracticeManagementPage() {
       };
       if (mode === 'edit' && practiceId) {
         await adminPut(`/api/admin/v1/practices/${practiceId}`, payload);
-        Message.success('题单已更新');
+        toast.success('题单已更新');
       } else {
         await adminPost('/api/admin/v1/practices', payload);
-        Message.success('题单已创建');
+        toast.success('题单已创建');
       }
       navigate(adminPath('/practices'));
     } catch (error) {
-      if (error instanceof Error) Message.error(error.message);
+      if (error instanceof Error) toast.error(error.message);
     } finally {
       setSubmitting(false);
     }
@@ -247,30 +247,30 @@ export function AdminPracticeManagementPage() {
   async function remove(id: number) {
     try {
       await adminDelete(`/api/admin/v1/practices/${id}`);
-      Message.success('题单已删除');
+      toast.success('题单已删除');
       void loadPractices();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '删除失败');
+      toast.error(error instanceof Error ? error.message : '删除失败');
     }
   }
 
   async function copy(id: number) {
     try {
       await adminPost(`/api/admin/v1/practices/${id}/copy`);
-      Message.success('题单已复制');
+      toast.success('题单已复制');
       void loadPractices();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '复制失败');
+      toast.error(error instanceof Error ? error.message : '复制失败');
     }
   }
 
   async function removePublication(id: number) {
     try {
       await adminDelete(`/api/admin/v1/practices/publications/${id}`);
-      Message.success('发布实例已删除');
+      toast.success('发布实例已删除');
       void loadPractices();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '删除失败');
+      toast.error(error instanceof Error ? error.message : '删除失败');
     }
   }
 

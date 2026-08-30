@@ -3,6 +3,7 @@ package com.qoj.config;
 import com.qoj.security.AdminApiInterceptor;
 import com.qoj.security.MaintenanceModeInterceptor;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -13,6 +14,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class WebMvcConfig implements WebMvcConfigurer {
     private final AdminApiInterceptor adminApiInterceptor;
     private final MaintenanceModeInterceptor maintenanceModeInterceptor;
+
+    @Value("${admin.api-prefix:/api/admin/v1}")
+    private String adminApiPrefix;
 
     /**
      * 构造 WebMvc配置 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
@@ -34,7 +38,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
         // 注册管理端权限拦截器
         registry.addInterceptor(adminApiInterceptor)
-            .addPathPatterns("/api/admin/v1/**")
+            .addPathPatterns(adminApiPrefix + "/**")
             .order(1);
     }
 }

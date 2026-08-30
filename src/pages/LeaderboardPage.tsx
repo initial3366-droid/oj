@@ -322,6 +322,8 @@ export function LeaderboardPage() {
                 pagination={{
                   pageSize: 20,
                   showSizeChanger: true,
+                  // 卡片 body 为 padding 0，分页需要自留右边距避免贴住卡片边框
+                  style: { marginRight: 16 },
                 }}
                 locale={{
                   emptyText: (

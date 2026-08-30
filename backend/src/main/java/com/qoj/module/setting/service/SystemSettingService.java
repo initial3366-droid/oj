@@ -535,7 +535,7 @@ public class SystemSettingService {
         }
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("c", validateCodeTemplate(request.c, "C"));
-        config.put("cpp", validateCodeTemplate(request.cpp, "C++"));
+        config.put("cpp", validateCodeTemplate(request.cpp, "C++17/20/23"));
         config.put("python", validateCodeTemplate(request.python, "Python"));
         config.put("java", validateCodeTemplate(request.java, "Java"));
         String serialized = toJson(config);

@@ -24,6 +24,7 @@ import type { UserProfile } from '../data/types';
 import { useOjData } from '../data/OjDataProvider';
 import { fetchMyContests, type Contest } from '../api/contest';
 import { ContestStatusTag } from '../components/common/ContestStatusTag';
+import { languageLabel } from '../data/languages';
 
 /**
  * 格式化DateTime。保持输入与返回值转换集中，避免调用处重复实现同一规则。
@@ -610,7 +611,7 @@ export function UserCenterPage() {
       title: '语言',
       dataIndex: 'language',
       width: 100,
-      render: (language: string) => <Typography.Text style={{ fontSize: 14 }}>{language}</Typography.Text>,
+      render: (language: string) => <Typography.Text style={{ fontSize: 14 }}>{languageLabel(language)}</Typography.Text>,
     },
     {
       title: '提交时间',

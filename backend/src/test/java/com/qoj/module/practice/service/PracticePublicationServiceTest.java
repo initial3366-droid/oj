@@ -58,6 +58,7 @@ class PracticePublicationServiceTest {
     @Mock private StringRedisTemplate redisTemplate;
     @Mock private com.qoj.module.submission.mapper.SubmissionMapper submissionMapper;
     @Mock private com.qoj.module.user.mapper.UserMapper userMapper;
+    @Mock private com.qoj.module.submission.service.UserProblemStatusService userProblemStatusService;
     private PracticePublicationService service;
 
     @BeforeEach
@@ -66,7 +67,7 @@ class PracticePublicationServiceTest {
             publicationMapper, publicationClassMapper, publicationProblemMapper,
             practiceMapper, practiceProblemMapper, problemMapper, classRoomMapper,
             classMemberMapper, problemService, resourceAccessService, passwordEncoder,
-            redisTemplate, submissionMapper, userMapper
+            redisTemplate, submissionMapper, userMapper, userProblemStatusService
         );
     }
 
@@ -192,6 +193,51 @@ class PracticePublicationServiceTest {
 
         verify(practiceMapper).insert(any(Practice.class));
         assertEquals(99L, capturedPublication().get().sourcePracticeId);
+    }
+
+    @Test
+    void deletePublicationRemovesSubmissionsAndRefreshesStats() {
+        authenticateTeacher(20L, 3L);
+        PracticePublication publication = publication(5L, "ALL");
+        publication.publisherAccountType = "TEACHER";
+        publication.publisherId = 20L;
+        when(publicationMapper.selectById(5L)).thenReturn(publication);
+        when(submissionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(
+            submission(30L, 100L), submission(30L, 100L), submission(30L, 101L), submission(31L, 100L)
+        ));
+        when(submissionMapper.countByProblemId(100L)).thenReturn(4L);
+        when(submissionMapper.countAcceptedByProblemId(100L)).thenReturn(1L);
+        when(problemMapper.selectById(100L)).thenReturn(problemWithAcRate(100L));
+        when(problemMapper.selectById(101L)).thenReturn(null);
+
+        service.delete(5L);
+
+        verify(submissionMapper).delete(any(Wrapper.class));
+        // (30,100) 出现两次但只重算一次
+        verify(userProblemStatusService, times(1)).recompute(30L, 100L);
+        verify(userProblemStatusService, times(1)).recompute(30L, 101L);
+        verify(userProblemStatusService, times(1)).recompute(31L, 100L);
+        var acRateCaptor = org.mockito.ArgumentCaptor.forClass(com.qoj.module.problem.entity.Problem.class);
+        verify(problemMapper).updateById(acRateCaptor.capture());
+        assertEquals(java.math.BigDecimal.valueOf(25), acRateCaptor.getValue().acRate);
+        verify(redisTemplate).delete(com.qoj.common.redis.RedisKeys.problem(100L));
+        verify(publicationProblemMapper).delete(any(Wrapper.class));
+        verify(publicationClassMapper).delete(any(Wrapper.class));
+        verify(publicationMapper).deleteById(5L);
+    }
+
+    private com.qoj.module.submission.entity.Submission submission(Long userId, Long problemId) {
+        com.qoj.module.submission.entity.Submission item = new com.qoj.module.submission.entity.Submission();
+        item.userId = userId;
+        item.problemId = problemId;
+        return item;
+    }
+
+    private com.qoj.module.problem.entity.Problem problemWithAcRate(Long id) {
+        com.qoj.module.problem.entity.Problem problem = new com.qoj.module.problem.entity.Problem();
+        problem.id = id;
+        problem.acRate = java.math.BigDecimal.valueOf(80);
+        return problem;
     }
 
     private PracticePublication publication(String mode) {

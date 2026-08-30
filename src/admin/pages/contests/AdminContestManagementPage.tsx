@@ -9,11 +9,11 @@ import {
   Button,
   Card,
   Checkbox,
+  DatePicker,
   Form,
   Grid,
   Input,
   InputNumber,
-  Message,
   Modal,
   Popconfirm,
   Radio,
@@ -26,6 +26,7 @@ import {
   Tag,
   Typography,
 } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import {
   IconCode,
   IconDelete,
@@ -96,10 +97,42 @@ interface AdminContestManagementPageProps {
   portal?: ContestPortal;
 }
 
+interface ContestProblemOption {
+  id: number;
+  title: string;
+  statement?: string;
+  inputFormat?: string;
+  outputFormat?: string;
+  difficulty: number;
+  tags?: string[];
+  timeLimit: number;
+  memoryLimit: number;
+  acRate?: number;
+  ownerId?: number;
+  ownerName?: string;
+  testCaseCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  attemptStatus?: string | null;
+  specialJudge?: boolean;
+}
+
+interface ContestProblemFolder {
+  id: number;
+  name: string;
+  problems: ContestProblemOption[];
+}
+
+interface ContestProblemPage {
+  total: number;
+  list: ContestProblemOption[];
+}
+
 const emptyDraft: ContestDraftPayload = {
   title: '',
   durationMinutes: 180,
   startTime: '',
+  endTime: '',
   description: '',
   type: 'ACM',
   judgeMode: 'GO_JUDGE',
@@ -149,6 +182,31 @@ function numericProblemId(id: string) {
   return match ? Number(match[0]) : 0;
 }
 
+function mapContestProblemOption(problem: ContestProblemOption): Problem {
+  return {
+    id: `p${problem.id}`,
+    title: problem.title,
+    summary: problem.statement ?? '',
+    statement: problem.statement ?? '',
+    inputFormat: problem.inputFormat ?? '',
+    outputFormat: problem.outputFormat ?? '',
+    samples: [],
+    difficulty: problem.difficulty === 1 ? '入门' : problem.difficulty === 2 ? '简单' : problem.difficulty === 3 ? '中等' : problem.difficulty === 4 ? '困难' : '地狱',
+    tags: problem.tags ?? [],
+    timeLimit: problem.timeLimit,
+    memoryLimit: problem.memoryLimit,
+    acRate: Number(problem.acRate ?? 0),
+    owner: String(problem.ownerId ?? ''),
+    ownerName: problem.ownerName ?? '',
+    testCaseCount: problem.testCaseCount ?? 0,
+    createdAt: problem.createdAt,
+    updatedAt: problem.updatedAt,
+    attemptStatus: problem.attemptStatus ?? null,
+    isSpecialJudge: Boolean(problem.specialJudge),
+    score: 100,
+  };
+}
+
 /**
  * 封装nowLocalInput相关逻辑。会更新 React 状态并触发重新渲染。
  */
@@ -178,10 +236,30 @@ function toLocalInputValue(date: Date) {
  */
 function toDateTimeLocal(value?: string | null) {
   if (!value) return nowLocalInput();
+  const normalized = value.replace(' ', 'T');
+  // LocalDateTime responses do not carry a timezone and should be used as-is.
+  // Only convert values that explicitly contain a timezone offset or Z suffix.
+  if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized)) {
+    return normalized.slice(0, 16);
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value.slice(0, 16);
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(0, 16);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
+  return local.toISOString().slice(0, 16);
+}
+
+function durationBetween(startTime?: string | null, endTime?: string | null) {
+  if (!startTime || !endTime) return null;
+  const start = new Date(startTime).getTime();
+  const end = new Date(endTime).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return Math.round((end - start) / 60000);
+}
+
+function endTimeFromDuration(startTime: string, durationMinutes: number) {
+  const start = new Date(startTime);
+  if (Number.isNaN(start.getTime())) return '';
+  return toLocalInputValue(new Date(start.getTime() + Math.max(1, durationMinutes) * 60000)).slice(0, 16);
 }
 
 /**
@@ -189,7 +267,10 @@ function toDateTimeLocal(value?: string | null) {
  */
 function defaultFreezeTime(draft: ContestDraftPayload) {
   const start = new Date(draft.startTime || nowLocalInput());
-  const duration = Number(draft.durationMinutes ?? 180);
+  const endValue = draft.endTime || endTimeFromDuration(draft.startTime || nowLocalInput(), Number(draft.durationMinutes ?? 180));
+  const end = new Date(endValue);
+  const duration = durationBetween(draft.startTime, endValue) ?? Number(draft.durationMinutes ?? 180);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
   const offsetMinutes = duration > 60 ? duration - 60 : Math.max(1, Math.floor(duration * 2 / 3));
   return toLocalInputValue(new Date(start.getTime() + offsetMinutes * 60 * 1000)).slice(0, 16);
 }
@@ -385,10 +466,14 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
     ? teacherGet<ProblemTestCasePayload[]>(`/api/admin/v1/problems/${problemId}/test-cases`)
     : fetchAdminProblemTestCases(token, problemId);
 
-  const [draft, setDraft] = useState<ContestDraftPayload>(() => ({
-    ...emptyDraft,
-    startTime: nowLocalInput(),
-  }));
+  const [draft, setDraft] = useState<ContestDraftPayload>(() => {
+    const startTime = nowLocalInput();
+    return {
+      ...emptyDraft,
+      startTime,
+      endTime: endTimeFromDuration(startTime, emptyDraft.durationMinutes ?? 180),
+    };
+  });
   const [step, setStep] = useState(0);
   const [draggingProblemId, setDraggingProblemId] = useState<number | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
@@ -414,35 +499,27 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
    * 读取FoldersWithProblems并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
    */
   async function fetchFoldersWithProblems() {
-    const path = '/api/admin/v1/problem-folders';
+    const path = adminPath('/api/admin/v1/problem-folders');
     const result = portal === 'teacher'
-      ? await teacherGet<Array<{ id: number; name: string; problems: Array<{ id: number; title: string; difficulty: number; timeLimit: number; memoryLimit: number; testCaseCount?: number }> }>>(path)
-      : await adminGet<Array<{ id: number; name: string; problems: Array<{ id: number; title: string; difficulty: number; timeLimit: number; memoryLimit: number; testCaseCount?: number }> }>>(path);
+      ? await teacherGet<ContestProblemFolder[]>(path)
+      : await adminGet<ContestProblemFolder[]>(path);
     return result.map((folder) => ({
       id: folder.id,
       name: folder.name,
-      problems: folder.problems.map((p): Problem => ({
-        id: `p${p.id}`,
-        title: p.title,
-        summary: '',
-        statement: '',
-        inputFormat: '',
-        outputFormat: '',
-        samples: [],
-        difficulty: p.difficulty === 1 ? '入门' : p.difficulty === 2 ? '简单' : p.difficulty === 3 ? '中等' : p.difficulty === 4 ? '困难' : '地狱',
-        tags: [],
-        timeLimit: p.timeLimit,
-        memoryLimit: p.memoryLimit,
-        acRate: 0,
-        owner: '',
-        ownerName: '',
-        testCaseCount: p.testCaseCount ?? 0,
-        createdAt: '',
-        updatedAt: '',
-        attemptStatus: null,
-        score: 100,
-      })),
+      problems: folder.problems.map(mapContestProblemOption),
     }));
+  }
+
+  /**
+   * 加载当前账号有权使用的完整题目目录。比赛选题不能只依赖文件夹接口，
+   * 否则尚未归档到任何文件夹的题目无法被搜索和选择。
+   */
+  async function fetchAvailableProblems() {
+    const path = adminPath('/api/admin/v1/problems?page=1&pageSize=5000');
+    const result = portal === 'teacher'
+      ? await teacherGet<ContestProblemPage>(path)
+      : await adminGet<ContestProblemPage>(path);
+    return result.list.map(mapContestProblemOption);
   }
 
   const selectedProblems = draft.problems ?? [];
@@ -464,8 +541,24 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
   const filteredProblems = useMemo(() => {
     const normalized = keyword.trim().toLowerCase();
     if (!normalized) return problems;
-    return problems.filter((item) => item.title.toLowerCase().includes(normalized));
+    return problems.filter((item) =>
+      item.title.toLowerCase().includes(normalized)
+      || String(numericProblemId(item.id)).includes(normalized)
+      || item.tags.some((tag) => tag.toLowerCase().includes(normalized)),
+    );
   }, [keyword, problems]);
+
+  const problemGroups = useMemo(() => {
+    const groupedProblemIds = new Set(
+      folders.flatMap((folder) => folder.problems.map((problem) => numericProblemId(problem.id))),
+    );
+    const ungroupedProblems = problems.filter(
+      (problem) => !groupedProblemIds.has(numericProblemId(problem.id)),
+    );
+    return ungroupedProblems.length > 0
+      ? [...folders, { id: 0, name: '未加入题目文件夹', problems: ungroupedProblems }]
+      : folders;
+  }, [folders, problems]);
 
   /**
    * 封装filteredContests相关逻辑。对原始数据进行派生或聚合。
@@ -489,35 +582,43 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
     setDraft((current) => ({
       ...current,
       startTime: current.startTime || nowLocalInput(),
+      endTime: current.endTime || endTimeFromDuration(
+        current.startTime || nowLocalInput(),
+        Number(current.durationMinutes ?? 180),
+      ),
     }));
     setLoading(true);
     setDraftLoaded(false);
-    Promise.all([loadContestDraft(), fetchAvailableClasses(token), fetchFoldersWithProblems()])
-      .then(([remoteDraft, classList, folderList]) => {
+    Promise.all([loadContestDraft(), fetchAvailableClasses(token), fetchFoldersWithProblems(), fetchAvailableProblems()])
+      .then(([remoteDraft, classList, folderList, problemList]) => {
         const mergedDraft = { ...emptyDraft, ...(remoteDraft ?? {}) };
         const classIds = permittedClassIds(mergedDraft.classIds, classList);
+        const startTime = nowLocalInput();
+        const durationMinutes = durationBetween(mergedDraft.startTime, mergedDraft.endTime)
+          ?? Number(mergedDraft.durationMinutes ?? 180);
         setDraft({
           ...mergedDraft,
+          durationMinutes,
           audience: mergedDraft.audience === 'CLASS' ? 'CLASS' : 'ALL',
           audienceTypes: initialAudienceTypes(mergedDraft),
           // A newly opened create page always starts from the current local minute.
           // Other draft fields remain recoverable, but a stale draft must not silently
           // schedule a new contest in the past.
-          startTime: nowLocalInput(),
+          startTime,
+          endTime: endTimeFromDuration(startTime, durationMinutes),
           classIds,
         });
         setPendingClassIds(classIds);
         setClasses(classList);
         setFolders(folderList);
-        const allProblems = folderList.flatMap((f) => f.problems);
-        setProblems(allProblems);
+        setProblems(problemList);
         setEditingHasPassword(false);
         setJudgeModeLocked(false);
         setProblemsLocked(false);
         setStep(0);
       })
       .catch((error) => {
-        Message.error(error instanceof Error ? error.message : '比赛新增数据加载失败');
+        toast.error(error instanceof Error ? error.message : '比赛新增数据加载失败');
       })
       .finally(() => {
         setDraftLoaded(true);
@@ -530,8 +631,8 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
     if (mode !== 'edit') return;
     setLoading(true);
     setDraftLoaded(false);
-    Promise.all([loadContestDetail(numericContestId), fetchAvailableClasses(token), fetchFoldersWithProblems()])
-      .then(([contest, classList, folderList]) => {
+    Promise.all([loadContestDetail(numericContestId), fetchAvailableClasses(token), fetchFoldersWithProblems(), fetchAvailableProblems()])
+      .then(([contest, classList, folderList, problemList]) => {
         const classIds = permittedClassIds(contest.audiences
           .filter((item) => item.audienceType === 'CLASS' && item.audienceId > 0)
           .map((item) => item.audienceId), classList);
@@ -539,10 +640,13 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
           ? ['ALL' as const]
           : Array.from(new Set(contest.audiences.map((item) => item.audienceType).filter((item): item is Audience => item === 'ALL' || item === 'CLASS')));
 
+        const startTime = toDateTimeLocal(contest.startTime);
+        const endTime = toDateTimeLocal(contest.endTime);
         setDraft({
           title: contest.title,
-          durationMinutes: contest.durationMinutes || 180,
-          startTime: toDateTimeLocal(contest.startTime),
+          durationMinutes: durationBetween(startTime, endTime) ?? contest.durationMinutes ?? 180,
+          startTime,
+          endTime,
           description: contest.description || '',
           type: contest.type,
           judgeMode: contest.judgeMode,
@@ -577,15 +681,14 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
         setPendingClassIds(classIds);
         setClasses(classList);
         setFolders(folderList);
-        const allProblems = folderList.flatMap((f) => f.problems);
-        setProblems(allProblems);
+        setProblems(problemList);
         setEditingHasPassword(contest.hasPassword);
         setJudgeModeLocked(contest.submissionCount > 0);
         setProblemsLocked(contest.sourceContestId != null);
         setStep(0);
       })
       .catch((error) => {
-        Message.error(error instanceof Error ? error.message : '比赛编辑数据加载失败');
+        toast.error(error instanceof Error ? error.message : '比赛编辑数据加载失败');
       })
       .finally(() => {
         setDraftLoaded(true);
@@ -601,7 +704,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
     saveTimer.current = window.setTimeout(() => {
       setSavingDraft(true);
       persistContestDraft(draft)
-        .catch((error) => Message.error(error instanceof Error ? error.message : '比赛草稿保存失败'))
+        .catch((error) => toast.error(error instanceof Error ? error.message : '比赛草稿保存失败'))
         .finally(() => setSavingDraft(false));
     }, 500);
     return () => {
@@ -627,7 +730,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
       const result = await fetchAdminContests(token, 1, 200);
       setContests(result.list);
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '比赛列表加载失败');
+      toast.error(error instanceof Error ? error.message : '比赛列表加载失败');
     } finally {
       setLoading(false);
     }
@@ -702,13 +805,18 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
       if (mode === 'add') {
         await removeContestDraft();
       }
-      setDraft({ ...emptyDraft, startTime: nowLocalInput() });
+      const startTime = nowLocalInput();
+      setDraft({
+        ...emptyDraft,
+        startTime,
+        endTime: endTimeFromDuration(startTime, emptyDraft.durationMinutes ?? 180),
+      });
       setPendingClassIds([]);
       setEditingHasPassword(false);
       setStep(0);
-      Message.success(mode === 'add' ? '比赛草稿已清空' : '比赛表单已清空');
+      toast.success(mode === 'add' ? '比赛草稿已清空' : '比赛表单已清空');
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '清空失败');
+      toast.error(error instanceof Error ? error.message : '清空失败');
     }
   }
 
@@ -717,44 +825,51 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
    */
   function validateBasic() {
     if (!draft.title?.trim()) {
-      Message.warning('请填写比赛标题');
+      toast.info('请填写比赛标题');
       return false;
     }
     if (!draft.startTime) {
-      Message.warning('请选择比赛开始时间');
+      toast.info('请选择比赛开始时间');
       return false;
     }
-    if (!Number(draft.durationMinutes)) {
-      Message.warning('请填写比赛时长');
+    if (!draft.endTime) {
+      toast.info('请选择比赛结束时间');
       return false;
     }
     if (draft.type !== 'ACM' && draft.type !== 'OI') {
-      Message.warning('请选择比赛赛制');
+      toast.info('请选择比赛赛制');
       return false;
     }
     if (draft.judgeMode !== 'GO_JUDGE' && draft.judgeMode !== 'CCPCOJ') {
-      Message.warning('请选择判题服务');
+      toast.info('请选择判题服务');
       return false;
     }
     if (selectedAudienceTypes.length === 0) {
-      Message.warning('请选择比赛面向群体');
+      toast.info('请选择比赛面向群体');
       return false;
     }
     if (selectedAudienceTypes.includes('CLASS') && !(draft.classIds?.length)) {
-      Message.warning('请选择至少一个参赛班级');
+      toast.info('请选择至少一个参赛班级');
       return false;
     }
     const start = new Date(draft.startTime);
-    const duration = Number(draft.durationMinutes ?? 180);
-    const end = new Date(start.getTime() + duration * 60 * 1000);
+    const end = new Date(draft.endTime);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      toast.info('请选择有效的比赛时间');
+      return false;
+    }
+    if (end <= start) {
+      toast.info('比赛结束时间必须晚于开始时间');
+      return false;
+    }
     if (draft.frozen) {
       if (!draft.freezeTime) {
-        Message.warning('开启封榜后必须设置封榜时间');
+        toast.info('开启封榜后必须设置封榜时间');
         return false;
       }
       const freeze = new Date(draft.freezeTime);
       if (Number.isNaN(freeze.getTime()) || freeze < start || freeze > end) {
-        Message.warning('封榜时间必须在比赛开始和结束时间之间');
+        toast.info('封榜时间必须在比赛开始和结束时间之间');
         return false;
       }
     }
@@ -762,7 +877,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
     const silver = Number(draft.silverRatio ?? 20);
     const bronze = Number(draft.bronzeRatio ?? 30);
     if ([gold, silver, bronze].some((value) => value < 0 || value > 100) || gold > silver || silver > bronze) {
-      Message.warning('奖牌比例必须在 0 到 100 之间，并满足金牌 ≤ 银牌 ≤ 铜牌');
+      toast.info('奖牌比例必须在 0 到 100 之间，并满足金牌 ≤ 银牌 ≤ 铜牌');
       return false;
     }
     return true;
@@ -815,7 +930,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
           );
         }
       } catch (error) {
-        Message.error(error instanceof Error ? error.message : '测试点加载失败');
+        toast.error(error instanceof Error ? error.message : '测试点加载失败');
       }
     }
 
@@ -945,16 +1060,18 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
       return;
     }
     if (selectedProblems.length === 0) {
-      Message.warning('请选择比赛题目');
+      toast.info('请选择比赛题目');
       return;
     }
 
     setSubmitting(true);
     try {
       const currentStartTime = draft.startTime || nowLocalInput();
-      const start = new Date(currentStartTime);
-      const duration = Number(draft.durationMinutes ?? 180);
-      const end = new Date(start.getTime() + duration * 60 * 1000);
+      const currentEndTime = draft.endTime || endTimeFromDuration(
+        currentStartTime,
+        Number(draft.durationMinutes ?? 180),
+      );
+      const duration = durationBetween(currentStartTime, currentEndTime) ?? 0;
       const audienceTypes = selectedAudienceTypes.includes('ALL')
         ? ['ALL' as const]
         : selectedAudienceTypes.filter((item) => item !== 'ALL');
@@ -977,7 +1094,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
         description: draft.description,
         durationMinutes: duration,
         startTime: toIsoLocal(currentStartTime),
-        endTime: toLocalInputValue(end),
+        endTime: toIsoLocal(currentEndTime),
         type: draft.type ?? 'ACM',
         judgeMode: draft.judgeMode ?? 'GO_JUDGE',
         audience: audiences[0]?.audienceType ?? 'ALL',
@@ -991,9 +1108,6 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
         goldRatio: Number(draft.goldRatio ?? 10),
         silverRatio: Number(draft.silverRatio ?? 20),
         bronzeRatio: Number(draft.bronzeRatio ?? 30),
-        allowFullscreen: false,
-        antiCheatEnabled: false,
-        maxSwitches: 3,
         allowAfterEndSubmit: Boolean(draft.allowAfterEndSubmit),
         allowAfterEndViewProblem: draft.allowAfterEndViewProblem !== false,
         allowAfterEndViewCode: Boolean(draft.allowAfterEndViewCode),
@@ -1023,10 +1137,10 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
         }
         await removeContestDraft();
       }
-      Message.success(isEditing ? '比赛已更新' : '比赛已保存');
+      toast.success(isEditing ? '比赛已更新' : '比赛已保存');
       navigate(contestListPath);
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '保存失败');
+      toast.error(error instanceof Error ? error.message : '保存失败');
     } finally {
       setSubmitting(false);
     }
@@ -1038,10 +1152,10 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
   async function removeContest(id: number) {
     try {
       await deleteAdminContest(token, id);
-      Message.success('删除成功');
+      toast.success('删除成功');
       loadContests();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '删除失败');
+      toast.error(error instanceof Error ? error.message : '删除失败');
     }
   }
 
@@ -1053,13 +1167,13 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
       const created = portal === 'teacher'
         ? await teacherPost<AdminContest>(`/api/admin/v1/contests/${id}/replay`)
         : await replayAdminContest(token, id);
-      Message.success('重现赛已创建，请编辑比赛信息');
+      toast.success('重现赛已创建，请编辑比赛信息');
       const editPath = portal === 'teacher'
         ? `/teacher/contests/${created.id}/edit`
         : adminPath(`/contests/${created.id}/edit`);
       navigate(editPath);
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '创建重现赛失败');
+      toast.error(error instanceof Error ? error.message : '创建重现赛失败');
     }
   }
 
@@ -1158,10 +1272,10 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
         align: 'center' as const,
         render: (_: unknown, record: AdminContest) => (
           <Space size={0} style={{ flexWrap: 'nowrap', justifyContent: 'center' }}>
-            <Button type="text" size="mini" onClick={() => navigate(`/admin/contests/${record.id}`)}>
+            <Button type="text" size="mini" onClick={() => navigate(adminPath(`/contests/${record.id}`))}>
               查看
             </Button>
-            <Button type="text" size="mini" onClick={() => navigate(`/admin/contests/${record.id}/edit`)}>
+            <Button type="text" size="mini" onClick={() => navigate(adminPath(`/contests/${record.id}/edit`))}>
               编辑
             </Button>
             <Button type="text" size="mini" onClick={() => replayContest(record.id)}>
@@ -1466,12 +1580,13 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
                 </FormItem>
               </Col>
               <Col span={12}>
-                <FormItem label="比赛时长（分钟）" required>
-                  <InputNumber
-                    min={1}
-                    style={{ width: '100%' }}
-                    value={draft.durationMinutes ?? 180}
-                    onChange={(value) => updateDraft({ ...draft, durationMinutes: Number(value) || 1 })}
+                <FormItem label="封榜时间">
+                  <input
+                    className="arco-input"
+                    type="datetime-local"
+                    disabled={!draft.frozen}
+                    value={draft.freezeTime ?? ''}
+                    onChange={(event) => updateDraft({ ...draft, freezeTime: event.target.value })}
                   />
                 </FormItem>
               </Col>
@@ -1492,13 +1607,21 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
                 </FormItem>
               </Col>
               <Col span={12}>
-                <FormItem label="封榜时间">
-                  <input
-                    className="arco-input"
-                    type="datetime-local"
-                    disabled={!draft.frozen}
-                    value={draft.freezeTime ?? ''}
-                    onChange={(event) => updateDraft({ ...draft, freezeTime: event.target.value })}
+                <FormItem label="比赛结束时间" required>
+                  <DatePicker
+                    style={{ width: '100%' }}
+                    value={draft.endTime ? new Date(draft.endTime) : undefined}
+                    format="YYYY-MM-DD HH:mm"
+                    showTime={{ format: 'HH:mm' }}
+                    placeholder="请选择比赛结束时间"
+                    onChange={(dateString) => {
+                      const endTime = dateString ? dateString.replace(' ', 'T') : '';
+                      updateDraft({
+                        ...draft,
+                        endTime,
+                        durationMinutes: durationBetween(draft.startTime, endTime) ?? draft.durationMinutes,
+                      });
+                    }}
                   />
                 </FormItem>
               </Col>
@@ -1801,7 +1924,7 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
               ) : <span />}
               <Input.Search
                 style={{ width: 320 }}
-                placeholder="搜索题目"
+                placeholder="搜索题目 ID、名称或标签"
                 prefix={<IconSearch />}
                 allowClear
                 value={keyword}
@@ -1809,65 +1932,71 @@ export function AdminContestManagementPage({ portal = 'admin' }: AdminContestMan
               />
             </Space>
 
-            {/* 文件夹分组选题 */}
-            <Card title="按文件夹选题" style={{ maxHeight: 500, overflow: 'auto' }}>
-              <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                {folders.map((folder) => {
-                  const isExpanded = expandedFolderIds.has(folder.id);
-                  const folderProblems = keyword.trim()
-                    ? folder.problems.filter((p) => p.title.toLowerCase().includes(keyword.trim().toLowerCase()))
-                    : folder.problems;
-                  if (folderProblems.length === 0 && keyword.trim()) return null;
-
-                  return (
-                    <Card
-                      key={folder.id}
-                      size="small"
-                      style={{ border: '1px solid #e5e6eb' }}
-                      headerStyle={{ padding: '8px 16px', cursor: 'pointer' }}
-                      title={
-                        <div
-                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}
-                          onClick={() => {
-                            setExpandedFolderIds((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(folder.id)) {
-                                next.delete(folder.id);
-                              } else {
-                                next.add(folder.id);
-                              }
-                              return next;
-                            });
-                          }}
-                        >
-                          <Space>
-                            <IconFile />
-                            <Typography.Text style={{ fontWeight: 600 }}>{folder.name}</Typography.Text>
-                            <Tag color="blue" size="small">{folderProblems.length} 题</Tag>
-                          </Space>
-                          <Button
-                            size="mini"
-                            type="text"
-                            icon={isExpanded ? <IconCode /> : <IconPlus />}
-                          >
-                            {isExpanded ? '收起' : '展开'}
-                          </Button>
-                        </div>
-                      }
-                      bodyStyle={{ padding: 0, display: isExpanded ? 'block' : 'none' }}
-                    >
-                      <Table
-                        columns={problemColumns}
-                        data={folderProblems}
-                        rowKey="id"
-                        pagination={false}
+            {keyword.trim() ? (
+              <Card title={`搜索结果（${filteredProblems.length}）`} style={{ maxHeight: 500, overflow: 'auto' }}>
+                <Table
+                  columns={problemColumns}
+                  data={filteredProblems}
+                  rowKey="id"
+                  pagination={{ pageSize: 10, showTotal: true }}
+                  size="small"
+                />
+              </Card>
+            ) : (
+              <Card title="按文件夹选题" style={{ maxHeight: 500, overflow: 'auto' }}>
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  {problemGroups.map((folder) => {
+                    const isExpanded = expandedFolderIds.has(folder.id);
+                    return (
+                      <Card
+                        key={folder.id}
                         size="small"
-                      />
-                    </Card>
-                  );
-                })}
-              </Space>
-            </Card>
+                        style={{ border: '1px solid #e5e6eb' }}
+                        headerStyle={{ padding: '8px 16px', cursor: 'pointer' }}
+                        title={
+                          <div
+                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}
+                            onClick={() => {
+                              setExpandedFolderIds((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(folder.id)) {
+                                  next.delete(folder.id);
+                                } else {
+                                  next.add(folder.id);
+                                }
+                                return next;
+                              });
+                            }}
+                          >
+                            <Space>
+                              <IconFile />
+                              <Typography.Text style={{ fontWeight: 600 }}>{folder.name}</Typography.Text>
+                              <Tag color="blue" size="small">{folder.problems.length} 题</Tag>
+                            </Space>
+                            <Button
+                              size="mini"
+                              type="text"
+                              icon={isExpanded ? <IconCode /> : <IconPlus />}
+                            >
+                              {isExpanded ? '收起' : '展开'}
+                            </Button>
+                          </div>
+                        }
+                        bodyStyle={{ padding: 0, display: isExpanded ? 'block' : 'none' }}
+                      >
+                        <Table
+                          columns={problemColumns}
+                          data={folder.problems}
+                          rowKey="id"
+                          pagination={false}
+                          size="small"
+                        />
+                      </Card>
+                    );
+                  })}
+                </Space>
+              </Card>
+            )}
 
             <div>
               <Typography.Title heading={6} style={{ marginTop: 0 }}>

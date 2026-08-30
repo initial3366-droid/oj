@@ -129,6 +129,39 @@ export function ContestPublicScoreboardPage() {
     return stats;
   }, [scoreboard]);
 
+  // 榜单表格容器宽度测量：按容器实际宽度动态收缩题目列，避免出现横向滚动条
+  const [boardWrapEl, setBoardWrapEl] = useState<HTMLDivElement | null>(null);
+  const [boardWrapWidth, setBoardWrapWidth] = useState(0);
+  useEffect(() => {
+    if (!boardWrapEl || typeof ResizeObserver === 'undefined') return;
+    const update = () => setBoardWrapWidth(boardWrapEl.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(boardWrapEl);
+    return () => observer.disconnect();
+  }, [boardWrapEl]);
+  const scoreboardDensity = useMemo(() => {
+    const problemCount = scoreboard?.problems.length ?? 0;
+    if (problemCount <= 0 || boardWrapWidth <= 0) return 2;
+    // 固定列（排名/用户/通过/时间）估算约 460px，班级列按需追加 170px；
+    // 估算略偏保守，宁可提前一档收缩徽章也不要出现横向滚动条
+    const fixedWidth = 460 + (scoreboard?.showClassOnScoreboard ? 170 : 0);
+    const perProblem = (boardWrapWidth - fixedWidth) / problemCount;
+    if (perProblem >= 104) return 2;
+    if (perProblem >= 76) return 1;
+    return 0;
+  }, [boardWrapWidth, scoreboard]);
+  const scoreboardChip = useMemo(() => {
+    const isOi = scoreboard?.contestType === 'OI';
+    if (scoreboardDensity >= 2) {
+      return { minWidth: 76, minHeight: isOi ? 76 : 64, padding: '8px 10px', gap: 3, main: 13, sub: 11, mark: 18 };
+    }
+    if (scoreboardDensity === 1) {
+      return { minWidth: 56, minHeight: isOi ? 64 : 56, padding: '6px 7px', gap: 2, main: 12, sub: 10, mark: 16 };
+    }
+    return { minWidth: 36, minHeight: isOi ? 48 : 44, padding: '4px 5px', gap: 1, main: 11, sub: 10, mark: 14 };
+  }, [scoreboardDensity, scoreboard?.contestType]);
+
   if (loading) {
     return (
       <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh', background: 'var(--qoj-color-bg-1)' }}>
@@ -174,22 +207,22 @@ export function ContestPublicScoreboardPage() {
           />
         )}
 
-        <div style={{ overflowX: 'auto', borderRadius: 8, border: '1px solid var(--qoj-color-border)', backgroundColor: 'var(--qoj-color-bg-0)' }}>
-          <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <div ref={setBoardWrapEl} style={{ overflowX: 'auto', borderRadius: 8, border: '1px solid var(--qoj-color-border)', backgroundColor: 'var(--qoj-color-bg-0)' }}>
+          <table style={{ width: '100%', minWidth: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ backgroundColor: 'var(--qoj-color-fill-1)' }}>
-                <th style={{ position: 'sticky', left: 0, zIndex: 10, backgroundColor: 'var(--qoj-color-fill-1)', borderBottom: '1px solid var(--qoj-color-border)', padding: 12, textAlign: 'left', fontWeight: 600 }}>排名</th>
-                <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>用户</th>
-                {showClass && <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>班级</th>}
-                <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: 12, textAlign: 'center', fontWeight: 600 }}>通过</th>
-                <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: 12, textAlign: 'center', fontWeight: 600 }}>{isOi ? '分数' : '时间'}</th>
+                <th style={{ position: 'sticky', left: 0, zIndex: 10, backgroundColor: 'var(--qoj-color-fill-1)', borderBottom: '1px solid var(--qoj-color-border)', padding: 12, textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>排名</th>
+                <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>用户</th>
+                {showClass && <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>班级</th>}
+                <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: 12, textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>通过</th>
+                <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: 12, textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>{isOi ? '分数' : '时间'}</th>
                 {scoreboard.problems.map((problem) => {
                   const stats = problemStats.get(problem.label) ?? { submissions: 0, accepted: 0 };
                   const submissionCount = problem.submissionCount ?? stats.submissions;
                   const acceptedCount = problem.acceptedCount ?? stats.accepted;
                   return (
                     <th key={problem.label} title={problem.title} style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>
-                      <div>{problem.label}</div>
+                      <div style={{ whiteSpace: 'nowrap' }}>{problem.label}</div>
                       <div style={{ marginTop: 3, fontSize: 11, lineHeight: '16px', fontWeight: 400, color: 'var(--qoj-color-text-2)', whiteSpace: 'nowrap' }} title={`提交 ${submissionCount} / 通过 ${acceptedCount}`}>
                         {submissionCount} / {acceptedCount}
                       </div>
@@ -215,10 +248,10 @@ export function ContestPublicScoreboardPage() {
                     if (firstCell) firstCell.style.backgroundColor = 'var(--qoj-color-bg-0)';
                   }}
                 >
-                  <td style={{ position: 'sticky', left: 0, zIndex: 10, backgroundColor: 'var(--qoj-color-bg-0)', borderBottom: '1px solid var(--qoj-color-border)', padding: 12, fontWeight: 600 }}>
+                  <td style={{ position: 'sticky', left: 0, zIndex: 10, backgroundColor: 'var(--qoj-color-bg-0)', borderBottom: '1px solid var(--qoj-color-border)', padding: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
                     {rankText(row.rank, row.starred)}
                   </td>
-                  <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', fontWeight: 500 }}>
+                  <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', fontWeight: 500, whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         {row.displayName || row.username || row.userId}
@@ -227,9 +260,9 @@ export function ContestPublicScoreboardPage() {
                       <span style={{ fontSize: 12, color: 'var(--qoj-color-text-2)' }}>个人{row.starred ? ' · 打星' : ''}</span>
                     </div>
                   </td>
-                  {showClass && <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', color: 'var(--qoj-color-text-1)' }}>{row.className || '-'}</td>}
-                  <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: 12, textAlign: 'center' }}>{row.solved}</td>
-                  <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: 12, textAlign: 'center', fontWeight: 600 }}>{isOi ? row.totalScore : row.penalty}</td>
+                  {showClass && <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', color: 'var(--qoj-color-text-1)', whiteSpace: 'nowrap' }}>{row.className || '-'}</td>}
+                  <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: 12, textAlign: 'center', whiteSpace: 'nowrap' }}>{row.solved}</td>
+                  <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: 12, textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>{isOi ? row.totalScore : row.penalty}</td>
                   {scoreboard.problems.map((problem) => {
                     const status = row.problems?.[problem.label];
                     const attempts = status?.attempts ?? 0;
@@ -243,23 +276,23 @@ export function ContestPublicScoreboardPage() {
                       <td key={problem.label} style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: 8, textAlign: 'center' }}>
                         <div
                           title={hasHiddenSubmissions ? '封榜后有提交' : isFirstBlood ? '一血' : accepted ? '已通过' : attempts > 0 ? '未通过' : '暂无提交'}
-                          style={{ position: 'relative', margin: '0 auto', minWidth: 76, minHeight: isOi ? 76 : 64, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: 6, border: '1px solid transparent', padding: '8px 10px', fontWeight: 600, ...cellStyle(hasHiddenSubmissions, accepted, attempts, score, isOi, isFirstBlood) }}
+                          style={{ position: 'relative', margin: '0 auto', minWidth: scoreboardChip.minWidth, minHeight: scoreboardChip.minHeight, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: scoreboardChip.gap, borderRadius: 6, border: '1px solid transparent', padding: scoreboardChip.padding, fontWeight: 600, ...cellStyle(hasHiddenSubmissions, accepted, attempts, score, isOi, isFirstBlood) }}
                         >
                           {!hasHiddenSubmissions && isFirstBlood && (
                             <StarOutlined aria-hidden="true" style={{ position: 'absolute', top: 4, left: 5, fontSize: 10, lineHeight: 1, color: '#fef3c7' }} />
                           )}
                           {hasHiddenSubmissions ? (
                             <>
-                              <span aria-hidden="true" style={{ minHeight: 18, lineHeight: '18px', fontSize: 18 }}>+</span>
-                              <div style={{ fontSize: 11, lineHeight: '16px', opacity: 0.82, whiteSpace: 'nowrap' }}>{attemptText(hiddenAttempts)}</div>
+                              <span aria-hidden="true" style={{ minHeight: 18, lineHeight: '18px', fontSize: scoreboardChip.mark }}>+</span>
+                              <div style={{ fontSize: scoreboardChip.sub, lineHeight: '16px', opacity: 0.82, whiteSpace: 'nowrap' }}>{attemptText(hiddenAttempts)}</div>
                             </>
                           ) : (
                             <>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, lineHeight: '18px', whiteSpace: 'nowrap' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: scoreboardChip.main, lineHeight: '18px', whiteSpace: 'nowrap' }}>
                                 <span>{accepted && minute != null ? `${minute} min` : '-'}</span>
                               </div>
-                              {isOi && attempts > 0 && <div style={{ fontSize: 11, lineHeight: '16px', opacity: 0.9, whiteSpace: 'nowrap' }}>{score} pts</div>}
-                              <div style={{ fontSize: 11, lineHeight: '16px', opacity: 0.82, whiteSpace: 'nowrap' }}>{attemptText(attempts)}</div>
+                              {isOi && attempts > 0 && <div style={{ fontSize: scoreboardChip.sub, lineHeight: '16px', opacity: 0.9, whiteSpace: 'nowrap' }}>{score} pts</div>}
+                              <div style={{ fontSize: scoreboardChip.sub, lineHeight: '16px', opacity: 0.82, whiteSpace: 'nowrap' }}>{attemptText(attempts)}</div>
                             </>
                           )}
                         </div>

@@ -39,6 +39,9 @@ public class GoJudgeService implements JudgeService {
     private static final int MAX_CHECKER_SOURCE_BYTES = 200_000;
     private static final int MAX_TESTLIB_HEADER_BYTES = 1_000_000;
     private static final int MAX_CHECKER_TIME_MS = 5_000;
+    private static final String CPP17_STANDARD_FLAG = "-std=c++17";
+    private static final String CPP20_STANDARD_FLAG = "-std=c++20";
+    private static final String CPP23_STANDARD_FLAG = "-std=c++23";
     private static final String CHECKER_SOURCE_NAME = "checker.cpp";
     private static final String CHECKER_ARTIFACT_NAME = "checker";
     private static final String TESTLIB_HEADER_NAME = "testlib.h";
@@ -325,7 +328,7 @@ public class GoJudgeService implements JudgeService {
             copyIn.put(TESTLIB_HEADER_NAME, CommandFile.content(TESTLIB_HEADER));
             Command command = command(
                 List.of(
-                    "/usr/bin/g++", "-std=c++17", "-O2", "-pipe",
+                    "/usr/bin/g++", CPP17_STANDARD_FLAG, "-O2", "-pipe",
                     "-I", ".",
                     CHECKER_SOURCE_NAME, "-o", CHECKER_ARTIFACT_NAME
                 ),
@@ -653,10 +656,20 @@ public class GoJudgeService implements JudgeService {
             "main",
             List.of("/usr/bin/gcc", "-std=c11", "-O2", "-pipe", "main.c", "-o", "main")
         ),
-        CPP(
+        CPP17(
             "main.cpp",
             "main",
-            List.of("/usr/bin/g++", "-std=c++17", "-O2", "-pipe", "main.cpp", "-o", "main")
+            List.of("/usr/bin/g++", CPP17_STANDARD_FLAG, "-O2", "-pipe", "main.cpp", "-o", "main")
+        ),
+        CPP20(
+            "main.cpp",
+            "main",
+            List.of("/usr/bin/g++", CPP20_STANDARD_FLAG, "-O2", "-pipe", "main.cpp", "-o", "main")
+        ),
+        CPP23(
+            "main.cpp",
+            "main",
+            List.of("/usr/bin/g++", CPP23_STANDARD_FLAG, "-O2", "-pipe", "main.cpp", "-o", "main")
         ),
         PYTHON(
             "main.py",
@@ -687,7 +700,7 @@ public class GoJudgeService implements JudgeService {
          */
         private List<String> runArgs(int memoryLimitMb) {
             return switch (this) {
-                case C, CPP -> List.of("./main");
+                case C, CPP17, CPP20, CPP23 -> List.of("./main");
                 case PYTHON -> List.of("/usr/bin/python3", "main.py");
                 case JAVA -> List.of(
                     "/usr/bin/java",
@@ -708,7 +721,9 @@ public class GoJudgeService implements JudgeService {
             String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
             return switch (normalized) {
                 case "c" -> C;
-                case "cpp", "c++", "cxx", "g++" -> CPP;
+                case "cpp", "cpp17", "c++", "c++17", "cxx", "g++" -> CPP17;
+                case "cpp20", "c++20" -> CPP20;
+                case "cpp23", "c++23" -> CPP23;
                 case "python", "python3", "py" -> PYTHON;
                 case "java" -> JAVA;
                 default -> null;

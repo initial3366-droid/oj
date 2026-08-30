@@ -12,14 +12,15 @@ import {
   Select,
   Modal,
   Form,
-  Message,
   Popconfirm,
   Card,
   Tag,
   Avatar,
 } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconPlus, IconSearch, IconEdit, IconDelete, IconRefresh, IconEye } from '@arco-design/web-react/icon';
 import { adminGet, adminPost, adminPut, adminDelete } from '../../api/adminClient';
+import { languageLabel } from '../../../data/languages';
 
 const FormItem = Form.Item;
 const Option = Select.Option;
@@ -188,7 +189,7 @@ export function AdminUserManagementPage() {
       setUsers(visibleUsers);
       setTotal(Math.max(visibleUsers.length, result.total - ((result.list || []).length - visibleUsers.length)));
     } catch (error) {
-      Message.error('加载用户列表失败');
+      toast.error('加载用户列表失败');
       console.error(error);
     } finally {
       setLoading(false);
@@ -233,7 +234,7 @@ export function AdminUserManagementPage() {
    */
   async function handleAvatarUpload(userId: number, file: File) {
     if (!file.type.startsWith('image/')) {
-      Message.error('请选择图片文件');
+      toast.error('请选择图片文件');
       return;
     }
     const formData = new FormData();
@@ -244,10 +245,10 @@ export function AdminUserManagementPage() {
       setUsers((items) => items.map((item) => item.id === userId ? { ...item, avatarUrl: result.avatarUrl } : item));
       setEditingUser((user) => user && user.id === userId ? { ...user, avatarUrl: result.avatarUrl } : user);
       setViewingUser((user) => user && user.id === userId ? { ...user, avatarUrl: result.avatarUrl } : user);
-      Message.success('头像已更新');
+      toast.success('头像已更新');
       loadUsers();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '头像上传失败');
+      toast.error(error instanceof Error ? error.message : '头像上传失败');
     } finally {
       setUploadingAvatarId(null);
     }
@@ -261,7 +262,7 @@ export function AdminUserManagementPage() {
     try {
       setViewingUser(await adminGet<User>(`/api/admin/v1/users/${userId}`));
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '用户详情加载失败');
+      toast.error(error instanceof Error ? error.message : '用户详情加载失败');
     } finally {
       setDetailLoading(false);
     }
@@ -284,7 +285,7 @@ export function AdminUserManagementPage() {
       setDetailSubmissions(result.list || []);
       setDetailSubmissionTotal(result.total || 0);
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '最近提交记录加载失败');
+      toast.error(error instanceof Error ? error.message : '最近提交记录加载失败');
     } finally {
       setDetailSubmissionLoading(false);
     }
@@ -328,10 +329,10 @@ export function AdminUserManagementPage() {
   async function handleDelete(id: number) {
     try {
       await adminDelete(`/api/admin/v1/users/${id}`);
-      Message.success('删除成功');
+      toast.success('删除成功');
       loadUsers();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '删除失败');
+      toast.error(error instanceof Error ? error.message : '删除失败');
     }
   }
 
@@ -341,10 +342,10 @@ export function AdminUserManagementPage() {
   async function handleResetAiQuota(userId: number) {
     try {
       await adminPost(`/api/admin/v1/agent/reset/user/${userId}`);
-      Message.success('AI 额度已重置');
+      toast.success('AI 额度已重置');
       await loadQuotas();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '重置失败');
+      toast.error(error instanceof Error ? error.message : '重置失败');
     }
   }
 
@@ -354,9 +355,9 @@ export function AdminUserManagementPage() {
   async function handleResetAllAiQuota() {
     try {
       await adminPost('/api/admin/v1/agent/reset/all');
-      Message.success('所有用户 AI 额度已重置');
+      toast.success('所有用户 AI 额度已重置');
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '重置失败');
+      toast.error(error instanceof Error ? error.message : '重置失败');
     }
   }
 
@@ -373,15 +374,15 @@ export function AdminUserManagementPage() {
 
       if (editingUser) {
         await adminPut(`/api/admin/v1/users/${editingUser.id}`, payload);
-        Message.success('更新成功');
+        toast.success('更新成功');
       } else {
         await adminPost('/api/admin/v1/users', { ...payload, role: 'STUDENT' });
-        Message.success('创建成功');
+        toast.success('创建成功');
       }
       setModalVisible(false);
       loadUsers();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '操作失败');
+      toast.error(error instanceof Error ? error.message : '操作失败');
     }
   }
 
@@ -721,7 +722,7 @@ export function AdminUserManagementPage() {
             columns={[
               { title: '提交ID', dataIndex: 'id', width: 90, align: 'center' },
               { title: '题目', dataIndex: 'problemTitle', width: 220, ellipsis: true, render: (value) => dash(value) },
-              { title: '语言', dataIndex: 'language', width: 100, align: 'center', render: (value) => dash(value) },
+              { title: '语言', dataIndex: 'language', width: 100, align: 'center', render: (value) => dash(languageLabel(value)) },
               {
                 title: '状态',
                 dataIndex: 'status',

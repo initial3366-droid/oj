@@ -433,7 +433,8 @@ public class CcpcojJudgeGatewayService {
         String normalized = language == null ? "" : language.trim().toLowerCase(Locale.ROOT);
         return switch (normalized) {
             case "c" -> 0;
-            case "cpp", "c++", "cxx", "g++" -> 1;
+            case "cpp", "cpp17", "cpp20", "cpp23",
+                "c++", "c++17", "c++20", "c++23", "cxx", "g++" -> 1;
             case "java" -> 3;
             case "python", "python3", "py" -> 6;
             default -> -1;

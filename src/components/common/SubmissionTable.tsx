@@ -7,6 +7,7 @@ import { SubmissionStatusTag } from './SubmissionStatusTag';
 import { UserAvatar } from './UserAvatar';
 import { TimeText } from './TimeText';
 import type { CSSProperties } from 'react';
+import { languageLabel } from '../../data/languages';
 
 /**
  * 提交接口，明确该模块内部及 API 边界使用的数据结构。
@@ -115,7 +116,7 @@ export function SubmissionTable({
       dataIndex: 'language',
       width: 100,
       render: (language: string) => (
-        <Typography.Text style={{ fontSize: 14 }}>{language}</Typography.Text>
+        <Typography.Text style={{ fontSize: 14 }}>{languageLabel(language)}</Typography.Text>
       ),
     },
     {

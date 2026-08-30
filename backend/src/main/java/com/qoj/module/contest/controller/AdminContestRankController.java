@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
  * 管理员比赛排名接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
  */
 @RestController
-@RequestMapping("/api/admin/v1/contests")
+@RequestMapping("${admin.api-prefix:/api/admin/v1}/contests")
 @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminContestRankController {
     private final ContestAcmRankService acmRankService;

@@ -26,7 +26,7 @@ import org.springframework.web.multipart.MultipartFile;
  * 管理员用户接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
  */
 @RestController
-@RequestMapping("/api/admin/v1/users")
+@RequestMapping("${admin.api-prefix:/api/admin/v1}/users")
 @PreAuthorize("hasRole('SUPER_ADMIN')")
 public class AdminUserController {
     private final UserAdminService userAdminService;

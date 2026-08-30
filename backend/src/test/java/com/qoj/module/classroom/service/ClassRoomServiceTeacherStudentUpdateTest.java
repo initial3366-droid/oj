@@ -1,6 +1,7 @@
 package com.qoj.module.classroom.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.common.ErrorCode;
 import com.qoj.common.exception.BizException;
@@ -16,6 +17,7 @@ import com.qoj.module.practice.mapper.PracticeMapper;
 import com.qoj.module.teacher.entity.Teacher;
 import com.qoj.module.teacher.mapper.MajorMapper;
 import com.qoj.module.teacher.mapper.TeacherMapper;
+import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.module.user.mapper.UserMapper;
@@ -24,6 +26,7 @@ import com.qoj.security.AuthUser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -33,7 +36,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -123,6 +128,44 @@ class ClassRoomServiceTeacherStudentUpdateTest {
         assertEquals("old-hash", student.passwordHash);
         verify(userMapper, never()).updateById(any(User.class));
         verify(passwordEncoder, never()).encode(any());
+    }
+
+    @Test
+    void removeMemberClearsClassIdWithExplicitNullSet() {
+        authenticateSuperAdmin(1L);
+        when(classRoomMapper.selectById(100L)).thenReturn(classRoom(100L, 10L));
+
+        classRoomService.removeMember(100L, 20L);
+
+        verify(classMemberMapper).delete(any(QueryWrapper.class));
+        // MyBatis-Plus updateById 会跳过 null 字段，必须走 UpdateWrapper 显式 set null 才能真正清空
+        UpdateWrapper<?> wrapper = capturedClearUpdate();
+        // MP 3.5.9 的 where 条件参数在 getSqlSegment() 时才懒加载生成，须先取片段再断言参数
+        String segment = wrapper.getSqlSegment();
+        assertTrue(wrapper.getSqlSet().contains("class_id"), "sqlSet=" + wrapper.getSqlSet());
+        assertTrue(segment.contains("id =") && segment.contains("class_id ="), "segment=" + segment);
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(20L), "params=" + wrapper.getParamNameValuePairs());
+        verify(userMapper, never()).updateById(any(User.class));
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private UpdateWrapper<?> capturedClearUpdate() {
+        ArgumentCaptor<UpdateWrapper> captor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(userMapper).update(isNull(), captor.capture());
+        return captor.getValue();
+    }
+
+    private void authenticateSuperAdmin(Long id) {
+        AdminUser admin = new AdminUser();
+        admin.id = id;
+        admin.username = "admin" + id;
+        admin.displayName = "Admin " + id;
+        admin.passwordHash = "hash";
+        admin.role = "SUPER_ADMIN";
+        AuthUser principal = new AuthUser(admin);
+        SecurityContextHolder.getContext().setAuthentication(
+            new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities())
+        );
     }
 
     private void prepareManagedStudent(User student, ClassRoom managedClass) {

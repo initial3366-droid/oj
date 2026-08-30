@@ -2,7 +2,8 @@
  * 管理员代码模板配置页面。维护练习与已启用比赛使用的各语言初始代码。
  */
 import { useEffect, useState } from 'react';
-import { Button, Input, Message, Space, Tabs, Typography } from '@arco-design/web-react';
+import { Button, Input, Space, Tabs, Typography } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconRefresh, IconSave } from '@arco-design/web-react/icon';
 import { AdminPageContainer } from '../../layout/AdminPageContainer';
 import { adminGet, adminPut } from '../../api/adminClient';
@@ -22,7 +23,7 @@ const emptyTemplates: CodeTemplateSettings = {
 
 const languageTabs: Array<{ key: TemplateKey; label: string }> = [
   { key: 'c', label: 'C' },
-  { key: 'cpp', label: 'C++' },
+  { key: 'cpp', label: 'C++17/20/23' },
   { key: 'python', label: 'Python' },
   { key: 'java', label: 'Java' },
 ];
@@ -41,7 +42,7 @@ export function AdminCodeTemplateSettingsPage() {
       const result = await adminGet<CodeTemplateSettings>('/api/admin/v1/settings/system/code-templates');
       setTemplates({ ...emptyTemplates, ...decodeCodeTemplateSettings(result) });
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '代码模板加载失败');
+      toast.error(error instanceof Error ? error.message : '代码模板加载失败');
     } finally {
       setLoading(false);
     }
@@ -55,9 +56,9 @@ export function AdminCodeTemplateSettingsPage() {
     setSaving(true);
     try {
       await adminPut('/api/admin/v1/settings/system/code-templates', templates);
-      Message.success('代码模板已保存');
+      toast.success('代码模板已保存');
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '代码模板保存失败');
+      toast.error(error instanceof Error ? error.message : '代码模板保存失败');
     } finally {
       setSaving(false);
     }
