@@ -75,6 +75,7 @@ import { PracticePublishPage } from '../components/practices/PracticePublishPage
 import { PracticePublicationReportPage } from '../components/practices/PracticePublicationReportPage';
 import { TeacherProfilePage } from './pages/TeacherProfilePage';
 import { TeacherDashboardPage } from './TeacherDashboardPage';
+import { languageLabel, SUBMISSION_LANGUAGE_OPTIONS } from '../data/languages';
 
 const { Sider, Header, Content } = Layout;
 const FormItem = Form.Item;
@@ -1166,7 +1167,7 @@ function TeacherStudents() {
             columns={[
               { title: '提交ID', dataIndex: 'id', width: 90, align: 'center' },
               { title: '题目', dataIndex: 'problemTitle', width: 220, ellipsis: true, render: (value) => dash(value) },
-              { title: '语言', dataIndex: 'language', width: 100, align: 'center', render: (value) => dash(value) },
+              { title: '语言', dataIndex: 'language', width: 100, align: 'center', render: (value) => dash(languageLabel(value)) },
               {
                 title: '状态',
                 dataIndex: 'status',
@@ -1553,10 +1554,9 @@ function TeacherSubmissions() {
             value={filters.language || undefined}
             onChange={(val) => updateFilter('language', val || '')}
           >
-            <Option value="C">C</Option>
-            <Option value="C++">C++</Option>
-            <Option value="Python">Python</Option>
-            <Option value="Java">Java</Option>
+            {SUBMISSION_LANGUAGE_OPTIONS.map((item) => (
+              <Option key={item.apiValue} value={item.apiValue}>{item.label}</Option>
+            ))}
           </Select>
           <Select
             style={{ width: 120 }}
@@ -1601,7 +1601,7 @@ function TeacherSubmissions() {
             { title: '学生', dataIndex: 'displayName', width: 150 },
             { title: '题目', dataIndex: 'problemTitle', width: 220 },
             { title: '题单/比赛', width: 220, render: (_: unknown, row: TeacherSubmission) => row.practiceTitle || row.contestTitle || '-' },
-            { title: '语言', dataIndex: 'language', width: 100 },
+            { title: '语言', dataIndex: 'language', width: 100, render: (value) => languageLabel(value) },
             { title: '状态', dataIndex: 'status', width: 120, render: statusTag },
             { title: '提交时间', dataIndex: 'submitTime', width: 190, render: formatDate },
             {
@@ -1884,7 +1884,7 @@ function TeacherPracticeSubmissions() {
           { title: '班级', width: 110, ellipsis: true, render: (_: unknown, row: TeacherSubmission) => classMap[row.userId] || '-' },
           { title: '题单', dataIndex: 'practiceTitle', width: 150, ellipsis: true },
           { title: '题目', dataIndex: 'problemTitle', width: 170, ellipsis: true },
-          { title: '语言', dataIndex: 'language', width: 80 },
+          { title: '语言', dataIndex: 'language', width: 80, render: (value) => languageLabel(value) },
           { title: '状态', dataIndex: 'status', width: 90, render: statusTag },
           { title: '提交时间', dataIndex: 'submitTime', width: 160, render: formatDate },
           {
@@ -2495,9 +2495,6 @@ function TeacherContests() {
         goldRatio: 10,
         silverRatio: 20,
         bronzeRatio: 30,
-        allowFullscreen: false,
-        antiCheatEnabled: false,
-        maxSwitches: 3,
         allowAfterEndSubmit: false,
         allowAfterEndViewProblem: true,
         publicScoreboardEnabled: false,

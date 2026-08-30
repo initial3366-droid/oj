@@ -11,6 +11,8 @@ package-lock.json
 .env.local
 .env.*.local
 backend/.env
+# Docker 部署密钥（由 deploy.sh 生成）
+.env.production
 
 # 数据库备份和SQL导出
 *.sql

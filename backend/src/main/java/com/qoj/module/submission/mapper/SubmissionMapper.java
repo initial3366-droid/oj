@@ -127,7 +127,7 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
           )
           AND (
             (#{acceptC} = TRUE AND LOWER(TRIM(s.language)) = 'c')
-            OR (#{acceptCpp} = TRUE AND LOWER(TRIM(s.language)) IN ('cpp', 'c++', 'cxx', 'g++'))
+            OR (#{acceptCpp} = TRUE AND LOWER(TRIM(s.language)) IN ('cpp', 'cpp17', 'cpp20', 'cpp23', 'c++', 'c++17', 'c++20', 'c++23', 'cxx', 'g++'))
             OR (#{acceptJava} = TRUE AND LOWER(TRIM(s.language)) = 'java')
             OR (#{acceptPython} = TRUE AND LOWER(TRIM(s.language)) IN ('python', 'python3', 'py'))
           )
@@ -182,7 +182,7 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
               (#{oiWorker} = TRUE AND UPPER(COALESCE(c.scoring_mode, c.type, 'ACM')) = 'OI')
               OR (#{oiWorker} = FALSE AND UPPER(COALESCE(c.scoring_mode, c.type, 'ACM')) <> 'OI')
           )
-          AND LOWER(TRIM(s.language)) IN ('c', 'cpp', 'c++', 'cxx', 'g++', 'java', 'python', 'python3', 'py')
+          AND LOWER(TRIM(s.language)) IN ('c', 'cpp', 'cpp17', 'cpp20', 'cpp23', 'c++', 'c++17', 'c++20', 'c++23', 'cxx', 'g++', 'java', 'python', 'python3', 'py')
         """)
     int claimForCcpcoj(
         @Param("id") Long id,

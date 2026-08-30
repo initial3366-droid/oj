@@ -64,6 +64,8 @@ const DIFFICULTY_OPTIONS = [
   { value: 5, label: '地狱' },
 ];
 
+const MAX_TEST_CASE_UPLOAD_BYTES = 50 * 1024 * 1024;
+
 /**
  * Test测试点接口，明确该模块内部及 API 边界使用的数据结构。
  */
@@ -628,6 +630,10 @@ export function TeacherProblemCreatePage() {
               <Upload
                 accept=".zip"
                 beforeUpload={(file) => {
+                  if (file.size > MAX_TEST_CASE_UPLOAD_BYTES) {
+                    Message.error('测试点 ZIP 文件不能超过 50MB');
+                    return false;
+                  }
                   setImportZipFile(file);
                   setImportZipVisible(true);
                   return false;

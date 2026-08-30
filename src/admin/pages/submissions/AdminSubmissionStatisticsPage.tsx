@@ -6,15 +6,16 @@ import {
   Button,
   Card,
   Grid,
-  Message,
   Select,
   Space,
   Table,
   Tag,
   Typography,
 } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconDownload, IconRefresh, IconSearch } from '@arco-design/web-react/icon';
 import { adminDownload, adminGet } from '../../api/adminClient';
+import { languageLabel, SUBMISSION_LANGUAGE_OPTIONS } from '../../../data/languages';
 
 const { Row, Col } = Grid;
 const Option = Select.Option;
@@ -97,7 +98,10 @@ interface ContestOption {
 }
 
 const statusOptions = ['PENDING', 'JUDGING', 'COMPILING', 'RUNNING', 'AC', 'WA', 'TLE', 'MLE', 'RE', 'CE', 'SE', 'FAILED', 'REJUDGE_PENDING'];
-const languageOptions = ['C', 'C++', 'Python', 'Java'];
+const languageOptions = SUBMISSION_LANGUAGE_OPTIONS.map((item) => ({
+  value: item.apiValue,
+  label: item.label,
+}));
 
 /**
  * 格式化Date。保持输入与返回值转换集中，避免调用处重复实现同一规则。
@@ -146,7 +150,7 @@ function caseCount(record: AdminSubmission) {
 }
 
 // 默认语言全量集合（含后端可能存在的变体），与题目/提交实际录入一致
-const ALL_LANGUAGES = ['C', 'C++', 'Python', 'Python3', 'Java', 'Go', 'Rust', 'Kotlin', 'JavaScript', 'TypeScript'];
+const ALL_LANGUAGES = ['Python3', 'Go', 'Rust', 'Kotlin', 'JavaScript', 'TypeScript'];
 
 /**
  * 渲染管理员提交统计页面，并协调其数据加载、状态和交互。
@@ -254,7 +258,7 @@ export function AdminSubmissionStatisticsPage() {
       setRows(result.list);
       setTotal(result.total);
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '提交记录加载失败');
+      toast.error(error instanceof Error ? error.message : '提交记录加载失败');
     } finally {
       setLoading(false);
     }
@@ -301,9 +305,9 @@ export function AdminSubmissionStatisticsPage() {
       if (filters.sortBy) params.set('sortBy', filters.sortBy);
       if (filters.sortOrder) params.set('sortOrder', filters.sortOrder);
       await adminDownload(`/api/admin/v1/submissions/export?${params.toString()}`, 'submissions.csv');
-      Message.success('导出已开始，请留意浏览器下载');
+      toast.success('导出已开始，请留意浏览器下载');
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '导出失败');
+      toast.error(error instanceof Error ? error.message : '导出失败');
     } finally {
       setExporting(false);
     }
@@ -335,7 +339,7 @@ export function AdminSubmissionStatisticsPage() {
     },
     { title: '比赛名称', dataIndex: 'contestTitle', width: 170, render: dash },
     { title: '题单名称', dataIndex: 'practiceTitle', width: 160, render: dash },
-    { title: '语言', dataIndex: 'language', width: 100 },
+    { title: '语言', dataIndex: 'language', width: 100, render: (value: string) => languageLabel(value) },
     { title: '状态', dataIndex: 'status', width: 120, render: (value: string) => <Tag color={statusColor(value)}>{value || '-'}</Tag> },
     { title: '分数', dataIndex: 'score', width: 80, render: dash },
     { title: '通过测试点', key: 'caseCount', width: 110, render: (_: unknown, record: AdminSubmission) => caseCount(record) },
@@ -428,8 +432,11 @@ export function AdminSubmissionStatisticsPage() {
           </Col>
           <Col span={3}>
             <Select placeholder="语言" allowClear value={filters.language || undefined} onChange={(value) => updateFilter('language', String(value || ''))} style={{ width: '100%' }}>
-              {[...new Set([...languageOptions, ...ALL_LANGUAGES])].map((item) => (
-                <Option key={item} value={item}>{item}</Option>
+              {[
+                ...languageOptions,
+                ...ALL_LANGUAGES.map((item) => ({ value: item, label: item })),
+              ].map((item) => (
+                <Option key={item.value} value={item.value}>{item.label}</Option>
               ))}
             </Select>
           </Col>

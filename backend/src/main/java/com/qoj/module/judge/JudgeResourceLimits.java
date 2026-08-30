@@ -22,7 +22,8 @@ public final class JudgeResourceLimits {
     private static boolean isCOrCpp(String language) {
         String normalized = language == null ? "" : language.trim().toLowerCase(Locale.ROOT);
         return switch (normalized) {
-            case "c", "cpp", "c++", "cxx", "g++" -> true;
+            case "c", "cpp", "cpp17", "cpp20", "cpp23",
+                "c++", "c++17", "c++20", "c++23", "cxx", "g++" -> true;
             default -> false;
         };
     }

@@ -15,6 +15,7 @@ import {
 import type { Problem } from '../data/types';
 import { PageContainer, CodeViewer } from '../components/common';
 import { decryptIdFromUrl } from '../utils/cipher';
+import { languageLabel } from '../data/languages';
 
 /**
  * 封装backend题目标识相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
@@ -209,7 +210,7 @@ export function ProblemSubmissionsPage() {
         <div style={{ minWidth: 144 }}>
           <Typography.Text style={{ fontSize: 14 }}>{formatTime(submissionTime(record))}</Typography.Text>
           <Typography.Text type="secondary" style={{ marginTop: 8, display: 'block', fontSize: 12 }}>
-            {record.language}
+            {languageLabel(record.language)}
           </Typography.Text>
         </div>
       ),

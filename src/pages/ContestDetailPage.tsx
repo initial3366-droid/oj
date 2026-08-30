@@ -30,6 +30,7 @@ import { formatDateTime } from '../lib/format';
 import { useContestClock } from '../lib/useContestClock';
 import { encryptId } from '../utils/cipher';
 import { ContestOverviewCard } from './ContestOverviewCard';
+import { languageLabel } from '../data/languages';
 
 const { Text } = Typography;
 
@@ -195,6 +196,38 @@ export function ContestDetailPage() {
 
   const [scoreboard, setScoreboard] = useState<ContestScoreboard | null>(null);
   const [scoreboardLoading, setScoreboardLoading] = useState(false);
+  // 榜单表格容器宽度测量：用于按容器实际宽度动态收缩题目列，避免出现横向滚动条
+  const [boardWrapEl, setBoardWrapEl] = useState<HTMLDivElement | null>(null);
+  const [boardWrapWidth, setBoardWrapWidth] = useState(0);
+  useEffect(() => {
+    if (!boardWrapEl || typeof ResizeObserver === 'undefined') return;
+    const update = () => setBoardWrapWidth(boardWrapEl.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(boardWrapEl);
+    return () => observer.disconnect();
+  }, [boardWrapEl]);
+  const scoreboardDensity = useMemo(() => {
+    const problemCount = scoreboard?.problems.length ?? 0;
+    if (problemCount <= 0 || boardWrapWidth <= 0) return 2;
+    // 固定列（排名/用户/通过/时间）估算约 460px，班级列按需追加 170px；
+    // 估算略偏保守，宁可提前一档收缩徽章也不要出现横向滚动条
+    const fixedWidth = 460 + (scoreboard?.showClassOnScoreboard ? 170 : 0);
+    const perProblem = (boardWrapWidth - fixedWidth) / problemCount;
+    if (perProblem >= 104) return 2;
+    if (perProblem >= 76) return 1;
+    return 0;
+  }, [boardWrapWidth, scoreboard]);
+  const scoreboardChip = useMemo(() => {
+    const isOi = scoreboard?.type === 'OI';
+    if (scoreboardDensity >= 2) {
+      return { minWidth: 76, minHeight: isOi ? 76 : 64, padding: '8px 10px', gap: 3, main: 13, sub: 11, mark: 18 };
+    }
+    if (scoreboardDensity === 1) {
+      return { minWidth: 56, minHeight: isOi ? 64 : 56, padding: '6px 7px', gap: 2, main: 12, sub: 10, mark: 16 };
+    }
+    return { minWidth: 36, minHeight: isOi ? 48 : 44, padding: '4px 5px', gap: 1, main: 11, sub: 10, mark: 14 };
+  }, [scoreboardDensity, scoreboard?.type]);
   const firstBloodRowByProblem = useMemo(() => {
     const earliestByProblem = new Map<number, { rowIndex: number; acceptedAt: number }>();
     scoreboard?.rows.forEach((row, rowIndex) => {
@@ -481,7 +514,7 @@ export function ContestDetailPage() {
       .sort((a, b) => a.localeCompare(b, 'zh-CN'))
       .map((language) => ({
         value: language,
-        label: language,
+        label: languageLabel(language),
       }));
   }, [submissions]);
 
@@ -939,7 +972,7 @@ export function ContestDetailPage() {
                               {sub.problemTitle || `#${sub.problemId}`}
                             </td>
                             <td style={{ padding: '12px 16px', color: 'rgba(0, 0, 0, 0.65)' }}>
-                              {sub.language}
+                              {languageLabel(sub.language)}
                             </td>
                             <td style={{ padding: '12px 16px' }}>
                               <Tag color={submissionStatusColor(sub.status)} style={{ marginInlineEnd: 0 }}>
@@ -1061,7 +1094,7 @@ export function ContestDetailPage() {
                               {sub.problemTitle || `#${sub.problemId}`}
                             </td>
                             <td style={{ padding: '12px 16px', color: 'rgba(0, 0, 0, 0.65)' }}>
-                              {sub.language}
+                              {languageLabel(sub.language)}
                             </td>
                             <td style={{ padding: '12px 16px' }}>
                               <Tag color={submissionStatusColor(sub.status)} style={{ marginInlineEnd: 0 }}>
@@ -1134,8 +1167,8 @@ export function ContestDetailPage() {
                     已经封榜
                   </div>
                 )}
-                <div style={{ overflowX: 'auto', borderRadius: 8, border: '1px solid #f0f0f0' }}>
-                  <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                <div ref={setBoardWrapEl} style={{ overflowX: 'auto', borderRadius: 8, border: '1px solid #f0f0f0' }}>
+                  <table style={{ width: '100%', minWidth: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                   <thead>
                     <tr style={{ backgroundColor: '#f5f5f5' }}>
                       <th
@@ -1148,22 +1181,23 @@ export function ContestDetailPage() {
                           padding: '12px',
                           textAlign: 'left',
                           fontWeight: 600,
+                          whiteSpace: 'nowrap',
                         }}
                       >
                         排名
                       </th>
-                      <th style={{ borderBottom: '1px solid #f0f0f0', padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
+                      <th style={{ borderBottom: '1px solid #f0f0f0', padding: '12px 16px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>
                         用户
                       </th>
                       {scoreboard.showClassOnScoreboard && (
-                        <th style={{ borderBottom: '1px solid #f0f0f0', padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
-                          班级
-                        </th>
+                      <th style={{ borderBottom: '1px solid #f0f0f0', padding: '12px 16px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        班级
+                      </th>
                       )}
-                      <th style={{ borderBottom: '1px solid #f0f0f0', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
+                      <th style={{ borderBottom: '1px solid #f0f0f0', padding: '12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
                         通过
                       </th>
-                      <th style={{ borderBottom: '1px solid #f0f0f0', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
+                      <th style={{ borderBottom: '1px solid #f0f0f0', padding: '12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
                         {scoreboard.type === "OI" ? "分数" : "时间"}
                       </th>
                       {scoreboard.problems.map((problem) => {
@@ -1177,7 +1211,7 @@ export function ContestDetailPage() {
                             style={{ borderBottom: '1px solid #f0f0f0', padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}
                             title={problem.title}
                           >
-                            <div>{problem.label}</div>
+                            <div style={{ whiteSpace: 'nowrap' }}>{problem.label}</div>
                             <div
                               style={{ marginTop: 3, fontSize: 11, lineHeight: '16px', fontWeight: 400, color: 'rgba(0, 0, 0, 0.45)', whiteSpace: 'nowrap' }}
                               title={`提交 ${submissionCount} / 通过 ${acceptedCount}`}
@@ -1218,11 +1252,12 @@ export function ContestDetailPage() {
                             borderBottom: '1px solid #f0f0f0',
                             padding: '12px',
                             fontWeight: 600,
+                            whiteSpace: 'nowrap',
                           }}
                         >
                           {rankText(row.rank, row.starred)}
                         </td>
-                        <td style={{ borderBottom: '1px solid #f0f0f0', padding: '12px 16px', fontWeight: 500 }}>
+                        <td style={{ borderBottom: '1px solid #f0f0f0', padding: '12px 16px', fontWeight: 500, whiteSpace: 'nowrap' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                               {row.displayName || row.userId}
@@ -1250,14 +1285,14 @@ export function ContestDetailPage() {
                           </div>
                         </td>
                         {scoreboard.showClassOnScoreboard && (
-                          <td style={{ borderBottom: '1px solid #f0f0f0', padding: '12px 16px', color: 'rgba(0, 0, 0, 0.65)' }}>
+                          <td style={{ borderBottom: '1px solid #f0f0f0', padding: '12px 16px', color: 'rgba(0, 0, 0, 0.65)', whiteSpace: 'nowrap' }}>
                             {row.className || '-'}
                           </td>
                         )}
-                        <td style={{ borderBottom: '1px solid #f0f0f0', padding: '12px', textAlign: 'center' }}>
+                        <td style={{ borderBottom: '1px solid #f0f0f0', padding: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                           {row.solved}
                         </td>
-                        <td style={{ borderBottom: '1px solid #f0f0f0', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
+                        <td style={{ borderBottom: '1px solid #f0f0f0', padding: '12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
                           {scoreboard.type === "OI" ? row.score : row.penalty}
                         </td>
                         {scoreboard.problems.map((problem) => {
@@ -1282,16 +1317,16 @@ export function ContestDetailPage() {
                                 style={{
                                   position: 'relative',
                                   margin: '0 auto',
-                                  minWidth: 76,
-                                  minHeight: scoreboard.type === "OI" ? 76 : 64,
+                                  minWidth: scoreboardChip.minWidth,
+                                  minHeight: scoreboardChip.minHeight,
                                   display: 'flex',
                                   flexDirection: 'column',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  gap: 3,
+                                  gap: scoreboardChip.gap,
                                   borderRadius: 6,
                                   border: '1px solid transparent',
-                                  padding: '8px 10px',
+                                  padding: scoreboardChip.padding,
                                   fontWeight: 600,
                                   ...cellStyles,
                                 }}
@@ -1302,18 +1337,18 @@ export function ContestDetailPage() {
                                 )}
                                 {hasHiddenSubmissions ? (
                                   <>
-                                    <span aria-hidden="true" style={{ minHeight: 18, lineHeight: '18px', fontSize: 18 }}>+</span>
-                                    <span style={{ fontSize: 11, lineHeight: '16px', opacity: 0.82, whiteSpace: 'nowrap' }}>{attemptText(hiddenAttempts)}</span>
+                                    <span aria-hidden="true" style={{ minHeight: 18, lineHeight: '18px', fontSize: scoreboardChip.mark }}>+</span>
+                                    <span style={{ fontSize: scoreboardChip.sub, lineHeight: '16px', opacity: 0.82, whiteSpace: 'nowrap' }}>{attemptText(hiddenAttempts)}</span>
                                   </>
                                 ) : (
                                   <>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, lineHeight: '18px', whiteSpace: 'nowrap' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: scoreboardChip.main, lineHeight: '18px', whiteSpace: 'nowrap' }}>
                                       <span>{accepted && minute != null ? `${minute} min` : '-'}</span>
                                     </div>
                                     {scoreboard.type === "OI" && attempts > 0 && (
-                                      <div style={{ fontSize: 11, lineHeight: '16px', opacity: 0.9, whiteSpace: 'nowrap' }}>{score} pts</div>
+                                      <div style={{ fontSize: scoreboardChip.sub, lineHeight: '16px', opacity: 0.9, whiteSpace: 'nowrap' }}>{score} pts</div>
                                     )}
-                                    <div style={{ fontSize: 11, lineHeight: '16px', opacity: 0.82, whiteSpace: 'nowrap' }}>
+                                    <div style={{ fontSize: scoreboardChip.sub, lineHeight: '16px', opacity: 0.82, whiteSpace: 'nowrap' }}>
                                       {attemptText(attempts)}
                                     </div>
                                   </>

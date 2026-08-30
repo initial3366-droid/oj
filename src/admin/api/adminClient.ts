@@ -170,6 +170,9 @@ async function adminFetchWithAuth(
   requireAuth: boolean,
   allowRefresh = true
 ) {
+  if (url.startsWith('/api/admin/v1')) {
+    url = adminPath(url);
+  }
   let token = getAdminToken();
 
   if (requireAuth && !token) {

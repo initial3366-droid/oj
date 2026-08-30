@@ -4,7 +4,23 @@ QOJ (Quan Online Judge) 是一个面向大学生的校园在线评测平台，�
 
 ## 快速开始
 
-### 前置要求
+### 一键 Docker 部署（推荐）
+
+在 Linux / macOS / Windows（WSL 或 Git Bash）上，只要有 Docker（含 Compose v2），一条命令即可拉起完整技术栈（前端 nginx + 后端 + MySQL + Redis + go-judge 判题沙箱）：
+
+```bash
+./deploy.sh
+```
+
+首次运行会自动生成含随机密钥的 `.env.production`（端口、密码、判题并发等均可在该文件中调整后重新执行），随后构建镜像并启动；数据保存在 Docker 命名卷中，升级只需重新执行 `./deploy.sh`。数据库与判题沙箱只在内网互通，仅前端端口对外发布。更多命令（`logs` / `ps` / `down`）见 [部署文档.md](docs/部署文档.md)。
+
+> 部署机不想放源码？项目发布版本后可直接拉取预构建镜像部署（支持国内直连加速），见[一站式部署教程 · 方式 C](docs/一站式部署教程.md)。
+
+> go-judge 判题沙箱需要特权容器，请部署在可信主机；默认占用约 4-6 GB 内存，可在 `.env.production` 中按机器规格下调。
+
+### 本地开发
+
+**前置要求**
 - Node.js `>=20 <25` / npm 9+
 - Java 17+
 - Maven 3.8+
@@ -51,7 +67,6 @@ npm run dev
 - **实时比赛**: 倒计时精确到秒，比赛结束通过 WebSocket 向比赛页、首页和写题页面推送通知
 - **评测数据**: 显示运行时间、内存占用以及题目的时间/内存限制
 - **班级管理**: 支持 CSV/XLS/XLSX 批量导入学生
-- **并发压测**: 提供最多 100 人登录、报名和同时提交的压测工具
 
 ## 技术栈
 
@@ -101,6 +116,7 @@ mvn test
 
 | 文档 | 说明 |
 |------|------|
+| [一站式部署教程.md](docs/一站式部署教程.md) | **新手首选**：从装 Docker 到登录后台的完整部署教程 |
 | [项目说明.md](docs/项目说明.md) | 完整的项目介绍、技术栈、环境变量、常见问题 |
 | [接口文档.md](docs/接口文档.md) | REST API、WebSocket 接口、认证机制 |
 | [数据库文档.md](docs/数据库文档.md) | 表结构、迁移历史、索引优化 |
@@ -108,57 +124,16 @@ mvn test
 | [部署文档.md](docs/部署文档.md) | 生产环境部署、Nginx 配置、监控日志 |
 | [验证报告.md](docs/验证报告.md) | 系统验证报告（构建、测试、安全检查）|
 
-### 开发相关文档
+### 专题文档
 
 - [权限系统设计.md](docs/权限系统设计.md) - 三层权限模型设计
 - [审计日志指南.md](docs/审计日志指南.md) - 管理员操作审计
 - [WebSocket指南.md](docs/WebSocket指南.md) - 实时推送实现
 - [前端认证安全指南.md](docs/前端认证安全指南.md) - 前端安全最佳实践
+- [比赛排名系统说明.md](docs/比赛排名系统说明.md) - 比赛排名规则与实现说明
+- [go-judge 安全部署说明](docs/go-judge-security-deployment.md) - 判题服务隔离与部署边界
 
-### 重构报告
-
-- [比赛模块重构报告.md](docs/比赛模块重构报告.md)
-- [练习模块重构报告.md](docs/练习模块重构报告.md)
-- [判题系统安全重构报告.md](docs/判题系统安全重构报告.md)
-- [后端认证安全重构报告.md](docs/后端认证安全重构报告.md)
-
-完整文档列表请查看 `docs/` 目录。
-
-## 100 人比赛压测
-
-压测工具位于 [`tools/contest-loadtest/`](tools/contest-loadtest/)，默认最多模拟 100 个普通学生登录、报名并同时提交。工具默认是 dry-run，只有同时传入 `--execute --confirm-online` 才会访问线上站点。
-
-后台批量导入文件：[qoj-student-import-100.csv](tools/contest-loadtest/qoj-student-import-100.csv)。操作路径：
-
-`管理后台 → 班级管理 → 导入学生`
-
-文件字段为 `学号,姓名`。导入后用户名自动使用学号，初始密码为学号末 6 位。导入后的用户名和密码再填写到本地 `tools/contest-loadtest/accounts.csv`；该文件被 Git 忽略，不应提交。
-
-安装依赖并复制配置模板：
-
-```bash
-python3 -m pip install -r tools/contest-loadtest/requirements.txt
-cp tools/contest-loadtest/.env.example tools/contest-loadtest/loadtest.env
-```
-
-编辑本地 `loadtest.env`，填写网站地址、比赛 ID、比赛题目 ID、账号文件和源码文件。代理地址（包括密钥）只放在本地环境变量或本地 env 文件中：
-
-```bash
-export QOJ_PROXY_API_URL='https://your-proxy-provider.example/api/proxy?...'
-```
-
-已提前报名的账号：
-
-```bash
-python3 tools/contest-loadtest/contest_load_test.py \
-  --env-file tools/contest-loadtest/loadtest.env \
-  --users 100 --no-register \
-  --execute --confirm-online
-```
-
-需要脚本自动报名时使用 `--register`；需要等待判题结果时追加 `--wait-for-results`。JSON/HTML 报告默认生成在 `tools/contest-loadtest/reports/`。完整说明见 [`tools/contest-loadtest/README.md`](tools/contest-loadtest/README.md) 和 [`STRESS_TEST_README.md`](STRESS_TEST_README.md)。
-
-仅对自己拥有或明确获授权的站点进行线上压测，并提前确认 CDN、WAF、代理商和云厂商的流量政策。
+后端补充文档位于 `backend/docs/`，QOJ 题目推送工具位于 `tools/qoj-publish/`。
 
 ## 环境变量
 
@@ -192,8 +167,6 @@ GO_JUDGE_AUTH_TOKEN=replace-with-openssl-rand-hex-32
 VITE_API_PROXY_TARGET=http://127.0.0.1:18080
 VITE_ADMIN_PREFIX=admin
 
-# 压测代理地址只放在本地，不要提交
-QOJ_PROXY_API_URL=https://your-proxy-provider.example/api/proxy?secret=REPLACE_ME
 ```
 
 ## 安全警告
@@ -217,9 +190,7 @@ QOJ_PROXY_API_URL=https://your-proxy-provider.example/api/proxy?secret=REPLACE_M
 ```bash
 npm run build
 cd backend && mvn test
-python3 -m py_compile \
-  stress_test.py stress_test_with_config.py \
-  tools/contest-loadtest/contest_load_test.py
+python3 -m py_compile tools/qoj-publish/qoj_publish.py tools/qoj-publish/qoj_web.py
 ```
 
 构建、测试和生产部署边界见 [部署文档.md](docs/部署文档.md) 与 [验证报告.md](docs/验证报告.md)。

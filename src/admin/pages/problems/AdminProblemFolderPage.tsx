@@ -9,7 +9,6 @@ import {
   Form,
   Grid,
   Input,
-  Message,
   Popconfirm,
   Select,
   Space,
@@ -17,6 +16,7 @@ import {
   Tag,
   Typography,
 } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconDelete, IconEdit, IconLeft, IconPlus, IconSave, IconSearch } from '@arco-design/web-react/icon';
 import {
   ProblemFolderCandidatePicker,
@@ -151,7 +151,7 @@ export function AdminProblemFolderPage() {
       const result = await adminGet<ProblemFolder[]>('/api/admin/v1/problem-folders');
       setFolders(result);
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '加载失败');
+      toast.error(error instanceof Error ? error.message : '加载失败');
     } finally {
       setLoading(false);
     }
@@ -173,7 +173,7 @@ export function AdminProblemFolderPage() {
       form.setFieldsValue({ name: folder.name, description: folder.description, accessScope: folder.accessScope, majorId: folder.majorId });
       setAccessScope(folder.accessScope);
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '加载失败');
+      toast.error(error instanceof Error ? error.message : '加载失败');
       navigate(adminPath('/problem-folders'));
     } finally {
       setLoading(false);
@@ -194,10 +194,10 @@ export function AdminProblemFolderPage() {
         accessScope: values.accessScope || 'ALL',
         majorId: values.majorId || null,
       });
-      Message.success('文件夹创建成功');
+      toast.success('文件夹创建成功');
       navigate(adminPath(`/problem-folders/${created.id}`));
     } catch (error) {
-      if (error instanceof Error) Message.error(error.message);
+      if (error instanceof Error) toast.error(error.message);
     } finally {
       setSubmitting(false);
     }
@@ -218,9 +218,9 @@ export function AdminProblemFolderPage() {
         accessScope: values.accessScope,
         majorId: values.majorId || null,
       });
-      Message.success('文件夹信息已保存');
+      toast.success('文件夹信息已保存');
     } catch (error) {
-      if (error instanceof Error) Message.error(error.message);
+      if (error instanceof Error) toast.error(error.message);
     } finally {
       setSubmitting(false);
     }
@@ -236,10 +236,10 @@ export function AdminProblemFolderPage() {
       await adminPut(`/api/admin/v1/problem-folders/${folderId}/problems`, {
         problemIds: selectedProblemIds,
       });
-      Message.success('题目已更新');
+      toast.success('题目已更新');
       loadFolderDetail(folderId);
     } catch (error) {
-      if (error instanceof Error) Message.error(error.message);
+      if (error instanceof Error) toast.error(error.message);
     } finally {
       setSubmitting(false);
     }
@@ -251,10 +251,10 @@ export function AdminProblemFolderPage() {
   async function handleDelete(id: number) {
     try {
       await adminDelete(`/api/admin/v1/problem-folders/${id}`);
-      Message.success('文件夹已删除');
+      toast.success('文件夹已删除');
       loadFolders();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '删除失败');
+      toast.error(error instanceof Error ? error.message : '删除失败');
     }
   }
 
@@ -324,7 +324,7 @@ export function AdminProblemFolderPage() {
                   <Button
                     size="mini"
                     icon={<IconEdit />}
-                    onClick={() => navigate(`/admin/problem-folders/${folder.id}`)}
+                    onClick={() => navigate(adminPath(`/problem-folders/${folder.id}`))}
                   >
                     编辑
                   </Button>

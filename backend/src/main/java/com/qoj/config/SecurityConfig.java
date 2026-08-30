@@ -49,6 +49,9 @@ public class SecurityConfig {
     @Value("${admin.path-prefix:admin}")
     private String adminPathPrefix;
 
+    @Value("${admin.api-prefix:/api/admin/v1}")
+    private String adminApiPrefix;
+
     /**
      * 构造 安全配置 实例并保存其必要依赖或初始状态。从持久化层读取数据。
      */
@@ -87,7 +90,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/assets/**").permitAll()
                 .requestMatchers("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh", "/api/v1/auth/reset-password").permitAll()
                 .requestMatchers("/api/v1/captcha/**").permitAll()
-                .requestMatchers("/api/admin/v1/auth/login").permitAll()
+                .requestMatchers(adminApiPrefix + "/auth/login").permitAll()
                 .requestMatchers("/api/teacher/v1/auth/login").permitAll()
                 // CCPCOJ workers authenticate with their dedicated HttpOnly session cookie.
                 .requestMatchers("/ojtool/judge/**").permitAll()
@@ -138,12 +141,12 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/v1/settings/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/submissions").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/submission-queue/**", "/api/submission-queue/**").permitAll()
-                .requestMatchers("/api/admin/v1/users/**").hasRole("SUPER_ADMIN")
-                .requestMatchers("/api/admin/v1/classes/**").hasRole("SUPER_ADMIN")
-                .requestMatchers("/api/admin/v1/teachers/**").hasRole("SUPER_ADMIN")
-                .requestMatchers("/api/admin/v1/settings/**").hasRole("SUPER_ADMIN")
+                .requestMatchers(adminApiPrefix + "/users/**").hasRole("SUPER_ADMIN")
+                .requestMatchers(adminApiPrefix + "/classes/**").hasRole("SUPER_ADMIN")
+                .requestMatchers(adminApiPrefix + "/teachers/**").hasRole("SUPER_ADMIN")
+                .requestMatchers(adminApiPrefix + "/settings/**").hasRole("SUPER_ADMIN")
                 .requestMatchers("/api/teacher/v1/**").hasRole("TEACHER")
-                .requestMatchers("/api/admin/v1/**").hasAnyRole("SUPER_ADMIN", "TEACHER")
+                .requestMatchers(adminApiPrefix + "/**").hasAnyRole("SUPER_ADMIN", "TEACHER")
                 .requestMatchers("/api/v1/uploads/**").hasAnyRole("SUPER_ADMIN", "TEACHER")
                 .anyRequest().authenticated()
             )

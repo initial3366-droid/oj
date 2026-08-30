@@ -10,9 +10,15 @@ server:
 # 后台路径前缀与前端 VITE_ADMIN_PREFIX 必须保持一致，避免管理路由暴露在意外地址。
 admin:
   path-prefix: ${ADMIN_PATH_PREFIX:admin}
+  api-prefix: ${ADMIN_API_PREFIX:/api/${ADMIN_PATH_PREFIX:admin}/v1}
 
 # Spring 基础设施：数据库、Redis、邮件、迁移与上传限制均从环境变量读取生产值。
 spring:
+  # Spring Boot does not load dotenv files automatically; import the project .env in both common launch directories.
+  config:
+    import:
+      - optional:file:./.env[.properties]
+      - optional:file:../.env[.properties]
   application:
     name: qoj-backend
   profiles:

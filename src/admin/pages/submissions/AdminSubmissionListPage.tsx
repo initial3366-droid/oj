@@ -8,7 +8,6 @@ import {
   Descriptions,
   Grid,
   Input,
-  Message,
   Modal,
   Popconfirm,
   Select,
@@ -17,9 +16,11 @@ import {
   Tag,
   Typography,
 } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconCode, IconDelete, IconEye, IconRefresh, IconSearch } from '@arco-design/web-react/icon';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { adminDelete, adminGet } from '../../api/adminClient';
+import { languageLabel, SUBMISSION_LANGUAGE_OPTIONS } from '../../../data/languages';
 
 const { Row, Col } = Grid;
 const Option = Select.Option;
@@ -91,7 +92,7 @@ interface AdminSubmission {
 }
 
 const statusOptions = ['PENDING', 'JUDGING', 'COMPILING', 'RUNNING', 'AC', 'WA', 'TLE', 'MLE', 'RE', 'CE', 'SE', 'FAILED', 'REJUDGE_PENDING'];
-const languageOptions = ['C', 'C++', 'Python', 'Java'];
+const languageOptions = SUBMISSION_LANGUAGE_OPTIONS;
 
 /**
  * 封装scoped比赛标识FromLocation相关逻辑。可能改变当前路由或查询参数。
@@ -221,7 +222,7 @@ export function AdminSubmissionListPage() {
       setTotal(result.total);
     } catch (error) {
       if (sequence !== requestSequence.current) return;
-      Message.error(error instanceof Error ? error.message : '提交列表加载失败');
+      toast.error(error instanceof Error ? error.message : '提交列表加载失败');
     } finally {
       if (sequence === requestSequence.current) setLoading(false);
     }
@@ -269,7 +270,7 @@ export function AdminSubmissionListPage() {
     try {
       setDetail(await adminGet<AdminSubmission>(`/api/admin/v1/submissions/${record.id}`));
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '提交详情加载失败');
+      toast.error(error instanceof Error ? error.message : '提交详情加载失败');
     }
   }
 
@@ -281,7 +282,7 @@ export function AdminSubmissionListPage() {
       setCode(await adminGet<string>(`/api/admin/v1/submissions/${record.id}/code`));
       setCodeModalVisible(true);
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '代码加载失败');
+      toast.error(error instanceof Error ? error.message : '代码加载失败');
     }
   }
 
@@ -291,10 +292,10 @@ export function AdminSubmissionListPage() {
   async function deleteSubmission(record: AdminSubmission) {
     try {
       await adminDelete(`/api/admin/v1/submissions/${record.id}`);
-      Message.success('提交已删除');
+      toast.success('提交已删除');
       load();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '删除失败');
+      toast.error(error instanceof Error ? error.message : '删除失败');
     }
   }
 
@@ -336,7 +337,7 @@ export function AdminSubmissionListPage() {
     { title: '题单名称', dataIndex: 'practiceTitle', width: 180, render: dash },
     { title: '参赛者ID', dataIndex: 'participantId', width: 110, render: dash },
     { title: '团队ID', dataIndex: 'teamId', width: 100, render: dash },
-    { title: '语言', dataIndex: 'language', width: 110 },
+    { title: '语言', dataIndex: 'language', width: 110, render: (value: string) => languageLabel(value) },
     { title: '分数', dataIndex: 'score', width: 90, render: dash },
     { title: '通过测试点', key: 'caseCount', width: 120, render: (_: unknown, record: AdminSubmission) => caseCount(record) },
     { title: '运行时间(ms)', dataIndex: 'timeUsed', width: 130, render: dash },
@@ -389,7 +390,9 @@ export function AdminSubmissionListPage() {
           <Col span={3}><Input placeholder="题单ID" value={filters.practiceId} onChange={(value) => updateFilter('practiceId', value)} /></Col>
           <Col span={3}>
             <Select placeholder="语言" allowClear value={filters.language || undefined} onChange={(value) => updateFilter('language', String(value || ''))}>
-              {languageOptions.map((item) => <Option key={item} value={item}>{item}</Option>)}
+              {languageOptions.map((item) => (
+                <Option key={item.apiValue} value={item.apiValue}>{item.label}</Option>
+              ))}
             </Select>
           </Col>
           <Col span={3}>
@@ -489,7 +492,7 @@ export function AdminSubmissionListPage() {
                 { key: 'practiceTitle', label: '题单', value: dash(detail.practiceTitle) },
                 { key: 'participantId', label: '参赛者ID', value: dash(detail.participantId) },
                 { key: 'teamId', label: '团队ID', value: dash(detail.teamId) },
-                { key: 'language', label: '语言', value: detail.language },
+                { key: 'language', label: '语言', value: languageLabel(detail.language) },
                 { key: 'status', label: '状态', value: <Tag color={statusColor(detail.status)}>{detail.status}</Tag> },
                 { key: 'score', label: '分数', value: dash(detail.score) },
                 { key: 'timeUsed', label: '运行时间', value: dash(detail.timeUsed) },

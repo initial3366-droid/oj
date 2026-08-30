@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 管理员Xcpcio接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
  */
 @RestController
-@RequestMapping("/api/admin/v1/contests/{contestId}/xcpcio")
+@RequestMapping("${admin.api-prefix:/api/admin/v1}/contests/{contestId}/xcpcio")
 @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminXcpcioController {
     private final XcpcioConfigService configService;

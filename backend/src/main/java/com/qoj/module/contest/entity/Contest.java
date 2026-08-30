@@ -33,9 +33,6 @@ public class Contest {
     public BigDecimal goldRatio;
     public BigDecimal silverRatio;
     public BigDecimal bronzeRatio;
-    public Boolean allowFullscreen;
-    public Boolean antiCheatEnabled;
-    public Integer maxSwitches;
     public Boolean allowAfterEndSubmit;
     public Boolean allowAfterEndViewProblem;
     public Boolean allowAfterEndViewCode;

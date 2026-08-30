@@ -11,7 +11,6 @@ import {
   Input,
   InputNumber,
   Button,
-  Message,
   Space,
   Modal,
   Upload,
@@ -19,6 +18,7 @@ import {
   Select,
   Tag,
 } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconPlus, IconDelete, IconUpload } from '@arco-design/web-react/icon';
 import { adminGet, adminPost, adminPut } from '../../api/adminClient';
 import { HtmlMathEditor } from '../../components/HtmlMathEditor';
@@ -65,6 +65,8 @@ const DIFFICULTY_OPTIONS = [
   { value: 4, label: '困难' },
   { value: 5, label: '地狱' },
 ];
+
+const MAX_TEST_CASE_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 /**
  * Test测试点接口，明确该模块内部及 API 边界使用的数据结构。
@@ -260,7 +262,7 @@ export function AdminProblemCreatePage() {
       setAccessScope(result.accessScope || 'PRIVATE');
       setTags(result.tags || []);
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '加载题目失败');
+      toast.error(error instanceof Error ? error.message : '加载题目失败');
       navigate(adminPath('/problems'));
     } finally {
       setLoading(false);
@@ -275,7 +277,7 @@ export function AdminProblemCreatePage() {
       const result = await adminGet<TestCase[]>(`/api/admin/v1/problems/${id}/test-cases`);
       setTestCases(normalizeLoadedTestCases(result || []));
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '加载测试点失败');
+      toast.error(error instanceof Error ? error.message : '加载测试点失败');
     }
   }
 
@@ -295,7 +297,7 @@ export function AdminProblemCreatePage() {
         setTestCases(normalizeLoadedTestCases(result.testCases));
       }
     } catch (error) {
-      Message.error('创建草稿失败');
+      toast.error('创建草稿失败');
       console.error(error);
     }
   }
@@ -373,7 +375,7 @@ export function AdminProblemCreatePage() {
       } else {
         await adminPut(`/api/admin/v1/problem-drafts/${draftId}/basic`, payload);
       }
-      Message.success(isEditMode ? '题目信息已保存' : '基本信息已保存');
+      toast.success(isEditMode ? '题目信息已保存' : '基本信息已保存');
       if (!stayOnStep) {
         setCurrentStep(1);
       }
@@ -381,7 +383,7 @@ export function AdminProblemCreatePage() {
     } catch (error) {
       console.error('保存题目信息错误:', error);
       if (error instanceof Error) {
-        Message.error(error.message || '保存失败');
+        toast.error(error.message || '保存失败');
       } else {
         console.log('表单验证失败:', error);
       }
@@ -440,10 +442,10 @@ export function AdminProblemCreatePage() {
       } else {
         setTestCases(normalizeLoadedTestCases(result.testCases || []));
       }
-      Message.success('导入成功');
+      toast.success('导入成功');
       return true;
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '导入失败');
+      toast.error(error instanceof Error ? error.message : '导入失败');
       console.error(error);
       return false;
     } finally {
@@ -459,7 +461,7 @@ export function AdminProblemCreatePage() {
       const normalized = normalizeTestCases(testCases);
 
       if (normalized.length === 0) {
-        Message.warning('请先添加测试点');
+        toast.info('请先添加测试点');
         return false;
       }
 
@@ -468,11 +470,11 @@ export function AdminProblemCreatePage() {
       const hasChecker = typeof checkerSource === 'string' && checkerSource.trim().length > 0;
       for (const tc of normalized) {
         if (!hasChecker && !tc.output) {
-          Message.warning(`测试点 ${tc.caseNo} 的输出数据不能为空`);
+          toast.info(`测试点 ${tc.caseNo} 的输出数据不能为空`);
           return false;
         }
         if (seenCaseNos.has(tc.caseNo)) {
-          Message.warning(`测试点编号 ${tc.caseNo} 重复，请调整后再保存`);
+          toast.info(`测试点编号 ${tc.caseNo} 重复，请调整后再保存`);
           return false;
         }
         seenCaseNos.add(tc.caseNo);
@@ -491,12 +493,12 @@ export function AdminProblemCreatePage() {
         setTestCases(normalizeLoadedTestCases(savedDraft.testCases || []));
       }
       if (showSuccess) {
-        Message.success('测试点已保存');
+        toast.success('测试点已保存');
       }
       return true;
     } catch (error) {
       console.error('保存测试点错误:', error);
-      Message.error(error instanceof Error ? error.message : '保存失败');
+      toast.error(error instanceof Error ? error.message : '保存失败');
       return false;
     } finally {
       setLoading(false);
@@ -511,7 +513,7 @@ export function AdminProblemCreatePage() {
       if (isEditMode) {
         const saved = await saveTestCases(false);
         if (saved) {
-          Message.success('测试点已保存');
+          toast.success('测试点已保存');
           navigate(adminPath('/problems'));
         }
         return;
@@ -522,10 +524,10 @@ export function AdminProblemCreatePage() {
       }
       setLoading(true);
       await adminPost(`/api/admin/v1/problem-drafts/${draftId}/commit`, {});
-      Message.success('题目创建成功');
+      toast.success('题目创建成功');
       navigate(adminPath('/problems'));
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '创建失败');
+      toast.error(error instanceof Error ? error.message : '创建失败');
     } finally {
       setLoading(false);
     }
@@ -767,6 +769,10 @@ export function AdminProblemCreatePage() {
               <Upload
                 accept=".zip"
                 beforeUpload={(file) => {
+                  if (file.size > MAX_TEST_CASE_UPLOAD_BYTES) {
+                    toast.error('测试点 ZIP 文件不能超过 50MB');
+                    return false;
+                  }
                   setImportZipFile(file);
                   setImportZipVisible(true);
                   return false;

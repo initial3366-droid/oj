@@ -55,6 +55,40 @@ def problem_json(construction=False, checker_source=None):
 
 
 class ConstructionBundleTest(unittest.TestCase):
+    def test_cpp_standard_specs_use_o2(self):
+        expected_flags = {
+            "cpp17": "-std=c++17",
+            "cpp20": "-std=c++20",
+            "cpp23": "-std=c++23",
+        }
+        for language, standard_flag in expected_flags.items():
+            self.assertEqual(qp.LANG_SPEC[language]["compile"][1], standard_flag)
+            self.assertIn("-O2", qp.LANG_SPEC[language]["compile"])
+
+    @unittest.skipUnless(shutil.which("g++"), "requires g++")
+    def test_verify_compiles_all_cpp_standard_options(self):
+        for language in ("cpp17", "cpp20", "cpp23"):
+            with self.subTest(language=language), tempfile.TemporaryDirectory() as directory:
+                problem_path = os.path.join(directory, "problem.json")
+                solution_path = os.path.join(directory, "solution.cpp")
+                data_path = os.path.join(directory, "data.zip")
+                with open(problem_path, "w", encoding="utf-8") as handle:
+                    handle.write(problem_json())
+                with open(solution_path, "w", encoding="utf-8") as handle:
+                    handle.write("#include <iostream>\nint main() { std::cout << \"ok\\n\"; }\n")
+                with open(data_path, "wb") as handle:
+                    handle.write(make_zip({"1.in": "ignored\n", "1.out": "ok\n"}))
+
+                result = qp.main([
+                    "verify",
+                    "--problem", problem_path,
+                    "--solution", solution_path,
+                    "--data", data_path,
+                    "--lang", language,
+                ])
+
+                self.assertEqual(result, 0)
+
     def test_inspect_zip_allows_input_only_for_construction(self):
         data = make_zip({"1.in": "101\n", "2.in": "995\n"})
         errors, warnings = [], []
@@ -122,6 +156,38 @@ class ConstructionBundleTest(unittest.TestCase):
                 "--solution", solution_path,
                 "--data", data_path,
                 "--lang", "python",
+            ])
+
+        self.assertEqual(result, 0)
+
+    @unittest.skipUnless(shutil.which("g++"), "requires g++")
+    def test_verify_supports_cxx20_ranges_sort(self):
+        with tempfile.TemporaryDirectory() as directory:
+            problem_path = os.path.join(directory, "problem.json")
+            solution_path = os.path.join(directory, "solution.cpp")
+            data_path = os.path.join(directory, "data.zip")
+            with open(problem_path, "w", encoding="utf-8") as handle:
+                handle.write(problem_json())
+            with open(solution_path, "w", encoding="utf-8") as handle:
+                handle.write(
+                    "#include <algorithm>\n"
+                    "#include <iostream>\n"
+                    "#include <vector>\n"
+                    "int main() {\n"
+                    "    std::vector<int> values{3, 1, 2};\n"
+                    "    std::ranges::sort(values);\n"
+                    "    for (int value : values) std::cout << value << ' ';\n"
+                    "}\n"
+                )
+            with open(data_path, "wb") as handle:
+                handle.write(make_zip({"1.in": "ignored\n", "1.out": "1 2 3 \n"}))
+
+            result = qp.main([
+                "verify",
+                "--problem", problem_path,
+                "--solution", solution_path,
+                "--data", data_path,
+                "--lang", "cpp20",
             ])
 
         self.assertEqual(result, 0)

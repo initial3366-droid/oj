@@ -1,6 +1,0 @@
-*.env
-!*.env.example
-accounts.csv
-solution.*
-reports/
-__pycache__/

@@ -60,7 +60,12 @@ class GoJudgeServiceTest {
         assertAll(
             () -> assertTrue(service.supportsLanguage("c")),
             () -> assertTrue(service.supportsLanguage("CPP")),
+            () -> assertTrue(service.supportsLanguage("cpp17")),
+            () -> assertTrue(service.supportsLanguage("cpp20")),
+            () -> assertTrue(service.supportsLanguage("cpp23")),
             () -> assertTrue(service.supportsLanguage("c++")),
+            () -> assertTrue(service.supportsLanguage("c++20")),
+            () -> assertTrue(service.supportsLanguage("c++23")),
             () -> assertTrue(service.supportsLanguage("cxx")),
             () -> assertTrue(service.supportsLanguage("g++")),
             () -> assertTrue(service.supportsLanguage("python")),
@@ -193,6 +198,32 @@ class GoJudgeServiceTest {
         assertEquals(input, runCommand.files().get(0).content());
         assertTrue(compileCommand.args().stream().noneMatch(argument -> argument.contains("curl")));
         assertTrue(runCommand.args().stream().noneMatch(argument -> argument.contains("rm -rf")));
+    }
+
+    @ParameterizedTest(name = "{0} uses {1} with O2")
+    @MethodSource("cppCompilationModes")
+    void cppVariantsUseRequestedStandardAndO2(String language, String standardFlag) {
+        when(client.run(any(RunRequest.class), any(Duration.class)))
+            .thenReturn(List.of(compileSuccess("main")))
+            .thenReturn(List.of(runResult("Accepted", 0, "ok\n")));
+
+        service.judge(task(language, "int main() { return 0; }", "ok\n"));
+
+        ArgumentCaptor<RunRequest> requestCaptor = ArgumentCaptor.forClass(RunRequest.class);
+        verify(client, times(2)).run(requestCaptor.capture(), any(Duration.class));
+        assertEquals(
+            List.of("/usr/bin/g++", standardFlag, "-O2", "-pipe", "main.cpp", "-o", "main"),
+            requestCaptor.getAllValues().get(0).cmd().get(0).args()
+        );
+        verify(client).deleteFile(FILE_ID);
+    }
+
+    private static Stream<Arguments> cppCompilationModes() {
+        return Stream.of(
+            Arguments.of("cpp17", "-std=c++17"),
+            Arguments.of("cpp20", "-std=c++20"),
+            Arguments.of("cpp23", "-std=c++23")
+        );
     }
 
     @Test

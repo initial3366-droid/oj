@@ -9,6 +9,9 @@ class JudgeResourceLimitsTest {
     void cAndCppKeepThePublishedLimits() {
         assertLimits("c", 1000, 256, 1000, 256);
         assertLimits("C++", 1000, 256, 1000, 256);
+        assertLimits("cpp17", 1000, 256, 1000, 256);
+        assertLimits("cpp20", 1000, 256, 1000, 256);
+        assertLimits("cpp23", 1000, 256, 1000, 256);
         assertLimits("g++", 1000, 256, 1000, 256);
     }
 

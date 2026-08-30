@@ -6,6 +6,7 @@ import com.qoj.common.PageResult;
 import com.qoj.common.exception.BizException;
 import com.qoj.module.contest.dto.ContestCreateRequest;
 import com.qoj.module.contest.dto.ContestDraftRequest;
+import com.qoj.module.contest.dto.ContestRegistrationManageRequest;
 import com.qoj.module.contest.dto.ContestUpdateRequest;
 import com.qoj.module.contest.entity.Contest;
 import com.qoj.module.contest.entity.ContestRegistration;
@@ -14,6 +15,8 @@ import com.qoj.module.contest.mapper.ContestRegistrationMapper;
 import com.qoj.module.contest.service.ContestInspectionExportService;
 import com.qoj.module.contest.service.ContestService;
 import com.qoj.module.contest.vo.ContestProblemVO;
+import com.qoj.module.contest.vo.ContestRegistrationCandidateVO;
+import com.qoj.module.contest.vo.ContestRegistrationVO;
 import com.qoj.module.contest.vo.ContestVO;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
@@ -41,7 +44,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 管理员比赛接口控制器。负责接收 HTTP 请求、校验调用参数，并将业务层结果包装为统一响应。
  */
 @RestController
-@RequestMapping("/api/admin/v1/contests")
+@RequestMapping("${admin.api-prefix:/api/admin/v1}/contests")
 @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminContestController {
     private final ContestService contestService;
@@ -159,8 +162,16 @@ public class AdminContestController {
         return ApiResponse.ok(contestService.adminProblems(id));
     }
 
+    @GetMapping("/{id}/registration-candidates")
+    public ApiResponse<List<ContestRegistrationCandidateVO>> getRegistrationCandidates(
+        @PathVariable long id,
+        @RequestParam(required = false) String keyword
+    ) {
+        return ApiResponse.ok(contestService.registrationCandidates(id, keyword));
+    }
+
     @GetMapping("/{id}/registrations")
-    public ApiResponse<List<com.qoj.module.contest.vo.ContestRegistrationVO>> getContestRegistrations(@PathVariable long id) {
+    public ApiResponse<List<ContestRegistrationVO>> getContestRegistrations(@PathVariable long id) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null) {
             /**
@@ -184,8 +195,8 @@ public class AdminContestController {
         );
 
         // 转换为VO确保字段名正确
-        List<com.qoj.module.contest.vo.ContestRegistrationVO> vos = registrations.stream().map(r -> {
-            com.qoj.module.contest.vo.ContestRegistrationVO vo = new com.qoj.module.contest.vo.ContestRegistrationVO();
+        List<ContestRegistrationVO> vos = registrations.stream().map(r -> {
+            ContestRegistrationVO vo = new ContestRegistrationVO();
             vo.id = r.id;
             vo.contestId = r.contestId;
             vo.userId = r.userId;
@@ -200,6 +211,23 @@ public class AdminContestController {
         }).collect(java.util.stream.Collectors.toList());
 
         return ApiResponse.ok(vos);
+    }
+
+    @PostMapping("/{id}/registrations")
+    public ApiResponse<ContestRegistrationVO> addContestRegistration(
+        @PathVariable long id,
+        @Valid @RequestBody ContestRegistrationManageRequest request
+    ) {
+        return ApiResponse.ok(contestService.addRegistration(id, request.userId(), request.starred()));
+    }
+
+    @DeleteMapping("/{id}/registrations/{registrationId}")
+    public ApiResponse<Void> removeContestRegistration(
+        @PathVariable long id,
+        @PathVariable long registrationId
+    ) {
+        contestService.removeRegistration(id, registrationId);
+        return ApiResponse.ok();
     }
 
     @GetMapping("/{id}/scoreboard/export")

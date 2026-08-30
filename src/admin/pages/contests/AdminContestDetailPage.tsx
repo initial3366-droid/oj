@@ -17,11 +17,13 @@ import {
   Statistic,
   Grid,
   Input,
+  Modal,
+  Popconfirm,
   Select,
   Switch,
 } from '@arco-design/web-react';
-import { IconDownload, IconLeft, IconEdit, IconUnlock } from '@arco-design/web-react/icon';
-import { adminDownload, adminGet, adminPost, adminPut } from '../../api/adminClient';
+import { IconDelete, IconDownload, IconEdit, IconLeft, IconPlus, IconUnlock } from '@arco-design/web-react/icon';
+import { adminDelete, adminDownload, adminGet, adminPost, adminPut } from '../../api/adminClient';
 
 const { Row, Col } = Grid;
 const TabPane = Tabs.TabPane;
@@ -51,9 +53,6 @@ interface ContestDetail {
   allowAfterEndViewCode?: boolean;
   publicScoreboardEnabled?: boolean;
   showClassOnScoreboard?: boolean;
-  allowFullscreen: boolean;
-  antiCheatEnabled: boolean;
-  maxSwitches: number;
   registrationCount?: number;
   participantCount?: number;
   problemCount: number;
@@ -86,6 +85,16 @@ interface Registration {
   identityId: number;
   status: string;
   registeredAt: string;
+}
+
+/**
+ * 可添加到比赛报名列表的学生账号。
+ */
+interface RegistrationCandidate {
+  id: number;
+  username: string;
+  displayName: string;
+  studentNo?: string | null;
 }
 
 /**
@@ -163,6 +172,12 @@ export function AdminContestDetailPage() {
   const [scoreboardExporting, setScoreboardExporting] = useState(false);
   const [submissionsExporting, setSubmissionsExporting] = useState(false);
   const [registrationExporting, setRegistrationExporting] = useState(false);
+  const [registrationModalVisible, setRegistrationModalVisible] = useState(false);
+  const [registrationCandidateKeyword, setRegistrationCandidateKeyword] = useState('');
+  const [registrationCandidates, setRegistrationCandidates] = useState<RegistrationCandidate[]>([]);
+  const [registrationCandidatesLoading, setRegistrationCandidatesLoading] = useState(false);
+  const [addingRegistrationUserId, setAddingRegistrationUserId] = useState<number | null>(null);
+  const [removingRegistrationId, setRemovingRegistrationId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; content: string } | null>(null);
 
@@ -340,6 +355,74 @@ export function AdminContestDetailPage() {
   }
 
   /**
+   * 查询尚未报名的学生账号。
+   */
+  async function searchRegistrationCandidates(keyword = registrationCandidateKeyword) {
+    if (!contestId) return;
+    setRegistrationCandidatesLoading(true);
+    try {
+      const query = keyword.trim() ? `?keyword=${encodeURIComponent(keyword.trim())}` : '';
+      const candidates = await adminGet<RegistrationCandidate[]>(
+        `/api/admin/v1/contests/${contestId}/registration-candidates${query}`,
+      );
+      setRegistrationCandidates(candidates);
+    } catch (error) {
+      setRegistrationCandidates([]);
+      setNotice({ type: 'error', content: error instanceof Error ? error.message : '学生账号查询失败' });
+    } finally {
+      setRegistrationCandidatesLoading(false);
+    }
+  }
+
+  /**
+   * 添加一名学生到比赛报名列表。
+   */
+  async function addRegistration(userId: number) {
+    if (!contestId) return;
+    setAddingRegistrationUserId(userId);
+    try {
+      const registration = await adminPost<Registration>(
+        `/api/admin/v1/contests/${contestId}/registrations`,
+        { userId },
+      );
+      setRegistrations((current) => [registration, ...current]);
+      setRegistrationCandidates((current) => current.filter((candidate) => candidate.id !== userId));
+      setContest((current) => current ? {
+        ...current,
+        registrationCount: (current.registrationCount ?? registrations.length) + 1,
+        participantCount: (current.participantCount ?? registrations.length) + 1,
+      } : current);
+      setNotice({ type: 'success', content: '报名人员已添加' });
+    } catch (error) {
+      setNotice({ type: 'error', content: error instanceof Error ? error.message : '添加报名人员失败' });
+    } finally {
+      setAddingRegistrationUserId(null);
+    }
+  }
+
+  /**
+   * 从比赛报名列表移除一名学生。
+   */
+  async function removeRegistration(registration: Registration) {
+    if (!contestId) return;
+    setRemovingRegistrationId(registration.id);
+    try {
+      await adminDelete<void>(`/api/admin/v1/contests/${contestId}/registrations/${registration.id}`);
+      setRegistrations((current) => current.filter((item) => item.id !== registration.id));
+      setContest((current) => current ? {
+        ...current,
+        registrationCount: Math.max(0, (current.registrationCount ?? registrations.length) - 1),
+        participantCount: Math.max(0, (current.participantCount ?? registrations.length) - 1),
+      } : current);
+      setNotice({ type: 'success', content: '报名人员已移除' });
+    } catch (error) {
+      setNotice({ type: 'error', content: error instanceof Error ? error.message : '移除报名人员失败' });
+    } finally {
+      setRemovingRegistrationId(null);
+    }
+  }
+
+  /**
    * 封装runRollingAction相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染。
    */
   async function runRollingAction(path: string, successMessage: string) {
@@ -491,6 +574,26 @@ export function AdminContestDetailPage() {
       align: 'center' as const,
       render: (value: string) => new Date(value).toLocaleString('zh-CN'),
     },
+    {
+      title: '操作',
+      width: 100,
+      align: 'center' as const,
+      render: (_: unknown, registration: Registration) => (
+        <Popconfirm
+          title="确定移除该报名人员吗？"
+          onOk={() => void removeRegistration(registration)}
+        >
+          <Button
+            size="mini"
+            status="danger"
+            icon={<IconDelete />}
+            loading={removingRegistrationId === registration.id}
+          >
+            移除
+          </Button>
+        </Popconfirm>
+      ),
+    },
   ];
 
   const registeredRegistrations = registrations.filter((registration) => !registration.status || registration.status === 'APPROVED');
@@ -538,7 +641,7 @@ export function AdminContestDetailPage() {
           <Button icon={<IconLeft />} onClick={() => navigate(adminPath('/contests'))}>
             返回列表
           </Button>
-          <Button type="primary" icon={<IconEdit />} onClick={() => navigate(`/admin/contests/${contestId}/edit`)}>
+          <Button type="primary" icon={<IconEdit />} onClick={() => navigate(adminPath(`/contests/${contestId}/edit`))}>
             编辑比赛
           </Button>
           <Button
@@ -593,9 +696,6 @@ export function AdminContestDetailPage() {
             { label: '赛后查看他人代码', value: contest.allowAfterEndViewCode ? '允许' : '关闭' },
             { label: '外榜', value: contest.publicScoreboardEnabled === true ? '开启' : '关闭' },
             { label: '榜单显示班级', value: contest.showClassOnScoreboard ? '显示' : '隐藏' },
-            { label: '全屏模式', value: contest.allowFullscreen ? '开启' : '关闭' },
-            { label: '反作弊', value: contest.antiCheatEnabled ? '开启' : '关闭' },
-            { label: '切屏限制', value: `${contest.maxSwitches} 次` },
           ]}
         />
       </Card>
@@ -621,9 +721,22 @@ export function AdminContestDetailPage() {
           <TabPane key="registrations" title={`报名列表 (${registrationCount})`}>
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
               <Tag color="blue">报名人数: {registrationCount}</Tag>
-              <Button icon={<IconDownload />} loading={registrationExporting} onClick={exportRegistrationUsers}>
-                导出报名人信息
-              </Button>
+              <Space>
+                <Button
+                  type="primary"
+                  icon={<IconPlus />}
+                  onClick={() => {
+                    setRegistrationModalVisible(true);
+                    setRegistrationCandidateKeyword('');
+                    setRegistrationCandidates([]);
+                  }}
+                >
+                  添加人员
+                </Button>
+                <Button icon={<IconDownload />} loading={registrationExporting} onClick={exportRegistrationUsers}>
+                  导出报名人信息
+                </Button>
+              </Space>
             </div>
             <Table
               columns={registrationColumns}
@@ -724,7 +837,7 @@ export function AdminContestDetailPage() {
                       <div>查看本场比赛下的 Waiting / Judging / Failed 等判题任务。</div>
                       <Button
                         type="primary"
-                        onClick={() => navigate(`/admin/contests/${contestId}/judge/queue?contestId=${contestId}`)}
+                        onClick={() => navigate(adminPath(`/contests/${contestId}/judge/queue?contestId=${contestId}`))}
                       >
                         打开本场提交队列
                       </Button>
@@ -744,7 +857,7 @@ export function AdminContestDetailPage() {
                       <div>查看本场比赛所有提交，支持查看详情、查看代码和删除。</div>
                       <Button
                         type="primary"
-                        onClick={() => navigate(`/admin/contests/${contestId}/submissions?contestId=${contestId}`)}
+                        onClick={() => navigate(adminPath(`/contests/${contestId}/submissions?contestId=${contestId}`))}
                       >
                         打开本场提交列表
                       </Button>
@@ -757,7 +870,7 @@ export function AdminContestDetailPage() {
                       <div>查看本场比赛 Waiting / Judging / Failed 等判题任务。</div>
                       <Button
                         type="primary"
-                        onClick={() => navigate(`/admin/contests/${contestId}/judge/queue?contestId=${contestId}`)}
+                        onClick={() => navigate(adminPath(`/contests/${contestId}/judge/queue?contestId=${contestId}`))}
                       >
                         打开本场判题队列
                       </Button>
@@ -910,6 +1023,69 @@ export function AdminContestDetailPage() {
           </TabPane>
         </Tabs>
       </Card>
+
+      <Modal
+        title="添加比赛报名人员"
+        visible={registrationModalVisible}
+        onCancel={() => setRegistrationModalVisible(false)}
+        footer={null}
+        style={{ width: 560 }}
+      >
+        <Space style={{ width: '100%' }}>
+          <Input
+            value={registrationCandidateKeyword}
+            placeholder="输入用户名、姓名、学号或邮箱"
+            allowClear
+            onChange={setRegistrationCandidateKeyword}
+            onPressEnter={() => void searchRegistrationCandidates()}
+          />
+          <Button
+            type="primary"
+            loading={registrationCandidatesLoading}
+            onClick={() => void searchRegistrationCandidates()}
+          >
+            搜索
+          </Button>
+        </Space>
+        <div style={{ marginTop: 16, maxHeight: 360, overflowY: 'auto' }}>
+          {registrationCandidatesLoading ? (
+            <div style={{ padding: 32, textAlign: 'center' }}><Spin /></div>
+          ) : registrationCandidates.length === 0 ? (
+            <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-3)' }}>
+              {registrationCandidateKeyword.trim() ? '未找到可添加的学生' : '请输入关键字搜索学生'}
+            </div>
+          ) : (
+            registrationCandidates.map((candidate) => (
+              <div
+                key={candidate.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                  padding: '10px 4px',
+                  borderBottom: '1px solid var(--color-border-1)',
+                }}
+              >
+                <div>
+                  <div>{candidate.displayName || candidate.username}</div>
+                  <div style={{ color: 'var(--color-text-3)', fontSize: 12 }}>
+                    @{candidate.username}{candidate.studentNo ? ` · ${candidate.studentNo}` : ''}
+                  </div>
+                </div>
+                <Button
+                  size="mini"
+                  type="primary"
+                  loading={addingRegistrationUserId === candidate.id}
+                  onClick={() => void addRegistration(candidate.id)}
+                >
+                  添加
+                </Button>
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

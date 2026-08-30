@@ -13,6 +13,7 @@ public record ContestDraftRequest(
     String title,
     Integer durationMinutes,
     String startTime,
+    String endTime,
     String description,
     ContestType type,
     JudgeBackend judgeMode,

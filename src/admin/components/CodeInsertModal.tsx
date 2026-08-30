@@ -69,7 +69,7 @@ export function CodeInsertModal({ visible, onClose, onInsert }: CodeInsertModalP
       <div style={{ marginBottom: '16px' }}>
         <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>语言</div>
         <Select value={language} onChange={setLanguage} style={{ width: '200px' }}>
-          <Option value="cpp">C++</Option>
+          <Option value="cpp">C++17</Option>
           <Option value="c">C</Option>
           <Option value="java">Java</Option>
           <Option value="python">Python</Option>

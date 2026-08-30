@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 管理端提交管理接口
  */
 @RestController
-@RequestMapping("/api/admin/v1/submissions")
+@RequestMapping("${admin.api-prefix:/api/admin/v1}/submissions")
 @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminSubmissionController {
     private final SubmissionService submissionService;

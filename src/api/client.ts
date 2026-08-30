@@ -13,6 +13,7 @@ import {
   refreshFrontendAccessToken,
   saveFrontendTokens,
 } from "./authSession";
+import { adminPath } from "../utils/adminPath";
 
 /**
  * Api响应接口，明确该模块内部及 API 边界使用的数据结构。
@@ -159,6 +160,9 @@ async function requestWithAuth<T>(
   allowRefresh = true,
   options: ApiRequestOptions = {}
 ): Promise<T> {
+  if (url.startsWith("/api/admin/v1")) {
+    url = adminPath(url);
+  }
   let token = getToken();
 
   if (requireAuth && !token) {

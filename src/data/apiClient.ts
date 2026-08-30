@@ -18,6 +18,7 @@ import type {
   RatingUser,
 } from "./types";
 import { encryptId } from "../utils/cipher";
+import { adminPath } from "../utils/adminPath";
 import {
   clearFrontendTokens as clearStoredFrontendTokens,
   getFrontendAccessToken as readFrontendAccessToken,
@@ -329,6 +330,7 @@ export interface ContestDraftPayload {
   title?: string;
   durationMinutes?: number;
   startTime?: string;
+  endTime?: string;
   description?: string;
   type?: "ACM" | "OI";
   judgeMode?: ContestJudgeMode;
@@ -374,9 +376,6 @@ export interface ContestPayload {
   goldRatio?: number;
   silverRatio?: number;
   bronzeRatio?: number;
-  allowFullscreen?: boolean;
-  antiCheatEnabled?: boolean;
-  maxSwitches?: number;
   allowAfterEndSubmit?: boolean;
   allowAfterEndViewProblem?: boolean;
   allowAfterEndViewCode?: boolean;
@@ -1266,6 +1265,9 @@ function isAuthFailureMessage(message?: string) {
  * 读取目标数据并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；失败时向调用方传播异常。
  */
 async function get<T>(url: string, token?: string, allowRefresh = true): Promise<T> {
+  if (url.startsWith("/api/admin/v1")) {
+    url = adminPath(url);
+  }
   const response = await fetchWithTimeout(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
@@ -1302,6 +1304,9 @@ async function request<T>(
   token?: string,
   allowRefresh = true,
 ): Promise<T> {
+  if (url.startsWith("/api/admin/v1")) {
+    url = adminPath(url);
+  }
   const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const response = await fetchWithTimeout(url, {
     ...options,

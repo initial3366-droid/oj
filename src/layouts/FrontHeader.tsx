@@ -49,7 +49,6 @@ export function FrontHeader() {
     { key: 'contests', label: '比赛', path: '/contests' },
     { key: 'submission-queue', label: '提交队列', path: '/submission-queue' },
     { key: 'leaderboard', label: '排行榜', path: '/leaderboard' },
-    { key: 'data-structures', label: '数据结构', path: '/data-structures', newTab: true },
   ];
 
   /**
@@ -72,10 +71,6 @@ export function FrontHeader() {
   const handleNavClick: MenuProps['onClick'] = ({ key }) => {
     const item = navItems.find(item => item.key === key);
     if (item) {
-      if (item.newTab) {
-        window.open(item.path, '_blank', 'noopener,noreferrer');
-        return;
-      }
       navigate(item.path);
     }
   };

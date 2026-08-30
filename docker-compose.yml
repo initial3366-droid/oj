@@ -1,0 +1,165 @@
+# QOJ 一键部署编排：前端(nginx) + 后端(Spring Boot) + MySQL + Redis + go-judge 判题沙箱。
+#
+# 推荐入口是仓库根目录的 ./deploy.sh：首次运行会生成包含随机密钥的 .env.production，
+# 之后以 --env-file 传给 compose。直接运行 docker compose 会因缺少密钥而快速报错，
+# 属于预期行为（生产 profile 的后端也会拒绝默认 JWT 密钥）。
+#
+# 网络拓扑：只有 frontend 对外发布端口；backend 访问 mysql/redis/go-judge 均走内部
+# 网络，数据库与判题沙箱不暴露到宿主机。go-judge 需要特权能力，必须部署在可信主机。
+name: qoj
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+        VITE_ADMIN_PREFIX: ${VITE_ADMIN_PREFIX:-admin}
+        VITE_ADMIN_API_PREFIX: ${VITE_ADMIN_API_PREFIX:-/api/${VITE_ADMIN_PREFIX:-admin}/v1}
+    image: qoj-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "${QOJ_HTTP_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    logging: *default-logging
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        MAVEN_MIRROR_URL: ${MAVEN_MIRROR_URL:-}
+    image: qoj-backend:latest
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      SERVER_PORT: 18080
+      LOG_PATH: /app/logs
+      # JVM 按容器内存上限的 75% 堆配额，调整 BACKEND_MEM_LIMIT 时无需改启动命令。
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75.0
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-qoj}
+      MYSQL_USERNAME: ${MYSQL_USERNAME:-qoj}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?missing MYSQL_PASSWORD - run ./deploy.sh or copy .env.production.example}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?missing REDIS_PASSWORD - run ./deploy.sh or copy .env.production.example}
+      JWT_SECRET: ${JWT_SECRET:?missing JWT_SECRET - run ./deploy.sh or copy .env.production.example}
+      JWT_ACCESS_EXPIRE: ${JWT_ACCESS_EXPIRE:-900}
+      JWT_REFRESH_EXPIRE: ${JWT_REFRESH_EXPIRE:-604800}
+      GO_JUDGE_BASE_URL: http://go-judge:5050
+      GO_JUDGE_AUTH_TOKEN: ${GO_JUDGE_AUTH_TOKEN:?missing GO_JUDGE_AUTH_TOKEN - run ./deploy.sh or copy .env.production.example}
+      # 后台路由和 API 前缀与前端构建参数保持一致，避免前端请求固定的 /api/admin/v1。
+      ADMIN_PATH_PREFIX: ${VITE_ADMIN_PREFIX:-admin}
+      ADMIN_API_PREFIX: ${VITE_ADMIN_API_PREFIX:-/api/${VITE_ADMIN_PREFIX:-admin}/v1}
+    mem_limit: ${BACKEND_MEM_LIMIT:-2g}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      # 判题沙箱启动即可，不阻塞后端上线；判题请求自身带超时与失败回写。
+      go-judge:
+        condition: service_started
+    volumes:
+      - qoj-backend-logs:/app/logs
+    logging: *default-logging
+
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?missing MYSQL_ROOT_PASSWORD - run ./deploy.sh or copy .env.production.example}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-qoj}
+      MYSQL_USER: ${MYSQL_USERNAME:-qoj}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?missing MYSQL_PASSWORD - run ./deploy.sh or copy .env.production.example}
+    mem_limit: ${MYSQL_MEM_LIMIT:-1g}
+    volumes:
+      - qoj-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?missing REDIS_PASSWORD - run ./deploy.sh or copy .env.production.example}"]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # 镜像本身不读取该变量，仅供健康检查 shell 展开使用。
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?missing REDIS_PASSWORD - run ./deploy.sh or copy .env.production.example}
+    mem_limit: 256m
+    volumes:
+      - qoj-redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *default-logging
+
+  go-judge:
+    build:
+      context: ./docker/go-judge
+      args:
+        GO_JUDGE_VERSION: "1.12.1"
+    image: qoj-go-judge:1.12.1
+    # go-judge 需要特权能力创建受限执行环境；该容器仅存在于内部网络，不对公网开放。
+    privileged: true
+    restart: unless-stopped
+    shm_size: 512m
+    pids_limit: 512
+    mem_limit: ${GO_JUDGE_MEM_LIMIT:-2g}
+    cpus: ${GO_JUDGE_CPUS:-2.0}
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      GO_JUDGE_HEALTH_TOKEN: ${GO_JUDGE_AUTH_TOKEN:?missing GO_JUDGE_AUTH_TOKEN - run ./deploy.sh or copy .env.production.example}
+    command:
+      - "-http-addr=:5050"
+      - "-auth-token=${GO_JUDGE_AUTH_TOKEN:?missing GO_JUDGE_AUTH_TOKEN - run ./deploy.sh or copy .env.production.example}"
+      # 提高 GO_JUDGE_PARALLELISM 前需同步增加容器内存与宿主机容量。
+      - "-parallelism=${GO_JUDGE_PARALLELISM:-1}"
+      - "-pre-fork=1"
+      - "-container-cred-start=10000"
+      - "-no-fallback"
+      - "-file-timeout=10m"
+      - "-output-limit=4m"
+      - "-copy-out-limit=4m"
+      - "-open-file-limit=128"
+      - "-tmp-fs-param=size=256m,nr_inodes=8k"
+      - "-release"
+      # 抑制启动/请求日志，避免命令行里的鉴权令牌进入 Docker 日志。
+      - "-silent"
+    healthcheck:
+      # 探测只读的 /version：证明 worker 响应正常且令牌被接受，不执行任何代码。
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:5050/version >/dev/null || exit 1
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    logging: *default-logging
+
+volumes:
+  qoj-mysql-data:
+  qoj-redis-data:
+  qoj-backend-logs:

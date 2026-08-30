@@ -17,6 +17,7 @@ import {
 import { IconDownload, IconEye, IconLeft } from '@arco-design/web-react/icon';
 import { teacherGet } from '../teacherApi';
 import { CodeViewer } from '../../components/common/CodeViewer';
+import { languageLabel } from '../../data/languages';
 
 const { Row, Col } = Grid;
 
@@ -224,7 +225,7 @@ export function TeacherPracticeReportPage() {
                 { title: 'ID', dataIndex: 'id', width: 80, align: 'center' },
                 { title: '用户', dataIndex: 'displayName', width: 120 },
                 { title: '题目', dataIndex: 'problemTitle', width: 200 },
-                { title: '语言', dataIndex: 'language', width: 80, align: 'center' },
+                { title: '语言', dataIndex: 'language', width: 80, align: 'center', render: (value: string) => languageLabel(value) },
                 {
                   title: '状态', dataIndex: 'status', width: 100, align: 'center',
                   render: (status: string) => <Tag color={statusColors[status] || 'gray'}>{status}</Tag>,

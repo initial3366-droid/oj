@@ -198,7 +198,7 @@ Authorization: Bearer <accessToken>
 {
   "problemId": 1001,
   "contestId": null,
-  "language": "cpp",
+  "language": "cpp17",
   "code": "#include <iostream>..."
 }
 ```
@@ -416,7 +416,7 @@ STOMP over SockJS，端点 `/ws`。连接时需在 CONNECT 帧携带 `Authorizat
 { "submissionId": 123, "status": "AC", "time": 100, "memory": 2048, "timestamp": 1718000000000 }
 ```
 
-详见 [WebSocket 重构报告](../WEBSOCKET_REFACTOR_REPORT.md)。
+详见 [WebSocket 指南](../../docs/WebSocket指南.md)。
 
 ---
 

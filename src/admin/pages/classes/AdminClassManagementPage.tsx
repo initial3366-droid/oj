@@ -355,7 +355,7 @@ export function AdminClassManagementPage() {
             width: 220,
             render: (_: unknown, record: ClassRoom) => (
               <Space size={4}>
-                <Button size="mini" icon={<IconEye />} onClick={() => navigate(`/admin/classes/${record.id}`)}>
+                <Button size="mini" icon={<IconEye />} onClick={() => navigate(adminPath(`/classes/${record.id}`))}>
                   查看
                 </Button>
                 <Button size="mini" icon={<IconEdit />} onClick={() => openEdit(record)}>

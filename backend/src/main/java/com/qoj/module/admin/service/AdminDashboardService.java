@@ -163,12 +163,44 @@ public class AdminDashboardService {
     }
 
     private List<DashboardChartsVO.LanguageCount> buildLanguageUsage(long totalSubmissions) {
-        return submissionMapper.selectLanguageUsage().stream()
-            .map(row -> {
-                long count = ((Number) row.get("count")).longValue();
+        return aggregateLanguageUsage(submissionMapper.selectLanguageUsage(), totalSubmissions);
+    }
+
+    private List<DashboardChartsVO.LanguageCount> aggregateLanguageUsage(
+        List<Map<String, Object>> languageRows, long totalSubmissions
+    ) {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (Map<String, Object> row : languageRows) {
+            String language = (String) row.get("language");
+            if (isCSharpLanguage(language)) continue;
+            String displayLanguage = isCppLanguage(language) ? "C++" : language;
+            long count = ((Number) row.get("count")).longValue();
+            counts.merge(displayLanguage, count, Long::sum);
+        }
+
+        return counts.entrySet().stream()
+            .sorted((left, right) -> Long.compare(right.getValue(), left.getValue()))
+            .map(entry -> {
+                long count = entry.getValue();
                 double pct = totalSubmissions > 0 ? Math.round(count * 1000.0 / totalSubmissions) / 10.0 : 0;
-                return new DashboardChartsVO.LanguageCount((String) row.get("language"), count, pct);
+                return new DashboardChartsVO.LanguageCount(entry.getKey(), count, pct);
             }).toList();
+    }
+
+    private boolean isCppLanguage(String language) {
+        if (language == null) return false;
+        return switch (language.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "cpp", "cpp17", "cpp20", "cpp23", "c++", "c++17", "c++20", "c++23", "cxx", "g++" -> true;
+            default -> false;
+        };
+    }
+
+    private boolean isCSharpLanguage(String language) {
+        if (language == null) return false;
+        return switch (language.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "c#", "csharp", "c-sharp", "cs", "dotnet" -> true;
+            default -> false;
+        };
     }
 
     private List<DashboardChartsVO.DifficultyCount> buildDifficultyDistribution() {
@@ -370,12 +402,7 @@ public class AdminDashboardService {
         // Language usage
         List<Map<String, Object>> langRows = jdbcTemplate.queryForList(
             "SELECT language, COUNT(*) AS count FROM submissions WHERE user_id IN " + studentSub + " AND language IS NOT NULL GROUP BY language ORDER BY count DESC");
-        List<DashboardChartsVO.LanguageCount> languageUsage = langRows.stream()
-            .map(row -> {
-                long count = ((Number) row.get("count")).longValue();
-                double pct = submissionCount > 0 ? Math.round(count * 1000.0 / submissionCount) / 10.0 : 0;
-                return new DashboardChartsVO.LanguageCount((String) row.get("language"), count, pct);
-            }).toList();
+        List<DashboardChartsVO.LanguageCount> languageUsage = aggregateLanguageUsage(langRows, submissionCount);
 
         // Difficulty distribution
         List<DashboardChartsVO.DifficultyCount> difficultyDistribution = jdbcTemplate.queryForList(

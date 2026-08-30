@@ -8,11 +8,11 @@ import {
   Space,
   Input,
   Modal,
-  Message,
   Spin,
   Empty,
   Tag,
 } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconEdit, IconPlus, IconRefresh } from '@arco-design/web-react/icon';
 import { adminGet, adminPost, adminPut, adminDelete } from '../../api/adminClient';
 
@@ -69,7 +69,7 @@ export function AdminTeamManagementPage() {
     try {
       setTeams(await adminGet<Team[]>('/api/admin/v1/teams'));
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '队伍列表加载失败');
+      toast.error(error instanceof Error ? error.message : '队伍列表加载失败');
     } finally {
       setLoading(false);
     }
@@ -102,17 +102,17 @@ export function AdminTeamManagementPage() {
     if (!renameTarget) return;
     const name = renameName.trim();
     if (!name) {
-      Message.warning('队伍名称不能为空');
+      toast.info('队伍名称不能为空');
       return;
     }
     setRenaming(true);
     try {
       await adminPut(`/api/admin/v1/teams/${renameTarget.id}`, { name });
-      Message.success('队伍名称已更新');
+      toast.success('队伍名称已更新');
       setRenameTarget(null);
       await loadTeams();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '修改失败');
+      toast.error(error instanceof Error ? error.message : '修改失败');
     } finally {
       setRenaming(false);
     }
@@ -121,18 +121,18 @@ export function AdminTeamManagementPage() {
   const submitCreate = async () => {
     const name = createName.trim();
     if (!name) {
-      Message.warning('队伍名称不能为空');
+      toast.info('队伍名称不能为空');
       return;
     }
     setCreating(true);
     try {
       await adminPost('/api/admin/v1/teams', { name });
-      Message.success('队伍已创建');
+      toast.success('队伍已创建');
       setCreateVisible(false);
       setCreateName('');
       await loadTeams();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '创建失败');
+      toast.error(error instanceof Error ? error.message : '创建失败');
     } finally {
       setCreating(false);
     }
@@ -142,11 +142,11 @@ export function AdminTeamManagementPage() {
     setAddingUserId(userId);
     try {
       await adminPost(`/api/admin/v1/teams/${team.id}/members`, { userId });
-      Message.success('成员已添加');
+      toast.success('成员已添加');
       await loadTeams();
       setCandidates((current) => current.filter((item) => item.id !== userId));
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '添加失败');
+      toast.error(error instanceof Error ? error.message : '添加失败');
     } finally {
       setAddingUserId(null);
     }
@@ -155,10 +155,10 @@ export function AdminTeamManagementPage() {
   const removeMember = async (team: Team, member: TeamMember) => {
     try {
       await adminDelete(`/api/admin/v1/teams/${team.id}/members/${member.userId}`);
-      Message.success('成员已移除');
+      toast.success('成员已移除');
       await loadTeams();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '移除失败');
+      toast.error(error instanceof Error ? error.message : '移除失败');
     }
   };
 

@@ -7,7 +7,6 @@ import {
   Grid,
   Input,
   InputNumber,
-  Message,
   Modal,
   Select,
   Space,
@@ -17,12 +16,14 @@ import {
   Tag,
   Typography,
 } from '@arco-design/web-react';
+import { toast } from '../../utils/toast';
 import { IconDelete, IconRefresh } from '@arco-design/web-react/icon';
 import { Statistic, Progress } from '@arco-design/web-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { showConfirm } from '../../../utils/confirm';
 import { adminDelete, adminGet, adminPost } from '../../api/adminClient';
+import { languageLabel } from '../../../data/languages';
 
 const { Row, Col } = Grid;
 const Option = Select.Option;
@@ -249,7 +250,7 @@ export function AdminSubmissionQueuePage() {
       setRows(result.list);
       setTotal(result.total);
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '提交队列加载失败');
+      toast.error(error instanceof Error ? error.message : '提交队列加载失败');
     } finally {
       setLoading(false);
     }
@@ -318,10 +319,10 @@ export function AdminSubmissionQueuePage() {
   async function rejudge(record: QueueRecord) {
     try {
       await adminPost(`/api/admin/v1/submission-queue/${record.queueId}/rejudge`);
-      Message.success('已提交重判');
+      toast.success('已提交重判');
       load();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '重判失败');
+      toast.error(error instanceof Error ? error.message : '重判失败');
     }
   }
 
@@ -331,10 +332,10 @@ export function AdminSubmissionQueuePage() {
   async function cancel(record: QueueRecord) {
     try {
       await adminPost(`/api/admin/v1/submission-queue/${record.queueId}/cancel`);
-      Message.success('已取消队列任务');
+      toast.success('已取消队列任务');
       load();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '取消失败');
+      toast.error(error instanceof Error ? error.message : '取消失败');
     }
   }
 
@@ -345,7 +346,7 @@ export function AdminSubmissionQueuePage() {
     try {
       setLog(await adminGet<QueueLog>(`/api/admin/v1/submission-queue/${record.queueId}/logs`));
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '日志加载失败');
+      toast.error(error instanceof Error ? error.message : '日志加载失败');
     }
   }
 
@@ -356,11 +357,11 @@ export function AdminSubmissionQueuePage() {
     if (!priorityRecord) return;
     try {
       await adminPost(`/api/admin/v1/submission-queue/${priorityRecord.queueId}/priority`, { priority: priorityValue });
-      Message.success('优先级已更新');
+      toast.success('优先级已更新');
       setPriorityRecord(null);
       load();
     } catch (error) {
-      Message.error(error instanceof Error ? error.message : '优先级更新失败');
+      toast.error(error instanceof Error ? error.message : '优先级更新失败');
     }
   }
 
@@ -383,11 +384,11 @@ export function AdminSubmissionQueuePage() {
           onOk: async () => {
             try {
               await adminDelete(`/api/admin/v1/submission-queue/${record.queueId}`);
-              Message.success('队列任务已删除');
+              toast.success('队列任务已删除');
               load();
               loadStats();
             } catch (error) {
-              Message.error(error instanceof Error ? error.message : '删除失败');
+              toast.error(error instanceof Error ? error.message : '删除失败');
             }
           },
         });
@@ -421,7 +422,7 @@ export function AdminSubmissionQueuePage() {
         </div>
       ),
     },
-    { title: '语言', dataIndex: 'language', width: 110 },
+    { title: '语言', dataIndex: 'language', width: 110, render: (value: string) => languageLabel(value) },
     {
       title: '状态',
       dataIndex: 'statusText',

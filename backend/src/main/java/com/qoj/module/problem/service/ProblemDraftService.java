@@ -40,8 +40,9 @@ public class ProblemDraftService {
     private static final Duration DRAFT_TTL = Duration.ofHours(6);
     private static final int MAX_ZIP_TEST_CASES = 200;
     private static final int MAX_ZIP_ENTRIES = 500;
-    private static final int MAX_ZIP_ENTRY_BYTES = 2 * 1024 * 1024;
-    private static final int MAX_ZIP_TOTAL_BYTES = 50 * 1024 * 1024;
+    private static final long MAX_TEST_CASE_UPLOAD_BYTES = 50L * 1024 * 1024;
+    private static final long MAX_ZIP_ENTRY_BYTES = MAX_TEST_CASE_UPLOAD_BYTES;
+    private static final long MAX_ZIP_TOTAL_BYTES = MAX_TEST_CASE_UPLOAD_BYTES;
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
@@ -316,6 +317,9 @@ public class ProblemDraftService {
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
             throw new BizException(400, "测试点 ZIP 不能为空");
+        }
+        if (file.getSize() > MAX_TEST_CASE_UPLOAD_BYTES) {
+            throw new BizException(400, "测试点 ZIP 文件不能超过 50MB");
         }
         String filename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
         if (!filename.endsWith(".zip")) {

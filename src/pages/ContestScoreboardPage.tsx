@@ -3,7 +3,7 @@
  */
 import { Alert, Button, Card, Spin, Tag, Typography } from 'antd';
 import { CaretDownOutlined, LeftOutlined } from '@ant-design/icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchContestScoreboard, type ContestScoreboard } from '../data/apiClient';
 
@@ -84,6 +84,31 @@ export function ContestScoreboardPage() {
   const [scoreboard, setScoreboard] = useState<ContestScoreboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  // 榜单表格容器宽度测量：按容器实际宽度动态收缩题目列，避免出现横向滚动条
+  const [boardWrapEl, setBoardWrapEl] = useState<HTMLDivElement | null>(null);
+  const [boardWrapWidth, setBoardWrapWidth] = useState(0);
+  useEffect(() => {
+    if (!boardWrapEl || typeof ResizeObserver === 'undefined') return;
+    const update = () => setBoardWrapWidth(boardWrapEl.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(boardWrapEl);
+    return () => observer.disconnect();
+  }, [boardWrapEl]);
+  const scoreboardDensity = useMemo(() => {
+    const problemCount = scoreboard?.problems.length ?? 0;
+    if (problemCount <= 0 || boardWrapWidth <= 0) return 2;
+    // 固定列（排名/奖牌/用户/通过/时间）估算约 460px；偏保守，宁可提前收缩也不出滚动条
+    const perProblem = (boardWrapWidth - 460) / problemCount;
+    if (perProblem >= 96) return 2;
+    if (perProblem >= 68) return 1;
+    return 0;
+  }, [boardWrapWidth, scoreboard]);
+  const scoreboardChip = useMemo(() => {
+    if (scoreboardDensity >= 2) return { minWidth: 56, padding: '6px 8px', font: 12, mark: 18 };
+    if (scoreboardDensity === 1) return { minWidth: 44, padding: '5px 6px', font: 11, mark: 16 };
+    return { minWidth: 32, padding: '3px 5px', font: 10, mark: 14 };
+  }, [scoreboardDensity]);
 
   useEffect(() => {
     if (!id) {
@@ -169,8 +194,8 @@ export function ContestScoreboardPage() {
         </div>
       )}
 
-      <div style={{ overflowX: 'auto', borderRadius: 8, border: '1px solid var(--qoj-color-border)', background: 'var(--qoj-color-bg-0)' }}>
-        <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+      <div ref={setBoardWrapEl} style={{ overflowX: 'auto', borderRadius: 8, border: '1px solid var(--qoj-color-border)', background: 'var(--qoj-color-bg-0)' }}>
+        <table style={{ width: '100%', minWidth: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
             <tr style={{ backgroundColor: 'var(--qoj-color-fill-1)' }}>
               <th
@@ -183,20 +208,21 @@ export function ContestScoreboardPage() {
                   padding: '12px',
                   textAlign: 'left',
                   fontWeight: 600,
+                  whiteSpace: 'nowrap',
                 }}
               >
                 Rank
               </th>
-              <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
+              <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
                 Medal
               </th>
-              <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
+              <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>
                 User
               </th>
-              <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
+              <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
                 Solved
               </th>
-              <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
+              <th style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
                 {scoreboard.type === 'OI' ? 'Score' : 'Penalty'}
               </th>
               {scoreboard.problems.map((problem) => (
@@ -205,7 +231,7 @@ export function ContestScoreboardPage() {
                   style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}
                   title={problem.title}
                 >
-                  <div>{problem.label}</div>
+                  <div style={{ whiteSpace: 'nowrap' }}>{problem.label}</div>
                   {scoreboard.type === 'OI' && (
                     <div style={{ marginTop: 2, fontSize: 11, fontWeight: 400, color: 'var(--qoj-color-text-2)' }}>
                       {problem.score ?? 0}
@@ -227,14 +253,15 @@ export function ContestScoreboardPage() {
                     borderBottom: '1px solid var(--qoj-color-border)',
                     padding: '12px',
                     fontWeight: 600,
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   {rankText(row.rank, row.starred)}
                 </td>
-                <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center' }}>
+                <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                   {medalTag(row.medal)}
                 </td>
-                <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', fontWeight: 500 }}>
+                <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px 16px', fontWeight: 500, whiteSpace: 'nowrap' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <span>{row.displayName || row.userId}</span>
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -243,10 +270,10 @@ export function ContestScoreboardPage() {
                     </Typography.Text>
                   </div>
                 </td>
-                <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center' }}>
+                <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                   {row.solved}
                 </td>
-                <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600 }}>
+                <td style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   {scoreboard.type === 'OI' ? row.score : row.penalty}
                 </td>
                 {scoreboard.problems.map((problem) => {
@@ -259,11 +286,14 @@ export function ContestScoreboardPage() {
                   const hiddenAttempts = cell?.hiddenAttempts ?? 0;
                   return (
                     <td key={problemKey} style={{ borderBottom: '1px solid var(--qoj-color-border)', padding: '8px', textAlign: 'center' }}>
-                      <div className={cellClass(hasHiddenSubmissions, accepted, attempts, score, scoreboard.type)}>
+                      <div
+                        className={cellClass(hasHiddenSubmissions, accepted, attempts, score, scoreboard.type)}
+                        style={{ minWidth: scoreboardChip.minWidth, padding: scoreboardChip.padding, fontSize: scoreboardChip.font }}
+                      >
                         {hasHiddenSubmissions ? (
                           <>
-                            <span className="scoreboard-cell-hidden-status" aria-hidden="true">+</span>
-                            <span>{attemptText(hiddenAttempts)}</span>
+                            <span className="scoreboard-cell-hidden-status" aria-hidden="true" style={{ fontSize: scoreboardChip.mark }}>+</span>
+                            <span style={{ fontSize: scoreboardChip.font }}>{attemptText(hiddenAttempts)}</span>
                           </>
                         ) : (
                           scoreboard.type === 'OI'

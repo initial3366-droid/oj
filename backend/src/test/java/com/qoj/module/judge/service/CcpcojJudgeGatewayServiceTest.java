@@ -227,6 +227,9 @@ class CcpcojJudgeGatewayServiceTest {
 
         submission.language = "cpp";
         assertEquals("1.0\n128\n0\n", service.problemInfo(9L, sessionId));
+
+        submission.language = "cpp23";
+        assertEquals("1.0\n128\n0\n", service.problemInfo(9L, sessionId));
     }
 
     /**

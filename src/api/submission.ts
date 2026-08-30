@@ -135,6 +135,25 @@ export async function fetchProblemSubmissions(
   return result.list;
 }
 
+/** 获取当前用户在指定题目中的最新提交，用于恢复做题页状态。 */
+export async function fetchMyProblemSubmissions(
+  problemId: number,
+  contestId?: number | null,
+  page = 1,
+  pageSize = 1
+): Promise<SubmissionRecord[]> {
+  const userId = currentUserIdFromAccessToken();
+  if (!userId) {
+    throw new Error("请先登录后查看提交记录");
+  }
+  const contestQuery = contestId ? `&contestId=${contestId}` : "";
+  const result = await apiGet<{ total: number; list: SubmissionRecord[] }>(
+    `/api/v1/submissions?page=${page}&pageSize=${pageSize}&problemId=${problemId}${contestQuery}&userId=${userId}`,
+    true
+  );
+  return result.list;
+}
+
 /**
  * 获取提交详情
  */
