@@ -139,6 +139,14 @@ public class ProblemDraftService {
 
     @Transactional
     public ProblemVO commit(String draftId) {
+        return commit(draftId, false);
+    }
+
+    /** Admin chat may persist an unfinished private problem without inventing test data. */
+    @Transactional
+    public ProblemVO commit(String draftId, boolean allowIncomplete) {
+        AuthUser owner = CurrentUser.required();
+        if (allowIncomplete && !owner.isAdmin()) throw new BizException(403, "仅管理员可保存待补充测试数据的题目");
         DraftData draft = requireDraft(draftId);
         if (draft.basic() == null) {
             /**
@@ -146,13 +154,13 @@ public class ProblemDraftService {
              */
             throw new BizException(400, "请先完成题面信息");
         }
-        if (draft.testCases() == null || draft.testCases().isEmpty()) {
+        if ((draft.testCases() == null || draft.testCases().isEmpty())
+            && !(allowIncomplete && Boolean.FALSE.equals(draft.basic().isPublic()) && "DRAFT".equals(draft.basic().studentPublishStatus()))) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
             throw new BizException(400, "请先添加测试点");
         }
-        AuthUser owner = CurrentUser.required();
         Problem problem = new Problem();
         ProblemDraftBasicRequest basic = draft.basic();
         problem.title = basic.title();
