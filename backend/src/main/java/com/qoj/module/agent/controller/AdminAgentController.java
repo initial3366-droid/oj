@@ -63,6 +63,20 @@ public class AdminAgentController {
         return ApiResponse.ok(agentChatService.getQuotas(userIds));
     }
 
+    public record StopRequest(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 80) String sessionId,
+                              @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 80) String assistantMessageId,
+                              @jakarta.validation.constraints.Size(max = 200000) String content) {}
+
+    @PostMapping("/chat/stop")
+    public ApiResponse<com.qoj.module.agent.vo.AdminChatSessionVO> stopChat(@Valid @RequestBody StopRequest request) {
+        long owner = history.ownerId();
+        history.requireAssistant(request.sessionId(), request.assistantMessageId(), owner);
+        agentChatService.requestAdminChatStop(owner, request.sessionId(), request.assistantMessageId());
+        history.stopAssistant(owner, request.sessionId(), request.assistantMessageId(), request.content());
+        agentChatService.awaitAdminChatStopped(owner, request.sessionId(), request.assistantMessageId());
+        return ApiResponse.ok(history.detail(request.sessionId()));
+    }
+
     @PostMapping("/chat/tasks/{token}/stop")
     public ApiResponse<Void> stopChat(@PathVariable String token, @RequestBody Map<String, String> binding) {
         agentChatService.stopAdminChat(token, binding.get("sessionId"), binding.get("assistantMessageId"));
@@ -115,7 +129,7 @@ public class AdminAgentController {
                             if (event.phase().equals("run")) {
                                 taskToken[0] = event.data(); taskLease[0] = event.callId();
                                 payload.put("continuationToken", event.data());
-                                if (persistent) history.saveAssistantCheckpoint(ownerId, request.sessionId(), request.assistantMessageId(), event.data());
+                                if (persistent) history.saveAssistantCheckpoint(ownerId, request.sessionId(), request.assistantMessageId(), event.data(), Boolean.TRUE.equals(preparedChat.request().resumeStopped()));
                             }
                             if (event.phase().equals("observation")) payload.put("result", objectMapper.readTree(event.data()));
                             else if (event.phase().equals("action")) payload.put("arguments", objectMapper.readTree(event.data()));

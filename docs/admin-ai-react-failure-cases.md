@@ -50,3 +50,27 @@ QOJ_E2E_LIVE_REACT=1 QOJ_E2E_REACT_ONLY=1 node tools/e2e/admin-ai-stream.mjs
 ```
 
 模拟提供商启动独立的 18081 后端，由真实 Spring AI SDK 调用本地 HTTP 提供商，操作使用实际业务服务及 MySQL/Redis。测试不修改已有模型设置。产物位于 `output/admin-ai-stream-e2e/`，包括报告、Action/Observation/continuation 记录、数据库校验和截图。
+
+## 停止后继续聊天：修复前失败清单
+
+- 点击停止时浏览器还没收到任务 token，只取消前端连接，后端模型或工具继续运行。
+- 自动分段交接时停止标志被下一段清除，刷新后出现 complete。
+- 后端取消接口失败被前端吞掉，界面误显示停止成功。
+- 旧 SSE 回调在停止后写入 complete / pending，覆盖已持久化 stopped。
+- 教师账号走普通聊天流而不是 ReAct，必须使用相同后端取消信号，中断无增量的模型请求。
+- 停止后本地 version 落后服务器，再发送新消息无法保存或输入框未解除锁定。
+- 刷新将停止回复误当作普通完成，继续处理与发送新请求混淆。
+
+端到端场景：阻断最初 run 事件但保留代理上游，点击停止并验证真实模型连接中止、工具计数不增加、刷新仍为 stopped；停止后同一聊天发送新请求并保存 4 条消息；取消接口临时失败明确提示且可重试；停止与最后一段交接不产生 complete 覆盖。输出数据库状态、模型连接与工具事件的可复验 JSON。
+
+### 停止修复的验证与部署
+
+- `npm run build`：类型检查与发布构建通过。
+- `mvn test`：204 项既有后端测试通过；未新增单元测试。
+- `QOJ_E2E_SCRIPTED_AGENT=1 QOJ_E2E_REACT_ONLY=1 QOJ_E2E_NGINX=1 QOJ_E2E_OUTPUT_DIR=output/admin-ai-stop-nginx-e2e node tools/e2e/admin-ai-stream.mjs`：9 项真实 SDK / REST / MySQL / Redis / Nginx 场景通过。
+- `QOJ_E2E_OUTPUT_DIR=output/admin-ai-stop-regression-e2e node tools/e2e/admin-ai-stream.mjs`：19 项上传、解析、表格和流式结束场景通过。
+- `node tools/e2e/admin-ai-history.mjs`：16 项聊天持久化场景通过。
+
+取消使用已有聊天与助手消息 ID，不再依赖浏览器是否收到任务 token。服务端按消息写入 Redis 取消标志，取消模型 HTTP Call，退出后保存 stopped 并释放执行锁。只有明确的“继续处理”请求清除旧取消标志；自动分段不清除它。浏览器停止失败时提示并提供重试，成功后获取服务器版本再允许发送。停止时已接收到的增量内容一并保存，旧快照不能把 stopped 改回 complete 或 pending。已完成的工具写入不会因停止而撤销。
+
+本次无数据库迁移或新增环境变量。部署需同时更新前后端；仅刷新旧发布版本不能获得修复。

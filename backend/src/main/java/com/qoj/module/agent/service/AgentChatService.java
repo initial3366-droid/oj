@@ -185,10 +185,14 @@ public class AgentChatService {
 
     public String streamAdminChat(PreparedAdminChat chat, Consumer<String> onDelta, Consumer<AgentClient.ToolEvent> onTool) {
         if (chat.generalAgent()) return adminAgent.run(chat.settings(), chat.messages(), chat.files(), chat.approval(), chat.request(), onDelta, onTool);
-        agentClient.streamChat(chat.settings(), chat.messages(), onDelta);
+        long owner = CurrentUser.required().id();
+        agentClient.streamChat(chat.settings(), chat.messages(), onDelta,
+            () -> adminAgent.isStopped(owner, chat.request().sessionId(), chat.request().assistantMessageId()));
         return null;
     }
 
+    public void requestAdminChatStop(long owner, String sessionId, String messageId) { adminAgent.requestStop(owner, sessionId, messageId); }
+    public void awaitAdminChatStopped(long owner, String sessionId, String messageId) { adminAgent.awaitStopped(owner, sessionId, messageId); }
     public void stopAdminChat(String token, String sessionId, String messageId) { adminAgent.stop(token, sessionId, messageId); }
     public void finishAdminChat(String token, String lease) { adminAgent.finish(token, lease); }
 

@@ -73,14 +73,20 @@ public class AdminChatAgentService {
         }
         if (stored.state().complete) throw new BizException(409, "任务已经完成");
         var original = stored.request();
+        // Accept an explicit resume before dispatching SSE; later stop requests must stay effective.
+        if (Boolean.TRUE.equals(request.resumeStopped())) {
+            redis.delete("qoj:admin-agent:stop:" + request.continuationToken());
+            if (original.sessionId() != null) redis.delete(cancelKey(stored.owner(), original.sessionId(), original.assistantMessageId()));
+        }
         return new com.qoj.module.agent.dto.AdminAgentChatRequest(original.messages(), original.sessionId(),
-            original.assistantMessageId(), original.approvedImport(), request.continuationToken());
+            original.assistantMessageId(), original.approvedImport(), request.continuationToken(), request.resumeStopped());
     }
 
     public String run(AgentSettingsVO configured, List<AgentClient.Message> conversation, List<AdminChatFileVO> metadata,
                     ApprovedImport approval, com.qoj.module.agent.dto.AdminAgentChatRequest request,
                     Consumer<String> onDelta, Consumer<AgentClient.ToolEvent> onTool) {
         requireAdmin();
+        long ownerId = CurrentUser.required().id();
         String token = request.continuationToken() == null ? java.util.UUID.randomUUID().toString() : request.continuationToken();
         String lock = "qoj:admin-agent:lock:" + (request.sessionId() == null ? token
             : CurrentUser.required().id() + ":" + request.sessionId() + ":" + request.assistantMessageId());
@@ -88,6 +94,7 @@ public class AdminChatAgentService {
         if (!Boolean.TRUE.equals(redis.opsForValue().setIfAbsent(lock, lease, java.time.Duration.ofSeconds(150)))) {
             throw new BizException(409, "任务正在执行，请稍后重试");
         }
+        boolean[] streaming = { false };
         try {
             var previous = request.continuationToken() == null ? null : load(token);
             if (previous != null && (previous.owner() != CurrentUser.required().id()
@@ -107,10 +114,10 @@ public class AdminChatAgentService {
             var state = previous == null ? new AgentRunState() : previous.state();
             Runnable checkpoint = () -> save(token, new Checkpoint(CurrentUser.required().id(), request, state, workspace.snapshot()));
             checkpoint.run();
-            redis.delete("qoj:admin-agent:stop:" + token);
             redis.opsForValue().set("qoj:admin-agent:active:" + token, lease, java.time.Duration.ofSeconds(150));
+            streaming[0] = true;
             onTool.accept(new AgentClient.ToolEvent("run", "", lease, true, token));
-            boolean complete = client.runAgentSegment(configured, messages, workspace.tools(), state, checkpoint, () -> Boolean.TRUE.equals(redis.hasKey("qoj:admin-agent:stop:" + token)), onDelta, event -> {
+            boolean complete = client.runAgentSegment(configured, messages, workspace.tools(), state, checkpoint, () -> cancelled(ownerId, request, token), onDelta, event -> {
                 onTool.accept(event);
                 if (event.phase().equals("action")) onDelta.accept("\n\n> " + label(event.name()) + "…\n\n");
                 if (event.phase().equals("observation")) {
@@ -125,7 +132,7 @@ public class AdminChatAgentService {
             });
             return complete ? null : token;
         } finally {
-            redis.execute(new org.springframework.data.redis.core.script.DefaultRedisScript<Long>(
+            if (!streaming[0]) redis.execute(new org.springframework.data.redis.core.script.DefaultRedisScript<Long>(
                 "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end", Long.class), List.of(lock), lease);
         }
     }
@@ -138,17 +145,45 @@ public class AdminChatAgentService {
             || !java.util.Objects.equals(stored.request().assistantMessageId(), messageId)) throw new BizException(404, "任务进度不存在或已过期");
         if (stored.state().complete) return;
         redis.opsForValue().set("qoj:admin-agent:stop:" + token, "1", TTL);
+        requestStop(stored.owner(), sessionId, messageId);
+        awaitStopped(stored.owner(), sessionId, messageId);
+    }
+
+    private String cancelKey(long owner, String sessionId, String messageId) {
+        return "qoj:admin-agent:cancel:" + owner + ":" + sessionId + ":" + messageId;
+    }
+    private String lockKey(long owner, String sessionId, String messageId) {
+        return "qoj:admin-agent:lock:" + owner + ":" + sessionId + ":" + messageId;
+    }
+    public void requestStop(long owner, String sessionId, String messageId) {
+        redis.opsForValue().set(cancelKey(owner, sessionId, messageId), "1", TTL);
+    }
+    public boolean isStopped(long owner, String sessionId, String messageId) {
+        return sessionId != null && Boolean.TRUE.equals(redis.hasKey(cancelKey(owner, sessionId, messageId)));
+    }
+    private boolean cancelled(long owner, com.qoj.module.agent.dto.AdminAgentChatRequest request, String token) {
+        return Boolean.TRUE.equals(redis.hasKey("qoj:admin-agent:stop:" + token))
+            || isStopped(owner, request.sessionId(), request.assistantMessageId());
+    }
+    public void awaitStopped(long owner, String sessionId, String messageId) {
         long deadline = System.nanoTime() + java.time.Duration.ofSeconds(5).toNanos();
-        while (Boolean.TRUE.equals(redis.hasKey("qoj:admin-agent:active:" + token)) && System.nanoTime() < deadline) {
+        String lock = lockKey(owner, sessionId, messageId);
+        while (Boolean.TRUE.equals(redis.hasKey(lock))) {
+            if (System.nanoTime() >= deadline) throw new BizException(409, "后台仍在退出当前操作，请重试停止");
             try { Thread.sleep(50); }
-            catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new BizException(503, "停止请求被中断，请重试停止"); }
         }
     }
 
     public void finish(String token, String lease) {
-        if (token != null && lease != null) redis.execute(new org.springframework.data.redis.core.script.DefaultRedisScript<Long>(
-            "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end", Long.class),
-            List.of("qoj:admin-agent:active:" + token), lease);
+        if (token == null || lease == null) return;
+        var stored = load(token);
+        String lock = stored.request().sessionId() == null ? "qoj:admin-agent:lock:" + token
+            : lockKey(stored.owner(), stored.request().sessionId(), stored.request().assistantMessageId());
+        var script = new org.springframework.data.redis.core.script.DefaultRedisScript<Long>(
+            "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end", Long.class);
+        redis.execute(script, List.of("qoj:admin-agent:active:" + token), lease);
+        redis.execute(script, List.of(lock), lease);
     }
 
     private record WorkspaceSnapshot(boolean listed, java.util.Set<Integer> read, String planId,

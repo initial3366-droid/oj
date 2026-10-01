@@ -106,6 +106,7 @@ public class AdminChatHistoryService {
             var existingMessages = readMessages(session).stream().collect(java.util.stream.Collectors.toMap(Message::id, message -> message));
             canonicalMessages.replaceAll(message -> {
                 var old = existingMessages.get(message.id());
+                if (old != null && "assistant".equals(old.role()) && "stopped".equals(old.generationStatus())) return old;
                 return new Message(message.id(), message.role(), message.content(), message.createdAt(), message.completedAt(),
                     message.durationMs(), message.generationStatus(), message.timingEstimate(), message.images(), message.files(),
                     old == null || "complete".equals(message.generationStatus()) ? null : old.continuationToken());
@@ -188,6 +189,7 @@ public class AdminChatHistoryService {
         for (int i = 0; i < messages.size(); i++) {
             Message message = messages.get(i);
             if (!message.id().equals(messageId) || !"assistant".equals(message.role())) continue;
+            if ("stopped".equals(message.generationStatus()) && !"stopped".equals(status)) return;
             messages.set(i, new Message(message.id(), message.role(), content, message.createdAt(),
                 status == null ? null : now,
                 status == null ? null : Math.max(0, now - (message.createdAt() == null ? now : message.createdAt())),
@@ -206,16 +208,42 @@ public class AdminChatHistoryService {
     }
 
     @Transactional
-    public void saveAssistantCheckpoint(long ownerId, String id, String messageId, String token) {
+    public void saveAssistantCheckpoint(long ownerId, String id, String messageId, String token, boolean resume) {
         AdminChatSession session = mapper.lockOwned(id, ownerId);
         if (session == null) return;
         var messages = new ArrayList<>(readMessages(session));
         for (int i = 0; i < messages.size(); i++) {
             var old = messages.get(i);
             if (!old.id().equals(messageId) || !old.role().equals("assistant")) continue;
-            messages.set(i, new Message(old.id(), old.role(), old.content(), old.createdAt(), null, null,
-                null, old.timingEstimate(), null, null, token));
+            boolean stopped = "stopped".equals(old.generationStatus()) && !resume;
+            messages.set(i, new Message(old.id(), old.role(), old.content(), old.createdAt(), stopped ? old.completedAt() : null,
+                stopped ? old.durationMs() : null, stopped ? "stopped" : null, old.timingEstimate(), null, null, token));
             session.messages = writeMessages(messages); session.version++; session.updatedAt = System.currentTimeMillis();
+            mapper.updateById(session); return;
+        }
+    }
+
+    public void requireAssistant(String id, String messageId, long owner) {
+        if (readMessages(owned(id, owner)).stream().noneMatch(message -> message.id().equals(messageId) && message.role().equals("assistant"))) {
+            throw new BizException(404, "聊天消息不存在");
+        }
+    }
+
+    @Transactional
+    public void stopAssistant(long owner, String id, String messageId, String receivedContent) {
+        var session = mapper.lockOwned(id, owner);
+        if (session == null) throw new BizException(404, "聊天记录不存在");
+        var messages = new ArrayList<>(readMessages(session));
+        for (int i = 0; i < messages.size(); i++) {
+            var old = messages.get(i);
+            if (!old.id().equals(messageId) || !old.role().equals("assistant")) continue;
+            if ("complete".equals(old.generationStatus())) return;
+            long now = System.currentTimeMillis();
+            String content = receivedContent != null && receivedContent.startsWith(old.content()) ? receivedContent : old.content();
+            messages.set(i, new Message(old.id(), old.role(), content, old.createdAt(), now,
+                Math.max(0, now - (old.createdAt() == null ? now : old.createdAt())), "stopped", old.timingEstimate(),
+                old.images(), old.files(), old.continuationToken()));
+            session.messages = writeMessages(messages); session.version++; session.updatedAt = now;
             mapper.updateById(session); return;
         }
     }

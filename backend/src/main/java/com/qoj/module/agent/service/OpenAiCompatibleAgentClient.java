@@ -54,7 +54,14 @@ public class OpenAiCompatibleAgentClient implements AgentClient {
 
     @Override
     public void streamChat(AgentSettingsVO agent, List<AgentClient.Message> messages, Consumer<String> onDelta) {
+        streamChat(agent, messages, onDelta, () -> false);
+    }
+
+    @Override
+    public void streamChat(AgentSettingsVO agent, List<AgentClient.Message> messages, Consumer<String> onDelta,
+                           java.util.function.BooleanSupplier cancelled) {
         try {
+            if (cancelled.getAsBoolean()) throw new AgentRunStoppedException();
             List<org.springframework.ai.chat.messages.Message> promptMessages = new ArrayList<>(messages.size());
             for (AgentClient.Message message : messages) {
                 promptMessages.add(switch (message.role()) {
@@ -64,9 +71,10 @@ public class OpenAiCompatibleAgentClient implements AgentClient {
                     default -> throw new BizException(400, "聊天消息格式不正确");
                 });
             }
-            Flux<ChatResponse> responses = modelFactory.getStreaming(agent).stream(new Prompt(promptMessages));
+            Flux<ChatResponse> responses = modelFactory.stream(agent, new Prompt(promptMessages));
             long idleTimeoutMs = agent.timeoutMs == null || agent.timeoutMs <= 0 ? 30000L : agent.timeoutMs;
             responses.timeout(Duration.ofMillis(idleTimeoutMs))
+                .takeUntilOther(Flux.interval(Duration.ofMillis(250)).filter(ignored -> cancelled.getAsBoolean()).next())
                 .takeUntil(response -> response.getResults().stream().anyMatch(result -> {
                     String reason = result.getMetadata().getFinishReason();
                     return reason != null && !reason.isBlank();
@@ -78,6 +86,8 @@ public class OpenAiCompatibleAgentClient implements AgentClient {
                 .takeUntilOther(reactor.core.publisher.Mono.delay(Duration.ofMillis(AgentModelFactory.STREAM_TIMEOUT_MS))
                     .flatMap(ignored -> reactor.core.publisher.Mono.error(new TimeoutException())))
                 .blockLast();
+            if (cancelled.getAsBoolean()) throw new AgentRunStoppedException();
+        } catch (AgentRunStoppedException e) { throw e;
         } catch (UncheckedIOException e) {
             // Preserve browser disconnects so the SSE controller saves the partial reply as stopped.
             throw e;
@@ -176,7 +186,7 @@ public class OpenAiCompatibleAgentClient implements AgentClient {
                     .model(agent.model).toolCallbacks(stalled ? List.of() : tools).parallelToolCalls(false)
                     .timeout(Duration.ofNanos(Math.min(remaining, Duration.ofSeconds(90).toNanos()))).build();
                 var finalResponse = new java.util.concurrent.atomic.AtomicReference<ChatResponse>();
-                var responses = modelFactory.getStreaming(agent).stream(new Prompt(history, options))
+                var responses = modelFactory.stream(agent, new Prompt(history, options))
                     .timeout(Duration.ofMillis(agent.timeoutMs == null || agent.timeoutMs <= 0 ? 30000 : agent.timeoutMs))
                     .takeUntilOther(Flux.interval(Duration.ofMillis(250)).filter(ignored -> cancelled.getAsBoolean()).next())
                     .doOnNext(response -> {
