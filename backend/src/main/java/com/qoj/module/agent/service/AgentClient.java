@@ -23,6 +23,14 @@ public interface AgentClient {
     /** 将对话增量传给调用方，供服务端 SSE 接口实时转发。 */
     void streamChat(AgentSettingsVO agent, List<Message> messages, Consumer<String> onDelta);
 
+    default void streamChat(AgentSettingsVO agent, List<Message> messages, Consumer<String> onDelta,
+                            java.util.function.BooleanSupplier cancelled) {
+        streamChat(agent, messages, content -> {
+            if (cancelled.getAsBoolean()) throw new AgentRunStoppedException();
+            onDelta.accept(content);
+        });
+    }
+
     /** Native tool-call loop. Implementations must return each observation to the model. */
     default void runAgent(AgentSettingsVO agent, List<Message> messages,
                          List<org.springframework.ai.tool.ToolCallback> tools, Consumer<String> onDelta,

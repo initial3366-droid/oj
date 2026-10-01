@@ -7,7 +7,7 @@ import type { ImportSource } from './AdminChatFiles';
 import { HtmlMathEditor } from '../../components/HtmlMathEditor';
 
 const IMPORT_API = '/api/admin/v1/agent/chat/imports';
-type Reference = { fileId: string; path: string };
+type Reference = { fileId: string; path: string; excerpt?: string | null };
 type CaseMapping = { caseNo: number; input: Reference; output: Reference | null };
 type Basic = { title: string; statement: string; inputFormat: string; outputFormat: string; timeLimit: number; memoryLimit: number; difficulty: number; tags: string[]; samples: { input: string; output: string; explanation?: string }[]; checkerSource?: string | null };
 type Candidate = { key: string; basic: Basic; testCases: CaseMapping[]; caseOptions: { reference: Reference; size: number; kind: string }[]; sources: Reference[]; warnings: string[] };
@@ -16,6 +16,7 @@ export type ImportResult = { id: string; problems: Imported[] };
 export type ApprovedImport = { planId: string; request: { selections: { key: string; basic: Basic; testCases: CaseMapping[] }[]; folderId: number | null } };
 type Plan = { id: string; files: ChatFileData[]; candidates: Candidate[]; warnings: string[]; imported: Imported[] };
 const refKey = (value: Reference) => JSON.stringify(value);
+const refLabel = (value: Reference) => value.excerpt != null ? `${value.path} · 原文片段：${value.excerpt.trim().slice(0, 80)}` : value.path;
 
 export function AdminChatImportModal({ source, onClose, onApprove }: { source: ImportSource; onClose: () => void; onApprove?: (approval: ApprovedImport) => Promise<ImportResult> }) {
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -53,7 +54,7 @@ export function AdminChatImportModal({ source, onClose, onApprove }: { source: I
   }, []);
   const updateBasic = <K extends keyof Basic,>(key: string, field: K, value: Basic[K]) => setCandidates((items) => items.map((item) => item.key === key ? { ...item, basic: { ...item.basic, [field]: value } } : item));
   const importReady = selected.length > 0 && candidates.filter((item) => selected.includes(item.key)).every((item) => (
-    item.basic.title.trim() && item.basic.statement.trim() && item.testCases.length > 0 && item.testCases.length <= 200 &&
+    item.basic.title.trim() && item.basic.statement.trim() && item.testCases.length <= 200 &&
     item.testCases.every((test) => test.output || item.basic.checkerSource?.trim())
   ));
   const commit = async () => {
@@ -86,7 +87,18 @@ export function AdminChatImportModal({ source, onClose, onApprove }: { source: I
       {!plan && !error && <div className="admin-ai-chat__thinking"><Spin />AI 正在理解文件、识别题目分组和测试数据配对…</div>}
       {result.length > 0 ? <div className="admin-ai-chat__import-success" role="status">
         <p>已导入 {result.length} 道题，均为未发布状态。</p>
-        {result.map((item) => <div key={item.id}>#{item.id} · {item.title} · {item.testCaseCount} 个测试点</div>)}
+        {result.map((item) => <div key={item.id}>#{item.id} · {item.title} · {item.testCaseCount ? `${item.testCaseCount} 个测试点` : '题面已保存，测试数据待补充'}</div>)}
+        {plan?.candidates.some((item) => item.testCases.some((test) => test.input.excerpt != null || test.output?.excerpt != null)) && <details>
+          <summary>查看原文测试数据</summary>
+          {plan.candidates.map((item) => <section key={item.key}>
+            <p>{item.basic.title}</p>
+            {item.testCases.map((test, index) => <div key={index}>
+              <p>测试点 {index + 1} · 原文片段 · {test.input.path}</p>
+              <pre>{test.input.excerpt?.slice(0, 2000) ?? test.input.path}</pre>
+              <pre>{test.output?.excerpt?.slice(0, 2000) ?? test.output?.path ?? '暂无答案'}</pre>
+            </div>)}
+          </section>)}
+        </details>}
         <a href={adminPath('/problems')} target="_blank" rel="noopener noreferrer">打开本地题库</a>
       </div> : plan && <div className="admin-ai-chat__import-review">
         <p>AI 已给出整理方案。核对题面、样例、限制与配对后导入，测试内容读取原文件。</p>
@@ -110,17 +122,18 @@ export function AdminChatImportModal({ source, onClose, onApprove }: { source: I
             <label className="admin-ai-chat__import-field">特殊判题源码<Input.TextArea value={candidate.basic.checkerSource || ''} onChange={(value) => updateBasic(candidate.key, 'checkerSource', value)} /></label>
           </details>
           {!!candidate.warnings.length && <div className="admin-ai-chat__file-warnings">{candidate.warnings.map((warning, key) => <div key={key}>{warning}</div>)}</div>}
+          {!candidate.testCases.length && <p>暂无测试数据，将保存为未发布题面，补充测试点后才能用于判题。</p>}
           <details className="admin-ai-chat__case-mapping" open={candidate.testCases.some((test) => !test.output)}><summary>{candidate.testCases.length} 个测试点 · 查看或修改答案配对</summary>
             {candidate.testCases.map((test, caseIndex) => <div className="admin-ai-chat__case-row" key={caseIndex}>
-              <span>{caseIndex + 1}. {test.input.path}</span><span>→</span>
+              <span title={test.input.excerpt ?? undefined}>{caseIndex + 1}. {refLabel(test.input)}</span><span>→</span>
               <Select aria-label={`第 ${index + 1} 题测试点 ${caseIndex + 1} 答案`} allowClear showSearch placeholder="缺少答案，请选择原文件" value={test.output ? refKey(test.output) : undefined}
-                options={candidate.caseOptions.filter((option) => option.kind !== 'input').map((option) => ({ label: option.reference.path, value: refKey(option.reference) }))}
+                options={candidate.caseOptions.filter((option) => option.kind !== 'input').map((option) => ({ label: refLabel(option.reference), value: refKey(option.reference) }))}
                 onChange={(value: string | undefined) => setCandidates((items) => items.map((item) => item.key === candidate.key ? { ...item, testCases: item.testCases.map((mapping, mappingIndex) => mappingIndex === caseIndex ? { ...mapping, output: value ? JSON.parse(value) as Reference : null } : mapping) } : item))} />
             </div>)}
           </details>
           <details><summary>来源文件（{candidate.sources.length}）</summary><ul>{candidate.sources.map((reference) => <li key={refKey(reference)}>{reference.path}</li>)}</ul></details>
         </section>)}
-        {!importReady && <p className="admin-ai-chat__error">所选题目需要完整题面、至少一个测试输入以及对应答案（或特殊判题源码）。</p>}
+        {!importReady && <p className="admin-ai-chat__error">所选题目需要完整题面；已有测试输入必须提供对应答案或特殊判题源码。</p>}
       </div>}
     </Modal>
   );

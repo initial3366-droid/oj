@@ -149,14 +149,12 @@ public class AdminChatImportService {
             }
             var mappings = new ArrayList<CaseMapping>();
             if (problem.path("testCases").isArray()) for (var mapping : problem.path("testCases")) {
-                int inputIndex = mapping.path("input").asInt(-1) - 1;
-                int outputIndex = mapping.path("output").asInt(-1) - 1;
-                if (inputIndex < 0 || inputIndex >= sources.size() || !sources.get(inputIndex).entry().kind().equals("text")) throw new BizException(502, "AI 返回了无效的测试输入引用，请重试");
-                var input = sources.get(inputIndex).reference();
-                if (!usedInputs.add(input)) throw new BizException(502, "AI 将同一个测试输入分配了多次，请重试");
-                Reference output = outputIndex >= 0 && outputIndex < sources.size() && sources.get(outputIndex).entry().kind().equals("text") ? sources.get(outputIndex).reference() : null;
-                selectedSources.add(input);
-                if (output != null) selectedSources.add(output);
+                Reference input = planReference(mapping.path("input"), sources, false);
+                Reference output = planReference(mapping.path("output"), sources, true);
+                if (input.excerpt() == null && !usedInputs.add(input)) throw new BizException(502, "同一个测试输入文件被分配了多次，请核对所属题目");
+                if (mappings.stream().anyMatch(item -> item.input().equals(input))) throw new BizException(502, "同一道题重复使用相同测试输入，请核对");
+                selectedSources.add(input.wholeFile());
+                if (output != null) selectedSources.add(output.wholeFile());
                 else candidateWarnings.add(input.path() + " 尚未找到唯一答案，请手动选择或补充原文件");
                 mappings.add(new CaseMapping(mappings.size() + 1, input, output));
             }
@@ -166,12 +164,20 @@ public class AdminChatImportService {
             String rawText = group.stream().filter(this::isStatement).map(source -> source.entry().text()).collect(java.util.stream.Collectors.joining("\n\n"));
             var basic = basic(problem.path("basic"), "待整理题目", rawText, candidateWarnings);
             if (basic.statement().isBlank()) candidateWarnings.add("缺少题面，请在导入前填写");
-            if (mappings.isEmpty()) candidateWarnings.add("缺少测试输入，请补充数据文件后重新解析");
+            if (mappings.isEmpty()) candidateWarnings.add("暂无测试点，将保存为未发布题面，补充测试数据后才能用于判题");
             var outputs = mappings.stream().map(CaseMapping::output).filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
             var inputs = mappings.stream().map(CaseMapping::input).collect(java.util.stream.Collectors.toSet());
-            var options = group.stream().filter(source -> source.entry().kind().equals("text") && !isMetadata(source.entry().path()))
-                .map(source -> new CaseOption(source.reference(), source.entry().size(), inputs.contains(source.reference()) ? "input" : outputs.contains(source.reference()) ? "output" : "file")).toList();
-            candidates.add(new Candidate(UUID.randomUUID().toString(), basic, List.copyOf(mappings), options, List.copyOf(selectedSources), List.copyOf(candidateWarnings)));
+            var options = new LinkedHashMap<Reference, CaseOption>();
+            group.stream().filter(source -> source.entry().kind().equals("text") && !isMetadata(source.entry().path()))
+                .forEach(source -> options.put(source.reference(), new CaseOption(source.reference(), source.entry().size(), inputs.contains(source.reference()) ? "input" : outputs.contains(source.reference()) ? "output" : "file")));
+            for (var mapping : mappings) {
+                for (Reference reference : java.util.Arrays.asList(mapping.input(), mapping.output())) {
+                    if (reference == null || reference.excerpt() == null) continue;
+                    options.put(reference, new CaseOption(reference, reference.excerpt().getBytes(StandardCharsets.UTF_8).length,
+                        reference.equals(mapping.input()) ? "input" : "output"));
+                }
+            }
+            candidates.add(new Candidate(UUID.randomUUID().toString(), basic, List.copyOf(mappings), List.copyOf(options.values()), List.copyOf(selectedSources), List.copyOf(candidateWarnings)));
         }
         for (var source : sources) if ("input".equals(caseKind(source.entry().path())) && !usedInputs.contains(source.reference())) warnings.add(source.entry().path() + " 未被 AI 分配到题目，请核对并单独整理");
         return List.copyOf(candidates);
@@ -214,31 +220,62 @@ public class AdminChatImportService {
             var violations = validator.validate(basic);
             if (!violations.isEmpty()) throw new BizException(400, violations.iterator().next().getMessage());
             List<CaseMapping> mappings = selection.testCases() == null ? candidate.testCases() : selection.testCases();
-            if (mappings.isEmpty() || mappings.size() > 200) throw new BizException(400, "每题需要 1～200 个测试点");
+            if (mappings.size() > 200) throw new BizException(400, "每题最多 200 个测试点");
             var testCases = new ArrayList<ProblemTestCaseRequest>();
             var usedInputs = new java.util.HashSet<Reference>();
-            var allowed = candidate.caseOptions().stream().map(CaseOption::reference).collect(java.util.stream.Collectors.toSet());
+            var allowed = candidate.caseOptions().stream().map(item -> item.reference().wholeFile()).collect(java.util.stream.Collectors.toSet());
             long totalBytes = 0;
             for (var mapping : mappings) {
-                if (mapping.input() == null || !allowed.contains(mapping.input()) || !usedInputs.add(mapping.input())) throw new BizException(400, "测试输入无效或重复");
-                var input = sourceEntries.get(mapping.input());
-                if (input == null || !input.kind().equals("text")) throw new BizException(400, "测试输入文件不属于本题");
-                var output = mapping.output() == null ? null : sourceEntries.get(mapping.output());
-                if (mapping.output() != null && (!allowed.contains(mapping.output()) || output == null || !output.kind().equals("text"))) throw new BizException(400, "测试答案文件不属于本题");
-                totalBytes += input.size() + (output == null ? 0 : output.size());
+                if (mapping.input() == null || !allowed.contains(mapping.input().wholeFile()) || !usedInputs.add(mapping.input())) throw new BizException(400, "测试输入无效或重复");
+                var input = sourceEntries.get(mapping.input().wholeFile());
+                if (input == null) throw new BizException(400, "测试输入文件不属于本题");
+                var output = mapping.output() == null ? null : sourceEntries.get(mapping.output().wholeFile());
+                if (mapping.output() != null && (!allowed.contains(mapping.output().wholeFile()) || output == null)) throw new BizException(400, "测试答案文件不属于本题");
+                String inputText = caseContent(mapping.input(), input);
+                String outputText = output == null ? "" : caseContent(mapping.output(), output);
+                totalBytes += inputText.getBytes(StandardCharsets.UTF_8).length + outputText.getBytes(StandardCharsets.UTF_8).length;
                 if (totalBytes > AdminChatFileParser.MAX_BYTES) throw new BizException(400, "每题测试数据不能超过 50 MB");
-                if ((output == null || output.text().isBlank()) && (basic.checkerSource() == null || basic.checkerSource().isBlank())) throw new BizException(400, "测试点 " + (testCases.size() + 1) + " 缺少有效答案，请补充原始答案文件或特殊判题源码");
-                testCases.add(new ProblemTestCaseRequest(testCases.size() + 1, input.text(), output == null ? "" : output.text()));
+                if (outputText.isBlank() && (basic.checkerSource() == null || basic.checkerSource().isBlank())) throw new BizException(400, "测试点 " + (testCases.size() + 1) + " 缺少有效答案，请补充原始答案文件或特殊判题源码");
+                testCases.add(new ProblemTestCaseRequest(testCases.size() + 1, inputText, outputText));
             }
             String draftId = drafts.createDraft().draftId();
             drafts.saveBasic(draftId, basic);
             drafts.saveTestCases(draftId, new ProblemDraftTestCasesRequest(testCases));
-            var problem = drafts.commit(draftId);
+            var problem = drafts.commit(draftId, true);
             results.add(new Imported(problem.id(), problem.title(), testCases.size(), "DRAFT"));
         }
         var result = new ImportResult(id, List.copyOf(results));
         jdbc.update("UPDATE admin_ai_chat_imports SET result_json = ? WHERE id = ? AND owner_admin_id = ?", write(result), id, owner);
         return result;
+    }
+
+    private Reference planReference(JsonNode node, List<Source> sources, boolean optional) {
+        if ((node.isNull() || node.isMissingNode()) && optional) return null;
+        JsonNode indexNode = node.isObject() ? node.path("source") : node;
+        int index = indexNode.isIntegralNumber() ? indexNode.asInt(-1) - 1 : -1;
+        if (index < 0 || index >= sources.size()) throw new BizException(400, "测试数据来源不存在，请使用附件中实际读取的文件");
+        String excerpt = null;
+        if (node.isObject()) {
+            if (!node.path("excerpt").isTextual()) throw new BizException(400, "文档测试数据需要提供原文片段");
+            excerpt = node.path("excerpt").asText();
+        }
+        var source = sources.get(index);
+        var reference = new Reference(source.reference().fileId(), source.reference().path(), excerpt);
+        caseContent(reference, source.entry());
+        return reference;
+    }
+
+    private String caseContent(Reference reference, AdminChatFileParser.Entry entry) {
+        if (reference.excerpt() == null) {
+            if (!entry.kind().equals("text")) throw new BizException(400, "题面文档不能整份作为测试数据，请引用其中已有输入和答案的原文片段");
+            return entry.text();
+        }
+        String excerpt = reference.excerpt();
+        if (!Set.of("text", "document").contains(entry.kind()) || excerpt.isEmpty() || excerpt.length() > 200000
+            || !entry.text().contains(excerpt)) {
+            throw new BizException(400, "测试数据片段不在附件原文中，请逐字引用已提供的输入和答案，不要推算或编造");
+        }
+        return excerpt;
     }
 
     private List<CaseMapping> pair(List<Source> sources, List<String> warnings) {
@@ -332,7 +369,11 @@ public class AdminChatImportService {
     }
 
     public record PreviewRequest(@NotEmpty @Size(max = 4) List<@NotBlank String> fileIds, Boolean useAi, @Size(max = 12000) String instructions) {}
-    public record Reference(@NotBlank String fileId, @NotBlank String path) {}
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record Reference(@NotBlank String fileId, @NotBlank String path, @Size(max = 200000) String excerpt) {
+        public Reference(String fileId, String path) { this(fileId, path, null); }
+        public Reference wholeFile() { return new Reference(fileId, path); }
+    }
     public record CaseMapping(Integer caseNo, @NotNull @Valid Reference input, @Valid Reference output) {}
     public record CaseOption(Reference reference, long size, String kind) {}
     public record Candidate(String key, ProblemDraftBasicRequest basic, List<CaseMapping> testCases, List<CaseOption> caseOptions, List<Reference> sources, List<String> warnings) {}

@@ -24,10 +24,11 @@ public class AgentE2EApplication {
         @Primary
         AgentModelFactory scriptedModels(org.springframework.core.env.Environment environment) {
             String url = environment.getRequiredProperty("e2e.provider-url");
-            var model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder()
-                .baseUrl(url).apiKey("e2e-placeholder").model("e2e-model")
-                .timeout(Duration.ofSeconds(120)).maxRetries(0).build()).build();
             return new AgentModelFactory() {
+                private final OpenAiChatModel model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder()
+                    .baseUrl(url).apiKey("e2e-placeholder").model("e2e-model")
+                    .timeout(Duration.ofSeconds(120)).maxRetries(0).build())
+                    .httpClientBuilderCustomizer(cancellationCustomizer()).build();
                 @Override public OpenAiChatModel get(AgentSettingsVO settings) { return model; }
                 @Override public OpenAiChatModel getStreaming(AgentSettingsVO settings) { return model; }
             };

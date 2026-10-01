@@ -19,13 +19,18 @@ public record AdminAgentChatRequest(
     @Size(max = 80) String sessionId,
     @Size(max = 80) String assistantMessageId,
     @Valid ApprovedImport approvedImport,
-    @Size(max = 80) String continuationToken
+    @Size(max = 80) String continuationToken,
+    Boolean resumeStopped
 ) {
     public AdminAgentChatRequest(List<Message> messages, String sessionId, String assistantMessageId) {
-        this(messages, sessionId, assistantMessageId, null, null);
+        this(messages, sessionId, assistantMessageId, null, null, false);
     }
     public AdminAgentChatRequest(List<Message> messages, String sessionId, String assistantMessageId, ApprovedImport approvedImport) {
-        this(messages, sessionId, assistantMessageId, approvedImport, null);
+        this(messages, sessionId, assistantMessageId, approvedImport, null, false);
+    }
+    public AdminAgentChatRequest(List<Message> messages, String sessionId, String assistantMessageId,
+                                 ApprovedImport approvedImport, String continuationToken) {
+        this(messages, sessionId, assistantMessageId, approvedImport, continuationToken, false);
     }
     public record ApprovedImport(@NotBlank @Size(max = 80) String planId,
         @NotNull @Valid com.qoj.module.agent.service.AdminChatImportService.CommitRequest request) {}

@@ -44,6 +44,7 @@ mkdirSync(output, { recursive: true });
 const sql = (query) => execFileSync('docker', ['exec', '-i', 'qoj-mysql', 'sh', '-c', 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -D qoj --default-character-set=utf8mb4 --batch --skip-column-names'], { input: query, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
 const username = `e2e-stream-${Date.now()}-${randomUUID().slice(0, 8)}`;
 const checks = [];
+const stopRequests = [];
 let mode = 'held';
 let activeStream;
 let streamBody;
@@ -56,8 +57,20 @@ let nativeAgentBody = '';
 let fixtureBackend;
 const scriptedRequests = [];
 let holdScriptedModel = false;
+let delayRunDelivery = false;
+const cancelledModelRequests = [];
 const log = path.join(root, '.runtime/logs/backend.log');
 const logOffset = existsSync(log) ? readFileSync(log, 'utf8').length : 0;
+const makeTextPdf = (lines) => {
+  const commands = lines.map((line, index) => `${index ? '0 -18 Td ' : ''}(${line.replace(/[\\()]/g, (value) => `\\${value}`)}) Tj`).join('\n');
+  const text = `BT /F1 12 Tf 40 740 Td\n${commands}\nET`;
+  const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', `<< /Length ${Buffer.byteLength(text)} >>\nstream\n${text}\nendstream`];
+  let pdf = '%PDF-1.4\n'; const positions = [0];
+  objects.forEach((object, index) => { positions.push(Buffer.byteLength(pdf)); pdf += `${index + 1} 0 obj\n${object}\nendobj\n`; });
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref\n0 6\n0000000000 65535 f \n${positions.slice(1).map((position) => `${String(position).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf);
+};
 const server = http.createServer(async (req, res) => {
   if (process.env.QOJ_E2E_SCRIPTED_AGENT === '1' && req.url.endsWith('/chat/completions')) {
     let body = ''; for await (const chunk of req) body += chunk;
@@ -69,6 +82,13 @@ const server = http.createServer(async (req, res) => {
     const observed = (name) => observations.filter((message) => (message.name || callNames.get(message.tool_call_id)) === name);
     const decode = (message) => JSON.parse(message.content);
     let action; let content = '聊天机器人已响应。';
+    if (/SCENARIO_DELAYED_STOP/.test(user)) {
+      if (!observations.length) {
+        res.on('close', () => { if (!res.writableEnded) cancelledModelRequests.push(user); });
+        await new Promise((resolve) => setTimeout(resolve, 4000));
+        action = { name: 'query_qoj', arguments: { kind: 'dashboard' } };
+      } else content = '旧请求已经执行完成。';
+    } else
     if (/SCENARIO_LONG|SCENARIO_STOP/.test(user)) {
       const count = observed('query_qoj').length;
       if (count < 40) action = { name: 'query_qoj', arguments: { kind: 'problems', page: count + 1, pageSize: 1 } };
@@ -78,6 +98,35 @@ const server = http.createServer(async (req, res) => {
         const timer = setInterval(() => res.write(`data: ${JSON.stringify({ id: 'e2e-hold', object: 'chat.completion.chunk', model: request.model, created: Math.floor(Date.now() / 1000), choices: [{ index: 0, delta: { content: '正在继续检查。' }, finish_reason: null }] })}\n\n`), 100);
         res.on('close', () => clearInterval(timer)); return;
       }
+    } else if (/SCENARIO_ADMIN/.test(user)) {
+      const calls = observed('manage_draft');
+      if (!calls.length) action = { name: 'manage_draft', arguments: { operation: 'create', basic: { title: 'E2E管理员多轮建题', statement: '<p>输出输入的整数。</p>', timeLimit: 1000, memoryLimit: 128, difficulty: 1, tags: [], samples: [] }, testCases: [{ caseNo: 1, input: '42\n', output: '42\n' }] } };
+      else if (calls.length === 1 && !decode(calls[0]).error) action = { name: 'manage_draft', arguments: { operation: 'commit', draftId: decode(calls[0]).id } };
+      else content = '题目已保存为未发布状态。';
+    } else if (/SCENARIO_CONFIRM/.test(user)) {
+      const previous = request.messages.findLast((message) => message.role === 'assistant' && /\/qoj-import\//.test(message.content || ''));
+      if (!observed('commit_import').length) action = { name: 'commit_import', arguments: { planId: previous.content.match(/\/qoj-import\/([a-z0-9-]+)/)[1] } };
+      else content = '已按确认的方案保存为未发布题目。';
+    } else if (/SCENARIO_DRAFT_INVALID|SCENARIO_DRAFT_USER_DATA/.test(user)) {
+      if (!observed('list_files').length) action = { name: 'list_files', arguments: {} };
+      else if (!observed('read_files').length) action = { name: 'read_files', arguments: { sources: decode(observed('list_files').at(-1)).files.map((file) => file.source) } };
+      else if (!observed('manage_draft').length) action = { name: 'manage_draft', arguments: { operation: 'create', basic: { title: 'E2E非法答案不得保存', statement: '<p>输出两数之和。</p>', timeLimit: 1000, memoryLimit: 128, samples: [] }, testCases: [{ caseNo: 1, input: '1 2\n', output: /SCENARIO_DRAFT_USER_DATA/.test(user) ? '12345\n' : '999999\n' }] } };
+      else if (/SCENARIO_DRAFT_USER_DATA/.test(user) && observed('manage_draft').length === 1 && !decode(observed('manage_draft')[0]).error) action = { name: 'manage_draft', arguments: { operation: 'commit', draftId: decode(observed('manage_draft')[0]).id } };
+      else content = '已按原始材料处理。';
+    } else if (/SCENARIO_DOCUMENT|SCENARIO_STATEMENT_ONLY/.test(user)) {
+      const listed = observed('list_files').at(-1);
+      const prepared = observed('prepare_import').filter((message) => decode(message).id);
+      if (!listed) action = { name: 'list_files', arguments: {} };
+      else if (!observed('read_files').length) action = { name: 'read_files', arguments: { sources: decode(listed).files.map((file) => file.source) } };
+      else if (!observed('prepare_import').length) {
+        const source = decode(listed).files[0].source;
+        const testCases = /SCENARIO_STATEMENT_ONLY/.test(user) ? [] : [
+          { input: { source, excerpt: '1 2\n' }, output: { source, excerpt: /SCENARIO_DOCUMENT_INVALID/.test(user) ? '999999\n' : '3\n' } },
+          { input: { source, excerpt: '3 4\n' }, output: { source, excerpt: '7\n' } },
+        ];
+        action = { name: 'prepare_import', arguments: { analysis: { problems: [{ basic: { title: /SCENARIO_STATEMENT_ONLY/.test(user) ? 'E2E仅题面草稿' : 'E2EPDF原文加法', statement: '<p>输出两数之和。</p>', timeLimit: 1000, memoryLimit: 128, samples: [] }, sources: [source], testCases }], warnings: [] } } };
+      } else if (prepared.length && !observed('commit_import').length) action = { name: 'commit_import', arguments: { planId: decode(prepared.at(-1)).id } };
+      else content = prepared.length ? '已保存为未发布题目。' : '提供的材料中没有对应答案，此题尚未保存，请补充原始答案。';
     } else if (/SCENARIO_REPEAT/.test(user)) {
       const creates = observed('manage_draft');
       if (creates.length < 6) action = { name: 'manage_draft', arguments: { operation: 'create', basic: { title: 'E2E聊天直接建题', statement: '<p>输出输入的整数。</p>', inputFormat: '一个整数', outputFormat: '相同整数', timeLimit: 1000, memoryLimit: 128, difficulty: 1, tags: [], samples: [] }, testCases: [{ caseNo: 1, input: '42\n', output: '42\n', sample: false }] } };
@@ -128,10 +177,11 @@ const server = http.createServer(async (req, res) => {
         reply.on('data', (chunk) => { nativeAgentBody += chunk; });
       }
       res.writeHead(reply.statusCode, reply.headers);
-      reply.pipe(res);
+      if (delayRunDelivery && req.url === `${api}/stream`) setTimeout(() => { if (!res.destroyed) reply.pipe(res); }, 5000);
+      else reply.pipe(res);
     });
     upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });
-    res.on('close', () => upstream.destroy());
+    res.on('close', () => { if (delayRunDelivery && req.url === `${api}/stream`) setTimeout(() => upstream.destroy(), 6000); else upstream.destroy(); });
     req.pipe(upstream);
     return;
   }
@@ -146,7 +196,7 @@ const server = http.createServer(async (req, res) => {
 async function check(name, operation) {
   if (process.env.QOJ_E2E_REACT_ONLY === '1' && !name.startsWith('ReAct')) return;
   try { await operation(); checks.push({ name, passed: true }); console.log(`PASS ${name}`); }
-  catch (error) { checks.push({ name, passed: false, message: error.message }); console.error(`FAIL ${name}: ${error.message}`); await page?.keyboard.press('Escape').catch(() => {}); }
+  catch (error) { delayRunDelivery = false; checks.push({ name, passed: false, message: error.message }); console.error(`FAIL ${name}: ${error.message}`); await page?.keyboard.press('Escape').catch(() => {}); }
 }
 
 try {
@@ -202,6 +252,8 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
   await context.addInitScript((value) => localStorage.setItem('qoj.adminAccessToken', value), accessToken);
   page = await context.newPage();
+  page.on('request', (request) => { if (request.url().endsWith('/stop')) stopRequests.push({ phase: 'request', url: request.url(), body: request.postDataJSON(), at: Date.now() }); });
+  page.on('response', async (response) => { if (response.url().endsWith('/stop')) stopRequests.push({ phase: 'response', status: response.status(), body: await response.text().catch(() => ''), at: Date.now() }); });
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   const mockTitle = async (route) => {
@@ -717,6 +769,27 @@ try {
       writeFileSync(path.join(output, 'general-agent-live-direct-import.json'), JSON.stringify(trace, null, 2));
       await page.screenshot({ path: path.join(output, 'general-agent-live-direct-import.png'), fullPage: true, animations: 'disabled' });
     });
+    await check('ReAct 真实模型从 PDF 原文直接导入两组输入和答案', async () => {
+      await page.getByRole('button', { name: '新聊天', exact: true }).click();
+      const pdf = makeTextPdf(['Addition problem', 'Read two integers and output their sum.', 'Time limit 1000 ms. Memory limit 128 MB.', 'Sample input 1', '1 2', 'Sample output 1', '3', 'Sample input 2', '3 4', 'Sample output 2', '7']);
+      writeFileSync(path.join(output, 'live-addition.pdf'), pdf);
+      await uploadFile({ name: '加法题与原始样例.pdf', mimeType: 'application/pdf', buffer: pdf });
+      mode = 'live'; nativeAgentBody = '';
+      await page.getByRole('textbox', { name: '输入消息' }).fill('将附件里的加法题直接导入本地题库，保存为未发布。PDF 里已有两组样例输入与对应答案，请逐字引用原文作为两个测试点，不要推算或生成任何新答案，不需要我另点按钮。完成后只告诉我题目 ID、名称和测试点数量。');
+      const arrived = page.waitForRequest((request) => request.url().endsWith(`${api}/stream`));
+      await send.click(); streamBody = (await arrived).postDataJSON(); await send.waitFor({ timeout: 180000 });
+      const trace = events(nativeAgentBody);
+      writeFileSync(path.join(output, 'live-document-import-events.json'), JSON.stringify(trace, null, 2));
+      const committed = trace.find((event) => event.phase === 'observation' && event.name === 'commit_import' && event.success);
+      assert.ok(committed, 'The real provider must extract and save the document through the import tool');
+      const problem = committed.result.problems[0]; assert.equal(problem.testCaseCount, 2);
+      const response = await fetch(`${backend}/api/${prefix}/v1/problems/${problem.id}/test-cases`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      const cases = (await response.json()).data.filter((test) => !test.sample);
+      assert.deepEqual(cases.map((test) => [test.input.trim(), test.output.trim()]), [['1 2', '3'], ['3 4', '7']]);
+      const reply = (await detail()).messages.at(-1); assert.equal(reply.generationStatus, 'complete');
+      assert.doesNotMatch(reply.content, /manage_draft|prepare_import|commit_import|query_qoj|当前用户消息没有授权/);
+      await page.screenshot({ path: path.join(output, 'live-document-chat-result.png'), fullPage: true, animations: 'disabled' });
+    });
   }
   if (process.env.QOJ_E2E_SCRIPTED_AGENT === '1') {
     const events = () => nativeAgentBody.split(/\r?\n\r?\n/).flatMap((block) => {
@@ -793,6 +866,170 @@ try {
       assert.ok(events().some((event) => event.name === 'commit_import' && event.phase === 'observation' && !event.success));
       assert.equal(Number(sql(`SELECT COUNT(*) FROM problems WHERE owner_account_type='ADMIN' AND owner_id=${id};`)), before);
     });
+    await check('ReAct 管理员多轮继续不需要重复声明写入关键词', async () => {
+      await chat('请把随后提供的题目保存到本地题库，测试输入是 42，原文答案是 42。');
+      nativeAgentBody = ''; mode = 'live';
+      await page.getByRole('textbox', { name: '输入消息' }).fill('SCENARIO_ADMIN 只用原文答案，不要编造新答案，按刚才的要求继续。');
+      const arrived = page.waitForRequest((request) => request.url().endsWith(`${api}/stream`));
+      await send.click(); streamBody = (await arrived).postDataJSON(); await send.waitFor({ timeout: 30000 });
+      const trace = events(); const saved = trace.find((event) => event.phase === 'observation' && event.name === 'manage_draft' && event.result?.status === 'DRAFT');
+      assert.ok(saved?.success, JSON.stringify(trace)); assert.equal(saved.result.testCaseCount, 1);
+      assert.equal((await detail()).messages.length, 4);
+      assert.ok(!trace.some((event) => event.phase === 'observation' && !event.success));
+      writeFileSync(path.join(output, 'admin-multiturn-permission.json'), JSON.stringify(trace, null, 2));
+    });
+    await check('ReAct 管理员可通过聊天确认上一轮只分析的导入方案', async () => {
+      nativeAgentBody = ''; mode = 'live';
+      await page.getByRole('button', { name: '新聊天', exact: true }).click();
+      await uploadFile({ name: '确认导入.zip', mimeType: 'application/zip', buffer: makeZip([{ path: 'problem.md', text: '输出输入的整数。' }, { path: '1.in', text: '7\n' }, { path: '1.out', text: '7\n' }]) });
+      await page.getByRole('textbox', { name: '输入消息' }).fill('SCENARIO_NO_WRITE 只分析文件，不要入库，等待我确认。');
+      const initial = page.waitForRequest((request) => request.url().endsWith(`${api}/stream`));
+      await send.click(); streamBody = (await initial).postDataJSON(); await send.waitFor({ timeout: 30000 });
+      assert.ok(events().some((event) => event.phase === 'observation' && event.name === 'commit_import' && !event.success));
+      nativeAgentBody = '';
+      await page.getByRole('textbox', { name: '输入消息' }).fill('SCENARIO_CONFIRM 确认，按刚才的方案办理。');
+      const next = page.waitForRequest((request) => request.url().endsWith(`${api}/stream`));
+      await send.click(); streamBody = (await next).postDataJSON(); await send.waitFor({ timeout: 30000 });
+      const trace = events(); assert.ok(trace.some((event) => event.phase === 'observation' && event.name === 'commit_import' && event.success));
+      writeFileSync(path.join(output, 'admin-chat-confirmation.json'), JSON.stringify(trace, null, 2));
+    });
+    for (const scenario of ['SCENARIO_DOCUMENT', 'SCENARIO_DOCUMENT_INVALID', 'SCENARIO_STATEMENT_ONLY']) {
+      await check(`ReAct 文档直接聊天导入 ${scenario}`, async () => {
+        await page.getByRole('button', { name: '新聊天', exact: true }).click();
+        const pdf = makeTextPdf(scenario === 'SCENARIO_STATEMENT_ONLY' ? ['Addition problem', 'Output the sum of two integers.'] : ['Addition problem', 'Input 1', '1 2', 'Output 1', '3', 'Input 2', '3 4', 'Output 2', '7']);
+        writeFileSync(path.join(output, `${scenario}.pdf`), pdf);
+        await uploadFile({ name: '题面和原始答案.pdf', mimeType: 'application/pdf', buffer: pdf });
+        const before = Number(sql(`SELECT COUNT(*) FROM problems WHERE owner_account_type='ADMIN' AND owner_id=${id};`));
+        nativeAgentBody = ''; mode = 'live';
+        await page.getByRole('textbox', { name: '输入消息' }).fill(`${scenario} 将附件保存到本地题库，样例只用材料原文的输入和答案，没有测试点也先保存题面，不要编造答案。`);
+        const arrived = page.waitForRequest((request) => request.url().endsWith(`${api}/stream`));
+        await send.click(); streamBody = (await arrived).postDataJSON(); await send.waitFor({ timeout: 30000 });
+        const trace = events(); writeFileSync(path.join(output, `${scenario}-events.json`), JSON.stringify(trace, null, 2));
+        if (scenario === 'SCENARIO_DOCUMENT_INVALID') {
+          assert.equal(Number(sql(`SELECT COUNT(*) FROM problems WHERE owner_account_type='ADMIN' AND owner_id=${id};`)), before);
+          assert.ok(trace.some((event) => event.name === 'prepare_import' && event.phase === 'observation' && !event.success));
+          assert.ok(!trace.some((event) => event.name === 'commit_import'));
+          return;
+        }
+        const committed = trace.find((event) => event.name === 'commit_import' && event.phase === 'observation' && event.success);
+        assert.ok(committed, JSON.stringify(trace)); const problem = committed.result.problems[0];
+        assert.equal(Number(sql(`SELECT COUNT(*) FROM problems WHERE owner_account_type='ADMIN' AND owner_id=${id};`)), before + 1);
+        const response = await fetch(`${backend}/api/${prefix}/v1/problems/${problem.id}/test-cases`, { headers: { Authorization: `Bearer ${accessToken}` } });
+        const cases = (await response.json()).data.filter((test) => !test.sample);
+        assert.deepEqual(cases.map((test) => [test.input, test.output]), scenario === 'SCENARIO_STATEMENT_ONLY' ? [] : [['1 2\n', '3\n'], ['3 4\n', '7\n']]);
+        const stored = JSON.parse(sql(`SELECT JSON_OBJECT('isPublic',is_public,'status',student_publish_status) FROM problems WHERE id=${problem.id};`));
+        assert.equal(stored.isPublic, 0); assert.equal(stored.status, 'DRAFT');
+        const link = page.getByRole('button', { name: '查看并确认导入方案', exact: true }).last();
+        await link.click(); const modal = page.getByRole('dialog');
+        if (scenario === 'SCENARIO_DOCUMENT') { await modal.getByText('查看原文测试数据', { exact: true }).click(); await modal.getByText('原文片段', { exact: false }).first().waitFor(); }
+        await page.screenshot({ path: path.join(output, `${scenario}-review.png`), fullPage: true, animations: 'disabled' });
+        await page.keyboard.press('Escape');
+      });
+    }
+    await check('ReAct 创建草稿也不能绕过附件原始答案校验', async () => {
+      await page.getByRole('button', { name: '新聊天', exact: true }).click();
+      await uploadFile({ name: '原始输入和答案.txt', mimeType: 'text/plain', buffer: Buffer.from('样例输入\n1 2\n样例答案\n3\n') });
+      const before = Number(sql(`SELECT COUNT(*) FROM problems WHERE owner_account_type='ADMIN' AND owner_id=${id};`));
+      nativeAgentBody = ''; mode = 'live';
+      await page.getByRole('textbox', { name: '输入消息' }).fill('SCENARIO_DRAFT_INVALID 按附件原文保存题目，不要编造答案。');
+      const arrived = page.waitForRequest((request) => request.url().endsWith(`${api}/stream`));
+      await send.click(); streamBody = (await arrived).postDataJSON(); await send.waitFor({ timeout: 30000 });
+      const trace = events(); assert.ok(trace.some((event) => event.name === 'manage_draft' && event.phase === 'observation' && !event.success));
+      assert.equal(Number(sql(`SELECT COUNT(*) FROM problems WHERE owner_account_type='ADMIN' AND owner_id=${id};`)), before);
+      writeFileSync(path.join(output, 'draft-original-answer-validation.json'), JSON.stringify(trace, null, 2));
+    });
+    await check('ReAct 管理员可使用聊天中新补充的原始答案', async () => {
+      await page.getByRole('button', { name: '新聊天', exact: true }).click();
+      await uploadFile({ name: '待补充的题面.txt', mimeType: 'text/plain', buffer: Buffer.from('原始测试输入\n1 2\n') });
+      nativeAgentBody = ''; mode = 'live';
+      await page.getByRole('textbox', { name: '输入消息' }).fill('SCENARIO_DRAFT_USER_DATA 现补充原始答案 12345，使用附件的输入和我提供的答案保存未发布题目。');
+      const arrived = page.waitForRequest((request) => request.url().endsWith(`${api}/stream`));
+      await send.click(); streamBody = (await arrived).postDataJSON(); await send.waitFor({ timeout: 30000 });
+      const trace = events(); const saved = trace.find((event) => event.name === 'manage_draft' && event.phase === 'observation' && event.result?.status === 'DRAFT');
+      assert.ok(saved?.success, JSON.stringify(trace));
+      const response = await fetch(`${backend}/api/${prefix}/v1/problems/${saved.result.id}/test-cases`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      assert.deepEqual((await response.json()).data.filter((test) => !test.sample).map((test) => [test.input, test.output]), [['1 2\n', '12345\n']]);
+      writeFileSync(path.join(output, 'user-provided-original-answer.json'), JSON.stringify(trace, null, 2));
+    });
+    await check('ReAct 首次任务标识尚未到达时停止会中断后台且同聊天可以发送新消息', async () => {
+      await page.getByRole('button', { name: '新聊天', exact: true }).click();
+      nativeAgentBody = ''; mode = 'live'; delayRunDelivery = true;
+      await page.getByRole('textbox', { name: '输入消息' }).fill('SCENARIO_DELAYED_STOP 请查询后台概况。');
+      const arrived = page.waitForRequest((request) => request.url().endsWith(`${api}/stream`));
+      await send.click(); streamBody = (await arrived).postDataJSON();
+      const original = { ...streamBody }; const previousCancels = cancelledModelRequests.length;
+      const deadline = Date.now() + 10000;
+      while (!JSON.stringify(scriptedRequests.at(-1)?.messages).includes('SCENARIO_DELAYED_STOP')) { assert.ok(Date.now() < deadline); await new Promise((resolve) => setTimeout(resolve, 30)); }
+      await stop.click(); await send.waitFor({ timeout: 10000 });
+      await new Promise((resolve) => setTimeout(resolve, 4500));
+      const stopped = await detail();
+      writeFileSync(path.join(output, 'stop-diagnostics.json'), JSON.stringify({ stopRequests, stopped, events: events() }, null, 2));
+      assert.equal(stopped.messages.at(-1).generationStatus, 'stopped');
+      assert.ok(cancelledModelRequests.length > previousCancels, 'The real SDK model connection must be cancelled');
+      assert.equal(events().filter((event) => event.phase === 'observation' && event.name === 'query_qoj').length, 0);
+      for (const generationStatus of ['complete', null]) {
+        const latest = await detail();
+        const response = await fetch(`${backend}${api}/sessions/${original.sessionId}`, { method: 'PUT',
+          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...latest, messages: latest.messages.map((message) => message.id === original.assistantMessageId ? { ...message, generationStatus } : message) }) });
+        assert.equal(response.status, 200);
+        assert.equal((await response.json()).data.messages.at(-1).generationStatus, 'stopped', 'A late browser snapshot cannot resurrect cancelled generation');
+      }
+      delayRunDelivery = false;
+      await page.reload(); await page.getByRole('textbox', { name: '输入消息' }).waitFor({ state: 'visible' });
+      assert.equal((await detail()).messages.at(-1).generationStatus, 'stopped');
+      await page.getByRole('textbox', { name: '输入消息' }).fill('SCENARIO_QUERY 现在重新查询后台概况。');
+      const next = page.waitForRequest((request) => request.url().endsWith(`${api}/stream`));
+      await send.click(); streamBody = (await next).postDataJSON(); await send.waitFor({ timeout: 15000 });
+      const stored = await detail(); assert.equal(stored.messages.length, 4);
+      assert.equal(stored.messages[1].generationStatus, 'stopped'); assert.equal(stored.messages[3].generationStatus, 'complete');
+      writeFileSync(path.join(output, 'stop-before-token-new-message.json'), JSON.stringify({ original, modelCancelled: true, messages: stored.messages }, null, 2));
+      await page.screenshot({ path: path.join(output, 'stop-new-message.png'), fullPage: true, animations: 'disabled' });
+    });
+    await check('ReAct 后台停止接口失败会提示并可重试而非默默假装成功', async () => {
+      await page.getByRole('button', { name: '新聊天', exact: true }).click();
+      nativeAgentBody = ''; mode = 'live';
+      const beforeModelRequests = scriptedRequests.length;
+      await page.getByRole('textbox', { name: '输入消息' }).fill('SCENARIO_DELAYED_STOP 请查询后台概况。');
+      const arrived = page.waitForRequest((request) => request.url().endsWith(`${api}/stream`));
+      await send.click(); streamBody = (await arrived).postDataJSON();
+      const deadline = Date.now() + 10000;
+      while (scriptedRequests.length <= beforeModelRequests || !JSON.stringify(scriptedRequests.at(-1)?.messages).includes('SCENARIO_DELAYED_STOP')) { assert.ok(Date.now() < deadline); await new Promise((resolve) => setTimeout(resolve, 30)); }
+      const failStop = (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 503, message: '停止接口临时失败' }) });
+      await page.route(`**${api}/stop`, failStop);
+      await page.route(`**${api}/tasks/*/stop`, failStop);
+      await stop.click(); await send.waitFor({ timeout: 10000 });
+      await page.getByText(/无法确认后台已停止/).waitFor({ timeout: 5000 });
+      await page.unroute(`**${api}/stop`, failStop); await page.unroute(`**${api}/tasks/*/stop`, failStop);
+      await page.getByRole('button', { name: '重试停止', exact: true }).click();
+      await page.getByRole('button', { name: '重试停止', exact: true }).waitFor({ state: 'hidden' });
+      const stored = await detail(); assert.equal(stored.messages.at(-1).generationStatus, 'stopped');
+      writeFileSync(path.join(output, 'stop-failure-retry.json'), JSON.stringify({ failureVisible: true, messages: stored.messages }, null, 2));
+    });
+    await check('ReAct 教师普通聊天也能通过后端接口中断模型', async () => {
+      const sessionId = randomUUID(); const messageId = randomUUID();
+      const headers = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
+      const messages = [{ id: randomUUID(), role: 'user', content: 'SCENARIO_DELAYED_STOP 请稍后回复。', createdAt: Date.now() },
+        { id: messageId, role: 'assistant', content: '', createdAt: Date.now() }];
+      const saved = await fetch(`${backend}${api}/sessions/${sessionId}`, { method: 'PUT', headers,
+        body: JSON.stringify({ title: '教师停止后台验证', messages, createdAt: Date.now(), updatedAt: Date.now() }) });
+      assert.equal(saved.status, 200);
+      sql(`UPDATE admin_users SET role='TEACHER' WHERE id=${id};`);
+      try {
+        const beforeModelRequests = scriptedRequests.length; const previousCancels = cancelledModelRequests.length;
+        const stream = fetch(`${backend}${api}/stream`, { method: 'POST', headers,
+          body: JSON.stringify({ sessionId, assistantMessageId: messageId, messages: [{ role: 'user', content: messages[0].content }] }) }).then((response) => response.text());
+        const deadline = Date.now() + 10000;
+        while (scriptedRequests.length <= beforeModelRequests) { assert.ok(Date.now() < deadline); await new Promise((resolve) => setTimeout(resolve, 30)); }
+        const cancelled = await fetch(`${backend}${api}/stop`, { method: 'POST', headers, body: JSON.stringify({ sessionId, assistantMessageId: messageId }) });
+        assert.equal(cancelled.status, 200);
+        const stopped = (await cancelled.json()).data;
+        assert.equal(stopped.messages.at(-1).generationStatus, 'stopped');
+        const result = await stream; assert.ok(result.includes('event: stopped'));
+        assert.ok(cancelledModelRequests.length > previousCancels);
+        writeFileSync(path.join(output, 'teacher-stop.json'), JSON.stringify({ modelCancelled: true, messages: stopped.messages, stream: result }, null, 2));
+      } finally { sql(`UPDATE admin_users SET role='SUPER_ADMIN' WHERE id=${id};`); }
+    });
     await check('ReAct 停止分段任务后刷新可续跑且账号不能窃用进度', async () => {
       holdScriptedModel = true;
       await page.getByRole('button', { name: '新聊天', exact: true }).click();
@@ -865,7 +1102,7 @@ try {
     await send.waitFor();
     await page.setViewportSize({ width: 1440, height: 960 });
   });
-  await start('held');
+  if (process.env.QOJ_E2E_REACT_ONLY !== '1') await start('held');
   await check('发布构建中的停止图标有可见宽高', async () => {
     const size = await page.locator('.admin-ai-chat__stop-icon').boundingBox();
     await stop.hover();

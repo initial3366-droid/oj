@@ -148,6 +148,8 @@ export function AdminAiChatPage() {
   const [generatingTitleIds, setGeneratingTitleIds] = useState<Set<string>>(new Set());
   const [textareaMaxHeight, setTextareaMaxHeight] = useState(() => Math.floor((window.innerHeight - 82) / 2));
   const abortRef = useRef<AbortController | null>(null);
+  const stopPromiseRef = useRef<Promise<ChatSession> | null>(null);
+  const [stopFailure, setStopFailure] = useState<{ sessionId: string; messageId: string } | null>(null);
   const generatingMessageRef = useRef<{ sessionId: string; messageId: string } | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
   const chatCardRef = useRef<HTMLElement>(null);
@@ -295,19 +297,35 @@ export function AdminAiChatPage() {
     })));
   };
 
-  const stopGeneration = (statusText = '生成已停止。') => {
+  const requestBackendStop = (target: { sessionId: string; messageId: string }) => {
+    // Initial history save must finish first; cancellation uses stable IDs, even before the run event arrives.
+    const promise = writeQueueRef.current.then(() => adminPost<ChatSession>('/api/admin/v1/agent/chat/stop', {
+      sessionId: target.sessionId, assistantMessageId: target.messageId,
+      content: sessionsRef.current.find((session) => session.id === target.sessionId)?.messages?.find((message) => message.id === target.messageId)?.content,
+    }));
+    stopPromiseRef.current = promise;
+    void promise.then((persisted) => {
+      if (!deletedIdsRef.current.has(target.sessionId)) replaceSession(persisted);
+      setStopFailure(null);
+    }).catch((stopError: unknown) => {
+      if (deletedIdsRef.current.has(target.sessionId)) return;
+      setStopFailure(target);
+      setError(`无法确认后台已停止：${stopError instanceof Error ? stopError.message : '停止请求失败'}，请重试停止。`);
+    });
+    return promise;
+  };
+
+  const stopGeneration = () => {
     const target = generatingMessageRef.current;
-    if (target) {
-      updateMessage(target.sessionId, target.messageId, (content) => content || statusText);
-    }
-    const controller = abortRef.current;
-    const token = target && sessionsRef.current.find((session) => session.id === target.sessionId)
-      ?.messages?.find((message) => message.id === target.messageId)?.continuationToken;
-    if (token && target) {
-      void adminPost(`/api/admin/v1/agent/chat/tasks/${encodeURIComponent(token)}/stop`, {
-        sessionId: target.sessionId, assistantMessageId: target.messageId,
-      }).catch(() => {}).finally(() => controller?.abort());
-    } else controller?.abort();
+    // Stop the local loop immediately, including the gap between automatic continuation requests.
+    abortRef.current?.abort();
+    if (target) void requestBackendStop(target);
+  };
+
+  const retryStop = async () => {
+    if (!stopFailure) return;
+    try { await requestBackendStop(stopFailure); setError(''); }
+    catch { /* requestBackendStop keeps the concrete error and retry target visible. */ }
   };
 
   const startNewChat = () => {
@@ -399,7 +417,7 @@ export function AdminAiChatPage() {
 
   const sendMessage = async (messageText = draft, approvedImport?: ApprovedImport, resumeMessage?: ChatMessage): Promise<ImportResult | undefined> => {
     const text = messageText.trim();
-    if ((!resumeMessage && ((!text && !imageManager.attachments.length) || !imagesReady)) || abortRef.current || loadingHistory || loadingMessages || historyError) return;
+    if ((!resumeMessage && ((!text && !imageManager.attachments.length) || !imagesReady)) || abortRef.current || loadingHistory || loadingMessages || historyError || stopFailure) return;
     setError('');
 
     const existingSession = sessionsRef.current.find((session) => session.id === activeId);
@@ -427,6 +445,7 @@ export function AdminAiChatPage() {
 
     const controller = new AbortController();
     abortRef.current = controller;
+    stopPromiseRef.current = null;
     generatingMessageRef.current = { sessionId, messageId: assistantMessage.id };
     const conversation = (resumeMessage
       ? (existingSession?.messages || []).slice(0, (existingSession?.messages || []).findIndex((item) => item.id === resumeMessage.id))
@@ -455,6 +474,7 @@ export function AdminAiChatPage() {
         if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
         continuationToken = await adminPostStream('/api/admin/v1/agent/chat/stream', {
           messages: conversation, sessionId, assistantMessageId: assistantMessage.id, approvedImport, continuationToken,
+          resumeStopped: !!resumeMessage && segment === 0,
         }, (chunk) => {
           updateMessage(sessionId, assistantMessage.id, (content) => content + chunk);
         }, controller.signal, (event, payload) => {
@@ -487,6 +507,11 @@ export function AdminAiChatPage() {
     } finally {
       if (saved) imageManager.release(sentAttachments);
       else if (controller.signal.aborted) imageManager.restore(sentAttachments);
+      const stopRequest = stopPromiseRef.current;
+      let stopConfirmed = !stopRequest;
+      if (stopRequest) {
+        try { await stopRequest; stopConfirmed = true; } catch { stopConfirmed = false; }
+      }
       finishMessage(sessionId, assistantMessage.id, generationStatus);
       if (saved) {
         try {
@@ -494,6 +519,12 @@ export function AdminAiChatPage() {
             if (deletedIdsRef.current.has(sessionId)) return;
             const snapshot = sessionsRef.current.find((item) => item.id === sessionId);
             if (!snapshot) return;
+            if (stopRequest) {
+              // Cancellation status/version come from the backend, never a stale browser snapshot.
+              const latest = await adminGet<ChatSession>(`${HISTORY_API}/${encodeURIComponent(sessionId)}`);
+              if (!deletedIdsRef.current.has(sessionId)) replaceSession(latest);
+              return;
+            }
             let persisted: ChatSession;
             try {
               persisted = await adminPut<ChatSession>(`${HISTORY_API}/${encodeURIComponent(sessionId)}`, snapshot);
@@ -517,7 +548,7 @@ export function AdminAiChatPage() {
             if (!deletedIdsRef.current.has(sessionId)) replaceSession(persisted);
           });
         } catch (saveError) {
-          if (!deletedIdsRef.current.has(sessionId)) setError(`聊天记录保存失败：${saveError instanceof Error ? saveError.message : '请稍后重试'}`);
+          if (stopConfirmed && !deletedIdsRef.current.has(sessionId)) setError(`聊天记录保存失败：${saveError instanceof Error ? saveError.message : '请稍后重试'}`);
         }
       }
       if (abortRef.current === controller) {
@@ -604,16 +635,18 @@ export function AdminAiChatPage() {
                               : <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
                           },
                         }}>{message.content}</ReactMarkdown></div>
+                        : message.generationStatus === 'stopped'
+                          ? <div className="admin-ai-chat__thinking">生成已停止。</div>
                         : generating && activeId === activeSession.id
                           ? <div className="admin-ai-chat__thinking"><Spin size={16} />正在思考…</div>
                           : <div className="admin-ai-chat__thinking">回复尚未完成，请稍后刷新。</div>}
                     {generating && activeId === activeSession.id && message.role === 'assistant' && message.content.length > 0 && generatingMessageRef.current?.messageId === message.id && <span className="admin-ai-chat__cursor" />}
-                    {message.role === 'assistant' && message.continuationToken && message.generationStatus !== 'complete' && !generating
+                    {message.role === 'assistant' && message.continuationToken && message.generationStatus !== 'complete' && !generating && !stopFailure
                       && message.id === activeSession.messages?.[activeSession.messages.length - 1]?.id && <Button size="small" onClick={() => { void sendMessage('', undefined, message); }}>继续处理</Button>}
                     {message.role === 'assistant' && message.completedAt != null && message.durationMs != null ? (
                       <div className="admin-ai-chat__message-meta">
                         <span>耗时{message.timingEstimate ? '约' : ''} {formatDuration(message.durationMs)}</span>
-                        <span>完成时间{message.timingEstimate ? '约' : ''} {formatMessageTime(message.completedAt)}</span>
+                        <span>{message.generationStatus === 'stopped' ? '已停止 · 停止时间' : message.generationStatus === 'error' ? '失败时间' : '完成时间'}{message.timingEstimate ? '约' : ''} {formatMessageTime(message.completedAt)}</span>
                       </div>
                     ) : generating && activeId === activeSession.id && generatingMessageRef.current?.messageId === message.id ? (
                       <div className="admin-ai-chat__message-meta">
@@ -647,6 +680,7 @@ export function AdminAiChatPage() {
         <footer className="admin-ai-chat__composer-area">
           {error && <div className="admin-ai-chat__error" role="status">
             {error}
+            {stopFailure && <Button size="mini" onClick={() => { void retryStop(); }}>重试停止</Button>}
             {activeSession && !activeSession.messages && <Button size="mini" onClick={() => { setError(''); setMessageLoadAttempt((attempt) => attempt + 1); }}>重试加载</Button>}
           </div>}
           <DraftChatImages manager={imageManager} onOpen={openImage}
@@ -656,7 +690,7 @@ export function AdminAiChatPage() {
               onChange={(event) => { imageManager.addFiles(Array.from(event.target.files || [])); event.target.value = ''; }} />
             <Button className="admin-ai-chat__upload" shape="circle" icon={<IconPlus />} aria-label="上传附件"
               title="上传图片或文件：图片 5 MB，其他文件 50 MB，每条最多 4 个附件；支持粘贴"
-              disabled={generating || loadingHistory || loadingMessages || !!historyError || imageManager.attachments.length >= 4}
+              disabled={generating || !!stopFailure || loadingHistory || loadingMessages || !!historyError || imageManager.attachments.length >= 4}
               onClick={() => uploadInputRef.current?.click()} />
             <TextArea
               value={draft}
@@ -681,7 +715,7 @@ export function AdminAiChatPage() {
               autoSize={{ minRows: 1, maxRows: Math.max(1, Math.floor((textareaMaxHeight - 12) / 22)) }}
               style={{ maxHeight: `${textareaMaxHeight}px`, overflowY: 'auto' }}
               maxLength={12000}
-              disabled={generating || loadingHistory || loadingMessages || !!historyError || (!!activeSession && !activeSession.messages)}
+              disabled={generating || !!stopFailure || loadingHistory || loadingMessages || !!historyError || (!!activeSession && !activeSession.messages)}
               aria-label="输入消息"
             />
             {generating ? (
@@ -695,7 +729,7 @@ export function AdminAiChatPage() {
                 shape="circle"
                 icon={<IconSend />}
                 aria-label="发送消息"
-                disabled={(!draft.trim() && !imageManager.attachments.length) || !imagesReady || loadingHistory || loadingMessages || !!historyError || (!!activeSession && !activeSession.messages)}
+                disabled={!!stopFailure || (!draft.trim() && !imageManager.attachments.length) || !imagesReady || loadingHistory || loadingMessages || !!historyError || (!!activeSession && !activeSession.messages)}
                 onClick={() => { void sendMessage(); }}
               />
             )}
