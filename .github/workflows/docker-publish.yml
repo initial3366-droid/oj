@@ -6,7 +6,7 @@
 #   手动触发（workflow_dispatch）
 #
 # 首次发布后，需到 GitHub 仓库 → Packages → 逐个把 oj-frontend / oj-backend /
-# oj-go-judge 的可见性改为 Public，否则部署机拉取需要 docker login。
+# oj-agent / oj-go-judge 的可见性改为 Public，否则部署机拉取需要 docker login。
 name: docker-publish
 
 on:
@@ -38,6 +38,9 @@ jobs:
           - name: backend
             context: backend
             dockerfile: backend/Dockerfile
+          - name: agent
+            context: agent-java
+            dockerfile: agent-java/Dockerfile
           - name: go-judge
             context: docker/go-judge
             dockerfile: docker/go-judge/Dockerfile

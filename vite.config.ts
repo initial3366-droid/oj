@@ -64,6 +64,7 @@ export default defineConfig(({ mode }) => {
     process.env.VITE_API_PROXY_TARGET ?? env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:18080";
   // 保留主机、端口和路径，仅把 http(s) 协议映射为 ws(s) 供 Vite WebSocket 代理使用。
   const wsProxyTarget = apiProxyTarget.replace(/^http/, "ws");
+  const agentProxyTarget = process.env.VITE_AGENT_PROXY_TARGET ?? env.VITE_AGENT_PROXY_TARGET ?? "http://127.0.0.1:19090";
 
   return {
     plugins: [react(), tailwindcss(), preloadAllBuildAssets()],
@@ -84,6 +85,7 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         "/api": apiProxyTarget,
+        "/agent": { target: agentProxyTarget, rewrite: (path) => path.replace(/^\/agent/, "") },
         "/ws": {
           target: wsProxyTarget,
           ws: true,

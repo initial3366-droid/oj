@@ -62,6 +62,7 @@ services:
       # 后台路由和 API 前缀与前端构建参数保持一致，避免前端请求固定的 /api/admin/v1。
       ADMIN_PATH_PREFIX: ${VITE_ADMIN_PREFIX:-admin}
       ADMIN_API_PREFIX: ${VITE_ADMIN_API_PREFIX:-/api/${VITE_ADMIN_PREFIX:-admin}/v1}
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-}
     mem_limit: ${BACKEND_MEM_LIMIT:-2g}
     depends_on:
       mysql:
@@ -73,6 +74,34 @@ services:
         condition: service_started
     volumes:
       - qoj-backend-logs:/app/logs
+    logging: *default-logging
+
+  qoj-agent:
+    build:
+      context: ./agent-java
+      dockerfile: Dockerfile
+    image: qoj-agent:latest
+    restart: unless-stopped
+    environment:
+      QOJ_BASE_URL: http://backend:18080
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-}
+      ICPC_SKILL_PATH: /opt/icpc-problem-creator/SKILL.md
+      ICPC_SKILL_ROOT: /opt/icpc-problem-creator
+      AGENT_WORKSPACE_ROOT: /var/lib/qoj-agent/workspaces
+    ports:
+      - "127.0.0.1:${AGENT_PORT:-19090}:19090"
+    volumes:
+      - ${ICPC_SKILL_ROOT:-./agent-skills}:/opt/icpc-problem-creator:ro
+      - qoj-agent-workspaces:/var/lib/qoj-agent/workspaces
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:19090/healthz | grep -q '\"status\":\"ok\"'"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
     logging: *default-logging
 
   mysql:
@@ -163,3 +192,4 @@ volumes:
   qoj-mysql-data:
   qoj-redis-data:
   qoj-backend-logs:
+  qoj-agent-workspaces:

@@ -13,6 +13,7 @@ import {
   IconTrophy,
   IconUserGroup,
   IconSettings,
+  IconRobot,
 } from '@arco-design/web-react/icon';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
@@ -52,6 +53,9 @@ const PATHS = {
   settingsSystem: adminPath('/settings/system'),
   settingsCodeTemplates: adminPath('/settings/code-templates'),
   settingsAnnouncements: adminPath('/settings/announcements'),
+  aiProblemGenerator: adminPath('/ai/problem-generator'),
+  aiSettings: adminPath('/ai/settings'),
+  aiChat: adminPath('/ai/chat'),
 };
 
 /**
@@ -93,6 +97,7 @@ export function AdminSider({ userRole }: AdminSiderProps) {
       [PATHS.classes]: 'classes-menu',
       [PATHS.majors]: 'users-menu',
       [adminPath('/settings')]: 'settings-menu',
+      [adminPath('/ai')]: 'ai-menu',
     };
 
     for (const [prefix, key] of Object.entries(openKeysMap)) {
@@ -210,6 +215,14 @@ export function AdminSider({ userRole }: AdminSiderProps) {
           <MenuItem key={PATHS.settingsRegister}>注册配置</MenuItem>
           <MenuItem key={PATHS.settingsSystem}>系统配置</MenuItem>
           <MenuItem key={PATHS.settingsAnnouncements}>公告管理</MenuItem>
+        </SubMenu>
+      )}
+
+      {isMenuVisible('ai-menu') && (
+        <SubMenu key="ai-menu" title={<><IconRobot />AI 控制台</>}>
+          <MenuItem key={PATHS.aiChat}>聊天</MenuItem>
+          <MenuItem key={PATHS.aiProblemGenerator}>出题</MenuItem>
+          <MenuItem key={PATHS.aiSettings}>配置</MenuItem>
         </SubMenu>
       )}
     </Menu>

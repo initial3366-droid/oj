@@ -79,12 +79,14 @@ npm run dev
 - KaTeX
 
 ### 后端
-- Spring Boot 3.3.5 (Java 17)
+- Spring Boot 4.1.1 (Java 17)
 - Spring Security + JWT
 - MyBatis-Plus
 - MySQL 8.0 + Redis 7
 - Flyway
 - WebSocket (STOMP)
+- Spring AI 2.0.1（模型接入与结构化输出）
+- 独立 Java Agent 容器（AI 出题、SSE 进度与隔离验题）
 
 ## 构建与校验
 

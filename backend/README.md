@@ -3,7 +3,7 @@
 QOJ (Question Online Judge) 是一个面向校园的现代化在线评测系统，支持算法竞赛训练、课程作业提交、班级练习管理等场景。
 
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.5-6DB33F?logo=spring)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.1-6DB33F?logo=spring)](https://spring.io/projects/spring-boot)
 [![Java](https://img.shields.io/badge/Java-17-007396?logo=openjdk)](https://openjdk.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 
@@ -41,7 +41,8 @@ QOJ 提供完整的在线评测功能，包括：
 - **WebSocket**: STOMP over SockJS
 
 ### 后端
-- **框架**: Spring Boot 3.3.5 + Java 17
+- **框架**: Spring Boot 4.1.1 + Java 17
+- **AI 接入**: Spring AI 2.0.1（OpenAI 兼容 ChatModel）；出题 Agent 独立运行并保留现有 SSE/API 边界
 - **安全认证**: Spring Security + JWT (HS512)
 - **ORM**: MyBatis-Plus
 - **数据库迁移**: Flyway

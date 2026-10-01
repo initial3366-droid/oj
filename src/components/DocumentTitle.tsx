@@ -74,6 +74,8 @@ const routeTitles: RouteTitle[] = [
   { pattern: `/${ADMIN_PREFIX}/settings/system`, title: "系统配置", end: true, hideSiteTitle: true },
   { pattern: `/${ADMIN_PREFIX}/settings/code-templates`, title: "代码配置", end: true, hideSiteTitle: true },
   { pattern: `/${ADMIN_PREFIX}/settings/announcements`, title: "公告管理", end: true, hideSiteTitle: true },
+  { pattern: `/${ADMIN_PREFIX}/ai/problem-generator`, title: "AI 控制台 · 出题", end: true, hideSiteTitle: true },
+  { pattern: `/${ADMIN_PREFIX}/ai/settings`, title: "AI 控制台 · 配置", end: true, hideSiteTitle: true },
   { pattern: `/${ADMIN_PREFIX}/profile`, title: "个人信息", end: true, hideSiteTitle: true },
   { pattern: `/${ADMIN_PREFIX}/*`, title: "后台管理", hideSiteTitle: true },
 

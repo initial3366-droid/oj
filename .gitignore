@@ -49,3 +49,9 @@ wd.docx
 tools/qoj-publish/__pycache__/
 __pycache__/
 *.pyc
+
+# 本地运行、验证产物与独立 Agent 构建输出
+.runtime/
+output/
+tmp/
+agent-java/target/

@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_WS_URL: string;
   readonly VITE_ADMIN_PREFIX?: string;
   readonly VITE_ADMIN_API_PREFIX?: string;
+  readonly VITE_AGENT_BASE_URL?: string;
 }
 
 /**
