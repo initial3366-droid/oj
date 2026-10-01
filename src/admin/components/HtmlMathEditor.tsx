@@ -20,12 +20,13 @@ interface HtmlMathEditorProps {
   onChange?: (value: string) => void;
   placeholder?: string;
   rows?: number;
+  ariaLabel?: string;
 }
 
 /**
  * 渲染HtmlMathEditor组件，并协调其数据加载、状态和交互。
  */
-export function HtmlMathEditor({ value = '', onChange, placeholder, rows = 10 }: HtmlMathEditorProps) {
+export function HtmlMathEditor({ value = '', onChange, placeholder, rows = 10, ariaLabel }: HtmlMathEditorProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const valueRef = useRef(value);
@@ -293,6 +294,7 @@ export function HtmlMathEditor({ value = '', onChange, placeholder, rows = 10 }:
         </Space>
       </div>
       <TextArea
+        aria-label={ariaLabel}
         value={value}
         onChange={(next: string) => onChange?.(next)}
         placeholder={placeholder ?? '支持 HTML 标签与 LaTeX 公式（行内 $...$，独立 $$...$$）'}

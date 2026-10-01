@@ -60,6 +60,7 @@ public class SystemSettingService {
         "baseUrl", "",
         "apiKey", "",
         "model", "",
+        "reasoningEffort", "medium",
         "timeoutMs", 30000L,
         "maxCodeChars", 12000
     );
@@ -237,6 +238,7 @@ public class SystemSettingService {
         vo.baseUrl = stringValue(config.get("baseUrl"));
         vo.apiKey = stringValue(config.get("apiKey"));
         vo.model = stringValue(config.get("model"));
+        vo.reasoningEffort = defaultText(config.get("reasoningEffort"), "medium");
         vo.timeoutMs = longValue(config.get("timeoutMs"), 30000L);
         vo.maxCodeChars = intValue(config.get("maxCodeChars"), 12000);
         return vo;
@@ -397,6 +399,7 @@ public class SystemSettingService {
         next.baseUrl = trimToEmpty(request.baseUrl);
         next.apiKey = hasText(request.apiKey) ? request.apiKey.trim() : existing.apiKey;
         next.model = trimToEmpty(request.model);
+        next.reasoningEffort = normalizeReasoningEffort(request.reasoningEffort);
         next.timeoutMs = request.timeoutMs != null ? request.timeoutMs : 30000L;
         next.maxCodeChars = request.maxCodeChars != null ? request.maxCodeChars : 12000;
 
@@ -439,10 +442,19 @@ public class SystemSettingService {
             "baseUrl", next.baseUrl,
             "apiKey", next.apiKey == null ? "" : next.apiKey,
             "model", next.model,
+            "reasoningEffort", next.reasoningEffort,
             "timeoutMs", next.timeoutMs,
             "maxCodeChars", next.maxCodeChars
         );
         updateSetting(AGENT_CONFIG_KEY, toJson(config), authUser.getUsername());
+    }
+
+    private String normalizeReasoningEffort(String value) {
+        String normalized = trimToEmpty(value).toLowerCase();
+        return switch (normalized) {
+            case "none", "minimal", "low", "medium", "high" -> normalized;
+            default -> "medium";
+        };
     }
 
     /**

@@ -32,7 +32,8 @@ public class JudgeMessagePublisher {
                 "time", time == null ? 0 : time,
                 "memory", memory == null ? 0 : memory,
                 "timestamp", System.currentTimeMillis()
-            )
+            ),
+            Map.of()
         );
         submissionQueueUpdated();
     }
@@ -47,7 +48,8 @@ public class JudgeMessagePublisher {
             Map.of(
                 "action", "refresh",
                 "timestamp", System.currentTimeMillis()
-            )
+            ),
+            Map.of()
         );
     }
 
@@ -62,7 +64,8 @@ public class JudgeMessagePublisher {
                 "contestId", contestId,
                 "action", "refresh",
                 "timestamp", System.currentTimeMillis()
-            )
+            ),
+            Map.of()
         );
     }
 
@@ -78,7 +81,8 @@ public class JudgeMessagePublisher {
                 "title", title,
                 "content", content,
                 "timestamp", System.currentTimeMillis()
-            )
+            ),
+            Map.of()
         );
     }
 
@@ -101,7 +105,8 @@ public class JudgeMessagePublisher {
                 "contestId", contestId,
                 "status", status,
                 "timestamp", System.currentTimeMillis()
-            )
+            ),
+            Map.of()
         );
     }
 }

@@ -28,6 +28,9 @@ import { AdminTeamManagementPage } from '../pages/teams/AdminTeamManagementPage'
 import { AdminTeacherManagementPage } from '../pages/classes/AdminTeacherManagementPage';
 import { AdminMajorManagementPage } from '../pages/classes/AdminMajorManagementPage';
 import { AdminProfilePage } from '../pages/profile/AdminProfilePage';
+import { AdminAiProblemGeneratorPage } from '../pages/ai/AdminAiProblemGeneratorPage';
+import { AdminAiSettingsPage } from '../pages/ai/AdminAiSettingsPage';
+import { AdminAiChatPage } from '../pages/ai/AdminAiChatPage';
 import { adminPath } from '../../utils/adminPath';
 import { Result } from '@arco-design/web-react';
 
@@ -66,6 +69,11 @@ export function AdminRoutes() {
                 <Route path="/problem-folders" element={<AdminProblemFolderPage />} />
                 <Route path="/problem-folders/new" element={<AdminProblemFolderPage />} />
                 <Route path="/problem-folders/:folderId" element={<AdminProblemFolderPage />} />
+
+                {/* AI 控制台 */}
+                <Route path="/ai/chat" element={<AdminAiChatPage />} />
+                <Route path="/ai/problem-generator" element={<AdminAiProblemGeneratorPage />} />
+                <Route path="/ai/settings" element={<AdminAiSettingsPage />} />
 
                 {/* 题单管理 */}
                 <Route path="/practices" element={<AdminPracticeManagementPage />} />

@@ -90,6 +90,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/assets/**").permitAll()
                 .requestMatchers("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh", "/api/v1/auth/reset-password").permitAll()
                 .requestMatchers("/api/v1/captcha/**").permitAll()
+                .requestMatchers("/api/internal/agent/**").permitAll()
                 .requestMatchers(adminApiPrefix + "/auth/login").permitAll()
                 .requestMatchers("/api/teacher/v1/auth/login").permitAll()
                 // CCPCOJ workers authenticate with their dedicated HttpOnly session cookie.

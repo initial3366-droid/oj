@@ -1,7 +1,6 @@
 # QOJ 免源码部署编排：所有自定义镜像直接从镜像仓库拉取，不需要项目源码。
 #
-# 与 docker-compose.yml 的唯一区别是 frontend/backend/go-judge 改为拉取预构建
-# 镜像（网络拓扑、健康检查、数据卷完全一致，两者数据互通、可互换使用）。
+# frontend、backend、Java Agent 与 go-judge 均使用预构建镜像；两套编排的数据卷和服务边界一致。
 #
 # 配套文件：.env.production（密钥与配置，可由 ./deploy.sh 自动生成或复制
 # .env.production.example 修改）。启动：
@@ -56,6 +55,7 @@ services:
       # 预构建镜像同样从前端环境变量读取后台路径配置。
       ADMIN_PATH_PREFIX: ${VITE_ADMIN_PREFIX:-admin}
       ADMIN_API_PREFIX: ${VITE_ADMIN_API_PREFIX:-/api/${VITE_ADMIN_PREFIX:-admin}/v1}
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-}
     mem_limit: ${BACKEND_MEM_LIMIT:-2g}
     depends_on:
       mysql:
@@ -67,6 +67,31 @@ services:
         condition: service_started
     volumes:
       - qoj-backend-logs:/app/logs
+    logging: *default-logging
+
+  qoj-agent:
+    image: ${QOJ_IMAGE_PREFIX:-ghcr.io/initial3366-droid/oj}-agent:${QOJ_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      QOJ_BASE_URL: http://backend:18080
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-}
+      ICPC_SKILL_PATH: /opt/icpc-problem-creator/SKILL.md
+      ICPC_SKILL_ROOT: /opt/icpc-problem-creator
+      AGENT_WORKSPACE_ROOT: /var/lib/qoj-agent/workspaces
+    ports:
+      - "127.0.0.1:${AGENT_PORT:-19090}:19090"
+    volumes:
+      - ${ICPC_SKILL_ROOT:-./agent-skills}:/opt/icpc-problem-creator:ro
+      - qoj-agent-workspaces:/var/lib/qoj-agent/workspaces
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:19090/healthz | grep -q '\"status\":\"ok\"'"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
     logging: *default-logging
 
   mysql:
@@ -153,3 +178,4 @@ volumes:
   qoj-mysql-data:
   qoj-redis-data:
   qoj-backend-logs:
+  qoj-agent-workspaces:

@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.5</version>
+        <version>4.1.1</version>
         <relativePath/>
     </parent>
 
@@ -21,16 +21,34 @@
         <!-- 统一管理需要显式锁定的第三方版本；Spring 组件版本由父 POM 的 BOM 管理。 -->
         <java.version>17</java.version>
         <jjwt.version>0.12.6</jjwt.version>
-        <mybatis-plus.version>3.5.9</mybatis-plus.version>
-        <springdoc.version>2.6.0</springdoc.version>
+        <mybatis-plus.version>3.5.17</mybatis-plus.version>
+        <springdoc.version>3.1.1</springdoc.version>
+        <spring-ai.version>2.0.1</spring-ai.version>
         <tencent-cos.version>5.6.273</tencent-cos.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <!-- Web、参数校验、安全、WebSocket、Redis 与邮件等应用基础设施。 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+        <!-- Keep the existing Jackson 2 application API while Boot 4's Jackson 3 migration is staged. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-jackson2</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -53,8 +71,12 @@
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-openai</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
             <version>${mybatis-plus.version}</version>
         </dependency>
         <!-- MyBatis-Plus 数据访问、查询解析与本地缓存。 -->
@@ -74,8 +96,8 @@
         </dependency>
         <!-- MySQL 驱动与 Flyway 迁移只在运行时参与数据库初始化。 -->
         <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -109,6 +131,11 @@
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
             <version>5.3.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.8</version>
         </dependency>
         <dependency>
             <groupId>com.qcloud</groupId>

@@ -23,6 +23,10 @@ spring:
     name: qoj-backend
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
+  mvc:
+    async:
+      # Allow the bounded AI stream (up to 120s) to finish before servlet async expiry.
+      request-timeout: 180s
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:13306}/${MYSQL_DATABASE:qoj}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false

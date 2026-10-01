@@ -93,6 +93,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         return path != null && path.startsWith("/ojtool/judge/");
     }
 
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        // Stateless SSE completion is dispatched on a new thread without its original context.
+        return false;
+    }
+
     /**
      * 核心认证逻辑。
      * 所有 RuntimeException 被静默捕获：即使 Token 无效也不应中断请求处理。

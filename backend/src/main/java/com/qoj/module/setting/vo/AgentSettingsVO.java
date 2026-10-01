@@ -8,6 +8,7 @@ public class AgentSettingsVO {
     public String baseUrl;
     public String apiKey;
     public String model;
+    public String reasoningEffort;
     public Long timeoutMs;
     public Integer maxCodeChars;
 }

@@ -1,0 +1,26 @@
+server:
+  port: ${AGENT_PORT:19090}
+  tomcat:
+    max-http-form-post-size: 50MB
+    max-swallow-size: 50MB
+
+spring:
+  application:
+    name: qoj-agent
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+agent:
+  workspace-root: ${AGENT_WORKSPACE_ROOT:/var/lib/qoj-agent/workspaces}
+  powershell-command: ${POWERSHELL_COMMAND:pwsh}
+  validation-timeout-ms: ${AGENT_VALIDATION_TIMEOUT_MS:600000}
+
+icpc:
+  skill-path: ${ICPC_SKILL_PATH:/opt/icpc-problem-creator/SKILL.md}
+  skill-root: ${ICPC_SKILL_ROOT:/opt/icpc-problem-creator}
+
+qoj:
+  base-url: ${QOJ_BASE_URL:}
+  internal-token: ${AGENT_INTERNAL_TOKEN:}
