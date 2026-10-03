@@ -53,6 +53,29 @@ try {
   assert.equal(await page.locator('.problems-table').getByText('已通过').count(), 1);
   checks.push('首屏显示 20 题及 beUI 状态徽标');
   await page.screenshot({ path: path.join(output, 'desktop.png'), fullPage: true });
+  const surfaces = await page.evaluate(() => {
+    const color = (selector, property = 'backgroundColor') => getComputedStyle(document.querySelector(selector))[property];
+    return {
+      nav: color('.front-header-nav'),
+      activeNav: color('.front-header-link.is-active'),
+      tableHead: color('.problems-table thead th'),
+      firstRow: color('.problems-table tbody tr:first-child td'),
+      secondRow: color('.problems-table tbody tr:nth-child(2) td'),
+      tableBorder: getComputedStyle(document.querySelector('.problems-table-wrap')).borderTopColor,
+    };
+  });
+  assert.notEqual(surfaces.nav, surfaces.activeNav);
+  assert.notEqual(surfaces.tableHead, surfaces.firstRow);
+  assert.notEqual(surfaces.firstRow, surfaces.secondRow);
+  assert.notEqual(surfaces.tableBorder, 'rgba(0, 0, 0, 0)');
+  checks.push('导航选中态与表头、隔行底色和边框有清晰区分');
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '首页' }).click();
+  await page.waitForURL('**/');
+  await page.screenshot({ path: path.join(output, 'home.png'), fullPage: true });
+  assert.equal(await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '首页' }).getAttribute('aria-current'), 'page');
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '题库' }).click();
+  await page.getByText('星河求和').waitFor();
+  checks.push('首页导航切换与选中状态正常');
 
   await page.getByRole('button', { name: '下一页' }).click();
   assert.equal(await rows.count(), 5);

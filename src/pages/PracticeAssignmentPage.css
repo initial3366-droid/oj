@@ -69,11 +69,11 @@
 }
 
 .practice-assignment-table .qoj-table-wrap {
-  overflow-x: hidden;
-  overflow-y: hidden;
-  border: 1px solid #e5e6eb;
-  border-radius: 8px;
+  overflow-x: auto;
+  border: 1px solid var(--front-table-border);
+  border-radius: 14px;
   background: #fff;
+  box-shadow: 0 12px 28px rgba(24, 52, 90, .075);
 }
 
 .practice-assignment-table .qoj-table-wrap table {

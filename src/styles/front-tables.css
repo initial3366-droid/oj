@@ -1,0 +1,80 @@
+/* Public pages share one table surface; admin and teacher routes are separate. */
+.front-layout,
+.public-scoreboard {
+  --front-table-border: #cbd8e8;
+  --front-table-divider: #dbe5f1;
+  --front-table-heading: #e8f0fa;
+  --front-table-stripe: #f5f9fe;
+  --front-table-hover: #eaf3ff;
+}
+
+.front-layout .qoj-table-wrap,
+.front-layout .problems-table-wrap,
+.public-scoreboard .public-scoreboard-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--front-table-border);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(24, 52, 90, .075);
+}
+
+.front-layout table,
+.public-scoreboard table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  color: #1c304d;
+}
+
+.front-layout table thead th,
+.public-scoreboard table thead th {
+  border-bottom: 2px solid var(--front-table-border);
+  background: var(--front-table-heading);
+  color: #304564;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .015em;
+}
+
+.front-layout table tbody td,
+.public-scoreboard table tbody td {
+  border-bottom: 1px solid var(--front-table-divider);
+  color: #1c304d;
+}
+
+.front-layout table tbody tr:nth-child(even) > td,
+.public-scoreboard table tbody tr:nth-child(even) > td {
+  background: var(--front-table-stripe);
+}
+
+.front-layout table tbody tr:hover > td,
+.public-scoreboard table tbody tr:hover > td {
+  background: var(--front-table-hover);
+}
+
+.front-layout table tbody tr:last-child > td,
+.public-scoreboard table tbody tr:last-child > td {
+  border-bottom: 0;
+}
+
+.front-layout .qoj-table th,
+.front-layout .qoj-table td {
+  padding: 15px 16px;
+}
+
+.front-layout .qoj-table-small th,
+.front-layout .qoj-table-small td {
+  padding: 10px 12px;
+}
+
+.front-layout .qoj-table-wrap .qoj-pagination {
+  border-top: 1px solid var(--front-table-divider);
+  background: #f8fbff;
+}
+
+@media (max-width: 640px) {
+  .front-layout .qoj-table th,
+  .front-layout .qoj-table td {
+    padding: 12px;
+  }
+}

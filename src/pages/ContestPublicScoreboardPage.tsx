@@ -184,7 +184,7 @@ export function ContestPublicScoreboardPage() {
   const boardState = scoreboard.boardState ?? 'LIVE';
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--qoj-color-bg-1)', padding: 24 }}>
+    <div className="public-scoreboard" style={{ minHeight: '100vh', background: 'var(--qoj-color-bg-1)', padding: 24 }}>
       <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Card className="contest-detail-static-card" style={{ border: '1px solid var(--qoj-color-border)', boxShadow: 'none' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
@@ -207,7 +207,7 @@ export function ContestPublicScoreboardPage() {
           />
         )}
 
-        <div ref={setBoardWrapEl} style={{ overflowX: 'auto', borderRadius: 8, border: '1px solid var(--qoj-color-border)', backgroundColor: 'var(--qoj-color-bg-0)' }}>
+        <div ref={setBoardWrapEl} className="public-scoreboard-table-wrap" style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', minWidth: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ backgroundColor: 'var(--qoj-color-fill-1)' }}>

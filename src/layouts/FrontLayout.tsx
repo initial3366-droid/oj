@@ -8,6 +8,7 @@ import { Button } from '../components/motion/button/base';
 import { FrontHeader } from './FrontHeader';
 import { FrontFooter } from './FrontFooter';
 import { PinnedAnnouncementCard } from '../components/PinnedAnnouncementCard';
+import '../styles/front-tables.css';
 
 /**
  * 渲染FrontLayout组件，并协调其数据加载、状态和交互。

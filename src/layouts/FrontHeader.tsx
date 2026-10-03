@@ -63,9 +63,9 @@ export function FrontHeader() {
 
         <nav className="front-header-nav" aria-label="主导航">
           {navItems.map((item) => (
-            <button key={item.key} type="button" className={`front-header-link${activeKey === item.key ? ' is-active' : ''}`} aria-current={activeKey === item.key ? 'page' : undefined} onClick={() => navigate(item.path)}>
+            <Button key={item.key} variant="ghost" size="sm" className={`front-header-link${activeKey === item.key ? ' is-active' : ''}`} aria-current={activeKey === item.key ? 'page' : undefined} onClick={() => navigate(item.path)}>
               {item.label}
-            </button>
+            </Button>
           ))}
         </nav>
 
@@ -89,14 +89,14 @@ export function FrontHeader() {
             </div>
           ) : (
             <div className="front-header-auth">
-              <Button variant="ghost" className={location.pathname === '/login' ? 'is-active' : ''} onClick={() => navigate('/login')}>登录</Button>
-              <Button variant="ghost" className={location.pathname === '/register' ? 'is-active' : ''} onClick={() => navigate('/register')}>注册</Button>
+              <Button variant="ghost" className={`front-header-login${location.pathname === '/login' ? ' is-active' : ''}`} onClick={() => navigate('/login')}>登录</Button>
+              <Button variant="primary" className="front-header-register" onClick={() => navigate('/register')}>注册</Button>
             </div>
           )}
         </div>
       </div>
       {menuOpen && <nav className="front-header-mobile-nav" aria-label="手机导航">
-        {navItems.map((item) => <button key={item.key} type="button" className={activeKey === item.key ? 'is-active' : ''} onClick={() => { setMenuOpen(false); navigate(item.path); }}>{item.label}</button>)}
+        {navItems.map((item) => <Button key={item.key} variant="ghost" className={activeKey === item.key ? 'is-active' : ''} aria-current={activeKey === item.key ? 'page' : undefined} onClick={() => { setMenuOpen(false); navigate(item.path); }}>{item.label}</Button>)}
       </nav>}
     </header>
   );

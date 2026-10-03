@@ -73,9 +73,6 @@ export function RatingTable() {
       dataSource={ratings}
       rowKey="id"
       pagination={false}
-      style={{
-        border: '1px solid #f0f0f0',
-      }}
       locale={{
         emptyText: (
           <div style={{ padding: '40px 0', textAlign: 'center' }}>
