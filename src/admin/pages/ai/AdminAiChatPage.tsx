@@ -130,6 +130,7 @@ export function AdminAiChatPage() {
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [messageLoadAttempt, setMessageLoadAttempt] = useState(0);
   const [draft, setDraft] = useState('');
+  const composingRef = useRef(false);
   const [generating, setGenerating] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [error, setError] = useState('');
@@ -695,6 +696,9 @@ export function AdminAiChatPage() {
             <TextArea
               value={draft}
               onChange={setDraft}
+              onCompositionStartCapture={() => { composingRef.current = true; }}
+              onCompositionEndCapture={() => { composingRef.current = false; }}
+              onBlur={() => { composingRef.current = false; }}
               onPaste={(event) => {
                 const files = Array.from(event.clipboardData.items).filter((item) => item.kind === 'file')
                   .flatMap((item) => { const file = item.getAsFile(); return file ? [file] : []; });
@@ -706,6 +710,8 @@ export function AdminAiChatPage() {
                 }
               }}
               onKeyDown={(event) => {
+                // Some browsers end composition before the candidate-confirming Enter (keyCode 229).
+                if (composingRef.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault();
                   void sendMessage();

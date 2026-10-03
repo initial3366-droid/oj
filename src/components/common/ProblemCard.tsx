@@ -1,8 +1,8 @@
 /**
  * 题目Card组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Card, Typography, Space, Tag } from 'antd';
-import { UserOutlined, CalendarOutlined } from '@ant-design/icons';
+import { Card, Typography, Space, Tag } from '../../ui/compat';
+import { UserOutlined, CalendarOutlined } from '../../ui/icons';
 import { DifficultyTag } from './DifficultyTag';
 import type { CSSProperties } from 'react';
 

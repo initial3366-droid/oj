@@ -257,6 +257,38 @@ public class GoJudgeService implements JudgeService {
         return Language.from(value) != null;
     }
 
+    /** Compile once and run sequentially; each case keeps the existing isolated resource limits. */
+    public List<SandboxResult> runCustomBatch(String languageValue, String code, List<String> inputs,
+                                             java.util.function.BooleanSupplier cancelled) {
+        Language language = Language.from(languageValue);
+        if (language == null || code == null || inputs == null || inputs.isEmpty() || inputs.size() > 220
+            || utf8Length(code) > config.getMaxSourceBytes()
+            || inputs.stream().anyMatch(input -> input == null || utf8Length(input) > config.getMaxInputBytes())) {
+            throw new com.qoj.common.exception.BizException(400, "标程、语言或测试输入超出运行范围");
+        }
+        long deadline = System.nanoTime() + Duration.ofSeconds(80).toNanos();
+        if (cancelled.getAsBoolean()) throw new com.qoj.module.agent.service.AgentRunStoppedException();
+        CompiledProgram program = compile(language, code);
+        if (program.status != SubmissionStatus.AC) return List.of(new SandboxResult("", program.message, program.status.name(), 0, 0));
+        try {
+            var outputs = new ArrayList<SandboxResult>();
+            for (String input : inputs) {
+                if (cancelled.getAsBoolean()) throw new com.qoj.module.agent.service.AgentRunStoppedException();
+                if (System.nanoTime() >= deadline) throw new com.qoj.common.exception.BizException(504, "本批计算耗时过长，请减少测试点后重试");
+                List<Result> results = client.run(new RunRequest(List.of(runCommand(language, program.fileId, input, 2000, 256))), runRequestTimeout(2000));
+                if (results.size() != 1 || results.get(0) == null) throw new com.qoj.common.exception.BizException(502, "判题沙箱返回格式错误");
+                CaseExecution execution = mapRunResult(results.get(0));
+                outputs.add(new SandboxResult(execution.output, execution.error, execution.status.name(), execution.timeMs, execution.memoryKb));
+                if (execution.status != SubmissionStatus.AC) break;
+            }
+            return List.copyOf(outputs);
+        } catch (GoJudgeClient.GoJudgeClientException ex) {
+            throw new com.qoj.common.exception.BizException(503, "判题沙箱不可用，未保存本批生成数据");
+        } finally {
+            client.deleteFile(program.fileId);
+        }
+    }
+
     private CompiledProgram compile(Language language, String code) {
         if (language == null) {
             /**

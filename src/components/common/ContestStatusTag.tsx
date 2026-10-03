@@ -1,8 +1,8 @@
 /**
  * 比赛状态Tag组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Tag } from 'antd';
-import { ClockCircleOutlined, CaretRightOutlined, StopOutlined } from '@ant-design/icons';
+import { Clock3, Play, Square } from 'lucide-react';
+import { AnimatedBadge } from '../motion/animated-badge';
 
 /**
  * 比赛状态类型别名，明确该模块内部及 API 边界使用的数据结构。
@@ -37,7 +37,7 @@ export function ContestStatusTag({
       return {
         color: 'blue' as const,
         text: '未开始',
-        icon: <ClockCircleOutlined />,
+        icon: <Clock3 size={14} />,
       };
     }
 
@@ -45,7 +45,7 @@ export function ContestStatusTag({
       return {
         color: 'green' as const,
         text: '进行中',
-        icon: <CaretRightOutlined />,
+        icon: <Play size={14} />,
       };
     }
 
@@ -53,7 +53,7 @@ export function ContestStatusTag({
       return {
         color: 'grey' as const,
         text: '已结束',
-        icon: <StopOutlined />,
+        icon: <Square size={14} />,
       };
     }
 
@@ -67,12 +67,13 @@ export function ContestStatusTag({
   const config = getStatusConfig(status);
 
   return (
-    <Tag
-      color={config.color === 'grey' ? 'default' : config.color}
-      icon={showIcon ? config.icon : undefined}
-      style={{ fontWeight: 500, fontSize: size === 'small' ? 12 : undefined }}
+    <AnimatedBadge
+      status={config.color === 'green' ? 'success' : config.color === 'blue' ? 'info' : 'neutral'}
+      icon={config.icon}
+      showIcon={showIcon && Boolean(config.icon)}
+      size={size === 'small' ? 'sm' : 'md'}
     >
       {config.text}
-    </Tag>
+    </AnimatedBadge>
   );
 }

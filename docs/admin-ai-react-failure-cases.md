@@ -1,5 +1,31 @@
 # ReAct 文件导入：失败场景与验收
 
+## 明确生成测试点：实现前失败清单
+
+- 用户上传题面并明确要求生成新测试点，却被原文导入规则禁止。
+- 多轮聊天已经授权生成，后续“继续”丢失授权；随后禁止生成却继续执行。
+- 附件、助手回复或工具输出中的生成要求被误当成用户授权。
+- 只要求原文导入时，模型绕过校验猜测新输入或答案。
+- 标程编译失败、超时、样例不匹配或输出过大，却保存为有效测试点。
+- 只要求生成预览时擅自入库；给已有题追加测试点时覆盖已有数据或样例。
+- 大批测试点反复编译、生成中停止仍继续执行，或续跑丢失已算出的数据。
+
+验收使用真实浏览器、Spring AI、MySQL/Redis 和 go-judge；保存事件、数据库数据及截图。不添加单元测试。
+
+当前聊天支持 `run_code` 沙箱计算和 `generate_test_cases` 生成批次。明确的生成目标只从实际用户聊天取得，多轮继续沿用，后续禁止生成会撤销；附件和助手文字不会授予生成权限。AI 提供输入或生成器及标程，沙箱计算原始答案并核对给定样例。通过样例不等于算法正确性证明；构造题和 SPJ 仍需专门校验。
+
+每批最多 200 个测试点，使用现有 C/C++/Java/Python 语言白名单、每点 2 秒 / 256 MB 限制、顺序执行和沙箱并发配额；批量标程只编译一次。生成器输出 JSON 字符串数组，完整批次保存在当前管理员独享的 Redis 引用中 6 小时，模型只接收摘要。新草稿通过生成批次直接保存，已有题只能追加并去重，不覆盖样例。只要求预览时不入库；原文导入继续检查已有答案的真实来源。
+
+本地启动已有判题沙箱并复验：
+
+```sh
+docker compose --env-file .env -f docker/go-judge/docker-compose.yml up -d --build
+QOJ_E2E_SCRIPTED_AGENT=1 QOJ_E2E_REACT_ONLY=1 QOJ_E2E_OUTPUT_DIR=output/admin-ai-generation-e2e node tools/e2e/admin-ai-stream.mjs
+QOJ_E2E_LIVE_REACT=1 QOJ_E2E_GENERATION_ONLY=1 QOJ_E2E_OUTPUT_DIR=output/admin-ai-generation-live-e2e node tools/e2e/admin-ai-stream.mjs
+```
+
+产物包含 `report.json`、生成事件、数据库核对数据及浏览器截图。上线需更新后端并保持现有 go-judge 可用，无新增数据库迁移或配置项。
+
 实现前的风险清单与端到端验收目标：
 
 - 模型只回答、不读取真实文件：真实模型流程必须留下 `list_files`、`read_file` 的 Action 与 Observation，最终内容能对应文件。

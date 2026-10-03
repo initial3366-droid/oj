@@ -8,7 +8,7 @@
  * - NotFoundPage：404 兜底
  */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Modal, Typography } from "antd";
+import { Button, Modal, Typography } from "./ui/compat";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { FrontLayout } from "./layouts/FrontLayout";
 import { ADMIN_PREFIX } from "./config";
@@ -242,7 +242,7 @@ function ContestEndNotice() {
       title="比赛已结束"
       open={activeNoticeContestId != null}
       closable={false}
-      maskClosable={false}
+      mask={{ closable: false }}
       keyboard={false}
       footer={
         <Button type="primary" onClick={acknowledgeNotice}>

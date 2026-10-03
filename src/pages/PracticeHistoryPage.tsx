@@ -3,7 +3,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Button, Empty, Modal, Table, Tag, Typography } from "antd";
+import { Button, Empty, Modal, Table, Tag, Typography } from "../ui/compat";
 import { decryptIdFromUrl } from "../utils/cipher";
 import { fetchProblemDetail } from "../api/problem";
 import { fetchProblemSubmissions, fetchSubmissionDetail, type SubmissionRecord } from "../api/submission";
@@ -53,7 +53,7 @@ const statusLabels: Record<string, string> = {
 };
 
 /**
- * 提交状态对应的 antd Tag 颜色。保持输入与返回值转换集中，避免调用处重复实现同一规则。
+ * 提交状态对应的 状态标签 颜色。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
 function statusColor(status: string): "success" | "error" | "warning" | "processing" | "default" {
   const normalized = status.toUpperCase();

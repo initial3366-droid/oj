@@ -1,8 +1,8 @@
 /**
  * 编码Block组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Typography, message } from 'antd';
-import { CopyOutlined } from '@ant-design/icons';
+import { Typography, message } from '../../ui/compat';
+import { CopyOutlined } from '../../ui/icons';
 import { copyTextToClipboard } from '../../utils/clipboard';
 
 /**

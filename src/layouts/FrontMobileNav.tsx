@@ -1,9 +1,9 @@
 /**
  * FrontMobileNav组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Button, Divider, Drawer, Menu, Space } from 'antd';
-import type { MenuProps } from 'antd';
-import { CaretDownOutlined, CloseOutlined, HomeOutlined, UnorderedListOutlined, UserOutlined } from '@ant-design/icons';
+import { Button, Divider, Drawer, Menu, Space } from '../ui/compat';
+import type { MenuProps } from '../ui/compat';
+import { CaretDownOutlined, CloseOutlined, HomeOutlined, UnorderedListOutlined, UserOutlined } from '../ui/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useOjData } from '../data/OjDataProvider';
 import { logout as logoutFrontend } from '../api/auth';
@@ -129,9 +129,9 @@ export function FrontMobileNav({ visible, onClose }: FrontMobileNavProps) {
         }
 
         /* 自定义 Nav 样式 */
-        .front-mobile-nav-content .ant-menu { border-inline-end: none; }
-        .front-mobile-nav-content .ant-menu-item { padding: 12px 20px !important; font-size: 15px; height: auto; line-height: normal; }
-        .front-mobile-nav-content .ant-menu-item-selected { background: var(--qoj-color-primary-light-default); color: var(--qoj-color-primary); border-left: 3px solid var(--qoj-color-primary); border-radius: 0; }
+        .front-mobile-nav-content .qoj-menu { border-inline-end: none; }
+        .front-mobile-nav-content .qoj-menu button { padding: 12px 20px !important; font-size: 15px; height: auto; line-height: normal; }
+        .front-mobile-nav-content .qoj-menu button.is-active { background: var(--qoj-color-primary-light-default); color: var(--qoj-color-primary); border-left: 3px solid var(--qoj-color-primary); border-radius: 0; }
       `}</style>
 
       {/* 用户信息头部 */}

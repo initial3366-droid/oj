@@ -12,14 +12,15 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
-    "@ant-design/icons": "^6.3.2",
     "@arco-design/web-react": "2.66.2",
     "@monaco-editor/react": "4.7.0",
     "@stomp/stompjs": "7.0.0",
-    "antd": "^6.5.0",
+    "clsx": "^2.1.1",
     "dompurify": "^3.4.12",
     "katex": "0.17.0",
+    "lucide-react": "^1.50.0",
     "monaco-editor": "0.55.1",
+    "motion": "^14.0.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-markdown": "^10.1.0",
@@ -27,7 +28,8 @@
     "recharts": "^3.9.1",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.11",

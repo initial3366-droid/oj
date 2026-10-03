@@ -1,8 +1,8 @@
 /**
  * 用户头像组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Avatar, Tooltip } from 'antd';
-import { UserOutlined } from '@ant-design/icons';
+import { Avatar, Tooltip } from '../../ui/compat';
+import { UserOutlined } from '../../ui/icons';
 
 const AVATAR_SIZE_MAP: Record<string, number> = {
   'extra-extra-small': 24,

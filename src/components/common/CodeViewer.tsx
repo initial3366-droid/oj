@@ -1,8 +1,8 @@
 /**
  * 编码Viewer组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Typography, Select, message } from 'antd';
-import { CopyOutlined } from '@ant-design/icons';
+import { Typography, Select, message } from '../../ui/compat';
+import { CopyOutlined } from '../../ui/icons';
 import Editor from '@monaco-editor/react';
 import { useState } from 'react';
 import '../../utils/monacoSetup';

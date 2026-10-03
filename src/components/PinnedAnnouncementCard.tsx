@@ -1,8 +1,8 @@
 /**
  * Pinned公告Card组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Card, Modal } from 'antd';
-import { PushpinOutlined } from '@ant-design/icons';
+import { Card, Modal } from '../ui/compat';
+import { PushpinOutlined } from '../ui/icons';
 import { useEffect, useState } from 'react';
 import { fetchPinnedAnnouncement, type Announcement } from '../data/apiClient';
 import { AnnouncementContent } from './AnnouncementContent';

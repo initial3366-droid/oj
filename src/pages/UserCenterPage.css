@@ -99,12 +99,12 @@
   overflow: hidden;
 }
 
-.uc-tabs-card .ant-tabs-nav {
+.uc-tabs-card .qoj-tabs-list {
   padding: 0 28px;
   border-bottom: 1px solid #f0f0f5;
 }
 
-.uc-tabs-card .ant-tabs-content {
+.uc-tabs-card .qoj-tabs-panel {
   padding: 24px 28px 28px;
 }
 
@@ -251,13 +251,13 @@
 }
 
 /* ── Input overrides inside user center ── */
-.uc-tabs-card .ant-input-affix-wrapper {
+.uc-tabs-card .qoj-input-wrap {
   border-radius: 10px;
   height: 40px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.uc-tabs-card .ant-input {
+.uc-tabs-card .qoj-input-wrap input {
   font-size: 14px !important;
   height: 40px !important;
   line-height: 40px !important;
@@ -266,24 +266,24 @@
   box-sizing: border-box;
 }
 
-.uc-tabs-card .ant-input:focus {
+.uc-tabs-card .qoj-input-wrap input:focus {
   box-shadow: none;
   border-color: transparent;
   outline: none;
 }
 
-.uc-tabs-card .ant-input-affix-wrapper:focus-within {
+.uc-tabs-card .qoj-input-wrap:focus-within {
   border-color: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 /* 筛选栏输入框与下拉框对齐（覆盖上方 40px 的输入框高度） */
-.uc-filter-bar .ant-input-affix-wrapper {
+.uc-filter-bar .qoj-input-wrap {
   height: 32px;
   border-radius: 6px;
 }
 
-.uc-filter-bar .ant-input {
+.uc-filter-bar .qoj-input-wrap input {
   height: auto !important;
   line-height: 22px !important;
   font-size: 14px;
@@ -292,7 +292,7 @@
 }
 
 /* ── Button overrides ── */
-.uc-btn-primary.ant-btn-primary {
+.uc-btn-primary.qoj-button {
   background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%) !important;
   border-color: transparent !important;
   height: 40px;
@@ -301,12 +301,12 @@
   border-radius: 10px;
 }
 
-.uc-page .ant-btn-primary:not(.ant-btn-disabled),
-.uc-page .ant-btn-primary:not(.ant-btn-disabled) .ant-btn-icon {
+.uc-page .qoj-button:not(:disabled),
+.uc-page .qoj-button:not(:disabled) svg {
   color: #fff !important;
 }
 
-.uc-btn-primary.ant-btn-primary:hover {
+.uc-btn-primary.qoj-button:hover {
   background: linear-gradient(135deg, #1d4ed8 0%, #4338ca 100%) !important;
 }
 
@@ -357,11 +357,11 @@
     flex-direction: column;
   }
 
-  .uc-tabs-card .ant-tabs-content {
+  .uc-tabs-card .qoj-tabs-panel {
     padding: 20px 16px 24px;
   }
 
-  .uc-tabs-card .ant-tabs-nav {
+  .uc-tabs-card .qoj-tabs-list {
     padding: 0 16px;
   }
 }
@@ -384,15 +384,15 @@
   margin-top: 10px;
 }
 
-.uc-avatar-button.ant-btn-primary,
-.uc-practice-view-button.ant-btn-primary {
+.uc-avatar-button.qoj-button,
+.uc-practice-view-button.qoj-button {
   background: #2563eb !important;
   border-color: #2563eb !important;
   color: #fff !important;
 }
 
-.uc-avatar-button.ant-btn-primary:hover,
-.uc-practice-view-button.ant-btn-primary:hover {
+.uc-avatar-button.qoj-button:hover,
+.uc-practice-view-button.qoj-button:hover {
   background: #1d4ed8 !important;
   border-color: #1d4ed8 !important;
 }

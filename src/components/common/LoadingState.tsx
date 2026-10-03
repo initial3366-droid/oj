@@ -1,7 +1,7 @@
 /**
  * LoadingState组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Spin, Skeleton, Typography } from 'antd';
+import { Spin, Skeleton, Typography } from '../../ui/compat';
 
 /**
  * LoadingStateProps接口，明确该模块内部及 API 边界使用的数据结构。

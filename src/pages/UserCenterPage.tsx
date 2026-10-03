@@ -1,8 +1,8 @@
 /**
  * 用户Center页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Avatar, Button, Typography, Tabs, Table, Tag, Input, Modal, Spin, Select, message as antdMessage } from 'antd';
-import type { TableColumnsType } from 'antd';
+import { Avatar, Button, Typography, Tabs, Table, Tag, Input, Modal, Spin, Select, message as toastMessage } from '../ui/compat';
+import type { TableColumnsType } from '../ui/compat';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CodeViewer } from '../components/common/CodeViewer';
@@ -271,18 +271,18 @@ export function UserCenterPage() {
         setCaptchaId(result.data.captchaId);
       }
     } catch (error) {
-      antdMessage.error('验证码加载失败');
+      toastMessage.error('验证码加载失败');
     }
   };
 
   // 发送邮箱验证码
   const sendEmailCode = async () => {
     if (!captchaInput || !captchaId) {
-      antdMessage.error('请先输入图形验证码');
+      toastMessage.error('请先输入图形验证码');
       return;
     }
     if (!user?.email) {
-      antdMessage.error('您的账号未绑定邮箱');
+      toastMessage.error('您的账号未绑定邮箱');
       return;
     }
     try {
@@ -297,15 +297,15 @@ export function UserCenterPage() {
       });
       const result = await response.json();
       if (result.code === 200) {
-        antdMessage.success('验证码已发送到您的邮箱');
+        toastMessage.success('验证码已发送到您的邮箱');
         setEmailCountdown(result.data.remainingSeconds || 60);
         fetchCaptcha();
       } else {
-        antdMessage.error(result.message || '发送失败');
+        toastMessage.error(result.message || '发送失败');
         fetchCaptcha();
       }
     } catch (error) {
-      antdMessage.error('发送失败，请稍后重试');
+      toastMessage.error('发送失败，请稍后重试');
       fetchCaptcha();
     }
   };
@@ -319,7 +319,7 @@ export function UserCenterPage() {
     event.target.value = '';
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      antdMessage.error('请选择图片文件');
+      toastMessage.error('请选择图片文件');
       return;
     }
     try {
@@ -339,9 +339,9 @@ export function UserCenterPage() {
             : rating,
         ),
       }));
-      antdMessage.success('头像已更新');
+      toastMessage.success('头像已更新');
     } catch (error) {
-      antdMessage.error(error instanceof Error ? error.message : '头像上传失败');
+      toastMessage.error(error instanceof Error ? error.message : '头像上传失败');
     } finally {
       setAvatarUploading(false);
     }
@@ -358,7 +358,7 @@ export function UserCenterPage() {
 
     if (username !== user?.username) {
       if (profileForm.username.length < 3 || profileForm.username.length > 15) {
-        antdMessage.error('用户名长度必须在3-15之间');
+        toastMessage.error('用户名长度必须在3-15之间');
         return;
       }
       payload.username = username;
@@ -366,14 +366,14 @@ export function UserCenterPage() {
 
     if (displayName !== user?.displayName) {
       if (!displayName) {
-        antdMessage.error('显示名称不能为空');
+        toastMessage.error('显示名称不能为空');
         return;
       }
       payload.displayName = displayName;
     }
 
     if (!payload.username && !payload.displayName) {
-      antdMessage.warning('没有修改任何信息');
+      toastMessage.warning('没有修改任何信息');
       return;
     }
 
@@ -386,7 +386,7 @@ export function UserCenterPage() {
   // 确认修改个人信息
   const confirmProfileUpdate = async () => {
     if (!pendingProfileUpdate || !emailCode) {
-      antdMessage.error('请输入邮箱验证码');
+      toastMessage.error('请输入邮箱验证码');
       return;
     }
 
@@ -399,7 +399,7 @@ export function UserCenterPage() {
         emailVerificationCode: emailCode,
       }, token);
 
-      antdMessage.success('修改成功');
+      toastMessage.success('修改成功');
       setEmailModalVisible(false);
       setEmailCode('');
       setCaptchaInput('');
@@ -414,24 +414,24 @@ export function UserCenterPage() {
         displayName: newUser.displayName,
       });
     } catch (error) {
-      antdMessage.error(error instanceof Error ? error.message : '修改失败');
+      toastMessage.error(error instanceof Error ? error.message : '修改失败');
     }
   };
 
   // 提交密码修改
   const handlePasswordSubmit = async () => {
     if (!passwordForm.oldPassword || !passwordForm.newPassword) {
-      antdMessage.error('请填写完整信息');
+      toastMessage.error('请填写完整信息');
       return;
     }
 
     if (passwordForm.newPassword.length < 6 || passwordForm.newPassword.length > 20) {
-      antdMessage.error('新密码长度必须在6-20之间');
+      toastMessage.error('新密码长度必须在6-20之间');
       return;
     }
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      antdMessage.error('两次密码不一致');
+      toastMessage.error('两次密码不一致');
       return;
     }
 
@@ -444,14 +444,14 @@ export function UserCenterPage() {
         newPassword: passwordForm.newPassword,
       }, token);
 
-      antdMessage.success('密码修改成功');
+      toastMessage.success('密码修改成功');
       setPasswordForm({
         oldPassword: '',
         newPassword: '',
         confirmPassword: '',
       });
     } catch (error) {
-      antdMessage.error(error instanceof Error ? error.message : '修改失败');
+      toastMessage.error(error instanceof Error ? error.message : '修改失败');
     }
   };
 
@@ -470,7 +470,7 @@ export function UserCenterPage() {
       })
       .catch((error) => {
         if (!cancelled) {
-          antdMessage.error(error instanceof Error ? error.message : '班级题单加载失败');
+          toastMessage.error(error instanceof Error ? error.message : '班级题单加载失败');
         }
       })
       .finally(() => {
@@ -489,18 +489,18 @@ export function UserCenterPage() {
   const handleApplyToClass = async () => {
     const classId = Number(classJoinForm.classId);
     if (!Number.isInteger(classId) || classId <= 0) {
-      antdMessage.error('请输入有效的班级 ID');
+      toastMessage.error('请输入有效的班级 ID');
       return;
     }
     setClassJoinLoading(true);
     setApplySuccess(false);
     try {
       await applyToClass(classId, { reason: classJoinForm.reason.trim() || undefined });
-      antdMessage.success('入班申请已发送，请等待教师审核');
+      toastMessage.success('入班申请已发送，请等待教师审核');
       setClassJoinForm({ classId: '', reason: '' });
       setApplySuccess(true);
     } catch (error) {
-      antdMessage.error(error instanceof Error ? error.message : '申请发送失败');
+      toastMessage.error(error instanceof Error ? error.message : '申请发送失败');
     } finally {
       setClassJoinLoading(false);
     }

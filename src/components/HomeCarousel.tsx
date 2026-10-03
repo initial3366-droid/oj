@@ -1,7 +1,7 @@
 /**
  * 首页Carousel组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Carousel } from 'antd';
+import { Carousel } from '../ui/compat';
 import { useMemo } from 'react';
 import { useOjData } from '../data/OjDataProvider';
 

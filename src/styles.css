@@ -1,10 +1,37 @@
 @import "tailwindcss";
 
+@theme inline {
+  --color-primary: var(--qoj-color-primary);
+  --color-primary-foreground: #fff;
+  --color-foreground: var(--qoj-color-text-0);
+  --color-muted-foreground: var(--qoj-color-text-2);
+  --color-card: #fff;
+  --color-background: #fff;
+  --color-border: var(--qoj-color-border);
+  --color-ring: var(--qoj-color-primary);
+  --color-muted: #f3f6fb;
+  --color-destructive: #d73535;
+}
+
+.qoj-beui-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--qoj-color-text-2);
+}
+
+.qoj-beui-empty > div:nth-of-type(1) {
+  color: var(--qoj-color-text-0);
+}
+
+.qoj-beui-error > svg {
+  color: #d73535;
+}
+
 /* 全局样式 */
 * {
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
 }
 
 body {
@@ -85,11 +112,11 @@ body {
   font-size: 22px;
 }
 
-.practice-problem-pane .practice-problem-header .ant-btn {
+.practice-problem-pane .practice-problem-header .qoj-button {
   font-size: 16px;
 }
 
-.practice-problem-pane .practice-problem-header .ant-tag {
+.practice-problem-pane .practice-problem-header .qoj-badge {
   font-size: 14px;
 }
 
@@ -344,12 +371,6 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--qoj-color-text-3);
-}
-
-/* antd Table 固定列表头背景与普通表头保持一致（antd 默认用白色 tableBg，造成表头左右两侧颜色不一致） */
-.ant-table-thead > tr > th.ant-table-cell-fix-left,
-.ant-table-thead > tr > th.ant-table-cell-fix-right {
-  background: #fafafa;
 }
 
 /* 前台表格分页栏：独立放在表格下方。 */

@@ -1,13 +1,8 @@
 /**
  * 提交状态Tag组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Tag } from 'antd';
-import {
-  CheckOutlined,
-  ClockCircleOutlined,
-  CloseOutlined,
-  WarningOutlined,
-} from '@ant-design/icons';
+import { Check, Clock3, X, TriangleAlert } from 'lucide-react';
+import { AnimatedBadge } from '../motion/animated-badge';
 
 /**
  * 提交状态类型别名，明确该模块内部及 API 边界使用的数据结构。
@@ -46,7 +41,7 @@ export function SubmissionStatusTag({
       return {
         color: 'green' as const,
         text: 'Accepted',
-        icon: <CheckOutlined />,
+        icon: <Check size={14} />,
       };
     }
 
@@ -55,7 +50,7 @@ export function SubmissionStatusTag({
       return {
         color: 'red' as const,
         text: 'Wrong Answer',
-        icon: <CloseOutlined />,
+        icon: <X size={14} />,
       };
     }
 
@@ -64,7 +59,7 @@ export function SubmissionStatusTag({
       return {
         color: 'orange' as const,
         text: 'Time Limit Exceeded',
-        icon: <ClockCircleOutlined />,
+        icon: <Clock3 size={14} />,
       };
     }
 
@@ -73,7 +68,7 @@ export function SubmissionStatusTag({
       return {
         color: 'orange' as const,
         text: 'Memory Limit Exceeded',
-        icon: <WarningOutlined />,
+        icon: <TriangleAlert size={14} />,
       };
     }
 
@@ -82,7 +77,7 @@ export function SubmissionStatusTag({
       return {
         color: 'red' as const,
         text: 'Runtime Error',
-        icon: <CloseOutlined />,
+        icon: <X size={14} />,
       };
     }
 
@@ -91,7 +86,7 @@ export function SubmissionStatusTag({
       return {
         color: 'red' as const,
         text: 'Compile Error',
-        icon: <CloseOutlined />,
+        icon: <X size={14} />,
       };
     }
 
@@ -100,7 +95,7 @@ export function SubmissionStatusTag({
       return {
         color: 'blue' as const,
         text: 'Waiting',
-        icon: <ClockCircleOutlined />,
+        icon: <Clock3 size={14} />,
       };
     }
 
@@ -109,7 +104,7 @@ export function SubmissionStatusTag({
       return {
         color: 'blue' as const,
         text: 'Pending',
-        icon: <ClockCircleOutlined />,
+        icon: <Clock3 size={14} />,
       };
     }
 
@@ -118,7 +113,7 @@ export function SubmissionStatusTag({
       return {
         color: 'blue' as const,
         text: 'Rejudge Pending',
-        icon: <ClockCircleOutlined />,
+        icon: <Clock3 size={14} />,
       };
     }
 
@@ -127,7 +122,7 @@ export function SubmissionStatusTag({
       return {
         color: 'blue' as const,
         text: 'Compiling',
-        icon: <ClockCircleOutlined />,
+        icon: <Clock3 size={14} />,
       };
     }
 
@@ -136,7 +131,7 @@ export function SubmissionStatusTag({
       return {
         color: 'blue' as const,
         text: normalized === 'RUNNING' ? 'Running' : 'Judging',
-        icon: <ClockCircleOutlined />,
+        icon: <Clock3 size={14} />,
       };
     }
 
@@ -145,7 +140,7 @@ export function SubmissionStatusTag({
       return {
         color: 'grey' as const,
         text: 'System Error',
-        icon: <WarningOutlined />,
+        icon: <TriangleAlert size={14} />,
       };
     }
 
@@ -160,12 +155,13 @@ export function SubmissionStatusTag({
   const config = getStatusConfig(status);
 
   return (
-    <Tag
-      color={config.color === 'grey' ? 'default' : config.color}
-      icon={showIcon ? config.icon : undefined}
-      style={{ fontWeight: 500, fontSize: size === 'small' ? 12 : undefined }}
+    <AnimatedBadge
+      status={config.color === 'green' ? 'success' : config.color === 'red' ? 'danger' : config.color === 'orange' ? 'warning' : config.color === 'blue' ? 'info' : 'neutral'}
+      icon={config.icon}
+      showIcon={showIcon && Boolean(config.icon)}
+      size={size === 'small' ? 'sm' : 'md'}
     >
       {config.text}
-    </Tag>
+    </AnimatedBadge>
   );
 }

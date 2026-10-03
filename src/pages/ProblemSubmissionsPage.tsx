@@ -1,9 +1,9 @@
 /**
  * 题目Submissions页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Alert, Button, Card, Modal, Table, Tag, Typography } from 'antd';
-import { LeftOutlined } from '@ant-design/icons';
-import type { TableColumnsType } from 'antd';
+import { Alert, Button, Card, Modal, Table, Tag, Typography } from '../ui/compat';
+import { LeftOutlined } from '../ui/icons';
+import type { TableColumnsType } from '../ui/compat';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {

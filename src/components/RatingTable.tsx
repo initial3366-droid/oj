@@ -1,8 +1,8 @@
 /**
  * RatingTable组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Table, Tag, Typography } from 'antd';
-import type { TableColumnsType } from 'antd';
+import { Table, Tag, Typography } from '../ui/compat';
+import type { TableColumnsType } from '../ui/compat';
 import { useOjData } from '../data/OjDataProvider';
 import type { RatingUser } from '../data/types';
 import { UserAvatar } from './common/UserAvatar';

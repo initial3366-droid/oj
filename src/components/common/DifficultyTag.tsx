@@ -1,7 +1,7 @@
 /**
  * DifficultyTag组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Tag } from 'antd';
+import { AnimatedBadge } from '../motion/animated-badge';
 
 /**
  * Difficulty类型别名，明确该模块内部及 API 边界使用的数据结构。
@@ -21,7 +21,6 @@ interface DifficultyTagProps {
  * 简单-绿色、中等-橙色、困难-红色
  */
 export function DifficultyTag({ difficulty, size = 'sm' }: DifficultyTagProps) {
-  const tagSize = size === 'sm' ? 'small' : size === 'md' ? 'default' : size === 'lg' ? 'large' : size;
   /**
    * 读取Difficulty配置并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
    */
@@ -30,27 +29,27 @@ export function DifficultyTag({ difficulty, size = 'sm' }: DifficultyTagProps) {
 
     if (normalized.includes('简单') || normalized === 'easy') {
       return {
-        color: 'green' as const,
+        status: 'success' as const,
         text: difficulty,
       };
     }
 
     if (normalized.includes('中等') || normalized === 'medium') {
       return {
-        color: 'orange' as const,
+        status: 'warning' as const,
         text: difficulty,
       };
     }
 
     if (normalized.includes('困难') || normalized === 'hard') {
       return {
-        color: 'red' as const,
+        status: 'danger' as const,
         text: difficulty,
       };
     }
 
     return {
-      color: 'grey' as const,
+      status: 'neutral' as const,
       text: difficulty,
     };
   };
@@ -58,11 +57,8 @@ export function DifficultyTag({ difficulty, size = 'sm' }: DifficultyTagProps) {
   const config = getDifficultyConfig(difficulty);
 
   return (
-    <Tag
-      color={config.color === 'grey' ? 'default' : config.color}
-      style={{ fontSize: tagSize === 'small' ? 12 : undefined }}
-    >
+    <AnimatedBadge status={config.status} size={size === 'small' || size === 'sm' ? 'sm' : 'md'} showIcon={false}>
       {config.text}
-    </Tag>
+    </AnimatedBadge>
   );
 }

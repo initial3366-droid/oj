@@ -3,8 +3,8 @@
  */
 import Editor, { type OnMount } from "@monaco-editor/react";
 import "../utils/monacoSetup";
-import { Alert, Button, Card, ConfigProvider, Empty, Flex, Input, Result, Select, Space, Spin, Tag, Typography, theme as antTheme, message } from "antd";
-import { CloseOutlined, CodeOutlined, CopyOutlined, FileOutlined, HistoryOutlined, MinusOutlined, PlusOutlined, SendOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, ConfigProvider, Empty, Flex, Input, Result, Select, Space, Spin, Tag, Typography, theme as antTheme, message } from "../ui/compat";
+import { CloseOutlined, CodeOutlined, CopyOutlined, FileOutlined, HistoryOutlined, MinusOutlined, PlusOutlined, SendOutlined } from "../ui/icons";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { copyTextToClipboard } from "../utils/clipboard";

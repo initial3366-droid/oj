@@ -1,7 +1,8 @@
 /**
  * NotFound页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Button, Card, Typography } from 'antd';
+import { Button } from '../components/motion/button/base';
+import { ArrowLeft } from 'lucide-react';
 
 /**
  * 渲染NotFound页面，并协调其数据加载、状态和交互。
@@ -17,23 +18,10 @@ export function NotFoundPage() {
         padding: 24,
       }}
     >
-      <Card
-        style={{
-          maxWidth: 448,
-          border: '1px solid var(--qoj-color-border)',
-        }}
-        styles={{
-          body: {
-            padding: 40,
-            textAlign: 'center',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 20,
-          },
-        }}
+      <div
+        style={{ maxWidth: 448, padding: 40, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, border: '1px solid var(--qoj-color-border)', borderRadius: 24, background: '#fff', boxShadow: '0 18px 60px rgba(20, 46, 91, .07)' }}
       >
-        <Typography.Text
+        <span
           style={{
             fontSize: 14,
             fontWeight: 600,
@@ -42,22 +30,21 @@ export function NotFoundPage() {
           }}
         >
           404
-        </Typography.Text>
-        <Typography.Title level={2} style={{ margin: 0 }}>
+        </span>
+        <h1 style={{ margin: 0, fontSize: 28 }}>
           页面不存在
-        </Typography.Title>
-        <Typography.Paragraph style={{ margin: 0, fontSize: 14, lineHeight: 1.6 }} type="secondary">
+        </h1>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: 'var(--qoj-color-text-2)' }}>
           每个主要界面都已经拥有独立 URL，请从首页重新进入。
-        </Typography.Paragraph>
+        </p>
         <Button
-          type="primary"
           onClick={() => {
             window.location.href = '/';
           }}
         >
-          回到首页
+          <ArrowLeft size={16} /> 回到首页
         </Button>
-      </Card>
+      </div>
     </div>
   );
 }

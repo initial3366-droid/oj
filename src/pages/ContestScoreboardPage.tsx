@@ -1,8 +1,8 @@
 /**
  * 比赛榜单页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Alert, Button, Card, Spin, Tag, Typography } from 'antd';
-import { CaretDownOutlined, LeftOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Spin, Tag, Typography } from '../ui/compat';
+import { CaretDownOutlined, LeftOutlined } from '../ui/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchContestScoreboard, type ContestScoreboard } from '../data/apiClient';

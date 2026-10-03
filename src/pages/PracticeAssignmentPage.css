@@ -68,7 +68,7 @@
   min-width: 0;
 }
 
-.practice-assignment-table .ant-table-container {
+.practice-assignment-table .qoj-table-wrap {
   overflow-x: hidden;
   overflow-y: hidden;
   border: 1px solid #e5e6eb;
@@ -76,26 +76,26 @@
   background: #fff;
 }
 
-.practice-assignment-table .ant-table-container table {
+.practice-assignment-table .qoj-table-wrap table {
   min-width: 840px;
 }
 
-.practice-assignment-table .ant-table-pagination.ant-pagination {
+.practice-assignment-table .qoj-pagination.qoj-pagination {
   margin-top: 16px;
   padding: 0 4px;
 }
 
-.practice-assignment-table .ant-table-tbody .ant-table-cell {
+.practice-assignment-table .qoj-table tbody td {
   padding: 20px 22px !important;
   vertical-align: middle;
 }
 
-.practice-assignment-table .ant-table-thead .ant-table-cell {
+.practice-assignment-table .qoj-table thead th {
   padding-right: 22px !important;
   padding-left: 22px !important;
 }
 
-.practice-assignment-table .ant-table-thead > tr {
+.practice-assignment-table .qoj-table thead > tr {
   height: 52px;
 }
 
@@ -135,7 +135,7 @@
     justify-content: flex-start;
   }
 
-  .practice-assignment-table .ant-table-container table {
+  .practice-assignment-table .qoj-table-wrap table {
     min-width: 760px;
   }
 }

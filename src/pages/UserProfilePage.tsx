@@ -1,8 +1,9 @@
 /**
  * 用户资料页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Alert, Avatar, Card, Spin, Tag, Typography } from 'antd';
-import { UserOutlined } from '@ant-design/icons';
+import { UserRound } from 'lucide-react';
+import { AnimatedBadge } from '../components/motion/animated-badge';
+import { Loader } from '../components/motion/loader';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchPublicUserProfile, type PublicUserProfile } from '../data/apiClient';
@@ -57,8 +58,8 @@ export function UserProfilePage() {
 
   return (
     <PageContainer title={profile?.displayName ?? '用户主页'} subtitle="User Profile">
-      {message && <Alert type="error" message={message} showIcon={false} style={{ marginBottom: 24 }} />}
-      <Card style={{ border: '1px solid var(--qoj-color-border)' }}>
+      {message && <div role="alert" style={{ marginBottom: 24, padding: '12px 16px', borderRadius: 12, background: '#fff5f5', color: '#9f2525' }}>{message}</div>}
+      <div style={{ border: '1px solid var(--qoj-color-border)', borderRadius: 16, padding: 24, background: '#fff' }}>
         {loading ? (
           <div
             style={{
@@ -70,26 +71,26 @@ export function UserProfilePage() {
               gap: 12,
             }}
           >
-            <Spin size="large" />
-            <Typography.Text type="secondary">
+            <Loader size={32} label="加载用户资料" />
+            <span style={{ color: 'var(--qoj-color-text-2)' }}>
               加载中...
-            </Typography.Text>
+            </span>
           </div>
         ) : profile ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-              <Avatar size={56} style={{ backgroundColor: '#3b82f6' }}>
-                {profile.displayName?.charAt(0)?.toUpperCase() || <UserOutlined />}
-              </Avatar>
-              <div>
-                <Typography.Title level={3} style={{ margin: 0 }}>
-                  {profile.displayName}
-                </Typography.Title>
-                <Typography.Text type="secondary" style={{ display: 'block', marginTop: 6 }}>
-                  @{profile.username}
-                </Typography.Text>
+              <div style={{ width: 56, height: 56, borderRadius: 18, display: 'grid', placeItems: 'center', background: 'var(--qoj-color-primary)', color: '#fff', fontSize: 22, fontWeight: 700 }}>
+                {profile.displayName?.charAt(0)?.toUpperCase() || <UserRound size={24} />}
               </div>
-              <Tag color="blue">{profile.role}</Tag>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 22 }}>
+                  {profile.displayName}
+                </h2>
+                <span style={{ display: 'block', marginTop: 6, color: 'var(--qoj-color-text-2)' }}>
+                  @{profile.username}
+                </span>
+              </div>
+              <AnimatedBadge status="info" showIcon={false}>{profile.role}</AnimatedBadge>
             </div>
 
             <div
@@ -105,20 +106,20 @@ export function UserProfilePage() {
                 ['总分', profile.totalScore],
               ].map(([label, value]) => (
                 <div key={label} style={{ padding: 16, border: '1px solid var(--qoj-color-border)', borderRadius: 8 }}>
-                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>{label}</Typography.Text>
-                  <Typography.Title level={4} style={{ margin: '6px 0 0' }}>{value}</Typography.Title>
+                  <span style={{ color: 'var(--qoj-color-text-2)', fontSize: 13 }}>{label}</span>
+                  <h3 style={{ margin: '6px 0 0', fontSize: 20 }}>{value}</h3>
                 </div>
               ))}
             </div>
 
-            <Typography.Text type="secondary">
+            <span style={{ color: 'var(--qoj-color-text-2)' }}>
               加入时间：{formatDate(profile.createdAt)}
-            </Typography.Text>
+            </span>
           </div>
         ) : (
-          <Typography.Text type="secondary">用户不存在</Typography.Text>
+          <span style={{ color: 'var(--qoj-color-text-2)' }}>用户不存在</span>
         )}
-      </Card>
+      </div>
     </PageContainer>
   );
 }

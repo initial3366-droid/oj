@@ -1,11 +1,7 @@
 /**
  * FrontFooter组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Layout, Typography } from 'antd';
 import { useEffect, useState } from 'react';
-
-const { Footer } = Layout;
-const { Text } = Typography;
 
 /**
  * FooterSettings接口，明确该模块内部及 API 边界使用的数据结构。
@@ -64,7 +60,7 @@ export function FrontFooter() {
   }, []);
 
   return (
-    <Footer className="front-footer">
+    <footer className="front-footer">
       <style>{`
         .front-footer {
           margin-top: 48px;
@@ -159,7 +155,7 @@ export function FrontFooter() {
 
       <div className="front-footer-content">
         <div className="front-footer-main">
-          <Text className="front-footer-text">{settings.footerText}</Text>
+          <span className="front-footer-text">{settings.footerText}</span>
           {settings.icpNumber ? <span className="front-footer-separator">|</span> : null}
           {settings.icpNumber ? (
             <a
@@ -203,6 +199,6 @@ export function FrontFooter() {
           ) : null}
         </div>
       </div>
-    </Footer>
+    </footer>
   );
 }

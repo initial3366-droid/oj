@@ -1,8 +1,8 @@
 /**
  * 无需登录的比赛外榜。榜单表格与比赛详情页排行榜保持一致。
  */
-import { Alert, Button, Card, Spin, Tag, Typography } from 'antd';
-import { ReloadOutlined, SafetyOutlined, StarOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Spin, Tag, Typography } from '../ui/compat';
+import { ReloadOutlined, SafetyOutlined, StarOutlined } from '../ui/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {

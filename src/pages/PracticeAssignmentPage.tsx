@@ -1,8 +1,8 @@
 /**
  * 练习Assignment页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Button, Card, Divider, Input, Table, Tag, Typography } from "antd";
-import { CodeOutlined, LockOutlined } from "@ant-design/icons";
+import { Button, Card, Divider, Input, Table, Tag, Typography } from "../ui/compat";
+import { CodeOutlined, LockOutlined } from "../ui/icons";
 import { FormEvent, useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { fetchPracticeDetail, type Practice } from "../data/apiClient";
