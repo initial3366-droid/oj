@@ -1,7 +1,7 @@
 /**
  * 认证页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Alert, Button, Card, Input, Modal, Typography, message as antdMessage } from 'antd';
+import { Alert, Button, Card, Input, Modal, Typography, message as toastMessage } from '../ui/compat';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { bindEmail, fetchMe, loginWithoutPersist, register, resetPassword, saveFrontendAuthTokens } from '../data/apiClient';
@@ -74,7 +74,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   // 如果已登录，重定向到用户中心
   useEffect(() => {
     if (state.activeUser !== null) {
-      antdMessage.info('您已登录');
+      toastMessage.info('您已登录');
       navigate(redirectPath);
     }
   }, [state.activeUser, navigate, redirectPath]);
@@ -307,7 +307,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       if (pendingAuth) {
         saveFrontendAuthTokens(pendingAuth);
       }
-      antdMessage.success('邮箱绑定成功');
+      toastMessage.success('邮箱绑定成功');
       setBindModalVisible(false);
       window.location.href = redirectPath;
     } catch (error) {
@@ -393,7 +393,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       } else {
         const auth = await loginWithoutPersist(form.username, form.password);
         if (auth.portal === 'TEACHER') {
-          antdMessage.info('已切换到教师端登录');
+          toastMessage.info('已切换到教师端登录');
           navigate(`/teacher/login?username=${encodeURIComponent(form.username.trim())}`, { replace: true });
           return;
         }
@@ -412,14 +412,14 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         saveFrontendAuthTokens(auth);
       }
       // 刷新页面以重新加载用户状态：先展示成功提示，再延迟跳转，避免提示被立即刷新打断
-      antdMessage.success(isRegister ? '注册成功' : '登录成功', 2);
+      toastMessage.success(isRegister ? '注册成功' : '登录成功', 2);
       setTimeout(() => {
         window.location.href = redirectPath;
       }, 1200);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '操作失败';
       if (!isRegister && errorMessage.includes('教师账号请使用教师端登录')) {
-        antdMessage.info('已切换到教师端登录');
+        toastMessage.info('已切换到教师端登录');
         navigate(`/teacher/login?username=${encodeURIComponent(form.username.trim())}`, { replace: true });
         return;
       }
@@ -591,7 +591,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         title="绑定邮箱"
         open={bindModalVisible}
         closable={false}
-        maskClosable={false}
+        mask={{ closable: false }}
         okText="绑定"
         confirmLoading={bindLoading}
         onOk={submitBindEmail}

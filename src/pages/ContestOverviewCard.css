@@ -1,44 +1,208 @@
-/* 比赛详情顶部概览 Card 样式。布局与响应式按重构方案执行，颜色由组件内 theme token 提供。 */
+/* 比赛详情顶部概览。 */
 
 .contest-overview-card {
-  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--qoj-color-border) !important;
+  border-radius: 18px !important;
+  background: var(--qoj-color-bg-0);
+  box-shadow: 0 8px 28px rgba(25, 45, 80, 0.035);
 }
 
-.contest-overview-card .ant-card-body {
-  padding: 24px;
+.contest-overview-card .qoj-card-body {
+  padding: 28px 30px 22px;
 }
 
 .contest-overview-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 240px;
-  gap: 32px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(338.8px, 387.2px);
+  gap: 28px;
+  align-items: stretch;
 }
 
 .contest-overview-content {
+  display: flex;
   min-width: 0;
-  max-width: 760px;
+  flex-direction: column;
 }
 
-.contest-overview-title {
-  margin: 16px 0 0 !important;
-  font-size: 28px;
-  line-height: 36px;
-  font-weight: 600;
+.contest-overview-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--qoj-color-primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
-.contest-overview-description {
-  margin: 12px 0 0 !important;
-  font-size: 14px;
-  line-height: 22px;
+.contest-overview-eyebrow > span {
+  width: 18px;
+  height: 3px;
+  border-radius: 3px;
+  background: currentColor;
 }
 
-.contest-overview-times {
+.contest-overview-title-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-top: 12px;
 }
 
-.contest-overview-time-item {
-  font-size: 14px;
+.contest-overview-title {
+  min-width: 0;
+  margin: 0;
+  color: var(--qoj-color-text-0);
+  font-size: clamp(28px, 3.2vw, 38px);
+  font-weight: 750;
+  letter-spacing: -0.035em;
+  line-height: 1.22;
+  overflow-wrap: anywhere;
+}
+
+.contest-overview-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.contest-overview-status > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.contest-overview-status.is-running {
+  color: var(--qoj-color-success-dark);
+  background: var(--qoj-color-success-light-default);
+}
+
+.contest-overview-status.is-not-started {
+  color: var(--qoj-color-primary);
+  background: var(--qoj-color-primary-light-default);
+}
+
+.contest-overview-status.is-ended {
+  color: var(--qoj-color-text-2);
+  background: var(--qoj-color-bg-2);
+}
+
+.contest-overview-meta-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.contest-overview-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--qoj-color-border);
+  border-radius: 7px;
+  color: var(--qoj-color-text-2);
+  background: var(--qoj-color-bg-0);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.contest-overview-meta-item .anticon {
+  color: var(--qoj-color-primary);
+  font-size: 13px;
+}
+
+.contest-overview-schedule {
+  min-width: 0;
+  margin-top: auto;
+  padding: 20px 22px;
+  border: 1px solid var(--qoj-color-primary-light-hover);
+  border-radius: 12px;
+  background: #f7fbff;
+}
+
+.contest-overview-schedule-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--qoj-color-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.contest-overview-schedule-heading small {
+  margin-left: auto;
+  color: var(--qoj-color-text-3);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.contest-overview-schedule-track {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(90px, 0.58fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-top: 15px;
+}
+
+.contest-overview-schedule-time {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  text-align: center;
+}
+
+.contest-overview-schedule-time > span {
+  color: var(--qoj-color-text-3);
+  font-size: 12px;
+}
+
+.contest-overview-schedule-time strong {
+  color: var(--qoj-color-text-0);
+  font-size: clamp(13px, 1.3vw, 16px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.contest-overview-schedule-duration {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  color: var(--qoj-color-primary);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.contest-overview-schedule-duration::before {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--qoj-color-primary-light-hover);
+  content: '';
+}
+
+.contest-overview-schedule-duration span {
+  position: relative;
+  z-index: 1;
+  padding: 4px 9px;
+  border: 1px solid var(--qoj-color-primary-light-hover);
+  border-radius: 999px;
+  background: #f7fbff;
 }
 
 .contest-overview-alert {
@@ -46,81 +210,243 @@
 }
 
 .contest-overview-clock {
-  border-radius: 8px;
-  padding: 16px;
-  min-height: 104px;
+  position: relative;
+  display: flex;
+  min-height: 252px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 23px;
+  overflow: hidden;
+  border: 1px solid #274271;
+  border-radius: 14px;
+  color: #fff;
+  background: #172b4f;
+  box-shadow: 0 12px 28px rgba(21, 44, 85, 0.12);
+}
+
+.contest-overview-clock::after {
+  position: absolute;
+  right: -48px;
+  bottom: -48px;
+  width: 150px;
+  height: 150px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 50%;
+  box-shadow: 0 0 0 22px rgba(255, 255, 255, 0.025), 0 0 0 44px rgba(255, 255, 255, 0.018);
+  content: '';
+  pointer-events: none;
+}
+
+.contest-overview-clock.is-ended {
+  background: #263b5b;
+}
+
+.contest-overview-clock-kicker {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: center;
-  text-align: center;
+  justify-content: space-between;
+  color: #b9cbea;
+  font-size: 12px;
+  font-weight: 650;
 }
 
-.contest-overview-footer {
-  margin-top: 0;
+.contest-overview-live-pip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #b3f1d8;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
-.contest-overview-meta {
-  font-size: 14px;
+.contest-overview-live-pip::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.16);
+  content: '';
 }
 
-.contest-overview-register-reason {
+.contest-overview-clock.is-ended .contest-overview-live-pip {
+  color: #cbd5e1;
+}
+
+.contest-overview-clock.is-ended .contest-overview-live-pip::before {
+  background: #94a3b8;
+  box-shadow: none;
+}
+
+.contest-overview-clock-body {
+  position: relative;
+  z-index: 1;
+  margin-top: 20px;
+}
+
+.contest-overview-clock-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #d4e1f5;
   font-size: 13px;
 }
 
-/* 平板端 769–1024px */
+.contest-overview-clock-value {
+  display: block;
+  color: #fff;
+  font-size: clamp(34px, 4vw, 43px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.contest-overview-clock-progress {
+  position: relative;
+  z-index: 1;
+  margin-top: 18px;
+}
+
+.contest-overview-progress-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.contest-overview-progress-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #7dd3fc;
+}
+
+.contest-overview-clock-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  color: #b9cbea;
+  font-size: 11px;
+}
+
+.contest-overview-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--qoj-color-border);
+}
+
+.contest-overview-participation,
+.contest-overview-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.contest-overview-participation {
+  color: var(--qoj-color-text-2);
+  font-size: 13px;
+}
+
+.contest-overview-participation strong {
+  color: var(--qoj-color-text-0);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.contest-overview-participation-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--qoj-color-primary);
+  background: var(--qoj-color-primary-light-default);
+  font-size: 15px;
+}
+
+.contest-overview-register-reason {
+  color: var(--qoj-color-text-3);
+  font-size: 12px;
+}
+
 @media (max-width: 1024px) {
   .contest-overview-main {
-    grid-template-columns: minmax(0, 1fr) 220px;
-    gap: 24px;
+    grid-template-columns: minmax(0, 1fr) 338.8px;
+    gap: 20px;
+  }
+
+  .contest-overview-card .qoj-card-body {
+    padding: 24px;
+  }
+
+  .contest-overview-schedule {
+    padding: 17px;
   }
 }
 
-/* 移动端 <=768px */
-@media (max-width: 768px) {
-  .contest-overview-card .ant-card-body {
-    padding: 16px;
+@media (max-width: 850px) {
+  .contest-overview-main {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .contest-overview-main {
-    grid-template-columns: 1fr;
-    gap: 16px;
+  .contest-overview-schedule {
+    margin-top: 22px;
+  }
+
+  .contest-overview-clock {
+    min-height: 205px;
+  }
+}
+
+@media (max-width: 620px) {
+  .contest-overview-card .qoj-card-body {
+    padding: 19px 16px;
   }
 
   .contest-overview-title {
-    font-size: 22px;
-    line-height: 30px;
+    font-size: 28px;
   }
 
-  /* 倒计时改全宽横向面板：标题在左、数值在右 */
+  .contest-overview-meta-list {
+    margin-top: 14px;
+  }
+
+  .contest-overview-schedule {
+    padding: 17px 14px;
+  }
+
+  .contest-overview-schedule-track {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
   .contest-overview-clock {
-    min-height: 0;
-    padding: 12px 16px;
-    text-align: left;
+    padding: 19px;
   }
 
-  .contest-overview-clock .ant-statistic {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
+  .contest-overview-clock-foot {
+    flex-wrap: wrap;
   }
 
-  .contest-overview-clock .ant-statistic-title {
-    margin-bottom: 0;
-  }
-
-  /* Footer 纵向：信息在上、按钮组在下，按钮 block 全宽 */
   .contest-overview-footer {
-    flex-direction: column;
     align-items: stretch;
+    flex-direction: column;
   }
 
   .contest-overview-actions {
-    flex-direction: column;
+    width: 100%;
   }
 
-  .contest-overview-actions .ant-btn {
-    width: 100%;
+  .contest-overview-actions .qoj-button {
+    flex: 1 1 auto;
   }
 }

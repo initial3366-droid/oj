@@ -1,8 +1,8 @@
 /**
  * ErrorState组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Empty, Button } from 'antd';
-import { CloseCircleOutlined } from '@ant-design/icons';
+import { CircleX } from 'lucide-react';
+import { Button } from '../motion/button/base';
 
 /**
  * ErrorStateProps接口，明确该模块内部及 API 边界使用的数据结构。
@@ -34,25 +34,19 @@ export function ErrorState({
         ...style,
       }}
     >
-      <Empty
-        image={<CloseCircleOutlined style={{ fontSize: 150, color: '#f5222d' }} />}
-        description={
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 16 }}>{title}</div>
-            {message && <div style={{ marginTop: 8 }}>{message}</div>}
-          </div>
-        }
-      >
+      <div className="qoj-beui-empty qoj-beui-error">
+        <CircleX size={64} strokeWidth={1.25} aria-hidden="true" />
+        <div style={{ fontWeight: 600, fontSize: 16 }}>{title}</div>
+        {message && <div>{message}</div>}
         {onRetry && (
           <Button
-            type="primary"
             onClick={onRetry}
             style={{ marginTop: 16 }}
           >
             {retryText}
           </Button>
         )}
-      </Empty>
+      </div>
     </div>
   );
 }

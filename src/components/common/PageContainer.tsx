@@ -2,9 +2,6 @@
  * 页面Container组件。封装可复用的界面结构、展示规则及交互行为。
  */
 import { ReactNode } from 'react';
-import { Breadcrumb, Typography } from 'antd';
-
-const { Title } = Typography;
 
 /**
  * 页面ContainerProps接口，明确该模块内部及 API 边界使用的数据结构。
@@ -83,9 +80,14 @@ export function PageContainer({
       {/* 面包屑 */}
       {breadcrumb && breadcrumb.length > 0 && (
         <div style={{ marginBottom: 16 }}>
-          <Breadcrumb
-            items={breadcrumb.map((item) => ({ title: item.href ? <a href={item.href}>{item.text}</a> : item.text }))}
-          />
+          <nav aria-label="面包屑导航" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--qoj-color-text-2)', fontSize: 13 }}>
+            {breadcrumb.map((item, index) => (
+              <span key={`${item.text}-${index}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                {index > 0 && <span aria-hidden="true">/</span>}
+                {item.href ? <a href={item.href}>{item.text}</a> : <span aria-current={index === breadcrumb.length - 1 ? 'page' : undefined}>{item.text}</span>}
+              </span>
+            ))}
+          </nav>
         </div>
       )}
 
@@ -97,21 +99,21 @@ export function PageContainer({
               {(title || subtitle) && (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
                   {title && (
-                    <Title level={2} style={{ margin: 0 }}>
+                    <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>
                       {title}
-                    </Title>
+                    </h1>
                   )}
                   {subtitle && (
-                    <Title level={5} type="secondary" style={{ margin: 0 }}>
+                    <span style={{ color: 'var(--qoj-color-text-2)', fontSize: 14 }}>
                       {subtitle}
-                    </Title>
+                    </span>
                   )}
                 </div>
               )}
               {description && (
-                <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+                <span style={{ display: 'block', marginTop: 8, color: 'var(--qoj-color-text-2)' }}>
                   {description}
-                </Typography.Text>
+                </span>
               )}
             </div>
             {extra && (

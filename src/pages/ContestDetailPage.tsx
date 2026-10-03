@@ -1,13 +1,13 @@
 /**
  * 比赛详情页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Button, Card, Checkbox, Input, Modal, Pagination, Select, Spin, Tabs, Tag, Typography } from 'antd';
+import { Button, Card, Checkbox, Input, Modal, Pagination, Select, Spin, Tabs, Tag, Typography } from '../ui/compat';
 import {
   ArrowLeftOutlined,
   ReloadOutlined,
   SearchOutlined,
   StarFilled,
-} from '@ant-design/icons';
+} from '../ui/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -31,6 +31,7 @@ import { useContestClock } from '../lib/useContestClock';
 import { encryptId } from '../utils/cipher';
 import { ContestOverviewCard } from './ContestOverviewCard';
 import { languageLabel } from '../data/languages';
+import './ContestDetailPage.css';
 
 const { Text } = Typography;
 
@@ -155,6 +156,16 @@ function acceptedMinute(startTime: string, acceptedAt?: string | null) {
 
 function attemptText(attempts: number) {
   return attempts === 1 ? '1 try' : `${attempts} tries`;
+}
+
+/**
+ * 计算题目通过率，始终以通过数 / 提交数计算并保留整数百分比。
+ */
+function problemAcceptanceRate(submissionCount?: number, acceptedCount?: number) {
+  const submissions = Number(submissionCount ?? 0);
+  const accepted = Number(acceptedCount ?? 0);
+  if (!Number.isFinite(submissions) || submissions <= 0 || !Number.isFinite(accepted)) return 0;
+  return Math.max(0, Math.min(100, Math.round((accepted / submissions) * 100)));
 }
 
 /**
@@ -733,7 +744,7 @@ export function ContestDetailPage() {
       key: 'intro',
       label: '比赛介绍',
       children: (
-        <div style={{ padding: 16 }}>
+        <div className="contest-detail-panel">
           {contest.description ? (
             <div
               className="contest-intro-html announcement-html markdown-math"
@@ -751,96 +762,51 @@ export function ContestDetailPage() {
       key: 'problems',
       label: '题目列表',
       children: (
-        <div style={{ padding: 16 }}>
+        <div className="contest-problems-panel">
           {!contest.problems || contest.problems.length === 0 ? (
-            <div style={{ padding: '48px 0', textAlign: 'center' }}>
-              <div style={{ fontSize: 14, color: 'rgba(0, 0, 0, 0.45)', marginBottom: 8 }}>
+            <div className="contest-problems-empty">
+              <div className="contest-problems-empty-title">
                 {contest.status === "NOT_STARTED" ? "比赛尚未开始，题目列表暂未公开" : "暂无题目"}
               </div>
               {contest.status === "NOT_STARTED" && (
-                <div style={{ fontSize: 12, color: 'rgba(0, 0, 0, 0.25)' }}>
+                <div className="contest-problems-empty-hint">
                   比赛开始后即可查看题目
                 </div>
               )}
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {(contest.problems || []).map((problem) => {
+            <div className="contest-problem-list">
+              {contest.problems.map((problem) => {
                 const pid = problem.contestProblemId ?? problem.problemId;
                 const acPid = rawToContestId.get(problem.problemId) ?? problem.problemId;
                 const isAccepted = acRawIds.has(problem.problemId) || acRawIds.has(acPid);
+                const submissionCount = Number(problem.submissionCount ?? 0);
+                const acceptedCount = Number(problem.acceptedCount ?? 0);
+                const acceptanceRate = problemAcceptanceRate(submissionCount, acceptedCount);
                 return (
-                <div
+                <article
                   key={pid}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '40px 1fr auto',
-                    alignItems: 'center',
-                    padding: '14px 16px',
-                    borderRadius: 8,
-                    border: isAccepted ? '1px solid #52c41a' : '1px solid #f0f0f0',
-                    backgroundColor: isAccepted ? '#f6ffed' : '#fff',
-                    gap: 12,
-                  }}
+                  className={`contest-problem-row${isAccepted ? ' is-accepted' : ''}`}
                 >
-                  <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: '50%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: isAccepted ? '#52c41a' : '#e6f4ff',
-                      color: isAccepted ? '#fff' : '#1677ff',
-                      fontWeight: 700,
-                      fontSize: 15,
-                    }}
-                  >
-                    {isAccepted ? '✓' : problem.label}
+                  <div className="contest-problem-index" aria-hidden="true">
+                    {problem.label}
                   </div>
-                  <div>
-<div
-                    role="link"
-                    tabIndex={0}
-                    onClick={() => openContestProblem(pid, problem.label)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') openContestProblem(pid, problem.label);
-                    }}
-                    style={{ fontWeight: 600, fontSize: 16, lineHeight: '24px', color: 'rgba(0, 0, 0, 0.88)', cursor: 'pointer' }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.color = '#1677ff'; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.color = 'rgba(0, 0, 0, 0.88)'; }}
-                  >
+                  <div className="contest-problem-main">
+                    <button
+                      type="button"
+                      className="contest-problem-title"
+                      onClick={() => openContestProblem(pid, problem.label)}
+                    >
                       {problem.title}
-                    </div>
-                    <div style={{ marginTop: 2, fontSize: 12, color: 'rgba(0, 0, 0, 0.45)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {contest.type === "OI" && <span>分值: {problem.score ?? 100}</span>}
-                      {isAccepted && <Tag color="success" style={{ marginInlineEnd: 0 }}>已通过</Tag>}
-                    </div>
+                    </button>
                   </div>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'auto 3ch',
-                      rowGap: 2,
-                      columnGap: 8,
-                      minWidth: 78,
-                      color: 'rgba(0, 0, 0, 0.45)',
-                      fontSize: 16,
-                      lineHeight: '24px',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <span>提交</span>
-                    <strong style={{ color: 'rgba(0, 0, 0, 0.88)', fontSize: 16, width: '3ch', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                      {problem.submissionCount ?? 0}
-                    </strong>
-                    <span>通过</span>
-                    <strong style={{ color: '#52c41a', fontSize: 16, width: '3ch', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                      {problem.acceptedCount ?? 0}
-                    </strong>
+                  <div className="contest-problem-stats" aria-label={`提交 ${submissionCount}，通过 ${acceptedCount}，通过率 ${acceptanceRate}%`}>
+                    <span>提交 <strong>{submissionCount}</strong></span>
+                    <span>通过 <strong>{acceptedCount}</strong></span>
+                    <span className="contest-problem-rate">通过率 <strong>{acceptanceRate}%</strong></span>
+                    {contest.type === "OI" && <span className="contest-problem-score">分值 {problem.score ?? 100}</span>}
                   </div>
-                </div>
+                </article>
                 );
               })}
             </div>
@@ -851,9 +817,9 @@ export function ContestDetailPage() {
     ...(contest.registered ? [
       {
         key: 'submissions',
-        label: '提交记录',
+        label: '提交列表',
         children: (
-          <div style={{ padding: 16 }}>
+          <div className="contest-detail-panel">
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
                 <Select
@@ -1024,7 +990,7 @@ export function ContestDetailPage() {
         key: 'my-submissions',
         label: '我的提交',
         children: (
-          <div style={{ padding: 16 }}>
+          <div className="contest-detail-panel">
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
               <Button
                 icon={<ReloadOutlined />}
@@ -1148,9 +1114,9 @@ export function ContestDetailPage() {
       },
       {
         key: 'scoreboard',
-        label: '排行榜',
+        label: '实时榜单',
         children: (
-          <div style={{ padding: 16 }}>
+          <div className="contest-detail-panel">
             {scoreboardLoading ? (
               <div style={{ padding: '48px 0', textAlign: 'center' }}>
                 <Spin />
@@ -1379,6 +1345,11 @@ export function ContestDetailPage() {
       },
     ] : []),
   ];
+  // Tab 顺序与独立预览页一致；每个面板内部仍沿用主项目原有内容。
+  const tabOrder: TabKey[] = ['intro', 'problems', 'my-submissions', 'scoreboard', 'submissions'];
+  const orderedTabItems = tabOrder
+    .map((key) => tabItems.find((item) => item.key === key))
+    .filter((item): item is (typeof tabItems)[number] => Boolean(item));
 
   return (
     <PageContainer>
@@ -1397,22 +1368,17 @@ export function ContestDetailPage() {
         />
 
       {canViewProblemSection ? (
-      <Card
+      <div
         id="contest-problems"
-        className="contest-detail-static-card"
-        style={{
-          border: '1px solid #f0f0f0',
-          boxShadow: 'none',
-        }}
-        styles={{ body: { padding: 0 } }}
+        className="contest-detail-tabs-layout"
       >
         <Tabs
-          activeKey={tabItems.some((item) => item.key === activeTab) ? activeTab : 'problems'}
+          className="contest-detail-tabs"
+          activeKey={orderedTabItems.some((item) => item.key === activeTab) ? activeTab : 'problems'}
           onChange={(key) => setActiveTab(key)}
-          style={{ padding: '0 24px' }}
-          items={tabItems}
+          items={orderedTabItems}
         />
-      </Card>
+      </div>
       ) : (
         <Card
           className="contest-detail-static-card"

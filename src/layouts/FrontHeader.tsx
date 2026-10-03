@@ -1,38 +1,35 @@
-/**
- * FrontHeader组件。封装可复用的界面结构、展示规则及交互行为。
- */
-import { Avatar, Button, ConfigProvider, Dropdown, Flex, Grid, Layout, Menu, Space, Typography, theme } from 'antd';
-import type { MenuProps } from 'antd';
-import { LogoutOutlined, MenuOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
-import { useNavigate, useLocation } from 'react-router-dom';
+/** Frontend navigation. All route and account actions remain local to this component. */
 import { useEffect, useState } from 'react';
+import { Menu as MenuIcon, LogOut, Settings, UserRound, X } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Button } from '../components/motion/button/base';
 import { useOjData } from '../data/OjDataProvider';
 import { logout as logoutFrontend } from '../api/auth';
+import './FrontHeader.css';
 
-const { Header } = Layout;
-const { Text } = Typography;
+const navItems = [
+  { key: 'home', label: '首页', path: '/' },
+  { key: 'problems', label: '题库', path: '/problems' },
+  { key: 'practice', label: '题单', path: '/practice' },
+  { key: 'contests', label: '比赛', path: '/contests' },
+  { key: 'submission-queue', label: '提交队列', path: '/submission-queue' },
+  { key: 'leaderboard', label: '排行榜', path: '/leaderboard' },
+];
 
-/**
- * 渲染FrontHeader组件，并协调其数据加载、状态和交互。
- */
 export function FrontHeader() {
   const navigate = useNavigate();
   const location = useLocation();
   const { state } = useOjData();
-  const { token } = theme.useToken();
-  const screens = Grid.useBreakpoint();
-  const isLoggedIn = state.activeUser !== null;
-  const isCompact = !screens.lg;
-  const isNarrow = !screens.md;
-  const headerHeight = 64;
-
   const [siteTitle, setSiteTitle] = useState('QOJ 在线评测系统');
   const [siteLogo, setSiteLogo] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const isLoggedIn = state.activeUser !== null;
 
   useEffect(() => {
     let cancelled = false;
     fetch('/api/v1/settings/frontend')
-      .then((res) => res.json())
+      .then((response) => response.json())
       .then((body) => {
         if (cancelled || body?.code !== 200) return;
         setSiteTitle(body.data?.siteTitle || 'QOJ 在线评测系统');
@@ -42,259 +39,65 @@ export function FrontHeader() {
     return () => { cancelled = true; };
   }, []);
 
-  const navItems = [
-    { key: 'home', label: '首页', path: '/' },
-    { key: 'problems', label: '题库', path: '/problems' },
-    { key: 'practice', label: '题单', path: '/practice' },
-    { key: 'contests', label: '比赛', path: '/contests' },
-    { key: 'submission-queue', label: '提交队列', path: '/submission-queue' },
-    { key: 'leaderboard', label: '排行榜', path: '/leaderboard' },
-  ];
+  useEffect(() => {
+    setMenuOpen(false);
+    setUserMenuOpen(false);
+  }, [location.pathname]);
 
-  /**
-   * 读取有效Key并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
-   */
-  const getActiveKey = () => {
-    const path = location.pathname;
-    if (path === '/') return 'home';
-    if (path.startsWith('/problems')) return 'problems';
-    if (path.startsWith('/practice')) return 'practice';
-    if (path.startsWith('/contests')) return 'contests';
-    if (path.startsWith('/submission-queue')) return 'submission-queue';
-    if (path.startsWith('/leaderboard')) return 'leaderboard';
-    return '';
-  };
-
-  /**
-   * 处理NavClick。可能改变当前路由或查询参数。
-   */
-  const handleNavClick: MenuProps['onClick'] = ({ key }) => {
-    const item = navItems.find(item => item.key === key);
-    if (item) {
-      navigate(item.path);
-    }
-  };
-
-  /**
-   * 处理退出登录。包含异步流程并由调用方处理完成或失败状态；可能改变当前路由或查询参数。
-   */
+  const activeKey = location.pathname === '/' ? 'home' : navItems.find((item) => item.path !== '/' && location.pathname.startsWith(item.path))?.key;
   const handleLogout = async () => {
     await logoutFrontend().catch(() => undefined);
+    setUserMenuOpen(false);
     navigate('/login', { replace: true });
   };
 
-  const userMenuItems: MenuProps['items'] = [
-    {
-      key: 'center',
-      icon: <UserOutlined />,
-      label: '个人中心',
-    },
-    {
-      key: 'settings',
-      icon: <SettingOutlined />,
-      label: '设置',
-    },
-    {
-      type: 'divider',
-    },
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: '退出登录',
-      danger: true,
-    },
-  ];
-
-  /**
-   * 处理用户MenuClick。可能改变当前路由或查询参数。
-   */
-  const handleUserMenuClick: MenuProps['onClick'] = ({ key }) => {
-    if (key === 'center') {
-      navigate('/user-center');
-      return;
-    }
-    if (key === 'settings') {
-      navigate('/user-center?tab=settings');
-      return;
-    }
-    if (key === 'logout') {
-      void handleLogout();
-    }
-  };
-
-  const isLoginPage = location.pathname === '/login';
-  const isRegisterPage = location.pathname === '/register';
-
   return (
-    <Header
-      style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 100,
-        height: headerHeight,
-        lineHeight: 'normal',
-        paddingInline: isCompact ? 16 : 52,
-        background: token.colorBgContainer,
-        borderBottom: `1px solid ${token.colorBorderSecondary}`,
-      }}
-    >
-      <Flex align="center" gap={24} style={{ height: '100%', minWidth: 0 }}>
-        <Button
-          type="text"
-          size="large"
-          onClick={() => navigate('/')}
-          style={{ height: 48, paddingInline: 8, flex: '0 0 auto' }}
-        >
-          <Space size={12}>
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flex: '0 0 auto',
-                width: 44,
-                height: 40,
-                overflow: 'hidden',
-                background: 'transparent',
-              }}
-            >
-              {siteLogo ? (
-                <img
-                  src={siteLogo}
-                  alt={siteTitle}
-                  onError={() => setSiteLogo('')}
-                  style={{
-                    display: 'block',
-                    width: 'auto',
-                    height: 'auto',
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                    objectFit: 'contain',
-                  }}
-                />
-              ) : (
-                <span
-                  style={{
-                    color: token.colorPrimary,
-                    fontSize: 20,
-                    fontWeight: 700,
-                    lineHeight: 1,
-                  }}
-                >
-                  OJ
-                </span>
-              )}
-            </span>
-            {!isCompact ? (
-              <Text strong style={{ color: token.colorPrimary, fontSize: 20 }}>
-                {siteTitle}
-              </Text>
-            ) : null}
-          </Space>
+    <header className="front-header">
+      <div className="front-header-inner">
+        <Button variant="ghost" className="front-brand" onClick={() => navigate('/')} aria-label={siteTitle}>
+          <span className="front-brand-mark">
+            {siteLogo ? <img src={siteLogo} alt="" onError={() => setSiteLogo('')} /> : 'OJ'}
+          </span>
+          <span className="front-brand-title">{siteTitle}</span>
         </Button>
 
-        {isNarrow ? (
-          <Flex justify="center" style={{ flex: 1, minWidth: 0 }}>
-            <Dropdown
-              menu={{
-                items: navItems.map(({ key, label }) => ({ key, label })),
-                selectedKeys: [getActiveKey()],
-                onClick: handleNavClick,
-              }}
-              trigger={['click']}
-              placement="bottom"
-            >
-              <Button type="text" size="large" icon={<MenuOutlined />} aria-label="打开导航菜单" />
-            </Dropdown>
-          </Flex>
-        ) : (
-          <ConfigProvider
-            theme={{
-              components: {
-                Menu: {
-                  activeBarHeight: 3,
-                  activeBarBorderWidth: 0,
-                  horizontalItemHoverBg: 'transparent',
-                  horizontalItemSelectedBg: 'transparent',
-                  itemPaddingInline: 24,
-                },
-              },
-            }}
-          >
-            <Menu
-              mode="horizontal"
-              selectedKeys={[getActiveKey()]}
-              onClick={handleNavClick}
-              items={navItems.map(({ key, label }) => ({ key, label }))}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                height: headerHeight,
-                lineHeight: `${headerHeight}px`,
-                justifyContent: 'center',
-                borderBottom: 'none',
-                fontSize: 16,
-                fontWeight: 500,
-              }}
-            />
-          </ConfigProvider>
-        )}
+        <nav className="front-header-nav" aria-label="主导航">
+          {navItems.map((item) => (
+            <button key={item.key} type="button" className={`front-header-link${activeKey === item.key ? ' is-active' : ''}`} aria-current={activeKey === item.key ? 'page' : undefined} onClick={() => navigate(item.path)}>
+              {item.label}
+            </button>
+          ))}
+        </nav>
 
-        <Flex justify="flex-end" style={{ flex: '0 0 auto' }}>
+        <div className="front-header-actions">
+          <Button variant="ghost" size="icon" className="front-header-menu-toggle" aria-label={menuOpen ? '关闭导航菜单' : '打开导航菜单'} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
+            {menuOpen ? <X size={19} /> : <MenuIcon size={19} />}
+          </Button>
           {isLoggedIn ? (
-            <Dropdown
-              menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
-              placement="bottomRight"
-            >
-              <Button type="text" size="large">
-                <Space>
-                  <Avatar
-                    size="small"
-                    src={state.activeUser?.avatarUrl || undefined}
-                    style={{ background: token.colorPrimary }}
-                  >
-                    {!state.activeUser?.avatarUrl
-                      ? (state.activeUser?.displayName || state.activeUser?.username || 'U').slice(0, 2).toUpperCase()
-                      : null}
-                  </Avatar>
-                  {!isCompact ? (
-                    <Text strong>
-                      {state.activeUser?.displayName || state.activeUser?.username || '用户'}
-                    </Text>
-                  ) : null}
-                </Space>
+            <div className="front-header-user-wrap">
+              <Button variant="ghost" className="front-header-user" aria-label="用户菜单" aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)}>
+                <span className="front-header-avatar">
+                  {state.activeUser?.avatarUrl ? <img src={state.activeUser.avatarUrl} alt="" /> : (state.activeUser?.displayName || state.activeUser?.username || 'U').slice(0, 2).toUpperCase()}
+                </span>
+                <span className="front-header-username">{state.activeUser?.displayName || state.activeUser?.username || '用户'}</span>
               </Button>
-            </Dropdown>
+              {userMenuOpen && <div className="front-header-user-menu" role="menu">
+                <button type="button" role="menuitem" onClick={() => { setUserMenuOpen(false); navigate('/user-center'); }}><UserRound size={16} />个人中心</button>
+                <button type="button" role="menuitem" onClick={() => { setUserMenuOpen(false); navigate('/user-center?tab=settings'); }}><Settings size={16} />设置</button>
+                <button type="button" role="menuitem" onClick={() => { void handleLogout(); }}><LogOut size={16} />退出登录</button>
+              </div>}
+            </div>
           ) : (
-            <Space size={4}>
-              <Button
-                type="text"
-                size="large"
-                onClick={() => navigate('/login')}
-                style={{
-                  color: isLoginPage ? token.colorPrimary : undefined,
-                  fontWeight: isLoginPage ? 600 : 400,
-                  textDecoration: 'none',
-                }}
-              >
-                登录
-              </Button>
-              <Button
-                type="text"
-                size="large"
-                onClick={() => navigate('/register')}
-                style={{
-                  color: isRegisterPage ? token.colorPrimary : undefined,
-                  fontWeight: isRegisterPage ? 600 : 400,
-                  textDecoration: 'none',
-                }}
-              >
-                注册
-              </Button>
-            </Space>
+            <div className="front-header-auth">
+              <Button variant="ghost" className={location.pathname === '/login' ? 'is-active' : ''} onClick={() => navigate('/login')}>登录</Button>
+              <Button variant="ghost" className={location.pathname === '/register' ? 'is-active' : ''} onClick={() => navigate('/register')}>注册</Button>
+            </div>
           )}
-        </Flex>
-      </Flex>
-    </Header>
+        </div>
+      </div>
+      {menuOpen && <nav className="front-header-mobile-nav" aria-label="手机导航">
+        {navItems.map((item) => <button key={item.key} type="button" className={activeKey === item.key ? 'is-active' : ''} onClick={() => { setMenuOpen(false); navigate(item.path); }}>{item.label}</button>)}
+      </nav>}
+    </header>
   );
 }

@@ -2,8 +2,8 @@
  * EmptyState组件。封装可复用的界面结构、展示规则及交互行为。
  */
 import { ReactNode } from 'react';
-import { Empty, Button } from 'antd';
-import { InboxOutlined } from '@ant-design/icons';
+import { Inbox } from 'lucide-react';
+import { Button } from '../motion/button/base';
 
 /**
  * EmptyStateProps接口，明确该模块内部及 API 边界使用的数据结构。
@@ -39,25 +39,20 @@ export function EmptyState({
         ...style,
       }}
     >
-      <Empty
-        image={image || <InboxOutlined style={{ fontSize: 150, color: '#d9d9d9' }} />}
-        description={
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 16 }}>{title}</div>
-            {description && <div style={{ marginTop: 8 }}>{description}</div>}
-          </div>
-        }
-      >
+      <div className="qoj-beui-empty">
+        {image || <Inbox size={64} strokeWidth={1.25} aria-hidden="true" />}
+        <div style={{ fontWeight: 600, fontSize: 16 }}>{title}</div>
+        {description && <div>{description}</div>}
         {action && (
           <Button
-            type={action.type === 'secondary' ? 'default' : action.type === 'tertiary' ? 'text' : 'primary'}
+            variant={action.type === 'secondary' ? 'secondary' : action.type === 'tertiary' ? 'ghost' : 'primary'}
             onClick={action.onClick}
             style={{ marginTop: 16 }}
           >
             {action.text}
           </Button>
         )}
-      </Empty>
+      </div>
     </div>
   );
 }

@@ -1,8 +1,8 @@
 /**
  * 首页页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Card, Tag, Typography } from 'antd';
-import { ExperimentOutlined, TrophyOutlined, TeamOutlined } from '@ant-design/icons';
+import { Card, Tag, Typography } from '../ui/compat';
+import { ExperimentOutlined, TrophyOutlined, TeamOutlined } from '../ui/icons';
 import { AnnouncementCard } from '../components/AnnouncementCard';
 import { HomeCarousel } from '../components/HomeCarousel';
 import { RatingTable } from '../components/RatingTable';

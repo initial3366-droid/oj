@@ -1,7 +1,7 @@
 /**
  * UpcomingContests组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Card, Tag, Typography } from 'antd';
+import { Card, Tag, Typography } from '../ui/compat';
 import { NavLink } from 'react-router-dom';
 import { useOjData } from '../data/OjDataProvider';
 

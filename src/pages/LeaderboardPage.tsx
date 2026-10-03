@@ -1,9 +1,9 @@
 /**
  * 排行榜页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Alert, Avatar, Button, Card, Spin, Table, Typography } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
-import type { TableColumnsType } from 'antd';
+import { Alert, Avatar, Button, Card, Spin, Table, Typography } from '../ui/compat';
+import { ReloadOutlined } from '../ui/icons';
+import type { TableColumnsType } from '../ui/compat';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer } from '../components/common';
@@ -238,7 +238,7 @@ export function LeaderboardPage() {
           color: #92400e;
         }
 
-        .leaderboard-table-card .ant-card-body {
+        .leaderboard-table-card .qoj-card-body {
           padding: 0;
         }
 
@@ -262,13 +262,13 @@ export function LeaderboardPage() {
           table-layout: fixed;
         }
 
-        .leaderboard-class-table-wrap .ant-table-cell {
+        .leaderboard-class-table-wrap .qoj-table td {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
         }
 
-        .leaderboard-table-user-lb .ant-table {
+        .leaderboard-table-user-lb .qoj-table {
           min-width: 720px;
         }
 

@@ -4,8 +4,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { ConfigProvider } from "antd";
-import zhCN from "antd/locale/zh_CN";
 import { filterReact19RefWarning } from "./utils/filterReact19RefWarning";
 import { App } from "./App";
 import { OjDataProvider } from "./data/OjDataProvider";
@@ -18,11 +16,9 @@ filterReact19RefWarning();
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <ConfigProvider locale={zhCN}>
-        <OjDataProvider>
-          <App />
-        </OjDataProvider>
-      </ConfigProvider>
+      <OjDataProvider>
+        <App />
+      </OjDataProvider>
     </BrowserRouter>
   </React.StrictMode>,
 );

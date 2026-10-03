@@ -2,12 +2,12 @@
  * FrontLayout组件。封装可复用的界面结构、展示规则及交互行为。
  */
 import { Outlet, useLocation } from 'react-router-dom';
-import { Layout, FloatButton } from 'antd';
+import { useEffect, useState } from 'react';
+import { ArrowUp } from 'lucide-react';
+import { Button } from '../components/motion/button/base';
 import { FrontHeader } from './FrontHeader';
 import { FrontFooter } from './FrontFooter';
 import { PinnedAnnouncementCard } from '../components/PinnedAnnouncementCard';
-
-const { Content } = Layout;
 
 /**
  * 渲染FrontLayout组件，并协调其数据加载、状态和交互。
@@ -15,6 +15,14 @@ const { Content } = Layout;
 export function FrontLayout() {
   const location = useLocation();
   const isHome = location.pathname === '/';
+  const [showBackTop, setShowBackTop] = useState(false);
+
+  useEffect(() => {
+    const update = () => setShowBackTop(window.scrollY > 280);
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    return () => window.removeEventListener('scroll', update);
+  }, []);
 
   return (
     <div className="front-layout">
@@ -43,38 +51,39 @@ export function FrontLayout() {
           }
         }
 
-        /* 返回顶部按钮：固定定位并去除阴影 */
-        .front-layout .ant-float-btn {
+        .front-back-top {
+          position: fixed;
           right: 40px;
           bottom: 40px;
-          box-shadow: none;
+          z-index: 40;
+          box-shadow: 0 8px 30px rgba(0, 102, 250, .18);
         }
 
         @media (max-width: 768px) {
-          .front-layout .ant-float-btn {
+          .front-back-top {
             right: 20px;
             bottom: 20px;
           }
         }
       `}</style>
 
-      <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'transparent' }}>
         {/* 顶部导航 */}
         <FrontHeader />
 
         {isHome ? <PinnedAnnouncementCard /> : null}
 
         {/* 主内容区 */}
-        <Content className="front-layout-content">
+        <main className="front-layout-content">
           <Outlet />
-        </Content>
+        </main>
 
         {/* 页脚 */}
         <FrontFooter />
 
         {/* 返回顶部 */}
-        <FloatButton.BackTop type="primary" />
-      </Layout>
+        {showBackTop && <Button className="front-back-top" size="icon" aria-label="返回顶部" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}><ArrowUp size={18} /></Button>}
+      </div>
     </div>
   );
 }

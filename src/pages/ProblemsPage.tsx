@@ -1,16 +1,21 @@
 /**
  * Problems页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Alert, Button, Card, Input, Pagination, Select, Table, Tag, Typography } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
-import type { TableColumnsType } from 'antd';
+import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { fetchProblems } from '../data/apiClient';
 import type { Difficulty, Problem } from '../data/types';
 import { PageContainer } from '../components/common';
-
-const { Text } = Typography;
+import { Button } from '../components/motion/button/base';
+import { Input } from '../components/motion/input';
+import { AnimatedBadge } from '../components/motion/animated-badge';
+import {
+  MultiSelect, MultiSelectContent, MultiSelectEmpty, MultiSelectInput,
+  MultiSelectItem, MultiSelectList, MultiSelectTrigger, MultiSelectValue,
+} from '../components/motion/multi-select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/motion/select';
+import './ProblemsPage.css';
 
 const DIFFICULTY_OPTIONS: Array<{ value: Difficulty; label: Difficulty }> = [
   { value: '入门', label: '入门' },
@@ -47,22 +52,16 @@ function attemptBadge(problem: Problem) {
   const state = getAttemptState(problem.attemptStatus);
   if (state === 'passed') {
     return (
-      <Tag color="success" style={{ marginInlineEnd: 0 }}>
-        已通过
-      </Tag>
+      <AnimatedBadge status="success" showIcon={false} size="sm">已通过</AnimatedBadge>
     );
   }
   if (state === 'failed') {
     return (
-      <Tag color="error" style={{ marginInlineEnd: 0 }}>
-        未通过
-      </Tag>
+      <AnimatedBadge status="danger" showIcon={false} size="sm">未通过</AnimatedBadge>
     );
   }
   return (
-    <Tag style={{ marginInlineEnd: 0 }}>
-      未尝试
-    </Tag>
+    <AnimatedBadge status="neutral" showIcon={false} size="sm">未尝试</AnimatedBadge>
   );
 }
 
@@ -182,202 +181,94 @@ export function ProblemsPage() {
     return 'default';
   };
 
-  const columns: TableColumnsType<Problem> = [
-    {
-      title: '题目',
-      dataIndex: 'title',
-      width: 300,
-      render: (title: string, record) => (
-        <NavLink
-          to={`/practice/problem/${record.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            color: '#1677ff',
-            fontSize: 14,
-            fontWeight: 600,
-            textDecoration: 'none',
-          }}
-        >
-          {title}
-        </NavLink>
-      ),
-    },
-    {
-      title: '标签',
-      dataIndex: 'tags',
-      width: 250,
-      render: (tags: string[]) => (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {tags.map((tag) => (
-            <Tag key={tag} style={{ marginInlineEnd: 0 }}>
-              {tag}
-            </Tag>
-          ))}
-        </div>
-      ),
-    },
-    {
-      title: '难度',
-      dataIndex: 'difficulty',
-      width: 100,
-      render: (difficulty: string) => (
-        <Tag color={getDifficultyColor(difficulty)} style={{ marginInlineEnd: 0 }}>
-          {difficulty}
-        </Tag>
-      ),
-    },
-    {
-      title: '是否通过',
-      dataIndex: 'attemptStatus',
-      width: 120,
-      render: (_text, record) => attemptBadge(record),
-    },
-    {
-      title: 'AC 率',
-      dataIndex: 'acRate',
-      width: 100,
-      render: (acRate: number) => (
-        <Text style={{ fontSize: 14 }}>{acRate}%</Text>
-      ),
-    },
-    {
-      title: '操作',
-      dataIndex: 'action',
-      width: 100,
-      render: (_text, record) => (
-        <NavLink
-          to={`/practice/problem/${record.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: '#1677ff', textDecoration: 'none' }}
-        >
-          答题
-        </NavLink>
-      ),
-    },
-  ];
+
+  const pageCount = Math.max(1, Math.ceil(problems.length / pageSize));
 
   return (
-    <PageContainer
-      title="题库"
-    >
-      {message && (
-        <Alert
-          type="error"
-          message={message}
-          showIcon={false}
-          banner
-          style={{ marginBottom: 24 }}
-        />
-      )}
+    <PageContainer title="题库">
+      {message && <div className="problems-notice" role="alert">{message}</div>}
 
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: 12,
-          marginBottom: 16,
-        }}
-      >
+      <div className="problems-toolbar">
         <Input
-          prefix={<SearchOutlined />}
+          aria-label="搜索题目或标签"
+          leftIcon={<Search size={17} />}
           placeholder="搜索题目或标签"
           value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-          allowClear
-          onClear={() => setKeyword('')}
-          style={{ width: 280 }}
+          onChange={setKeyword}
+          className="problems-search"
         />
-        <Select
-          mode="multiple"
-          placeholder="难度"
-          value={selectedDifficulties}
-          onChange={(value) => setSelectedDifficulties(value as Difficulty[])}
-          style={{ minWidth: 160 }}
-          options={DIFFICULTY_OPTIONS}
-          notFoundContent="无匹配难度"
-        />
-        <Select
-          mode="multiple"
-          showSearch
-          placeholder="标签"
-          value={selectedTags}
-          onChange={(value) => setSelectedTags(value as string[])}
-          style={{ minWidth: 200, maxWidth: 360 }}
-          options={allTags.map((tag) => ({ value: tag, label: tag }))}
-          notFoundContent="无匹配标签"
-        />
-        <Select
-          placeholder="是否通过"
-          value={selectedAttemptState ?? undefined}
-          onChange={(value) => setSelectedAttemptState((value as AttemptState | undefined) ?? null)}
-          allowClear
-          style={{ minWidth: 140 }}
-          options={ATTEMPT_STATE_OPTIONS}
-        />
+        <div className="problems-filter">
+          <MultiSelect value={selectedDifficulties} onValueChange={(values) => setSelectedDifficulties(values as Difficulty[])}>
+            <MultiSelectTrigger><MultiSelectValue placeholder="难度" /><MultiSelectInput aria-label="搜索难度" placeholder="" /></MultiSelectTrigger>
+            <MultiSelectContent><MultiSelectList ariaLabel="难度">
+              {DIFFICULTY_OPTIONS.map(({ value, label }) => <MultiSelectItem key={value} value={value} textValue={label}>{label}</MultiSelectItem>)}
+              <MultiSelectEmpty>无匹配难度</MultiSelectEmpty>
+            </MultiSelectList></MultiSelectContent>
+          </MultiSelect>
+        </div>
+        <div className="problems-filter problems-tags-filter">
+          <MultiSelect value={selectedTags} onValueChange={setSelectedTags}>
+            <MultiSelectTrigger><MultiSelectValue placeholder="标签" /><MultiSelectInput aria-label="搜索标签" placeholder="" /></MultiSelectTrigger>
+            <MultiSelectContent><MultiSelectList ariaLabel="标签">
+              {allTags.map((tag) => <MultiSelectItem key={tag} value={tag} textValue={tag}>{tag}</MultiSelectItem>)}
+              <MultiSelectEmpty>无匹配标签</MultiSelectEmpty>
+            </MultiSelectList></MultiSelectContent>
+          </MultiSelect>
+        </div>
+        <div className="problems-filter problems-status-filter">
+          <Select value={selectedAttemptState ?? ''} onValueChange={(value) => setSelectedAttemptState((value || null) as AttemptState | null)}>
+            <SelectTrigger><SelectValue placeholder="是否通过" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">全部状态</SelectItem>
+              {ATTEMPT_STATE_OPTIONS.map(({ value, label }) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
         {(selectedDifficulties.length > 0 || selectedTags.length > 0 || selectedAttemptState || keyword) && (
-          <Button
-            onClick={() => {
-              setKeyword('');
-              setSelectedDifficulties([]);
-              setSelectedTags([]);
-              setSelectedAttemptState(null);
-            }}
-          >
-            清除筛选
-          </Button>
+          <Button variant="ghost" onClick={() => {
+            setKeyword('');
+            setSelectedDifficulties([]);
+            setSelectedTags([]);
+            setSelectedAttemptState(null);
+          }}>清除筛选</Button>
         )}
-        <Text type="secondary" style={{ marginLeft: 'auto', fontSize: 13 }}>
-          共 {problems.length} 题
-        </Text>
+        <span className="problems-count">共 {problems.length} 题</span>
       </div>
 
-      <Card
-        style={{
-          border: '1px solid #f0f0f0',
-        }}
-        styles={{ body: { padding: 0 } }}
-      >
-        <Table
-          columns={columns}
-          dataSource={pagedProblems}
-          rowKey="id"
-          pagination={false}
-          locale={{
-            emptyText: (
-              <div style={{ padding: '40px 0', textAlign: 'center' }}>
-                <Text type="secondary">
-                  {(keyword || selectedDifficulties.length > 0 || selectedTags.length > 0 || selectedAttemptState)
-                    ? '未找到匹配的题目，试试调整筛选条件'
-                    : '暂无题目'}
-                </Text>
-              </div>
-            ),
-          }}
-        />
-      </Card>
+      <div className="problems-table-wrap">
+        <table className="problems-table">
+          <thead><tr><th>题目</th><th>标签</th><th>难度</th><th>是否通过</th><th>AC 率</th><th>操作</th></tr></thead>
+          <tbody>
+            {pagedProblems.map((problem) => (
+              <tr key={problem.id}>
+                <td><NavLink className="problems-title-link" to={`/practice/problem/${problem.id}`} target="_blank" rel="noopener noreferrer">{problem.title}</NavLink></td>
+                <td><div className="problems-tags">{problem.tags.map((tag) => <span key={tag} className="problems-tag">{tag}</span>)}</div></td>
+                <td><AnimatedBadge status={getDifficultyColor(problem.difficulty) === 'success' ? 'success' : getDifficultyColor(problem.difficulty) === 'warning' ? 'warning' : getDifficultyColor(problem.difficulty) === 'error' ? 'danger' : 'neutral'} showIcon={false} size="sm">{problem.difficulty}</AnimatedBadge></td>
+                <td>{attemptBadge(problem)}</td>
+                <td>{problem.acRate}%</td>
+                <td><NavLink className="problems-action-link" to={`/practice/problem/${problem.id}`} target="_blank" rel="noopener noreferrer">答题</NavLink></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {pagedProblems.length === 0 && <div className="problems-empty">
+          {(keyword || selectedDifficulties.length > 0 || selectedTags.length > 0 || selectedAttemptState)
+            ? '未找到匹配的题目，试试调整筛选条件'
+            : '暂无题目'}
+        </div>}
+      </div>
 
       {problems.length > 0 && (
-        <div className="front-table-pagination">
-          <Text type="secondary">
-            显示第 {currentStart} 条-第 {currentEnd} 条，共 {problems.length} 条
-          </Text>
-          <Pagination
-            current={currentPage}
-            pageSize={pageSize}
-            pageSizeOptions={PAGE_SIZE_OPTIONS}
-            total={problems.length}
-            showSizeChanger
-            onChange={(page, nextPageSize) => {
-              setCurrentPage(page);
-              if (nextPageSize !== pageSize) {
-                setPageSize(nextPageSize);
-                setCurrentPage(1);
-              }
-            }}
-          />
+        <div className="problems-pagination">
+          <span>显示第 {currentStart} 条-第 {currentEnd} 条，共 {problems.length} 条</span>
+          <div className="problems-pagination-controls">
+            <label>每页 <select aria-label="每页题数" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setCurrentPage(1); }}>
+              {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
+            </select> 条</label>
+            <Button variant="secondary" size="icon" aria-label="上一页" disabled={currentPage <= 1} onClick={() => setCurrentPage((page) => page - 1)}><ChevronLeft size={16} /></Button>
+            <span>{currentPage} / {pageCount}</span>
+            <Button variant="secondary" size="icon" aria-label="下一页" disabled={currentPage >= pageCount} onClick={() => setCurrentPage((page) => page + 1)}><ChevronRight size={16} /></Button>
+          </div>
         </div>
       )}
     </PageContainer>

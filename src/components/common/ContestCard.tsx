@@ -1,8 +1,8 @@
 /**
  * 比赛Card组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Card, Typography, Tag, Space } from 'antd';
-import { UserOutlined, CalendarOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { Card, Typography, Tag, Space } from '../../ui/compat';
+import { UserOutlined, CalendarOutlined, ClockCircleOutlined } from '../../ui/icons';
 import { ContestStatusTag } from './ContestStatusTag';
 import type { CSSProperties } from 'react';
 

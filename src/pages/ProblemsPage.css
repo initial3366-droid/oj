@@ -1,0 +1,56 @@
+.problems-notice {
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  border: 1px solid #f4c7c7;
+  border-radius: 12px;
+  background: #fff5f5;
+  color: #9f2525;
+}
+
+.problems-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.problems-search { width: min(100%, 280px); }
+.problems-filter { width: 208px; min-width: 208px; }
+.problems-tags-filter { width: 240px; }
+.problems-status-filter { width: 150px; }
+.problems-count { margin-left: auto; color: var(--qoj-color-text-2); font-size: 13px; }
+
+.problems-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--qoj-color-border);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(20, 46, 91, .035);
+}
+
+.problems-table { width: 100%; min-width: 760px; border-collapse: collapse; text-align: left; }
+.problems-table th {
+  padding: 15px 18px;
+  background: #f7f9fc;
+  color: var(--qoj-color-text-2);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: .02em;
+}
+.problems-table td { padding: 16px 18px; border-top: 1px solid #eef1f5; font-size: 14px; }
+.problems-table tr:hover td { background: #f9fbff; }
+.problems-title-link { color: var(--qoj-color-text-0); font-weight: 600; text-decoration: none; }
+.problems-title-link:hover, .problems-action-link:hover { color: var(--qoj-color-primary); }
+.problems-action-link { color: var(--qoj-color-primary); font-weight: 600; text-decoration: none; }
+.problems-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.problems-tag { padding: 3px 9px; border-radius: 999px; background: #f2f5f9; color: var(--qoj-color-text-2); font-size: 12px; }
+.problems-empty { padding: 56px 20px; color: var(--qoj-color-text-2); text-align: center; }
+.problems-pagination { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 16px; color: var(--qoj-color-text-2); font-size: 13px; }
+.problems-pagination-controls { display: flex; align-items: center; gap: 9px; }
+.problems-pagination-controls select { padding: 6px 8px; border: 1px solid var(--qoj-color-border); border-radius: 8px; background: #fff; }
+
+@media (max-width: 680px) {
+  .problems-search, .problems-filter, .problems-tags-filter, .problems-status-filter { width: 100%; }
+  .problems-count { margin-left: 0; }
+}

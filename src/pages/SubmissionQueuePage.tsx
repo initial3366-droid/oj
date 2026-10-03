@@ -1,9 +1,9 @@
 /**
  * 提交队列页面。负责组织该路由的加载状态、用户交互和业务数据展示。
  */
-import { Alert, Button, Card, Input, Select, Spin, Table, Tag, Typography } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
-import type { TableColumnsType } from 'antd';
+import { Alert, Button, Card, Input, Select, Spin, Table, Tag, Typography } from '../ui/compat';
+import { ReloadOutlined } from '../ui/icons';
+import type { TableColumnsType } from '../ui/compat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchSubmissionQueue,

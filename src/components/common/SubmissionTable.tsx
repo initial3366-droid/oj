@@ -1,8 +1,8 @@
 /**
  * 提交Table组件。封装可复用的界面结构、展示规则及交互行为。
  */
-import { Table, Typography } from 'antd';
-import type { TableColumnsType } from 'antd';
+import { Table, Typography } from '../../ui/compat';
+import type { TableColumnsType } from '../../ui/compat';
 import { SubmissionStatusTag } from './SubmissionStatusTag';
 import { UserAvatar } from './UserAvatar';
 import { TimeText } from './TimeText';
