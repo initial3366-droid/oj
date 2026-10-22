@@ -11,9 +11,11 @@ import com.qoj.common.PageResult;
 import com.qoj.common.enums.SubmissionStatus;
 import com.qoj.common.exception.BizException;
 import com.qoj.common.redis.RedisKeys;
-import com.qoj.module.problem.dto.ProblemTestCaseRequest;
+import com.qoj.module.problem.dto.CommunicationConfig;
 import com.qoj.module.problem.dto.ProblemSampleCaseRequest;
+import com.qoj.module.problem.dto.ProblemTestCaseRequest;
 import com.qoj.module.problem.dto.ProblemUpdateRequest;
+import com.qoj.module.problem.dto.TestCaseImportProgress;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.entity.ProblemFolder;
 import com.qoj.module.problem.entity.ProblemTestCase;
@@ -29,29 +31,28 @@ import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.entity.UserProblemStatus;
 import com.qoj.module.submission.mapper.SubmissionMapper;
 import com.qoj.module.submission.mapper.UserProblemStatusMapper;
-import com.qoj.module.user.entity.AdminUser;
-import com.qoj.module.user.entity.User;
-import com.qoj.module.user.mapper.AdminUserMapper;
-import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.module.teacher.entity.Major;
 import com.qoj.module.teacher.entity.Teacher;
 import com.qoj.module.teacher.mapper.MajorMapper;
 import com.qoj.module.teacher.mapper.TeacherMapper;
+import com.qoj.module.user.entity.AdminUser;
+import com.qoj.module.user.entity.User;
+import com.qoj.module.user.mapper.AdminUserMapper;
+import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
+import com.qoj.security.policy.Permission;
+import com.qoj.security.policy.ProblemAccessPolicy;
 import com.qoj.security.policy.ResourceAccessService;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -64,12 +65,6 @@ import org.springframework.web.multipart.MultipartFile;
  */
 @Service
 public class ProblemService {
-    private static final int MAX_ZIP_TEST_CASES = 200;
-    private static final int MAX_ZIP_ENTRIES = 500;
-    private static final long MAX_TEST_CASE_UPLOAD_BYTES = 50L * 1024 * 1024;
-    private static final long MAX_ZIP_ENTRY_BYTES = MAX_TEST_CASE_UPLOAD_BYTES;
-    private static final long MAX_ZIP_TOTAL_BYTES = MAX_TEST_CASE_UPLOAD_BYTES;
-
     private final ProblemMapper problemMapper;
     private final ProblemTestCaseMapper problemTestCaseMapper;
     private final SubmissionMapper submissionMapper;
@@ -78,7 +73,7 @@ public class ProblemService {
     private final AdminUserMapper adminUserMapper;
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate redisTemplate;
-    private final com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy;
+    private final ProblemAccessPolicy problemAccessPolicy;
     private final ProblemFolderMapper problemFolderMapper;
     private final TeacherMapper teacherMapper;
     private final MajorMapper majorMapper;
@@ -97,7 +92,7 @@ public class ProblemService {
         AdminUserMapper adminUserMapper,
         ObjectMapper objectMapper,
         StringRedisTemplate redisTemplate,
-        com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy,
+        ProblemAccessPolicy problemAccessPolicy,
         ProblemFolderMapper problemFolderMapper,
         TeacherMapper teacherMapper,
         MajorMapper majorMapper,
@@ -144,6 +139,12 @@ public class ProblemService {
         AuthUser user = CurrentUser.required();
         QueryWrapper<Problem> wrapper = new QueryWrapper<>();
         wrapper.eq("is_deleted", false);
+        if (folderId != null) {
+            ProblemFolder folder = problemFolderMapper.selectById(folderId);
+            if (!resourceAccessService.canAccessFolder(user, folder)) {
+                throw new BizException(404, "题目文件夹不存在或无权访问");
+            }
+        }
         if (!"SUPER_ADMIN".equals(user.role())) {
             Teacher teacher = user.teacherAccount() ? teacherMapper.selectById(user.id()) : null;
             wrapper.and(visible -> {
@@ -164,7 +165,13 @@ public class ProblemService {
             });
         }
         if (keyword != null && !keyword.isBlank()) {
-            wrapper.and(w -> w.like("title", keyword).or().like("statement", keyword));
+            String search = keyword.trim();
+            wrapper.and(w -> {
+                w.like("title", search).or().like("tags", search).or().like("statement", search);
+                if (search.matches("[0-9]{1,18}")) {
+                    w.or().eq("id", Long.parseLong(search));
+                }
+            });
         }
         if (difficulty != null) {
             wrapper.eq("difficulty", difficulty);
@@ -215,7 +222,7 @@ public class ProblemService {
         }
 
         // 使用Policy检查查看权限
-        if (!problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW, problem)) {
+        if (!problemAccessPolicy.can(user, Permission.VIEW, problem)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -224,7 +231,7 @@ public class ProblemService {
 
         // 教师账号或拥有管理权限时返回 AdminProblemVO（含全量统计），否则返回 PublicProblemVO
         boolean isAdmin = user != null && (user.teacherAccount()
-            || problemAccessPolicy.can(user, com.qoj.security.policy.Permission.UPDATE, problem));
+            || problemAccessPolicy.can(user, Permission.UPDATE, problem));
 
         if (isAdmin) {
             /**
@@ -258,7 +265,7 @@ public class ProblemService {
 
         // 只返回公开题目或用户有权限的题目
         AuthUser user = CurrentUser.get();
-        if (!problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW, problem)) {
+        if (!problemAccessPolicy.can(user, Permission.VIEW, problem)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -297,7 +304,7 @@ public class ProblemService {
         }
 
         // 使用Policy检查查看权限
-        if (!problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW, problem)) {
+        if (!problemAccessPolicy.can(user, Permission.VIEW, problem)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -332,10 +339,18 @@ public class ProblemService {
         problem.statement = request.statement();
         problem.inputFormat = request.inputFormat();
         problem.outputFormat = request.outputFormat();
+        boolean clearCommunication = request.communication() != null && !Boolean.TRUE.equals(request.communication().enabled());
+        if (request.communication() != null) {
+            problem.communicationConfig = CommunicationConfig.encode(request.communication());
+            if (clearCommunication) {
+                String finalChecker = request.checkerSource() == null ? problem.checkerSource : request.checkerSource();
+                ensureHiddenTestCasesHaveExpectedOutput(problem, finalChecker);
+            }
+        }
         boolean clearCheckerSource = false;
         if (request.checkerSource() != null) {
             String checkerSource = normalizeCheckerSource(request.checkerSource());
-            ensureHiddenTestCasesHaveExpectedOutput(problem, checkerSource);
+            if (problem.communicationConfig == null) ensureHiddenTestCasesHaveExpectedOutput(problem, checkerSource);
             problem.checkerSource = checkerSource;
             clearCheckerSource = checkerSource == null;
         }
@@ -359,14 +374,17 @@ public class ProblemService {
         if (problem.isPublic) {
             problem.publishedByAccountType = user.accountType();
             problem.publishedById = user.id();
-            problem.publishedAt = java.time.LocalDateTime.now();
+            problem.publishedAt = LocalDateTime.now();
         } else {
             problem.publishedByAccountType = null;
             problem.publishedById = null;
             problem.publishedAt = null;
         }
-        problem.updatedAt = java.time.LocalDateTime.now();
+        problem.updatedAt = LocalDateTime.now();
         problemMapper.updateById(problem);
+        if (clearCommunication) {
+            problemMapper.update(null, new UpdateWrapper<Problem>().eq("id", id).set("communication_config", null));
+        }
         // MyBatis-Plus skips null fields by default; explicitly persist a cleared checker.
         if (clearCheckerSource) {
             problemMapper.update(
@@ -393,20 +411,98 @@ public class ProblemService {
         Problem problem = requireOwnerOrSuperAdmin(id);
         // 软删除
         problem.isDeleted = true;
-        problem.deletedAt = java.time.LocalDateTime.now();
+        problem.deletedAt = LocalDateTime.now();
         problemMapper.updateById(problem);
         redisTemplate.delete(RedisKeys.problem(problem.id));
     }
 
+    @Transactional
+    public int batchPublish(List<Long> ids) {
+        List<Problem> problems = requireBatchManageable(ids, Permission.UPDATE);
+        List<Long> unpublishedIds = problems.stream()
+            .filter(problem -> !"PUBLISHED".equals(problem.studentPublishStatus))
+            .map(problem -> problem.id).toList();
+        if (unpublishedIds.isEmpty()) return 0;
+        AuthUser user = CurrentUser.required();
+        var now = LocalDateTime.now();
+        int count = problemMapper.update(null, new UpdateWrapper<Problem>()
+            .in("id", unpublishedIds)
+            .set("student_publish_status", "PUBLISHED")
+            .set("is_public", true)
+            .set("published_by_account_type", user.accountType())
+            .set("published_by_id", user.id())
+            .set("published_at", now)
+            .set("updated_at", now));
+        redisTemplate.delete(unpublishedIds.stream().map(RedisKeys::problem).toList());
+        return count;
+    }
+
+    @Transactional
+    public int batchDelete(List<Long> ids) {
+        List<Problem> problems = requireBatchManageable(ids, Permission.DELETE);
+        List<Long> problemIds = problems.stream().map(problem -> problem.id).toList();
+        var now = LocalDateTime.now();
+        int count = problemMapper.update(null, new UpdateWrapper<Problem>()
+            .in("id", problemIds)
+            .set("is_deleted", true)
+            .set("deleted_at", now)
+            .set("updated_at", now));
+        redisTemplate.delete(problemIds.stream().map(RedisKeys::problem).toList());
+        return count;
+    }
+
+    @Transactional
+    public int batchUnpublish(List<Long> ids) {
+        List<Problem> problems = requireBatchManageable(ids, Permission.UPDATE);
+        List<Long> publishedIds = problems.stream()
+            .filter(problem -> "PUBLISHED".equals(problem.studentPublishStatus))
+            .map(problem -> problem.id).toList();
+        if (publishedIds.isEmpty()) return 0;
+        int count = problemMapper.update(null, new UpdateWrapper<Problem>()
+            .in("id", publishedIds)
+            .set("student_publish_status", "DRAFT")
+            .set("is_public", false)
+            .set("published_by_account_type", null)
+            .set("published_by_id", null)
+            .set("published_at", null)
+            .set("updated_at", LocalDateTime.now()));
+        redisTemplate.delete(publishedIds.stream().map(RedisKeys::problem).toList());
+        return count;
+    }
+
+    private List<Problem> requireBatchManageable(List<Long> ids, Permission permission) {
+        List<Long> distinctIds = ids.stream().distinct().sorted().toList();
+        // Lock and validate the full selection before changing any item.
+        List<Problem> problems = problemMapper.selectList(new QueryWrapper<Problem>()
+            .in("id", distinctIds).orderByAsc("id").last("FOR UPDATE"));
+        if (problems.size() != distinctIds.size() || problems.stream().anyMatch(problem -> Boolean.TRUE.equals(problem.isDeleted))) {
+            throw new BizException(ErrorCode.NOT_FOUND, "所选题目中有题目不存在或已删除，请刷新列表后重试");
+        }
+        AuthUser user = CurrentUser.required();
+        for (Problem problem : problems) {
+            if (!problemAccessPolicy.can(user, permission, problem)) {
+                throw new BizException(ErrorCode.FORBIDDEN, "无权操作题目 #" + problem.id + "，本次批量操作未执行");
+            }
+        }
+        return problems;
+    }
+
     public void replaceTestCases(Long problemId, List<ProblemTestCase> testCases, boolean sample) {
+        replaceTestCases(problemId, testCases, sample, progress -> {});
+    }
+
+    private void replaceTestCases(Long problemId, List<ProblemTestCase> testCases, boolean sample,
+                                  Consumer<TestCaseImportProgress> progress) {
         Problem problem = sample ? null : problemMapper.selectById(problemId);
-        String checkerSource = problem == null ? null : problem.checkerSource;
+        String checkerSource = effectiveChecker(problem);
         List<ProblemTestCase> normalized = normalizeReplacementTestCases(problemId, testCases, sample, checkerSource);
         problemTestCaseMapper.delete(
             new QueryWrapper<ProblemTestCase>().eq("problem_id", problemId).eq("sample", sample)
         );
+        int saved = 0;
         for (ProblemTestCase testCase : normalized) {
             problemTestCaseMapper.insert(testCase);
+            progress.accept(new TestCaseImportProgress("saved", ++saved, normalized.size(), testCase.caseNo));
         }
         redisTemplate.delete(RedisKeys.problem(problemId));
     }
@@ -414,6 +510,14 @@ public class ProblemService {
     public String checkerSource(long problemId) {
         Problem problem = requireOwnerOrSuperAdmin(problemId);
         return problem.checkerSource == null ? "" : problem.checkerSource;
+    }
+
+    public CommunicationConfig communicationConfig(long problemId) {
+        return CommunicationConfig.decode(requireOwnerOrSuperAdmin(problemId).communicationConfig);
+    }
+
+    private String effectiveChecker(Problem problem) {
+        return problem != null && problem.communicationConfig != null ? "communication" : problem == null ? null : problem.checkerSource;
     }
 
     String normalizeCheckerSource(String source) {
@@ -432,8 +536,8 @@ public class ProblemService {
     }
 
     private static void validateExpectedOutput(boolean sample, String checkerSource, String output, int caseNo) {
-        if (requiresExpectedOutput(sample, checkerSource) && (output == null || output.isBlank())) {
-            throw new BizException(400, (sample ? "样例" : "测试点") + " " + caseNo + " 的输出数据不能为空");
+        if (requiresExpectedOutput(sample, checkerSource) && output == null) {
+            throw new BizException(400, (sample ? "样例" : "测试点") + " " + caseNo + " 的输出字段不能缺失");
         }
     }
 
@@ -443,7 +547,7 @@ public class ProblemService {
         boolean sample,
         String checkerSource
     ) {
-        List<ProblemTestCase> normalized = new java.util.ArrayList<>();
+        List<ProblemTestCase> normalized = new ArrayList<>();
         Set<Integer> usedCaseNos = new HashSet<>();
         int nextCaseNo = 1;
         for (ProblemTestCase item : testCases == null ? List.<ProblemTestCase>of() : testCases) {
@@ -466,11 +570,11 @@ public class ProblemService {
                  */
                 throw new BizException(400, "测试点编号必须大于 0");
             }
-            if (sample && (item.inputData == null || item.inputData.isBlank())) {
+            if (sample && item.inputData == null) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */
-                throw new BizException(400, "样例 " + caseNo + " 的输入数据不能为空");
+                throw new BizException(400, "样例 " + caseNo + " 的输入字段不能缺失");
             }
             validateExpectedOutput(sample, checkerSource, item.outputData, caseNo);
             usedCaseNos.add(caseNo);
@@ -483,6 +587,7 @@ public class ProblemService {
             testCase.caseNo = caseNo;
             testCase.inputData = item.inputData == null ? "" : item.inputData;
             testCase.outputData = item.outputData == null ? "" : item.outputData;
+            testCase.publicInput = sample ? null : item.publicInput;
             testCase.explanation = item.explanation;
             normalized.add(testCase);
         }
@@ -498,7 +603,7 @@ public class ProblemService {
             throw new BizException(404, "题目不存在");
         }
         AuthUser user = CurrentUser.required();
-        if (!problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW_HIDDEN_CASE, problem)) {
+        if (!problemAccessPolicy.can(user, Permission.VIEW_HIDDEN_CASE, problem)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -519,7 +624,7 @@ public class ProblemService {
     @Transactional
     public List<ProblemTestCaseVO> replaceHiddenTestCases(long problemId, List<ProblemTestCaseRequest> testCases) {
         Problem problem = requireOwnerOrSuperAdmin(problemId);
-        List<ProblemTestCase> entities = new java.util.ArrayList<>();
+        List<ProblemTestCase> entities = new ArrayList<>();
         int index = 1;
         for (ProblemTestCaseRequest item : testCases == null ? List.<ProblemTestCaseRequest>of() : testCases) {
             ProblemTestCase testCase = new ProblemTestCase();
@@ -527,6 +632,7 @@ public class ProblemService {
             testCase.caseNo = item.caseNo() == null ? index : item.caseNo();
             testCase.inputData = item.input();
             testCase.outputData = item.output();
+            testCase.publicInput = item.publicInput();
             testCase.sample = false;
             entities.add(testCase);
             index++;
@@ -539,14 +645,15 @@ public class ProblemService {
     }
 
     @Transactional
-    public ProblemTestCaseVO addTestCase(long problemId, com.qoj.module.problem.dto.ProblemTestCaseRequest request) {
+    public ProblemTestCaseVO addTestCase(long problemId, ProblemTestCaseRequest request) {
         Problem problem = requireOwnerOrSuperAdmin(problemId);
         ProblemTestCase testCase = new ProblemTestCase();
         testCase.problemId = problem.id;
         testCase.caseNo = request.caseNo() == null ? nextHiddenCaseNo(problem.id) : request.caseNo();
         testCase.inputData = request.input() == null ? "" : request.input();
-        validateExpectedOutput(false, problem.checkerSource, request.output(), testCase.caseNo);
+        validateExpectedOutput(false, effectiveChecker(problem), request.output(), testCase.caseNo);
         testCase.outputData = request.output() == null ? "" : request.output();
+        testCase.publicInput = request.publicInput();
         testCase.sample = false;
         problemTestCaseMapper.insert(testCase);
         redisTemplate.delete(RedisKeys.problem(problemId));
@@ -557,7 +664,7 @@ public class ProblemService {
     }
 
     @Transactional
-    public ProblemTestCaseVO updateTestCase(long problemId, long testCaseId, com.qoj.module.problem.dto.ProblemTestCaseRequest request) {
+    public ProblemTestCaseVO updateTestCase(long problemId, long testCaseId, ProblemTestCaseRequest request) {
         Problem problem = requireOwnerOrSuperAdmin(problemId);
         ProblemTestCase testCase = problemTestCaseMapper.selectById(testCaseId);
         if (testCase == null || !Long.valueOf(problemId).equals(testCase.problemId) || Boolean.TRUE.equals(testCase.sample)) {
@@ -568,10 +675,11 @@ public class ProblemService {
         }
         testCase.caseNo = request.caseNo();
         testCase.inputData = request.input() == null ? "" : request.input();
-        validateExpectedOutput(false, problem.checkerSource, request.output(), testCase.caseNo);
+        validateExpectedOutput(false, effectiveChecker(problem), request.output(), testCase.caseNo);
         testCase.outputData = request.output() == null ? "" : request.output();
+        testCase.publicInput = request.publicInput();
         problemTestCaseMapper.updateById(testCase);
-        problem.updatedAt = java.time.LocalDateTime.now();
+        problem.updatedAt = LocalDateTime.now();
         problemMapper.updateById(problem);
         redisTemplate.delete(RedisKeys.problem(problemId));
         /**
@@ -591,40 +699,44 @@ public class ProblemService {
             throw new BizException(404, "测试点不存在");
         }
         problemTestCaseMapper.deleteById(testCaseId);
-        problem.updatedAt = java.time.LocalDateTime.now();
+        problem.updatedAt = LocalDateTime.now();
         problemMapper.updateById(problem);
         redisTemplate.delete(RedisKeys.problem(problemId));
     }
 
     @Transactional
     public void importHiddenTestCases(long problemId, MultipartFile file, boolean overwrite) {
+        importHiddenTestCases(problemId, file, overwrite, progress -> {});
+    }
+
+    @Transactional
+    public void importHiddenTestCases(long problemId, MultipartFile file, boolean overwrite,
+                                      Consumer<TestCaseImportProgress> progress) {
         Problem problem = requireOwnerOrSuperAdmin(problemId);
         List<ProblemTestCase> parsed = parseZipTestCases(
             file,
-            !requiresExpectedOutput(false, problem.checkerSource)
+            !requiresExpectedOutput(false, effectiveChecker(problem)), progress
         );
         if (overwrite) {
-            replaceHiddenTestCases(problem.id, parsed);
-            problem.updatedAt = java.time.LocalDateTime.now();
+            replaceTestCases(problem.id, parsed, false, progress);
+            problem.updatedAt = LocalDateTime.now();
             problemMapper.updateById(problem);
             return;
         }
         int nextCaseNo = nextHiddenCaseNo(problem.id);
+        int saved = 0;
         for (ProblemTestCase testCase : parsed) {
             testCase.problemId = problem.id;
             testCase.sample = false;
             testCase.caseNo = nextCaseNo++;
-            validateExpectedOutput(false, problem.checkerSource, testCase.outputData, testCase.caseNo);
+            validateExpectedOutput(false, effectiveChecker(problem), testCase.outputData, testCase.caseNo);
             testCase.outputData = testCase.outputData == null ? "" : testCase.outputData;
             problemTestCaseMapper.insert(testCase);
+            progress.accept(new TestCaseImportProgress("saved", ++saved, parsed.size(), testCase.caseNo));
         }
-        problem.updatedAt = java.time.LocalDateTime.now();
+        problem.updatedAt = LocalDateTime.now();
         problemMapper.updateById(problem);
         redisTemplate.delete(RedisKeys.problem(problem.id));
-    }
-
-    private void replaceHiddenTestCases(Long problemId, List<ProblemTestCase> testCases) {
-        replaceTestCases(problemId, testCases, false);
     }
 
     private Problem requireOwnerOrSuperAdmin(long id) {
@@ -636,23 +748,11 @@ public class ProblemService {
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "题目不存在");
         }
         var authUser = CurrentUser.required();
-        if (!problemAccessPolicy.can(authUser, com.qoj.security.policy.Permission.UPDATE, problem)) {
+        if (!problemAccessPolicy.can(authUser, Permission.UPDATE, problem)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无访问权限");
-        }
-        return problem;
-    }
-
-    private Problem requirePublicManageOwner(long id) {
-        Problem problem = requireOwnerOrSuperAdmin(id);
-        AuthUser user = CurrentUser.required();
-        if (!user.adminAccount() && !user.teacherAccount()) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无公开题目权限");
         }
         return problem;
     }
@@ -681,7 +781,7 @@ public class ProblemService {
             ownerName(problem.ownerId, problem.ownerAccountType),
             null,
             isSpecialJudge(problem.checkerSource)
-        );
+        ).withCommunication(CommunicationConfig.info(problem.communicationConfig));
     }
 
     private PublicProblemVO toPublicVO(Problem problem) {
@@ -707,7 +807,7 @@ public class ProblemService {
             ownerName(problem.ownerId, problem.ownerAccountType),
             null,
             isSpecialJudge(problem.checkerSource)
-        );
+        ).withCommunication(CommunicationConfig.info(problem.communicationConfig));
     }
 
     private AdminProblemVO toAdminVO(Problem problem) {
@@ -752,7 +852,7 @@ public class ProblemService {
             owner,
             owner || resourceAccessService.isSuperAdmin(user),
             isSpecialJudge(problem.checkerSource)
-        );
+        ).withCommunication(CommunicationConfig.info(problem.communicationConfig));
     }
 
     private AdminProblemVO toAdminVOForUpdate(Problem problem) {
@@ -792,7 +892,7 @@ public class ProblemService {
             owner,
             owner || resourceAccessService.isSuperAdmin(user),
             isSpecialJudge(problem.checkerSource)
-        );
+        ).withCommunication(CommunicationConfig.info(problem.communicationConfig));
     }
 
     private List<PublicProblemVO> withPublicAttemptStatuses(List<PublicProblemVO> problems, Long userId) {
@@ -833,7 +933,7 @@ public class ProblemService {
             vo.ownerName(),
             attemptStatus,
             vo.specialJudge()
-        );
+        ).withCommunication(vo.communication());
     }
 
     private AdminProblemVO withAdminAttemptStatus(AdminProblemVO vo, String attemptStatus) {
@@ -869,24 +969,7 @@ public class ProblemService {
             vo.owner(),
             vo.canEdit(),
             vo.specialJudge()
-        );
-    }
-
-    private List<ProblemVO> withAttemptStatuses(List<ProblemVO> problems, Long userId) {
-        if (userId == null || problems.isEmpty()) {
-            return problems;
-        }
-        List<Long> problemIds = problems.stream().map(ProblemVO::id).toList();
-        Map<Long, String> statusByProblemId = userProblemStatusMapper
-            .selectList(
-                new QueryWrapper<UserProblemStatus>()
-                    .eq("user_id", userId)
-                    .in("problem_id", problemIds)
-            )
-            .stream()
-            .collect(Collectors.toMap(item -> item.problemId, item -> item.bestStatus, (left, right) -> left));
-        fillAttemptStatusesFromSubmissions(statusByProblemId, userId, problemIds);
-        return problems.stream().map(item -> withAttemptStatus(item, statusByProblemId.get(item.id()))).toList();
+        ).withCommunication(vo.communication());
     }
 
     private String attemptStatus(Long userId, Long problemId) {
@@ -971,7 +1054,7 @@ public class ProblemService {
             vo.ownerName(),
             attemptStatus,
             vo.specialJudge()
-        );
+        ).withCommunication(vo.communication());
     }
 
     private BigDecimal computedAcRate(Long problemId) {
@@ -1030,43 +1113,6 @@ public class ProblemService {
             .toList();
     }
 
-    private List<ProblemTestCase> sampleEntities(String sampleCases) {
-        if (sampleCases == null || sampleCases.isBlank()) {
-            return List.of();
-        }
-        List<ProblemSampleCaseRequest> samples;
-        try {
-            samples = objectMapper.readValue(sampleCases, new TypeReference<List<ProblemSampleCaseRequest>>() {});
-        } catch (Exception ex) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "样例格式错误");
-        }
-        List<ProblemTestCase> result = new java.util.ArrayList<>();
-        int index = 1;
-        for (ProblemSampleCaseRequest sample : samples) {
-            boolean hasInput = sample.input() != null && !sample.input().isBlank();
-            boolean hasOutput = sample.output() != null && !sample.output().isBlank();
-            if (!hasInput && !hasOutput) {
-                continue;
-            }
-            if (!hasInput || !hasOutput) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(400, "样例输入输出必须同时填写");
-            }
-            ProblemTestCase testCase = new ProblemTestCase();
-            testCase.caseNo = index++;
-            testCase.inputData = sample.input();
-            testCase.outputData = sample.output();
-            testCase.explanation = sample.explanation();
-            result.add(testCase);
-        }
-        return result;
-    }
-
     private List<ProblemSampleCaseRequest> resolveSamples(ProblemUpdateRequest request) {
         if (request.samples() != null) {
             return request.samples();
@@ -1099,22 +1145,17 @@ public class ProblemService {
         if (samples == null) {
             return List.of();
         }
-        List<ProblemTestCase> result = new java.util.ArrayList<>();
+        List<ProblemTestCase> result = new ArrayList<>();
         int index = 1;
         for (ProblemSampleCaseRequest sample : samples) {
             if (sample == null) {
                 continue;
             }
-            boolean hasInput = sample.input() != null && !sample.input().isBlank();
-            boolean hasOutput = sample.output() != null && !sample.output().isBlank();
-            if (!hasInput && !hasOutput) {
-                continue;
-            }
-            if (!hasInput || !hasOutput) {
+            if (sample.input() == null || sample.output() == null) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */
-                throw new BizException(400, "样例输入输出必须同时填写");
+                throw new BizException(400, "样例输入输出字段不能缺失，空数据请填写空字符串");
             }
             ProblemTestCase testCase = new ProblemTestCase();
             testCase.caseNo = index++;
@@ -1136,7 +1177,8 @@ public class ProblemService {
             item.inputData,
             item.outputData,
             item.explanation,
-            item.sample
+            item.sample,
+            item.publicInput
         );
     }
 
@@ -1159,14 +1201,6 @@ public class ProblemService {
 
     private boolean isOwner(Problem problem, AuthUser user) {
         return resourceAccessService.isOwner(user, problem.ownerAccountType, problem.ownerId);
-    }
-
-    private String accountType(AuthUser user) {
-        return user.accountType();
-    }
-
-    private String normalizeAccountType(String value) {
-        return resourceAccessService.normalizeOwnerType(value);
     }
 
     private String normalizePublishStatus(String value, Boolean legacyPublic) {
@@ -1221,128 +1255,18 @@ public class ProblemService {
         }
     }
 
-    private List<ProblemTestCase> parseZipTestCases(MultipartFile file, boolean allowMissingOutput) {
-        if (file == null || file.isEmpty()) {
-            throw new BizException(400, "测试点 ZIP 不能为空");
-        }
-        if (file.getSize() > MAX_TEST_CASE_UPLOAD_BYTES) {
-            throw new BizException(400, "测试点 ZIP 文件不能超过 50MB");
-        }
-        Map<Integer, String> inputs = new HashMap<>();
-        Map<Integer, String> outputs = new HashMap<>();
-        int[] counters = new int[] {0, 0};
-        try (ZipInputStream zip = new ZipInputStream(file.getInputStream())) {
-            ZipEntry entry;
-            while ((entry = zip.getNextEntry()) != null) {
-                if (entry.isDirectory()) {
-                    continue;
-                }
-                if (++counters[0] > MAX_ZIP_ENTRIES) {
-                    /**
-                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                     */
-                    throw new BizException(400, "测试点 ZIP 文件数量过多");
-                }
-                String name = safeZipEntryName(entry.getName());
-                Integer caseNo = caseNumber(name);
-                if (caseNo == null) {
-                    continue;
-                }
-                if (inputs.size() + outputs.size() >= MAX_ZIP_TEST_CASES * 2) {
-                    /**
-                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                     */
-                    throw new BizException(400, "测试点数量过多");
-                }
-                String content = readZipEntryText(zip, counters);
-                if (name.endsWith(".in")) {
-                    inputs.put(caseNo, content);
-                } else if (name.endsWith(".out")) {
-                    outputs.put(caseNo, content);
-                }
-            }
-        } catch (BizException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "测试点 ZIP 解析失败");
-        }
-        TreeSet<Integer> caseNos = new TreeSet<>(inputs.keySet());
-        if (caseNos.isEmpty()) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "ZIP 中未找到测试点");
-        }
-        List<ProblemTestCase> testCases = new java.util.ArrayList<>();
-        for (Integer caseNo : caseNos) {
-            String input = inputs.get(caseNo);
-            String output = outputs.get(caseNo);
-            if (output == null && !allowMissingOutput) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(400, caseNo + ".out 缺失");
-            }
+    private List<ProblemTestCase> parseZipTestCases(MultipartFile file, boolean allowMissingOutput, Consumer<TestCaseImportProgress> progress) {
+        TestCaseZipReader.validateUpload(file);
+        List<ProblemTestCaseRequest> parsed = TestCaseZipReader.read(file, allowMissingOutput, progress, "ZIP 中未找到测试点");
+        List<ProblemTestCase> testCases = new ArrayList<>();
+        for (ProblemTestCaseRequest item : parsed) {
             ProblemTestCase testCase = new ProblemTestCase();
-            testCase.caseNo = caseNo;
-            testCase.inputData = input;
-            testCase.outputData = output == null ? "" : output;
+            testCase.caseNo = item.caseNo();
+            testCase.inputData = item.input();
+            testCase.publicInput = item.publicInput();
+            testCase.outputData = item.output();
             testCases.add(testCase);
         }
         return testCases;
-    }
-
-    private String safeZipEntryName(String rawName) {
-        String name = rawName == null ? "" : rawName.replace('\\', '/');
-        if (name.contains("../") || name.startsWith("/")) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "测试点 ZIP 包含非法路径");
-        }
-        int slash = name.lastIndexOf('/');
-        if (slash >= 0) {
-            name = name.substring(slash + 1);
-        }
-        return name;
-    }
-
-    private String readZipEntryText(ZipInputStream zip, int[] counters) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        int entryBytes = 0;
-        int read;
-        while ((read = zip.read(buffer)) != -1) {
-            entryBytes += read;
-            counters[1] += read;
-            if (entryBytes > MAX_ZIP_ENTRY_BYTES) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(400, "单个测试点文件过大");
-            }
-            if (counters[1] > MAX_ZIP_TOTAL_BYTES) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(400, "测试点 ZIP 解压后过大");
-            }
-            out.write(buffer, 0, read);
-        }
-        return out.toString(java.nio.charset.StandardCharsets.UTF_8);
-    }
-
-    private Integer caseNumber(String filename) {
-        if (!filename.endsWith(".in") && !filename.endsWith(".out")) {
-            return null;
-        }
-        String number = filename.substring(0, filename.lastIndexOf('.'));
-        if (!number.matches("\\d+")) {
-            return null;
-        }
-        return Integer.valueOf(number);
     }
 }

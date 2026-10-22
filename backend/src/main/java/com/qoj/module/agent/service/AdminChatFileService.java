@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -27,7 +28,7 @@ public class AdminChatFileService {
 
     public AdminChatFileVO upload(MultipartFile file) {
         long owner = ownerId();
-        if (file == null || file.isEmpty() || file.getSize() > AdminChatFileParser.MAX_BYTES) throw new BizException(400, "文件不能为空，且不能超过 50 MB");
+        if (file == null || file.getSize() > AdminChatFileParser.MAX_BYTES) throw new BizException(400, "请选择文件，且不能超过 50 MB");
         String name = file.getOriginalFilename() == null ? "file.txt" : file.getOriginalFilename().replace('\\', '/');
         name = name.substring(name.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "_");
         if (name.length() > 255) name = name.substring(name.length() - 255);
@@ -63,6 +64,19 @@ public class AdminChatFileService {
         return rows.get(0);
     }
 
+    /** Controller exports remain private to the administrator and use the existing authenticated download API. */
+    public AdminChatFileVO saveExport(String filename, byte[] data) {
+        long owner = ownerId();
+        if (data.length > AdminChatFileParser.MAX_BYTES) throw new BizException(400, "导出文件不能超过 50 MB");
+        String name = filename.replace('\\', '/');
+        name = name.substring(name.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "_");
+        if (name.length() > 255) name = name.substring(name.length() - 255);
+        String id = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO admin_ai_chat_files (id, owner_admin_id, name, size_bytes, entry_count, data) VALUES (?, ?, ?, ?, 0, ?)",
+            id, owner, name, data.length, data);
+        return new AdminChatFileVO(id, name, (long) data.length, 0);
+    }
+
     public AdminChatFileParser.Bundle bundle(long owner, String id) {
         var file = read(owner, id);
         return parser.parse(file.name(), file.data());
@@ -85,7 +99,7 @@ public class AdminChatFileService {
             output.append("文件：").append(file.name()).append('\n');
             for (var entry : bundle.entries()) {
                 output.append("路径：").append(entry.path()).append("；类型：").append(entry.kind()).append("；字节：").append(entry.size()).append('\n');
-                boolean test = java.util.Set.of("in", "out", "ans").contains(AdminChatFileParser.extension(entry.path()));
+                boolean test = Set.of("in", "out", "ans").contains(AdminChatFileParser.extension(entry.path()));
                 int limit = test ? 200 : 12000;
                 output.append(entry.text(), 0, Math.min(entry.text().length(), limit)).append('\n');
                 if (entry.text().length() > limit) output.append("（此文件仅展示节选，完整数据保留供导入使用）\n");
@@ -115,7 +129,7 @@ public class AdminChatFileService {
     }
 
     private boolean referenced(long owner, String id) {
-        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM admin_ai_chat_sessions WHERE owner_admin_id = ? AND JSON_SEARCH(messages, 'one', ?, NULL, '$[*].files[*].id') IS NOT NULL)", Boolean.class, owner, id));
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM admin_ai_chat_sessions WHERE owner_admin_id = ? AND (JSON_SEARCH(messages, 'one', ?, NULL, '$[*].files[*].id') IS NOT NULL OR JSON_SEARCH(messages, 'one', ?, NULL, '$[*].content') IS NOT NULL))", Boolean.class, owner, id, "%/qoj-file/" + id + "%"));
     }
 
     public record StoredFile(String name, byte[] data) {}

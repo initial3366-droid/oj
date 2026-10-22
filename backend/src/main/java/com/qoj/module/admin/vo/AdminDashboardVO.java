@@ -11,6 +11,7 @@ public record AdminDashboardVO(
     long problemCount,
     long submissionCount,
     long todaySubmissionCount,
+    // 按 submit_time（缺失时回退 created_at）统计今日 AC/ACCEPTED 提交总数，重复通过也计入。
     long todayAcceptedCount,
     long todayActiveUserCount,
     long activeContestCount,

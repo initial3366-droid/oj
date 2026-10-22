@@ -16,6 +16,7 @@ import secrets
 import socketserver
 import sys
 import threading
+import time
 import webbrowser
 import zipfile
 
@@ -26,6 +27,38 @@ HOST = "127.0.0.1"
 DEFAULT_PORT = 8799
 SESSION_TOKEN = secrets.token_urlsafe(24)
 MAX_BODY_BYTES = 80 * 1024 * 1024
+
+
+def _dotenv_value(name):
+    for filename in (os.path.join(os.path.dirname(__file__), "..", "..", ".env"),
+                     os.path.join(os.path.dirname(__file__), "..", "..", ".env.production")):
+        try:
+            with open(filename, encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if line.startswith(name + "="):
+                        return line.split("=", 1)[1].strip().strip("\"'")
+        except OSError:
+            continue
+    return ""
+
+
+def _configured(name, default):
+    return os.environ.get(name) or _dotenv_value(name) or default
+
+
+DEFAULT_ADMIN_PATH = _configured("VITE_ADMIN_PREFIX", _configured("ADMIN_PATH_PREFIX", "admin"))
+ADMIN_API_PREFIX = _configured("VITE_ADMIN_API_PREFIX", _configured("ADMIN_API_PREFIX", "/api/admin/v1")).rstrip("/")
+DEFAULT_VIEW_PATH = _configured("VIEW_PATH", "/problems")
+
+def _path_prefix(value, default):
+    """Normalize a user-provided URL path prefix without allowing a full URL."""
+    value = (value or default).strip()
+    if not value:
+        value = default
+    if "://" in value or "?" in value or "#" in value:
+        raise qp.QojError("路径配置必须是相对路径，不能包含 URL、查询参数或锚点")
+    return "/" + value.strip("/") if value.strip("/") else "/"
 
 
 def _validate_bundle(problem_json, zip_bytes, construction=False):
@@ -87,8 +120,17 @@ def handle_login(body):
     fields = [body.get("username"), body.get("password"), body.get("captchaId"), body.get("captcha")]
     if not base_url or any(not value for value in fields):
         raise qp.QojError("base_url、用户名、密码、验证码都要填，且先获取验证码")
-    qp.do_login(qp.QojClient(base_url), role, body["username"].strip(), body["password"],
-                body["captchaId"].strip(), body["captcha"].strip())
+    client = qp.QojClient(base_url)
+    endpoint = "/api/teacher/v1/auth/login" if role == "teacher" else ADMIN_API_PREFIX + "/auth/login"
+    data = client.post_json(endpoint, {
+        "username": body["username"].strip(), "password": body["password"],
+        "captchaId": body["captchaId"].strip(), "captcha": body["captcha"].strip(),
+    })
+    qp.save_token_store(base_url, {
+        "baseUrl": client.base_url, "role": role,
+        "accessToken": data["accessToken"], "refreshToken": data["refreshToken"],
+        "savedAt": int(time.time()),
+    })
     return {"ok": True, "role": role, "cachePath": qp.cache_path(base_url)}
 
 
@@ -114,23 +156,41 @@ def handle_push(body):
     if errors:
         return {"ok": False, "errors": errors, "warnings": warnings}
 
+    admin_path = _path_prefix(body.get("adminPath"), "/admin")
     client = qp.QojClient(base_url, token_store=qp.load_token_store(base_url))
     steps = []
-    draft = client.post_json("/api/admin/v1/problem-drafts", auth=True)
+    draft = client.post_json(ADMIN_API_PREFIX + "/problem-drafts", auth=True)
     draft_id = draft["draftId"]
     steps.append(f"已建草稿 {draft_id}")
-    client.put_json(f"/api/admin/v1/problem-drafts/{draft_id}/basic",
-                    qp._build_basic_body(problem), auth=True)
+    basic_body = qp._build_basic_body(problem)
+    folder_value = body.get("folderId")
+    if folder_value is not None and str(folder_value).strip():
+        try:
+            basic_body["folderId"] = int(str(folder_value).strip())
+        except ValueError:
+            raise qp.QojError("folderId 必须是数字")
+    else:
+        # qoj_publish.py has a CLI-oriented default folder. The web tool must
+        # not assume that folder 7 exists on a separately configured server.
+        basic_body["folderId"] = None
+    client.put_json(f"{ADMIN_API_PREFIX}/problem-drafts/{draft_id}/basic",
+                    basic_body, auth=True)
     steps.append("已写入题面（DRAFT，isPublic=false）")
-    client.post_multipart(f"/api/admin/v1/problem-drafts/{draft_id}/test-cases/zip",
+    client.post_multipart(f"{ADMIN_API_PREFIX}/problem-drafts/{draft_id}/test-cases/zip",
                           "file", os.path.basename(body.get("zipName") or "data.zip"),
                           zip_bytes, {"overwrite": "true"})
     steps.append("已上传数据包")
-    committed = client.post_json(f"/api/admin/v1/problem-drafts/{draft_id}/commit", auth=True)
+    committed = client.post_json(f"{ADMIN_API_PREFIX}/problem-drafts/{draft_id}/commit", auth=True)
     problem_id = committed.get("id") or committed.get("problemId")
     steps.append(f"commit 成功，题目 id={problem_id}，状态仍为 DRAFT")
+    view_path = _path_prefix(body.get("viewPath"), "/" + DEFAULT_VIEW_PATH.strip("/"))
+    view_url = base_url.rstrip("/") + view_path
+    if view_path != "/":
+        view_url = view_url.rstrip("/") + f"/{problem_id}"
+    admin_url = base_url.rstrip("/") + admin_path.rstrip("/") + "/problems"
     return {"ok": True, "problemId": problem_id, "draftId": draft_id,
-            "warnings": warnings, "steps": steps}
+            "warnings": warnings, "steps": steps, "adminUrl": admin_url,
+            "viewUrl": view_url}
 
 
 ROUTES = {
@@ -153,7 +213,8 @@ button{padding:8px 14px;border:0;border-radius:6px;cursor:pointer;background:#16
 .buttons{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.bundle{border:1px solid #e5e6eb;border-radius:8px;padding:12px;margin:12px 0}.status{font-size:13px;margin-top:8px;white-space:pre-wrap}.ok{color:#00875a}.err{color:#cb2634}.warn{color:#b25e09}
 </style></head><body>
 <h1>QOJ 直传</h1><div class="sub">problem.json + data.zip → QOJ DRAFT；checkerSource 会随题面一起提交。</div>
-<div class="card"><h2>连接与登录</h2><div class="row"><div class="field"><label>base_url</label><input id="base" placeholder="https://your-qoj.example.com"></div><div class="field"><label>角色</label><select id="role"><option>teacher</option><option>admin</option></select></div></div>
+<div class="card"><h2>连接与登录</h2><div class="row"><div class="field"><label>base_url</label><input id="base" placeholder="https://your-qoj.example.com"></div><div class="field"><label>角色</label><select id="role"><option>teacher</option><option>admin</option></select></div><div class="field"><label>folderId（可选）</label><input id="folderId" inputmode="numeric" placeholder="留空则不归属文件夹"></div></div>
+<div class="row"><div class="field"><label>admin_path</label><input id="adminPath" value="''' + DEFAULT_ADMIN_PATH + r'''" placeholder="/admin"></div><div class="field"><label>view_path</label><input id="viewPath" value="''' + DEFAULT_VIEW_PATH + r'''" placeholder="/problems"></div></div>
 <div class="row"><div class="field"><label>用户名</label><input id="user" autocomplete="off"></div><div class="field"><label>密码</label><input id="pass" type="password" autocomplete="off"></div><div class="field"><label>验证码</label><input id="captcha" autocomplete="off"></div></div>
 <div class="buttons"><button class="secondary" id="getCaptcha">获取验证码</button><button id="login">登录</button><span class="status" id="loginStatus"></span></div><img id="captchaImage" style="display:none;height:40px;margin-top:8px"></div>
 <div class="card"><h2>题目</h2><div class="muted">每行选择配套的 problem.json 和 data.zip；构造题需在 problem.json 提供 checkerSource。</div><div id="bundles"></div>
@@ -167,9 +228,9 @@ function render(d){let s="";(d.warnings||[]).forEach(x=>s+='<div class="warn">[w
 function addBundle(){const d=document.createElement("div");d.className="bundle";d.innerHTML='<div class="row"><div class="field"><label>problem.json</label><input class="json" type="file" accept=".json,application/json"></div><div class="field"><label>data.zip</label><input class="zip" type="file" accept=".zip,application/zip"></div><div style="min-width:170px"><label>发布选项</label><label><input class="construction" type="checkbox" style="width:auto"> 构造题</label></div></div><div class="buttons"><button class="secondary pre">preflight</button><button class="push">上传（DRAFT）</button><button class="secondary del">删除</button></div><div class="status"></div>';$("bundles").appendChild(d);d.querySelector(".del").onclick=()=>d.remove();d.querySelector(".pre").onclick=()=>pre(d);d.querySelector(".push").onclick=()=>push(d);return d}
 async function files(d){const j=d.querySelector(".json").files[0],z=d.querySelector(".zip").files[0];if(!j||!z)throw Error("请选择 problem.json 和 data.zip");const b=await read(z,true);return{problemJson:await read(j,false),dataZipB64:b.split(",")[1],zipName:z.name,construction:d.querySelector(".construction").checked}}
 async function pre(d){const s=d.querySelector(".status");s.textContent="校验中…";try{const r=await files(d),x=await api("/api/preflight",r);s.innerHTML=(x.ok?'<span class="ok">preflight 通过：'+esc(x.title||"")+'（'+x.caseCount+' 个用例）</span>':'<span class="err">preflight 未通过</span>')+render(x);return x.ok}catch(e){s.innerHTML='<span class="err">'+esc(e.message)+'</span>';return false}}
-async function push(d){const s=d.querySelector(".status");s.textContent="上传中…";try{const r=await files(d);const x=await api("/api/push",{baseUrl:$("base").value.trim(),...r});if(x.ok){s.innerHTML=(x.steps||[]).map(y=>'<div class="ok">✓ '+esc(y)+'</div>').join("")+ '<div class="ok">请到后台核对后手动发布。</div>'}else{s.innerHTML=render(x)||'<span class="err">上传失败</span>'}}catch(e){s.innerHTML='<span class="err">'+esc(e.message)+'</span>'}}
+async function push(d){const s=d.querySelector(".status");s.textContent="上传中…";try{const r=await files(d);const x=await api("/api/push",{baseUrl:$("base").value.trim(),adminPath:$("adminPath").value,viewPath:$("viewPath").value,folderId:$("folderId").value,...r});if(x.ok){s.innerHTML=(x.steps||[]).map(y=>'<div class="ok">✓ '+esc(y)+'</div>').join("")+ '<div class="ok">请到后台核对后手动发布。</div>'+(x.adminUrl?'<div><a target="_blank" rel="noopener" href="'+esc(x.adminUrl)+'">打开后台题目列表</a></div>':'')+(x.viewUrl&&x.viewUrl!==$("base").value.trim()+'/'?'<div><a target="_blank" rel="noopener" href="'+esc(x.viewUrl)+'">打开前台题目</a></div>':'')}else{s.innerHTML=render(x)||'<span class="err">上传失败</span>'}}catch(e){s.innerHTML='<span class="err">'+esc(e.message)+'</span>'}}
 $("getCaptcha").onclick=async()=>{const b=$("base").value.trim();if(!b){$("loginStatus").textContent="先填写 base_url";return}$("loginStatus").textContent="拉取中…";try{const x=await api("/api/captcha",{baseUrl:b});if(x.error)throw Error(x.error);captchaId=x.captchaId;$("captchaImage").src=x.image;$("captchaImage").style.display="block";$("loginStatus").textContent="验证码已刷新"}catch(e){$("loginStatus").textContent=e.message}};
-$("login").onclick=async()=>{try{if(!captchaId)throw Error("请先获取验证码");const x=await api("/api/login",{baseUrl:$("base").value.trim(),role:$("role").value,username:$("user").value,password:$("pass").value,captchaId,captcha:$("captcha").value});if(!x.ok)throw Error(x.error||"登录失败");$("loginStatus").textContent="登录成功，凭证已缓存"}catch(e){$("loginStatus").textContent=e.message}};
+$("login").onclick=async()=>{try{if(!captchaId)throw Error("请先获取验证码");const x=await api("/api/login",{baseUrl:$("base").value.trim(),adminPath:$("adminPath").value,role:$("role").value,username:$("user").value,password:$("pass").value,captchaId,captcha:$("captcha").value});if(!x.ok)throw Error(x.error||"登录失败");$("loginStatus").textContent="登录成功，凭证已缓存"}catch(e){$("loginStatus").textContent=e.message}};
 $("add").onclick=addBundle;$("preflightAll").onclick=async()=>{for(const d of document.querySelectorAll(".bundle"))await pre(d)};$("pushAll").onclick=async()=>{for(const d of document.querySelectorAll(".bundle"))await push(d)};addBundle();
 </script></body></html>'''
 

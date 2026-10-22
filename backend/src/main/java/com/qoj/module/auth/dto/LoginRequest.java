@@ -9,6 +9,10 @@ public record LoginRequest(
     @NotBlank String username,
     @NotBlank String password,
     String captchaId,
-    String captcha
+    String captcha,
+    Boolean rememberMe
 ) {
+    public LoginRequest(String username, String password, String captchaId, String captcha) {
+        this(username, password, captchaId, captcha, false);
+    }
 }

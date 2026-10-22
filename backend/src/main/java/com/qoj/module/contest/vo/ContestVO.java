@@ -15,7 +15,6 @@ public record ContestVO(
     LocalDateTime startTime,
     LocalDateTime endTime,
     String type,
-    String judgeMode,
     Long ownerId,
     String ownerName,
     String audience,
@@ -47,6 +46,9 @@ public record ContestVO(
     Long registeredIdentityId,
     String registeredIdentityName,
     Boolean registeredStarred,
-    Long sourceContestId
+    Long sourceContestId,
+    String allowedIpRanges,
+    Boolean hidden,
+    Long activeParticipantCount
 ) {
 }

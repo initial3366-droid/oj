@@ -9,6 +9,10 @@ public record ProblemTestCaseVO(
     String input,
     String output,
     String explanation,
-    Boolean sample
+    Boolean sample,
+    String publicInput
 ) {
+    public ProblemTestCaseVO(Long id, Integer caseNo, String input, String output, String explanation, Boolean sample) {
+        this(id, caseNo, input, output, explanation, sample, "");
+    }
 }

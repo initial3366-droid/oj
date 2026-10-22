@@ -1,7 +1,6 @@
 package com.qoj.module.auth.service;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
-import com.qoj.common.exception.BizException;
 import com.qoj.common.redis.RedisKeys;
 import com.qoj.config.QojProperties;
 import com.qoj.module.auth.dto.AuthTokenResponse;
@@ -12,7 +11,6 @@ import com.qoj.module.classroom.mapper.ClassRoomMapper;
 import com.qoj.module.teacher.entity.Teacher;
 import com.qoj.module.teacher.mapper.MajorMapper;
 import com.qoj.module.teacher.mapper.TeacherMapper;
-import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.module.user.mapper.UserMapper;
@@ -27,7 +25,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -35,12 +32,11 @@ import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.never;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -127,7 +123,7 @@ class AuthServiceTest {
      * 封装登录用户Super管理员管理员AccountShouldRejectFrontend登录相关逻辑。不满足业务约束时直接抛出明确异常；从持久化层读取数据。
      */
     @Test
-    @DisplayName("Frontend login should return the teacher portal without an HTTP error")
+    @DisplayName("Frontend login must not check teacher credentials")
     void loginUser_TeacherOnlyAccount_ShouldDirectToTeacherLogin() {
         Teacher teacher = new Teacher();
         teacher.id = 8L;
@@ -136,16 +132,10 @@ class AuthServiceTest {
         teacher.displayName = "Teacher";
         teacher.status = "ACTIVE";
         when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
-        when(teacherMapper.selectOne(any(Wrapper.class))).thenReturn(teacher);
-        when(passwordEncoder.matches("secret", "encoded")).thenReturn(true);
-
-        FrontendLoginResponse response = authService.loginUser(
-            new LoginRequest("teacher", "secret", null, null)
-        );
-
-        assertEquals("TEACHER", response.portal());
-        assertEquals(null, response.accessToken());
-        assertEquals(null, response.refreshToken());
+        assertThrows(org.springframework.security.authentication.BadCredentialsException.class,
+            () -> authService.loginUser(new LoginRequest("teacher", "secret", null, null)));
+        verify(teacherMapper, never()).selectOne(any(Wrapper.class));
+        verify(passwordEncoder, never()).matches(any(), any());
     }
 
     @Test

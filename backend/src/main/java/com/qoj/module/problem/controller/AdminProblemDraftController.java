@@ -1,14 +1,17 @@
 package com.qoj.module.problem.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.common.ApiResponse;
 import com.qoj.module.problem.dto.ProblemDraftBasicRequest;
 import com.qoj.module.problem.dto.ProblemDraftTestCasesRequest;
 import com.qoj.module.problem.dto.ProblemDraftVO;
+import com.qoj.module.problem.service.CommunicationPackageReader;
 import com.qoj.module.problem.service.ProblemDraftService;
 import com.qoj.module.problem.vo.ProblemVO;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -27,12 +30,16 @@ import org.springframework.web.multipart.MultipartFile;
 @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminProblemDraftController {
     private final ProblemDraftService problemDraftService;
+    private final ObjectMapper objectMapper;
+    private final CommunicationPackageReader communicationPackageReader;
 
     /**
      * 构造 管理员题目DraftController 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
-    public AdminProblemDraftController(ProblemDraftService problemDraftService) {
+    public AdminProblemDraftController(ProblemDraftService problemDraftService, ObjectMapper objectMapper, CommunicationPackageReader communicationPackageReader) {
         this.problemDraftService = problemDraftService;
+        this.objectMapper = objectMapper;
+        this.communicationPackageReader = communicationPackageReader;
     }
 
     /**
@@ -74,9 +81,22 @@ public class AdminProblemDraftController {
     public ApiResponse<ProblemDraftVO> importZip(
         @PathVariable String draftId,
         @RequestPart("file") MultipartFile file,
-        @RequestParam(defaultValue = "false") boolean overwrite
+        @RequestParam(defaultValue = "false") boolean overwrite,
+        @RequestParam(defaultValue = "false") boolean stream,
+        HttpServletResponse response
     ) {
+        if (stream) {
+            TestCaseImportStream.run(response, objectMapper, progress -> { return problemDraftService.importZip(draftId, file, overwrite, progress); });
+            return null;
+        }
         return ApiResponse.ok(problemDraftService.importZip(draftId, file, overwrite));
+    }
+
+    @PostMapping("/{draftId}/communication-package")
+    public ApiResponse<ProblemDraftVO> importCommunicationPackage(@PathVariable String draftId, @RequestPart("file") MultipartFile file) {
+        // Check ownership before parsing an archive and again before its single atomic Redis write.
+        problemDraftService.detail(draftId);
+        return ApiResponse.ok(problemDraftService.importCommunicationPackage(draftId, communicationPackageReader.read(file)));
     }
 
     @PostMapping("/{draftId}/commit")

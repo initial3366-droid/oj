@@ -358,7 +358,7 @@ const WS_URL = "/ws"; // 开发环境自动代理到 http://127.0.0.1:8080/ws
 ## 📦 依赖版本
 
 **后端**:
-- Spring Boot 3.3.5
+- Spring Boot 4.1.1
 - Spring WebSocket (内置)
 
 **前端**:

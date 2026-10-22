@@ -37,11 +37,16 @@ public class AdminProblemFolderController {
         return ApiResponse.ok(folderService.list());
     }
 
+    @GetMapping("/options")
+    public ApiResponse<List<ProblemFolderService.FolderOption>> options() {
+        return ApiResponse.ok(folderService.options());
+    }
+
     /**
      * 封装详情相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
-    @GetMapping("/{id}")
-    public ApiResponse<ProblemFolderVO> detail(@PathVariable long id) {
+    @GetMapping("/{id:[0-9]+}")
+    public ApiResponse<ProblemFolderVO> detail(@PathVariable("id") long id) {
         return ApiResponse.ok(folderService.detail(id));
     }
 

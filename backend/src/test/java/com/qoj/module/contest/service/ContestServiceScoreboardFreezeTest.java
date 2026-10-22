@@ -3,6 +3,13 @@ package com.qoj.module.contest.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.qoj.module.contest.entity.Contest;
 import com.qoj.module.contest.entity.ContestProblem;
+import com.qoj.module.contest.entity.ContestRegistration;
+import com.qoj.module.contest.mapper.ContestRegistrationMapper;
+import com.qoj.module.user.entity.User;
+import com.qoj.security.AuthUser;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.junit.jupiter.api.AfterEach;
 import com.qoj.module.contest.mapper.ContestMapper;
 import com.qoj.module.contest.mapper.ContestProblemMapper;
 import com.qoj.module.contest.vo.ContestScoreboardCellVO;
@@ -13,6 +20,7 @@ import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.mapper.SubmissionMapper;
 import com.qoj.module.user.mapper.UserMapper;
+import com.qoj.security.policy.ContestAccessPolicy;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,7 +29,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -31,11 +38,13 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ContestServiceScoreboardFreezeTest {
     @Mock private ContestMapper contestMapper;
+    @Mock private ContestRegistrationMapper registrationMapper;
     @Mock private ContestProblemMapper contestProblemMapper;
     @Mock private ProblemMapper problemMapper;
     @Mock private SubmissionMapper submissionMapper;
     @Mock private UserMapper userMapper;
-    @Mock private com.qoj.security.policy.ContestAccessPolicy contestAccessPolicy;
+    @Mock private ContestAccessPolicy contestAccessPolicy;
+    @Mock private ContestIpAccessService contestIpAccessService;
     @InjectMocks private ContestService contestService;
 
     private Contest contest;
@@ -74,6 +83,11 @@ class ContestServiceScoreboardFreezeTest {
         when(userMapper.selectBatchIds(any())).thenReturn(List.of());
     }
 
+    @AfterEach
+    void clearViewer() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     void repeatedAcceptedSubmissionAfterFreezeDoesNotMarkCellHidden() {
         Submission beforeFreeze = submission(1L, "AC", freezeTime.minusMinutes(10));
@@ -109,6 +123,16 @@ class ContestServiceScoreboardFreezeTest {
         Submission afterFreeze = submission(2L, "AC", freezeTime.plusMinutes(10));
         when(submissionMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(beforeFreeze, afterFreeze));
 
+        User viewer = new User();
+        viewer.id = 42L;
+        viewer.username = "participant";
+        viewer.role = "STUDENT";
+        AuthUser principal = new AuthUser(viewer);
+        SecurityContextHolder.getContext().setAuthentication(
+            new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+        ContestRegistration registration = new ContestRegistration();
+        registration.status = "APPROVED";
+        when(registrationMapper.selectOne(any(QueryWrapper.class))).thenReturn(registration);
         ContestScoreboardVO scoreboard = contestService.scoreboard(contest.id);
         ContestScoreboardCellVO cell = scoreboard.rows().get(0).cells().get(0);
 

@@ -18,10 +18,12 @@ import com.qoj.security.CurrentUser;
 import com.qoj.security.policy.ContestAccessPolicy;
 import com.qoj.security.policy.Permission;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -207,7 +209,7 @@ public class XcpcioConfigService {
                 return required != null && constantTimeEquals(required, actual);
             })
             .map(config -> config.contestId)
-            .filter(java.util.Objects::nonNull)
+            .filter(Objects::nonNull)
             .toList();
     }
 
@@ -361,14 +363,14 @@ public class XcpcioConfigService {
     }
 
     private boolean constantTimeEquals(String expected, String actual) {
-        return MessageDigest.isEqual(expected.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-            actual.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),
+            actual.getBytes(StandardCharsets.UTF_8));
     }
 
     private String basicAuthPassword(String authorizationHeader) {
         try {
             String encoded = authorizationHeader.substring("Basic ".length()).trim();
-            String decoded = new String(Base64.getDecoder().decode(encoded), java.nio.charset.StandardCharsets.UTF_8);
+            String decoded = new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8);
             int separator = decoded.indexOf(':');
             if (separator < 0) {
                 return null;

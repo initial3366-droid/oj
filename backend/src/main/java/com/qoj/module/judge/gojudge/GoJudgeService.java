@@ -1,7 +1,9 @@
 package com.qoj.module.judge.gojudge;
 
 import com.qoj.common.enums.SubmissionStatus;
+import com.qoj.common.exception.BizException;
 import com.qoj.config.QojProperties;
+import com.qoj.module.agent.service.AgentRunStoppedException;
 import com.qoj.module.judge.JudgeCaseResult;
 import com.qoj.module.judge.JudgeResult;
 import com.qoj.module.judge.JudgeService;
@@ -19,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -76,6 +79,8 @@ public class GoJudgeService implements JudgeService {
             return JudgeResult.systemError(validationError);
         }
 
+        if (task.communication() != null) return new CommunicationJudge(this, client, config).judge(task);
+
         Language language = Language.from(task.language());
         CompiledProgram program = compile(language, task.code());
         if (program.status != SubmissionStatus.AC) {
@@ -85,25 +90,29 @@ public class GoJudgeService implements JudgeService {
         }
 
         CompiledProgram checker = null;
-        if (hasChecker(task.checkerSource())) {
-            checker = compileChecker(task.checkerSource());
-            if (checker.status != SubmissionStatus.AC) {
-                String message = "特殊判题编译失败:\n" + checker.message;
-                return checker.status == SubmissionStatus.CE
-                    ? JudgeResult.compileError(message)
-                    : JudgeResult.systemError(message);
-            }
-        }
-
+        List<JudgeCaseResult> caseResults = new ArrayList<>();
         try {
-            List<JudgeCaseResult> caseResults = new ArrayList<>();
+            if (hasChecker(task.checkerSource())) {
+                checker = compileChecker(task.checkerSource());
+                if (checker.status != SubmissionStatus.AC) {
+                    String message = "特殊判题编译失败:\n" + checker.message;
+                    return checker.status == SubmissionStatus.CE
+                        ? JudgeResult.compileError(message)
+                        : JudgeResult.systemError(message);
+                }
+            }
+
             SubmissionStatus finalStatus = SubmissionStatus.AC;
             int maxTimeMs = 0;
             Integer maxMemoryKb = null;
 
             for (JudgeTask.TestCase testCase : task.testCases()) {
-                if (utf8Length(testCase.input()) > config.getMaxInputBytes()) {
-                    return JudgeResult.systemError("测试点输入超过 go-judge 安全上限");
+                int inputBytes = utf8Length(testCase.input());
+                if (inputBytes > config.getMaxInputBytes()) {
+                    return JudgeResult.systemError(String.format(
+                        "测试点 %s 输入超过 go-judge 安全上限：实际 %d 字节，上限 %d 字节（GO_JUDGE_MAX_INPUT_BYTES）",
+                        testCase.caseNo(), inputBytes, config.getMaxInputBytes()
+                    ));
                 }
                 if (utf8Length(testCase.expectedOutput()) > config.getMaxOutputBytes()) {
                     return JudgeResult.systemError("测试点输出超过 go-judge 安全上限");
@@ -167,6 +176,8 @@ public class GoJudgeService implements JudgeService {
              * 封装判题结果相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
              */
             return new JudgeResult(finalStatus, "", maxTimeMs, maxMemoryKb, caseResults);
+        } catch (JudgeExecutionBudget.Exceeded ex) {
+            return JudgeExecutionBudget.exceeded(task, caseResults);
         } catch (GoJudgeClient.GoJudgeClientException ex) {
             log.warn("go-judge execution failed for submission {}: {}", task.submissionId(), ex.getMessage());
             return JudgeResult.systemError("go-judge 服务不可用或执行失败");
@@ -259,37 +270,37 @@ public class GoJudgeService implements JudgeService {
 
     /** Compile once and run sequentially; each case keeps the existing isolated resource limits. */
     public List<SandboxResult> runCustomBatch(String languageValue, String code, List<String> inputs,
-                                             java.util.function.BooleanSupplier cancelled) {
+                                             BooleanSupplier cancelled) {
         Language language = Language.from(languageValue);
         if (language == null || code == null || inputs == null || inputs.isEmpty() || inputs.size() > 220
             || utf8Length(code) > config.getMaxSourceBytes()
             || inputs.stream().anyMatch(input -> input == null || utf8Length(input) > config.getMaxInputBytes())) {
-            throw new com.qoj.common.exception.BizException(400, "标程、语言或测试输入超出运行范围");
+            throw new BizException(400, "标程、语言或测试输入超出运行范围");
         }
         long deadline = System.nanoTime() + Duration.ofSeconds(80).toNanos();
-        if (cancelled.getAsBoolean()) throw new com.qoj.module.agent.service.AgentRunStoppedException();
+        if (cancelled.getAsBoolean()) throw new AgentRunStoppedException();
         CompiledProgram program = compile(language, code);
         if (program.status != SubmissionStatus.AC) return List.of(new SandboxResult("", program.message, program.status.name(), 0, 0));
         try {
             var outputs = new ArrayList<SandboxResult>();
             for (String input : inputs) {
-                if (cancelled.getAsBoolean()) throw new com.qoj.module.agent.service.AgentRunStoppedException();
-                if (System.nanoTime() >= deadline) throw new com.qoj.common.exception.BizException(504, "本批计算耗时过长，请减少测试点后重试");
+                if (cancelled.getAsBoolean()) throw new AgentRunStoppedException();
+                if (System.nanoTime() >= deadline) throw new BizException(504, "本批计算耗时过长，请减少测试点后重试");
                 List<Result> results = client.run(new RunRequest(List.of(runCommand(language, program.fileId, input, 2000, 256))), runRequestTimeout(2000));
-                if (results.size() != 1 || results.get(0) == null) throw new com.qoj.common.exception.BizException(502, "判题沙箱返回格式错误");
+                if (results.size() != 1 || results.get(0) == null) throw new BizException(502, "判题沙箱返回格式错误");
                 CaseExecution execution = mapRunResult(results.get(0));
                 outputs.add(new SandboxResult(execution.output, execution.error, execution.status.name(), execution.timeMs, execution.memoryKb));
                 if (execution.status != SubmissionStatus.AC) break;
             }
             return List.copyOf(outputs);
         } catch (GoJudgeClient.GoJudgeClientException ex) {
-            throw new com.qoj.common.exception.BizException(503, "判题沙箱不可用，未保存本批生成数据");
+            throw new BizException(503, "判题沙箱不可用，未保存本批生成数据");
         } finally {
             client.deleteFile(program.fileId);
         }
     }
 
-    private CompiledProgram compile(Language language, String code) {
+    CompiledProgram compile(Language language, String code) {
         if (language == null) {
             /**
              * 构造 CompiledProgram 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
@@ -350,7 +361,7 @@ public class GoJudgeService implements JudgeService {
         }
     }
 
-    private CompiledProgram compileChecker(String source) {
+    CompiledProgram compileChecker(String source) {
         if (utf8Length(source) > MAX_CHECKER_SOURCE_BYTES) {
             return new CompiledProgram(SubmissionStatus.CE, null, "特殊判题代码超过安全上限");
         }
@@ -498,7 +509,7 @@ public class GoJudgeService implements JudgeService {
         );
     }
 
-    private Command runCommand(Language language, String fileId, String input, int timeLimitMs, int memoryLimitMb) {
+    Command runCommand(Language language, String fileId, String input, int timeLimitMs, int memoryLimitMb) {
         Map<String, CommandFile> copyIn = Map.of(language.artifactName, CommandFile.cached(fileId));
         List<String> args = language.runArgs(memoryLimitMb);
         long cpuLimit = timeLimitMs * NANOS_PER_MILLISECOND;
@@ -517,7 +528,7 @@ public class GoJudgeService implements JudgeService {
         );
     }
 
-    private Command command(
+    Command command(
         List<String> args,
         List<CommandFile> files,
         long cpuLimit,
@@ -552,7 +563,7 @@ public class GoJudgeService implements JudgeService {
         );
     }
 
-    private CaseExecution mapRunResult(Result result) {
+    CaseExecution mapRunResult(Result result) {
         String status = result.status() == null ? "Invalid" : result.status();
         SubmissionStatus mapped = switch (status) {
             case "Accepted" -> result.exitStatus() == 0 ? SubmissionStatus.AC : SubmissionStatus.RE;
@@ -682,7 +693,7 @@ public class GoJudgeService implements JudgeService {
     /**
      * Language枚举。限定该领域允许出现的离散状态，避免在业务代码中传播无约束字符串。
      */
-    private enum Language {
+    enum Language {
         C(
             "main.c",
             "main",
@@ -749,7 +760,7 @@ public class GoJudgeService implements JudgeService {
         /**
          * 封装from相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
-        private static Language from(String value) {
+        static Language from(String value) {
             String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
             return switch (normalized) {
                 case "c" -> C;
@@ -766,13 +777,13 @@ public class GoJudgeService implements JudgeService {
     /**
      * CompiledProgram不可变数据载体。通过 record 语义表达一组只读字段及其结构约束。
      */
-    private record CompiledProgram(SubmissionStatus status, String fileId, String message) {
+    record CompiledProgram(SubmissionStatus status, String fileId, String message) {
     }
 
     /**
      * 测试点Execution不可变数据载体。通过 record 语义表达一组只读字段及其结构约束。
      */
-    private record CaseExecution(
+    record CaseExecution(
         SubmissionStatus status,
         String output,
         String error,

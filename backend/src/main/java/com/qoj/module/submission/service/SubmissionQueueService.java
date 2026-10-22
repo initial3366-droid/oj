@@ -23,11 +23,13 @@ import com.qoj.module.ws.JudgeMessagePublisher;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
 import com.qoj.security.audit.AuditLogger;
+import com.qoj.security.policy.ContestAccessPolicy;
 import com.qoj.security.policy.Permission;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,7 +49,7 @@ public class SubmissionQueueService {
     private final AuditLogger auditLogger;
     private final JudgeMessagePublisher judgeMessagePublisher;
     private final SystemSettingService settingService;
-    private final com.qoj.security.policy.ContestAccessPolicy contestAccessPolicy;
+    private final ContestAccessPolicy contestAccessPolicy;
 
     /**
      * 构造 提交队列Service 实例并保存其必要依赖或初始状态。调用前会结合当前登录身份执行权限判断；从持久化层读取数据；在状态变化后发布异步消息。
@@ -62,7 +64,7 @@ public class SubmissionQueueService {
         AuditLogger auditLogger,
         JudgeMessagePublisher judgeMessagePublisher,
         SystemSettingService settingService,
-        com.qoj.security.policy.ContestAccessPolicy contestAccessPolicy
+        ContestAccessPolicy contestAccessPolicy
     ) {
         this.submissionMapper = submissionMapper;
         this.contestMapper = contestMapper;
@@ -162,7 +164,6 @@ public class SubmissionQueueService {
             throw new BizException(409, "原判题任务尚未释放，暂时不能重判");
         }
 
-        // Keep judgeBackend unchanged; rejudges stay on their original backend.
         submission.status = SubmissionStatus.REJUDGE_PENDING.name();
         submission.isRejudged = true;
         submission.retryCount = safeInt(submission.retryCount) + 1;
@@ -399,7 +400,7 @@ public class SubmissionQueueService {
         LocalDateTime submitAt = submitTime(submission);
         LocalDateTime startAt = submission.judgeStartTime;
         LocalDateTime finishAt = submission.judgeEndTime;
-        long waitingTimeMillis = waitingDurationMillis(submitAt, startAt, finishAt, submission.status);
+        long waitingTimeMillis = waitingDurationMillis(submitAt, startAt, submission.status);
         long runningTimeMillis = runningDurationMillis(startAt, finishAt, submission.status);
         return new SubmissionQueueVO(
             submission.id,
@@ -567,7 +568,7 @@ public class SubmissionQueueService {
         return Duration.between(start, end).toMillis();
     }
 
-    private Long waitingDurationMillis(LocalDateTime submitAt, LocalDateTime startAt, LocalDateTime finishAt, String status) {
+    private Long waitingDurationMillis(LocalDateTime submitAt, LocalDateTime startAt, String status) {
         if (startAt != null) {
             /**
              * 封装durationMillis相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
@@ -617,7 +618,7 @@ public class SubmissionQueueService {
     /**
      * 获取判题队列统计数据
      */
-    public java.util.Map<String, Object> stats(
+    public Map<String, Object> stats(
         Long contestId,
         Long problemId,
         Long userId,
@@ -643,7 +644,7 @@ public class SubmissionQueueService {
         long total = countForStats(authUser, contestId, problemId, userId, language, judgeServer, from, to, List.of());
         long maxConcurrent = settingService.getJudgeSettings().maxConcurrent;
 
-        return java.util.Map.<String, Object>of(
+        return Map.<String, Object>of(
             "waiting", waiting,
             "judging", judging,
             "finished", finished,
@@ -674,8 +675,8 @@ public class SubmissionQueueService {
         return count == null ? 0 : count;
     }
 
-    private java.util.Map<String, Object> basicStats() {
-        return java.util.Map.of("message", "权限不足");
+    private Map<String, Object> basicStats() {
+        return Map.of("message", "权限不足");
     }
 
     private boolean canViewAllStats(AuthUser authUser) {

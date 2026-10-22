@@ -15,8 +15,6 @@ import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.mapper.SubmissionMapper;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.UserMapper;
-import com.qoj.module.xcpcio.entity.ContestXcpcioConfig;
-import com.qoj.module.xcpcio.mapper.ContestXcpcioConfigMapper;
 import com.qoj.module.xcpcio.dto.clics.ClicsContestDTO;
 import com.qoj.module.xcpcio.dto.clics.ClicsGroupDTO;
 import com.qoj.module.xcpcio.dto.clics.ClicsJudgementDTO;
@@ -59,7 +57,6 @@ public class ClicsExportService {
     private final ProblemMapper problemMapper;
     private final SubmissionMapper submissionMapper;
     private final UserMapper userMapper;
-    private final ContestXcpcioConfigMapper configMapper;
     private final ZoneId zoneId = ZoneId.systemDefault();
 
     /**
@@ -71,8 +68,7 @@ public class ClicsExportService {
         ContestProblemMapper contestProblemMapper,
         ProblemMapper problemMapper,
         SubmissionMapper submissionMapper,
-        UserMapper userMapper,
-        ContestXcpcioConfigMapper configMapper
+        UserMapper userMapper
     ) {
         this.contestMapper = contestMapper;
         this.participantMapper = participantMapper;
@@ -80,7 +76,6 @@ public class ClicsExportService {
         this.problemMapper = problemMapper;
         this.submissionMapper = submissionMapper;
         this.userMapper = userMapper;
-        this.configMapper = configMapper;
     }
 
     public Map<String, Object> root() {

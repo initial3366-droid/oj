@@ -20,7 +20,6 @@ public class Contest {
     public LocalDateTime endTime;
     public String type;
     public String scoringMode;
-    public String judgeMode;
     public LocalDateTime freezeTime;
     public Integer penaltyMinutes;
     public Boolean countCeAsPenalty;
@@ -43,6 +42,8 @@ public class Contest {
     public Boolean allowViewAllSubmissions;
     public String registrationType;
     public String registrationPassword;
+    public String allowedIpRanges;
+    public Boolean hidden;
     public String status;
     public Integer registrationCount;
     public Integer participantCount;

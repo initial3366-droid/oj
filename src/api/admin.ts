@@ -12,6 +12,7 @@ export interface AdminDashboard {
   problemCount: number;
   submissionCount: number;
   todaySubmissionCount: number;
+  /** 按提交时间统计今日 AC/ACCEPTED 提交总数，重复通过也计入。 */
   todayAcceptedCount: number;
   todayActiveUserCount: number;
   activeContestCount: number;

@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>比赛列表预览 · QOJ</title>
+    <style>
+      :root {
+        --blue: #1677ff;
+        --blue-strong: #0958d9;
+        --blue-soft: #eff6ff;
+        --ink: #182235;
+        --muted: #667085;
+        --faint: #98a2b3;
+        --line: #e8edf4;
+        --surface: #fff;
+        --canvas: #f7f9fc;
+        --green: #0f9f6e;
+        --green-soft: #ebf9f3;
+        --amber: #aa6907;
+        --amber-soft: #fff8e8;
+        --red: #c24143;
+        --red-soft: #fff1f1;
+        --violet: #7044aa;
+        --violet-soft: #f4effd;
+        --shadow-sm: 0 3px 12px rgba(25, 45, 80, 0.045);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--canvas);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+          "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button, a, input, select { font: inherit; }
+      button { cursor: pointer; }
+      a { color: inherit; text-decoration: none; }
+
+      /* 与现有前台保持一致的 header */
+      .site-header {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        height: 64px;
+        padding: 0 52px;
+        background: rgba(255, 255, 255, 0.96);
+        border-bottom: 1px solid #edf0f4;
+        backdrop-filter: blur(12px);
+      }
+
+      .header-inner {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        height: 100%;
+        min-width: 0;
+        max-width: 1500px;
+        margin: 0 auto;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        flex: 0 0 auto;
+        gap: 12px;
+        min-width: 190px;
+        height: 48px;
+        padding: 0 8px;
+        color: var(--blue);
+      }
+
+      .brand-mark {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 40px;
+        color: var(--blue);
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 1;
+      }
+
+      .brand-name {
+        color: var(--blue);
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+      }
+
+      .top-nav {
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        flex: 1 1 auto;
+        min-width: 0;
+        height: 64px;
+        gap: 2px;
+      }
+
+      .top-nav a {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 86px;
+        padding: 0 18px;
+        color: #495466;
+        font-size: 16px;
+        font-weight: 500;
+        transition: color 160ms ease;
+      }
+
+      .top-nav a:hover,
+      .top-nav a.active { color: var(--blue); }
+
+      .top-nav a.active::after {
+        position: absolute;
+        right: 18px;
+        bottom: 0;
+        left: 18px;
+        height: 3px;
+        border-radius: 3px 3px 0 0;
+        background: var(--blue);
+        content: "";
+      }
+
+      .auth-links {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex: 0 0 auto;
+        gap: 4px;
+        min-width: 118px;
+      }
+
+      .auth-links a {
+        padding: 12px 8px;
+        color: #495466;
+        font-size: 16px;
+        transition: color 160ms ease;
+      }
+
+      .auth-links a:hover { color: var(--blue); }
+
+      .page-content {
+        width: 100%;
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 34px 52px 56px;
+      }
+
+      .page-intro {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+
+      .breadcrumbs {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 13px;
+        color: var(--faint);
+        font-size: 13px;
+      }
+
+      .breadcrumbs a { color: var(--muted); }
+      .breadcrumbs a:hover { color: var(--blue); }
+
+      .page-title {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      h1, h2, h3, p { margin-top: 0; }
+
+      h1 {
+        margin-bottom: 8px;
+        font-size: clamp(27px, 3.5vw, 36px);
+        letter-spacing: -0.04em;
+        line-height: 1.15;
+      }
+
+      .title-note {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .outline-btn,
+      .primary-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        min-height: 40px;
+        padding: 0 15px;
+        border-radius: 9px;
+        font-size: 13px;
+        font-weight: 650;
+        transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+      }
+
+      .outline-btn { border: 1px solid #dbe3ee; color: #536075; background: #fff; }
+      .outline-btn:hover { border-color: #a8c8f8; color: var(--blue); background: #f7fbff; }
+      .primary-btn { border: 1px solid var(--blue); color: #fff; background: var(--blue); }
+      .primary-btn:hover { border-color: var(--blue-strong); background: var(--blue-strong); }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .summary-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        min-height: 88px;
+        padding: 17px 19px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .summary-label { margin: 0 0 5px; color: var(--muted); font-size: 12px; }
+      .summary-value { margin: 0; color: var(--ink); font-size: 25px; font-weight: 750; letter-spacing: -0.04em; }
+      .summary-hint { margin: 0; color: var(--faint); font-size: 11px; }
+
+      .summary-mark {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        width: 35px;
+        height: 35px;
+        border-radius: 10px;
+        color: var(--blue);
+        background: var(--blue-soft);
+        font-size: 16px;
+      }
+
+      .summary-card:nth-child(2) .summary-mark { color: var(--amber); background: var(--amber-soft); }
+      .summary-card:nth-child(3) .summary-mark { color: var(--violet); background: var(--violet-soft); }
+
+      .filter-panel {
+        padding: 15px 17px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .filter-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 13px;
+      }
+
+      .filter-heading { margin: 0; color: var(--ink); font-size: 14px; font-weight: 700; }
+      .result-count { color: var(--faint); font-size: 12px; }
+
+      .filter-controls {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .status-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 9px; background: #f3f5f8; }
+
+      .status-tab {
+        min-height: 32px;
+        padding: 0 12px;
+        border: 0;
+        border-radius: 7px;
+        color: var(--muted);
+        background: transparent;
+        font-size: 12px;
+      }
+
+      .status-tab:hover { color: var(--blue); }
+      .status-tab.active { color: var(--blue); background: #fff; box-shadow: 0 1px 3px rgba(30, 50, 80, 0.08); }
+
+      .filter-field {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        height: 38px;
+        padding: 0 11px;
+        border: 1px solid #e0e7f0;
+        border-radius: 8px;
+        color: #7b879a;
+        background: #fff;
+      }
+
+      .filter-field:focus-within { border-color: #9dc4f9; box-shadow: 0 0 0 2px #eaf3ff; }
+      .filter-field input { width: 176px; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 12px; }
+      .filter-field input::placeholder { color: #a3adbb; }
+      .filter-field select { border: 0; outline: 0; color: #536075; background: transparent; font-size: 12px; cursor: pointer; }
+
+      .check-label { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+      .check-label input { width: 15px; height: 15px; accent-color: var(--blue); }
+
+      .list-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-items: start;
+        gap: 18px;
+        margin-top: 18px;
+      }
+
+      .list-card,
+      .side-card {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--surface);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .list-card { overflow: hidden; }
+
+      .list-card-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 21px 22px 16px;
+      }
+
+      .list-card-heading h2 { margin: 0; font-size: 19px; letter-spacing: -0.03em; }
+      .list-card-heading p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+      .sort-select { height: 32px; padding: 0 8px; border: 1px solid #e0e7f0; border-radius: 7px; color: var(--muted); background: #fff; font-size: 11px; }
+
+      .contest-group { border-top: 1px solid var(--line); }
+
+      .group-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 15px 22px 10px;
+      }
+
+      .group-heading h3 { margin: 0; color: #435069; font-size: 13px; font-weight: 720; }
+      .group-heading span { color: var(--faint); font-size: 11px; }
+
+      .contest-item {
+        display: grid;
+        grid-template-columns: 76px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 15px;
+        min-height: 108px;
+        padding: 15px 22px;
+        border-top: 1px solid #f0f3f7;
+        transition: background 160ms ease;
+      }
+
+      .contest-item:hover { background: #fbfdff; }
+      .contest-item[hidden], .contest-group[hidden] { display: none; }
+
+      .item-status {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+        padding-left: 11px;
+        border-left: 3px solid #c6cfdb;
+      }
+
+      .item-status strong { font-size: 12px; font-weight: 720; }
+      .item-status small { color: var(--faint); font-size: 9px; letter-spacing: 0.09em; }
+      .status-running { border-left-color: #28ae7c; }
+      .status-running strong { color: var(--green); }
+      .status-upcoming { border-left-color: #f0af3d; }
+      .status-upcoming strong { color: var(--amber); }
+      .status-ended { border-left-color: #b8c0ca; }
+      .status-ended strong { color: #7c8798; }
+
+      .item-main { min-width: 0; }
+
+      .item-title-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin-bottom: 7px;
+      }
+
+      .item-title { overflow: hidden; color: var(--ink); font-size: 19px; font-weight: 700; letter-spacing: -0.015em; text-overflow: ellipsis; white-space: nowrap; }
+      .item-title:hover { color: var(--blue); }
+
+      .type-tag,
+      .joined-tag,
+      .audience-tag {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        min-height: 21px;
+        padding: 0 7px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 650;
+        white-space: nowrap;
+      }
+
+      .type-tag { color: #496b9f; background: #eff5ff; }
+      .type-tag.oi { color: var(--violet); background: var(--violet-soft); }
+      .joined-tag { color: var(--green); background: var(--green-soft); }
+      .audience-tag { color: #6f7b8e; background: #f2f4f7; }
+
+      .item-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 16px; color: var(--muted); font-size: 12px; }
+      .item-meta span { display: inline-flex; align-items: center; gap: 5px; }
+      .item-meta b { color: #8994a6; font-weight: 500; }
+      .item-meta .contest-time { color: #536075; font-size: 14px; font-weight: 600; }
+      .item-meta .contest-deadline { color: #536075; font-weight: 600; }
+
+      .item-side { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 118px; }
+
+      .item-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 32px;
+        padding: 0 10px;
+        border: 1px solid #dbe4ef;
+        border-radius: 7px;
+        color: #536075;
+        background: #fff;
+        font-size: 11px;
+        font-weight: 650;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      .item-action:hover { border-color: #a9c8f6; color: var(--blue); background: #f7fbff; }
+      .item-action.primary { border-color: var(--blue); color: var(--blue); background: #f5f9ff; }
+      .item-action.primary:hover { color: #fff; background: var(--blue); }
+      .item-action.disabled { border-color: #e8ebf0; color: #a0a7b3; background: #fafbfc; cursor: default; }
+
+      .empty-state { padding: 40px 20px; color: var(--faint); font-size: 13px; text-align: center; }
+      .empty-state[hidden] { display: none; }
+
+      .pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        padding: 15px 20px 17px;
+        border-top: 1px solid var(--line);
+      }
+
+      .pagination[hidden] { display: none; }
+
+      .pagination-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 30px;
+        height: 30px;
+        padding: 0 9px;
+        border: 1px solid #e0e7f0;
+        border-radius: 7px;
+        color: var(--muted);
+        background: #fff;
+        font-size: 11px;
+      }
+
+      .pagination-button:hover:not(:disabled) { border-color: #a9c8f6; color: var(--blue); background: #f7fbff; }
+      .pagination-button.active { border-color: var(--blue); color: #fff; background: var(--blue); }
+      .pagination-button:disabled { color: #b4bbc5; background: #fafbfc; cursor: not-allowed; }
+      .pagination-info { margin-left: 8px; color: var(--faint); font-size: 11px; }
+
+      .side-stack { display: grid; gap: 16px; }
+      .side-card { padding: 20px; }
+      .side-card h2 { margin: 0; color: var(--ink); font-size: 17px; letter-spacing: -0.02em; }
+      .side-card-subtitle { margin: 5px 0 16px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+
+      .schedule-item { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 55px; border-top: 1px solid #f0f3f7; }
+      .schedule-date { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 8px; color: var(--blue); background: var(--blue-soft); }
+      .schedule-date strong { font-size: 14px; line-height: 1; }
+      .schedule-date small { margin-top: 3px; font-size: 9px; }
+      .schedule-title { overflow: hidden; color: #4d5a70; font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+      .schedule-time { color: var(--faint); font-size: 10px; white-space: nowrap; }
+
+      .rule-list { display: grid; gap: 10px; margin-top: 14px; }
+      .rule-item { display: grid; grid-template-columns: 29px minmax(0, 1fr); gap: 9px; align-items: start; }
+      .rule-icon { display: inline-flex; align-items: center; justify-content: center; width: 27px; height: 27px; border-radius: 7px; color: var(--blue); background: var(--blue-soft); font-size: 13px; }
+      .rule-item:nth-child(2) .rule-icon { color: var(--violet); background: var(--violet-soft); }
+      .rule-item:nth-child(3) .rule-icon { color: var(--green); background: var(--green-soft); }
+      .rule-item strong { display: block; margin-bottom: 3px; color: #4d5a70; font-size: 11px; }
+      .rule-item p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+
+      .side-links { display: grid; gap: 8px; margin-top: 14px; }
+      .side-link { display: flex; align-items: center; justify-content: space-between; padding: 10px 11px; border: 1px solid #e8edf4; border-radius: 8px; color: #536075; background: #fbfcfe; font-size: 11px; }
+      .side-link:hover { border-color: #b8d2f6; color: var(--blue); background: #f7fbff; }
+
+      .site-footer {
+        margin-top: 48px;
+        padding: 16px 24px;
+        border-top: 1px solid #f0f0f0;
+        background: #fff;
+      }
+
+      .footer-content { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; max-width: 1400px; min-height: 24px; margin: 0 auto; }
+      .footer-main { display: flex; align-items: center; justify-content: center; flex: 1; flex-wrap: wrap; gap: 12px; min-width: 0; }
+      .footer-text { color: rgba(0, 0, 0, 0.45); font-size: 13px; }
+
+      .toast { position: fixed; right: 22px; bottom: 22px; z-index: 50; max-width: min(360px, calc(100vw - 44px)); padding: 11px 14px; border: 1px solid #cfe0f7; border-radius: 9px; color: #1d4f91; background: #f0f7ff; box-shadow: 0 12px 30px rgba(26, 64, 117, 0.16); font-size: 12px; opacity: 0; pointer-events: none; transform: translateY(8px); transition: opacity 180ms ease, transform 180ms ease; }
+      .toast.show { opacity: 1; transform: translateY(0); }
+
+      @media (max-width: 1100px) {
+        .site-header, .page-content { padding-right: 28px; padding-left: 28px; }
+        .brand { min-width: auto; }
+        .brand-name { display: none; }
+        .top-nav a { min-width: 72px; padding-right: 12px; padding-left: 12px; }
+        .top-nav a.active::after { right: 12px; left: 12px; }
+        .list-layout { grid-template-columns: minmax(0, 1fr); }
+      }
+
+      @media (max-width: 860px) {
+        .site-header { padding-right: 16px; padding-left: 16px; }
+        .header-inner { gap: 10px; }
+        .brand { gap: 4px; padding-left: 0; }
+        .top-nav { justify-content: flex-start; overflow-x: auto; }
+        .top-nav a { min-width: auto; padding-right: 10px; padding-left: 10px; font-size: 14px; }
+        .top-nav a.active::after { right: 10px; left: 10px; }
+        .auth-links { min-width: auto; }
+        .auth-links a { padding-right: 4px; padding-left: 4px; font-size: 14px; }
+        .page-content { padding: 24px 16px 44px; }
+        .page-intro { align-items: flex-start; flex-direction: column; gap: 15px; }
+        .list-layout { grid-template-columns: 1fr; }
+        .side-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+
+      @media (max-width: 620px) {
+        .top-nav a:nth-child(5), .top-nav a:nth-child(6) { display: none; }
+        .summary-grid { grid-template-columns: 1fr; gap: 8px; }
+        .summary-card { min-height: 72px; }
+        .filter-top { align-items: flex-start; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+        .filter-controls { align-items: stretch; flex-direction: column; }
+        .status-tabs { overflow-x: auto; }
+        .status-tab { flex: 0 0 auto; }
+        .filter-field { width: 100%; }
+        .filter-field input { width: 100%; }
+        .contest-item { grid-template-columns: 62px minmax(0, 1fr); gap: 10px; padding: 14px 16px; }
+        .item-title { font-size: 18px; }
+        .item-meta .contest-time { font-size: 13px; }
+        .item-side { grid-column: 2; justify-content: flex-start; min-width: 0; }
+        .list-card-heading, .group-heading { padding-right: 16px; padding-left: 16px; }
+        .list-card-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
+        .side-stack { grid-template-columns: 1fr; }
+        .footer-content { justify-content: center; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="#" aria-label="返回首页"><span class="brand-mark">OJ</span><span class="brand-name">QOJ 在线评测系统</span></a>
+        <nav class="top-nav" aria-label="主导航">
+          <a href="#">首页</a><a href="#">题库</a><a href="#">题单</a><a class="active" href="#" aria-current="page">比赛</a><a href="#">提交队列</a><a href="#">排行榜</a>
+        </nav>
+        <div class="auth-links"><a href="#">登录</a><a href="#">注册</a></div>
+      </div>
+    </header>
+
+    <main class="page-content">
+      <section class="page-intro">
+        <div>
+          <div class="breadcrumbs"><a href="#">首页</a><span>/</span><span>比赛</span></div>
+          <div class="page-title"><h1>比赛</h1><span class="audience-tag">赛程中心</span></div>
+          <p class="title-note">查找公开赛、校内赛与训练赛，安排你的下一场挑战。</p>
+        </div>
+      </section>
+
+      <section class="summary-grid" aria-label="比赛统计">
+        <div class="summary-card"><div><p class="summary-label">进行中</p><p class="summary-value">1</p><p class="summary-hint">现在可以进入</p></div><span class="summary-mark">●</span></div>
+        <div class="summary-card"><div><p class="summary-label">近期比赛</p><p class="summary-value">1</p><p class="summary-hint">未来 3 天内</p></div><span class="summary-mark">◷</span></div>
+        <div class="summary-card"><div><p class="summary-label">已报名比赛</p><p class="summary-value">2</p><p class="summary-hint">你已报名的比赛</p></div><span class="summary-mark">✓</span></div>
+      </section>
+
+      <section class="filter-panel" aria-label="比赛筛选">
+        <div class="filter-top"><p class="filter-heading">筛选比赛</p><span class="result-count" id="result-count">共 6 场比赛</span></div>
+        <div class="filter-controls">
+          <div class="status-tabs" role="group" aria-label="比赛状态">
+            <button class="status-tab active" type="button" data-status-filter="all">全部</button>
+            <button class="status-tab" type="button" data-status-filter="running">进行中</button>
+            <button class="status-tab" type="button" data-status-filter="upcoming">即将开始</button>
+            <button class="status-tab" type="button" data-status-filter="ended">已结束</button>
+          </div>
+          <label class="filter-field" aria-label="搜索比赛"><span aria-hidden="true">⌕</span><input id="search-input" type="search" placeholder="搜索比赛名称" /></label>
+          <label class="filter-field" aria-label="筛选赛制"><span aria-hidden="true">◇</span><select id="type-filter"><option value="all">全部赛制</option><option value="ACM">ACM</option><option value="OI">OI</option></select></label>
+          <label class="check-label"><input id="joined-filter" type="checkbox" />只看已报名</label>
+          <button class="outline-btn" id="clear-button" type="button">清空筛选</button>
+        </div>
+      </section>
+
+      <div class="list-layout">
+        <section class="list-card" aria-labelledby="list-title">
+          <div class="list-card-heading"><div><h2 id="list-title">赛程列表</h2><p>按开始时间排列，点击比赛可查看题目与规则。</p></div><select class="sort-select" aria-label="排序方式"><option>按开始时间</option><option>按报名人数</option></select></div>
+
+          <div class="contest-group" data-group="running">
+            <div class="group-heading"><h3>正在进行</h3><span>Live now</span></div>
+            <article class="contest-item" data-status="running" data-type="ACM" data-joined="true" data-title="秋季算法挑战赛">
+              <div class="item-status status-running"><strong>进行中</strong><small>LIVE</small></div>
+              <div class="item-main"><div class="item-title-row"><a class="item-title" href="./contest-preview.html">秋季算法挑战赛</a><span class="type-tag">ACM</span><span class="joined-tag">已报名</span></div><div class="item-meta"><span class="contest-time">◷ <b>时间</b> 2025/10/18 19:00 – 22:00</span><span class="contest-deadline">⌁ <b>结束</b> 2025/10/18 22:00</span><span>♧ 1,286 人</span><span class="audience-tag">全校公开</span></div></div>
+              <div class="item-side"><a class="item-action primary" href="./contest-preview.html">进入比赛 →</a></div>
+            </article>
+          </div>
+
+          <div class="contest-group" data-group="recent">
+            <div class="group-heading"><h3>近期比赛（3天内）</h3><span>Next 3 days</span></div>
+            <article class="contest-item" data-status="upcoming" data-type="OI" data-joined="true" data-title="校内新生杯预选赛"><div class="item-status status-upcoming"><strong>即将开始</strong><small>OCT 25</small></div><div class="item-main"><div class="item-title-row"><a class="item-title" href="./contest-preview.html">校内新生杯预选赛</a><span class="type-tag oi">OI</span><span class="joined-tag">已报名</span></div><div class="item-meta"><span class="contest-time">◷ <b>时间</b> 2025/10/25 19:00</span><span class="contest-deadline">⌁ <b>结束</b> 2025/10/25 23:00</span><span>♧ 372 人</span><span class="audience-tag">指定范围</span></div></div><div class="item-side"><a class="item-action" href="./contest-preview.html">查看详情</a></div></article>
+          </div>
+
+          <div class="contest-group" data-group="upcoming">
+            <div class="group-heading"><h3>更多即将开始</h3><span>Upcoming</span></div>
+            <article class="contest-item" data-status="upcoming" data-type="ACM" data-joined="false" data-title="图论周练 · 第 07 期"><div class="item-status status-upcoming"><strong>即将开始</strong><small>NOV 02</small></div><div class="item-main"><div class="item-title-row"><a class="item-title" href="./contest-preview.html">图论周练 · 第 07 期</a><span class="type-tag">ACM</span></div><div class="item-meta"><span class="contest-time">◷ <b>时间</b> 2025/11/02 19:30</span><span class="contest-deadline">⌁ <b>结束</b> 2025/11/02 21:30</span><span>♧ 218 人</span><span class="audience-tag">全校公开</span></div></div><div class="item-side"><a class="item-action" href="./contest-preview.html">查看详情</a></div></article>
+            <article class="contest-item" data-status="upcoming" data-type="ACM" data-joined="false" data-title="Code Sprint · 11 月挑战"><div class="item-status status-upcoming"><strong>即将开始</strong><small>NOV 16</small></div><div class="item-main"><div class="item-title-row"><a class="item-title" href="./contest-preview.html">Code Sprint · 11 月挑战</a><span class="type-tag">ACM</span></div><div class="item-meta"><span class="contest-time">◷ <b>时间</b> 2025/11/16 14:00</span><span class="contest-deadline">⌁ <b>结束</b> 2025/11/16 17:00</span><span>♧ 94 人</span><span class="audience-tag">全校公开</span></div></div><div class="item-side"><a class="item-action" href="./contest-preview.html">查看详情</a></div></article>
+          </div>
+
+          <div class="contest-group" data-group="ended">
+            <div class="group-heading"><h3>已结束</h3><span>Past contests</span></div>
+            <article class="contest-item" data-status="ended" data-type="ACM" data-joined="true" data-title="夏季训练营入门赛"><div class="item-status status-ended"><strong>已结束</strong><small>SEP 28</small></div><div class="item-main"><div class="item-title-row"><a class="item-title" href="./contest-preview.html">夏季训练营入门赛</a><span class="type-tag">ACM</span><span class="joined-tag">已参赛</span></div><div class="item-meta"><span class="contest-time">◷ <b>时间</b> 2025/09/28 19:00 – 22:00</span><span class="contest-deadline">⌁ <b>结束</b> 2025/09/28 22:00</span><span>♧ 864 人</span><span class="audience-tag">全校公开</span></div></div><div class="item-side"><a class="item-action" href="./contest-preview.html">查看榜单</a></div></article>
+            <article class="contest-item" data-status="ended" data-type="OI" data-joined="false" data-title="数据结构基础测验"><div class="item-status status-ended"><strong>已结束</strong><small>SEP 14</small></div><div class="item-main"><div class="item-title-row"><a class="item-title" href="./contest-preview.html">数据结构基础测验</a><span class="type-tag oi">OI</span></div><div class="item-meta"><span class="contest-time">◷ <b>时间</b> 2025/09/14 14:00 – 17:00</span><span class="contest-deadline">⌁ <b>结束</b> 2025/09/14 17:00</span><span>♧ 416 人</span><span class="audience-tag">指定范围</span></div></div><div class="item-side"><a class="item-action" href="./contest-preview.html">查看详情</a></div></article>
+          </div>
+
+          <div class="empty-state" id="empty-state" hidden>没有找到符合条件的比赛，试试清空筛选。</div>
+          <div class="pagination" id="pagination" aria-label="比赛分页"></div>
+        </section>
+
+      </div>
+    </main>
+
+    <footer class="site-footer"><div class="footer-content"><div class="footer-main"><span class="footer-text">QOJ 在线评测系统</span></div></div></footer>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script>
+      (() => {
+        const statusButtons = [...document.querySelectorAll('[data-status-filter]')];
+        const typeFilter = document.getElementById('type-filter');
+        const searchInput = document.getElementById('search-input');
+        const joinedFilter = document.getElementById('joined-filter');
+        const clearButton = document.getElementById('clear-button');
+        const resultCount = document.getElementById('result-count');
+        const emptyState = document.getElementById('empty-state');
+        const pagination = document.getElementById('pagination');
+        const items = [...document.querySelectorAll('.contest-item')];
+        const groups = [...document.querySelectorAll('.contest-group')];
+        const pageSize = 10;
+        let activeStatus = 'all';
+        let currentPage = 1;
+        let currentMatches = [];
+        let toastTimer;
+
+        const showToast = (message) => {
+          const toast = document.getElementById('toast');
+          toast.textContent = message;
+          toast.classList.add('show');
+          window.clearTimeout(toastTimer);
+          toastTimer = window.setTimeout(() => toast.classList.remove('show'), 2400);
+        };
+
+        const renderPagination = (totalPages, totalCount) => {
+          if (totalCount <= pageSize) {
+            pagination.hidden = true;
+            pagination.innerHTML = '';
+            return;
+          }
+          pagination.hidden = false;
+          const pageButtons = Array.from({ length: totalPages }, (_, index) => {
+            const page = index + 1;
+            return `<button class="pagination-button${page === currentPage ? ' active' : ''}" type="button" data-page="${page}" aria-label="第 ${page} 页" aria-current="${page === currentPage ? 'page' : 'false'}">${page}</button>`;
+          }).join('');
+          pagination.innerHTML = `<button class="pagination-button" type="button" data-page-action="prev" aria-label="上一页"${currentPage === 1 ? ' disabled' : ''}>‹</button>${pageButtons}<button class="pagination-button" type="button" data-page-action="next" aria-label="下一页"${currentPage === totalPages ? ' disabled' : ''}>›</button><span class="pagination-info">第 ${currentPage} / ${totalPages} 页</span>`;
+        };
+
+        const updateList = () => {
+          const query = searchInput.value.trim().toLowerCase();
+          const selectedType = typeFilter.value;
+          currentMatches = items.filter((item) => {
+            const matchesStatus = activeStatus === 'all' || item.dataset.status === activeStatus;
+            const matchesType = selectedType === 'all' || item.dataset.type === selectedType;
+            const matchesQuery = !query || item.dataset.title.toLowerCase().includes(query);
+            const matchesJoined = !joinedFilter.checked || item.dataset.joined === 'true';
+            return matchesStatus && matchesType && matchesQuery && matchesJoined;
+          });
+          const totalPages = Math.max(1, Math.ceil(currentMatches.length / pageSize));
+          if (currentPage > totalPages) currentPage = totalPages;
+          const pageStart = (currentPage - 1) * pageSize;
+          const pageItems = new Set(currentMatches.slice(pageStart, pageStart + pageSize));
+          items.forEach((item) => { item.hidden = !pageItems.has(item); });
+          groups.forEach((group) => {
+            group.hidden = !group.querySelector('.contest-item:not([hidden])');
+          });
+          emptyState.hidden = currentMatches.length !== 0;
+          resultCount.textContent = `共 ${currentMatches.length} 场比赛`;
+          renderPagination(totalPages, currentMatches.length);
+        };
+
+        statusButtons.forEach((button) => button.addEventListener('click', () => {
+          activeStatus = button.dataset.statusFilter;
+          currentPage = 1;
+          statusButtons.forEach((item) => item.classList.toggle('active', item === button));
+          updateList();
+        }));
+        typeFilter.addEventListener('change', () => { currentPage = 1; updateList(); });
+        searchInput.addEventListener('input', () => { currentPage = 1; updateList(); });
+        joinedFilter.addEventListener('change', () => { currentPage = 1; updateList(); });
+        clearButton.addEventListener('click', () => {
+          activeStatus = 'all';
+          currentPage = 1;
+          statusButtons.forEach((item) => item.classList.toggle('active', item.dataset.statusFilter === 'all'));
+          typeFilter.value = 'all';
+          searchInput.value = '';
+          joinedFilter.checked = false;
+          updateList();
+        });
+
+        pagination.addEventListener('click', (event) => {
+          const button = event.target.closest('button');
+          if (!button || button.disabled) return;
+          const totalPages = Math.max(1, Math.ceil(currentMatches.length / pageSize));
+          if (button.dataset.pageAction === 'prev') currentPage = Math.max(1, currentPage - 1);
+          if (button.dataset.pageAction === 'next') currentPage = Math.min(totalPages, currentPage + 1);
+          if (button.dataset.page) currentPage = Number(button.dataset.page);
+          updateList();
+        });
+
+        document.querySelectorAll('button.item-action').forEach((button) => button.addEventListener('click', (event) => {
+          event.preventDefault();
+          const item = button.closest('.contest-item');
+          const title = item?.dataset.title;
+          const action = button.textContent.trim();
+          showToast(title ? `${action}：${title}` : action);
+        }));
+        updateList();
+      })();
+    </script>
+  </body>
+</html>

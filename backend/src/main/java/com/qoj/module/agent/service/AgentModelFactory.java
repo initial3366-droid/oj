@@ -3,23 +3,32 @@ package com.qoj.module.agent.service;
 import com.qoj.common.exception.BizException;
 import com.qoj.module.setting.vo.AgentSettingsVO;
 import com.qoj.security.SafeUrlValidator;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.stereotype.Component;
-
+import java.io.InterruptedIOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import okhttp3.Call;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomizer;
+import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 
 /** Creates and reuses a Spring AI model for the currently configured OpenAI-compatible provider. */
 @Component
 public class AgentModelFactory {
-    public static final long STREAM_TIMEOUT_MS = 120000L;
+    public static final long STREAM_TIMEOUT_MS = AgentExecutionLimits.MODEL_TIMEOUT_MS;
     private static final String RUN_HEADER = "X-Qoj-Internal-Stream-Id";
-    private final java.util.concurrent.ConcurrentMap<String, StreamCall> streamCalls = new java.util.concurrent.ConcurrentHashMap<>();
+    private final ConcurrentMap<String, StreamCall> streamCalls = new ConcurrentHashMap<>();
     private volatile CachedModel cachedModel;
     private volatile CachedModel cachedStreamingModel;
 
@@ -32,42 +41,42 @@ public class AgentModelFactory {
     }
 
     /** Also cancels the transport before the provider has sent response headers. */
-    public reactor.core.publisher.Flux<org.springframework.ai.chat.model.ChatResponse> stream(
-            AgentSettingsVO settings, org.springframework.ai.chat.prompt.Prompt prompt) {
-        return reactor.core.publisher.Flux.defer(() -> {
-            String id = java.util.UUID.randomUUID().toString();
+    public Flux<ChatResponse> stream(
+            AgentSettingsVO settings, Prompt prompt) {
+        return Flux.defer(() -> {
+            String id = UUID.randomUUID().toString();
             var call = new StreamCall();
             streamCalls.put(id, call);
             var options = prompt.getOptions() instanceof OpenAiChatOptions configured
                 ? configured.mutate() : OpenAiChatOptions.builder();
-            var headers = new java.util.HashMap<String, String>();
+            var headers = new HashMap<String, String>();
             if (prompt.getOptions() instanceof OpenAiChatOptions configured && configured.getCustomHeaders() != null) {
                 headers.putAll(configured.getCustomHeaders());
             }
             headers.put(RUN_HEADER, id);
-            return reactor.core.publisher.Flux.defer(() -> getStreaming(settings).stream(
-                    new org.springframework.ai.chat.prompt.Prompt(prompt.getInstructions(), options.customHeaders(headers).build())))
+            return Flux.defer(() -> getStreaming(settings).stream(
+                    new Prompt(prompt.getInstructions(), options.customHeaders(headers).build())))
                 .doFinally(signal -> { call.cancel(); streamCalls.remove(id, call); });
         });
     }
 
-    public org.springframework.ai.openai.http.okhttp.OpenAiHttpClientBuilderCustomizer cancellationCustomizer() {
+    public OpenAiHttpClientBuilderCustomizer cancellationCustomizer() {
         return builder -> builder.interceptor(chain -> {
             String id = chain.request().header(RUN_HEADER);
             if (id == null) return chain.proceed(chain.request());
             var registered = streamCalls.get(id);
             if (registered == null || !registered.attach(chain.call())) {
                 chain.call().cancel();
-                throw new java.io.InterruptedIOException("AI stream cancelled");
+                throw new InterruptedIOException("AI stream cancelled");
             }
             return chain.proceed(chain.request().newBuilder().removeHeader(RUN_HEADER).build());
         });
     }
 
     private static final class StreamCall {
-        private okhttp3.Call call;
+        private Call call;
         private boolean cancelled;
-        synchronized boolean attach(okhttp3.Call value) {
+        synchronized boolean attach(Call value) {
             if (cancelled) return false;
             call = value;
             return true;
@@ -104,6 +113,7 @@ public class AgentModelFactory {
                 .model(settings.model)
                 .timeout(Duration.ofMillis(timeoutMs))
                 .maxRetries(0)
+                .store(false)
                 .build();
             OpenAiChatModel model = OpenAiChatModel.builder().options(options).httpClientBuilderCustomizer(cancellationCustomizer()).build();
             CachedModel cached = new CachedModel(baseUrl, apiKeyHash, settings.model, timeoutMs, model);

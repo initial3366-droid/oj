@@ -211,7 +211,7 @@ public class JudgeCallbackService {
     }
 
     private boolean ownsGoJudgeClaim(Submission submission, String workerId) {
-        if (!"GO_JUDGE".equals(submission.judgeBackend)
+        if (!"GO_JUDGE".equals(submission.judgeServer)
             || workerId.isBlank()
             || !workerId.equals(submission.judgeWorkerId)) {
             return false;

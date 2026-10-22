@@ -16,14 +16,15 @@ import com.qoj.module.auth.service.CaptchaService;
 import com.qoj.module.user.service.UserAvatarService;
 import com.qoj.module.user.vo.AvatarUploadVO;
 import com.qoj.module.user.vo.UserMeVO;
+import com.qoj.security.CurrentUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -52,10 +53,7 @@ public class AuthController {
      */
     @PostMapping("/login")
     public ApiResponse<FrontendLoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        // 教师端登录会携带验证码字段，前台用户登录不传
-        if (request.captchaId() != null || request.captcha() != null) {
-            captchaService.verifyCaptcha(request.captchaId(), request.captcha());
-        }
+        captchaService.verifyCaptcha(request.captchaId(), request.captcha());
         return ApiResponse.ok(authService.loginUser(request));
     }
 
@@ -112,7 +110,7 @@ public class AuthController {
 
     @PostMapping(value = "/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<AvatarUploadVO> updateAvatar(@RequestParam("file") MultipartFile file) {
-        return ApiResponse.ok(userAvatarService.updateUserAvatar(com.qoj.security.CurrentUser.required().user(), file));
+        return ApiResponse.ok(userAvatarService.updateUserAvatar(CurrentUser.required().user(), file));
     }
 
     @PutMapping("/email")

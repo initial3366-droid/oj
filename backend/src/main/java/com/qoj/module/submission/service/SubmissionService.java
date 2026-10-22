@@ -14,23 +14,24 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qoj.common.ErrorCode;
 import com.qoj.common.PageResult;
-import com.qoj.common.enums.JudgeBackend;
 import com.qoj.common.enums.SubmissionStatus;
 import com.qoj.common.exception.BizException;
 import com.qoj.common.redis.RedisKeys;
 import com.qoj.module.contest.entity.Contest;
-import com.qoj.module.contest.entity.ContestRegistration;
-import com.qoj.module.contest.service.ContestService;
-import com.qoj.module.contest.entity.ContestProblem;
 import com.qoj.module.contest.entity.ContestParticipant;
+import com.qoj.module.contest.entity.ContestProblem;
+import com.qoj.module.contest.entity.ContestRegistration;
+import com.qoj.module.contest.mapper.ContestMapper;
 import com.qoj.module.contest.mapper.ContestProblemMapper;
+import com.qoj.module.contest.service.ContestService;
 import com.qoj.module.judge.JudgeService;
 import com.qoj.module.judge.gojudge.GoJudgeService;
 import com.qoj.module.practice.entity.Practice;
+import com.qoj.module.practice.mapper.PracticeMapper;
+import com.qoj.module.practice.service.PracticePublicationService;
 import com.qoj.module.problem.entity.Problem;
-import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.problem.mapper.ProblemMapper;
-import com.qoj.module.problem.mapper.ProblemTestCaseMapper;
+import com.qoj.module.setting.service.SystemSettingService;
 import com.qoj.module.submission.dto.SandboxRunRequest;
 import com.qoj.module.submission.dto.SubmissionCreateRequest;
 import com.qoj.module.submission.entity.SandboxRun;
@@ -38,27 +39,34 @@ import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.entity.SubmissionCaseResult;
 import com.qoj.module.submission.mapper.SandboxRunMapper;
 import com.qoj.module.submission.mapper.SubmissionCaseResultMapper;
+import com.qoj.module.submission.mapper.SubmissionCaseSummary;
 import com.qoj.module.submission.mapper.SubmissionMapper;
 import com.qoj.module.submission.mapper.UserProblemStatusMapper;
 import com.qoj.module.submission.vo.AdminSubmissionVO;
 import com.qoj.module.submission.vo.SandboxRunVO;
 import com.qoj.module.submission.vo.SubmissionCaseVO;
 import com.qoj.module.submission.vo.SubmissionVO;
-import com.qoj.module.setting.service.SystemSettingService;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.UserMapper;
-import com.qoj.module.xcpcio.entity.ContestXcpcioSubmissionSync;
-import com.qoj.module.xcpcio.mapper.ContestXcpcioSubmissionSyncMapper;
 import com.qoj.module.user.service.UserScoreService;
 import com.qoj.module.ws.JudgeMessagePublisher;
+import com.qoj.module.xcpcio.entity.ContestXcpcioSubmissionSync;
+import com.qoj.module.xcpcio.mapper.ContestXcpcioSubmissionSyncMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
+import com.qoj.security.policy.ContestAccessPolicy;
+import com.qoj.security.policy.Permission;
+import com.qoj.security.policy.ProblemAccessPolicy;
+import com.qoj.security.policy.SubmissionAccessPolicy;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,7 +80,6 @@ public class SubmissionService {
     private final SubmissionCaseResultMapper submissionCaseResultMapper;
     private final SandboxRunMapper sandboxRunMapper;
     private final ProblemMapper problemMapper;
-    private final ProblemTestCaseMapper problemTestCaseMapper;
     private final GoJudgeService goJudgeService;
     private final SandboxExecutionGuard sandboxExecutionGuard;
     private final StringRedisTemplate redisTemplate;
@@ -81,31 +88,28 @@ public class SubmissionService {
     private final UserScoreService userScoreService;
     private final ContestService contestService;
     private final ContestProblemMapper contestProblemMapper;
-    private final com.qoj.module.contest.mapper.ContestMapper contestMapper;
+    private final ContestMapper contestMapper;
     private final UserMapper userMapper;
-    private final com.qoj.security.policy.SubmissionAccessPolicy submissionAccessPolicy;
-    private final com.qoj.module.practice.mapper.PracticeMapper practiceMapper;
-    private final com.qoj.module.practice.mapper.PracticeProblemMapper practiceProblemMapper;
-    private final com.qoj.security.policy.PracticeAccessPolicy practiceAccessPolicy;
-    private final com.qoj.security.policy.ContestAccessPolicy contestAccessPolicy;
+    private final SubmissionAccessPolicy submissionAccessPolicy;
+    private final PracticeMapper practiceMapper;
+    private final ContestAccessPolicy contestAccessPolicy;
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
     private static final int MAX_EXPORT_LIMIT = 10000;
     private static final int MAX_SANDBOX_OUTPUT_BYTES = 60 * 1024;
     private static final String SANDBOX_OUTPUT_TRUNCATED = "\n... (truncated)";
 
-    private final com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy;
+    private final ProblemAccessPolicy problemAccessPolicy;
     private final ContestXcpcioSubmissionSyncMapper xcpcioSubmissionSyncMapper;
     private final UserProblemStatusMapper userProblemStatusMapper;
     private final SystemSettingService settingService;
-    private final com.qoj.module.practice.service.PracticePublicationService practicePublicationService;
+    private final PracticePublicationService practicePublicationService;
 
     public SubmissionService(
         SubmissionMapper submissionMapper,
         SubmissionCaseResultMapper submissionCaseResultMapper,
         SandboxRunMapper sandboxRunMapper,
         ProblemMapper problemMapper,
-        ProblemTestCaseMapper problemTestCaseMapper,
         GoJudgeService goJudgeService,
         SandboxExecutionGuard sandboxExecutionGuard,
         StringRedisTemplate redisTemplate,
@@ -114,24 +118,21 @@ public class SubmissionService {
         UserScoreService userScoreService,
         ContestService contestService,
         ContestProblemMapper contestProblemMapper,
-        com.qoj.module.contest.mapper.ContestMapper contestMapper,
+        ContestMapper contestMapper,
         UserMapper userMapper,
-        com.qoj.security.policy.SubmissionAccessPolicy submissionAccessPolicy,
-        com.qoj.module.practice.mapper.PracticeMapper practiceMapper,
-        com.qoj.module.practice.mapper.PracticeProblemMapper practiceProblemMapper,
-        com.qoj.security.policy.PracticeAccessPolicy practiceAccessPolicy,
-        com.qoj.security.policy.ContestAccessPolicy contestAccessPolicy,
-        com.qoj.security.policy.ProblemAccessPolicy problemAccessPolicy,
+        SubmissionAccessPolicy submissionAccessPolicy,
+        PracticeMapper practiceMapper,
+        ContestAccessPolicy contestAccessPolicy,
+        ProblemAccessPolicy problemAccessPolicy,
         ContestXcpcioSubmissionSyncMapper xcpcioSubmissionSyncMapper,
         UserProblemStatusMapper userProblemStatusMapper,
         SystemSettingService settingService,
-        com.qoj.module.practice.service.PracticePublicationService practicePublicationService
+        PracticePublicationService practicePublicationService
     ) {
         this.submissionMapper = submissionMapper;
         this.submissionCaseResultMapper = submissionCaseResultMapper;
         this.sandboxRunMapper = sandboxRunMapper;
         this.problemMapper = problemMapper;
-        this.problemTestCaseMapper = problemTestCaseMapper;
         this.goJudgeService = goJudgeService;
         this.sandboxExecutionGuard = sandboxExecutionGuard;
         this.redisTemplate = redisTemplate;
@@ -144,8 +145,6 @@ public class SubmissionService {
         this.userMapper = userMapper;
         this.submissionAccessPolicy = submissionAccessPolicy;
         this.practiceMapper = practiceMapper;
-        this.practiceProblemMapper = practiceProblemMapper;
-        this.practiceAccessPolicy = practiceAccessPolicy;
         this.contestAccessPolicy = contestAccessPolicy;
         this.problemAccessPolicy = problemAccessPolicy;
         this.xcpcioSubmissionSyncMapper = xcpcioSubmissionSyncMapper;
@@ -167,7 +166,7 @@ public class SubmissionService {
             throw new BizException(403, "仅学生账号可以提交题目");
         }
         if (!goJudgeService.supportsLanguage(request.language())) {
-            // Both go-judge and CCPCOJ expose the same fixed language allowlist.
+            // The built-in go-judge supports this fixed language allowlist.
             throw new BizException(ErrorCode.BAD_REQUEST, "不支持的编程语言");
         }
         if (request.contestId() != null && request.practiceId() != null) {
@@ -181,7 +180,7 @@ public class SubmissionService {
         ContestProblem contestProblem = null;
         ContestParticipant contestParticipant = null;
         Contest contest = null;
-        Problem problem = null;
+        Problem problem;
 
         if (request.contestId() != null) {
             // Lock before any contest validation reads. This pairs with contest
@@ -193,6 +192,7 @@ public class SubmissionService {
                  */
                 throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
             }
+            contestService.ensureClientIpAllowed(contest);
             contestProblem = contestService.requireSubmittableContestProblem(request.contestId(), request.problemId(), user.id());
             contestRegistration = contestService.registrationForUser(request.contestId(), user.id());
             contestParticipant = contestService.participantForUser(request.contestId(), user.id());
@@ -208,7 +208,7 @@ public class SubmissionService {
                  */
                 throw new BizException(404, "题目不存在");
             }
-            if (request.practiceId() == null && !problemAccessPolicy.can(user, com.qoj.security.policy.Permission.VIEW, problem)) {
+            if (request.practiceId() == null && !problemAccessPolicy.can(user, Permission.VIEW, problem)) {
                 /**
                  * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
                  */
@@ -260,9 +260,6 @@ public class SubmissionService {
         submission.isRejudged = false;
         submission.judgeMessage = null;
         submission.errorMessage = null;
-        submission.judgeBackend = contest == null
-            ? JudgeBackend.GO_JUDGE.name()
-            : JudgeBackend.fromStored(contest.judgeMode, JudgeBackend.GO_JUDGE).name();
         submission.identityType = contestRegistration == null ? null : contestRegistration.identityType;
         submission.identityId = contestRegistration == null ? null : contestRegistration.identityId;
         submissionMapper.insert(submission);
@@ -295,9 +292,12 @@ public class SubmissionService {
         page = normalizePage(page);
         pageSize = normalizePageSize(pageSize);
         Contest contest = contestId == null ? null : contestMapper.selectById(contestId);
+        if (contest != null) {
+            contestService.ensureClientIpAllowed(contest);
+        }
         AuthUser authUser = CurrentUser.get();
         Long currentUserId = authUser == null ? null : authUser.id();
-        boolean ownQuery = userId != null && java.util.Objects.equals(userId, currentUserId);
+        boolean ownQuery = userId != null && Objects.equals(userId, currentUserId);
         LocalDateTime freezeCutoff = shouldHideFrozenSubmissions(contest, authUser, ownQuery)
             ? contest.freezeTime
             : null;
@@ -345,10 +345,11 @@ public class SubmissionService {
         }
         final boolean doMask = maskOthersStatus;
         final Long uid = currentUserId;
+        SubmissionViewData viewData = loadViewData(result.getRecords(), false);
 
         return new PageResult<>(result.getTotal(), result.getRecords().stream().map(item -> {
-            SubmissionVO vo = toVO(item, false, false);
-            if (doMask && !java.util.Objects.equals(item.userId, uid)) {
+            SubmissionVO vo = toVO(item, false, false, viewData);
+            if (doMask && !Objects.equals(item.userId, uid)) {
                 /**
                  * 封装提交VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
                  */
@@ -387,7 +388,7 @@ public class SubmissionService {
         return "SUPER_ADMIN".equals(authUser.role())
             || (contest.ownerId != null
                 && contest.ownerId.equals(authUser.id())
-                && java.util.Objects.equals(contest.ownerAccountType, authUser.accountType()));
+                && Objects.equals(contest.ownerAccountType, authUser.accountType()));
     }
 
 
@@ -441,9 +442,10 @@ public class SubmissionService {
             contestProblemId, practiceId, language, status, judgeServer, identityType, from, to);
         applyAdminSorting(wrapper, sortBy, sortOrder);
         Page<Submission> result = submissionMapper.selectPage(Page.of(page, pageSize), wrapper);
+        SubmissionViewData viewData = loadViewData(result.getRecords(), true);
         return new PageResult<>(
             result.getTotal(),
-            result.getRecords().stream().map(item -> toAdminVO(item, false, false)).toList()
+            result.getRecords().stream().map(item -> toAdminVO(item, false, false, viewData)).toList()
         );
     }
 
@@ -550,11 +552,13 @@ public class SubmissionService {
         applyAdminSorting(wrapper, sortBy, sortOrder);
         wrapper.last("LIMIT " + normalizeExportLimit(limit));
         List<Submission> submissions = submissionMapper.selectList(wrapper);
-        return submissions.stream().map(item -> toAdminVO(item, false, false)).toList();
+        SubmissionViewData viewData = loadViewData(submissions, true);
+        return submissions.stream().map(item -> toAdminVO(item, false, false, viewData)).toList();
     }
 
     public AdminSubmissionVO adminDetail(long id) {
         Submission submission = requireSubmission(id);
+        ensureContestIpAllowed(submission);
         /**
          * 校验管理员CanView提交。调用前会结合当前登录身份执行权限判断。
          */
@@ -567,6 +571,7 @@ public class SubmissionService {
 
     public SubmissionVO detail(long id) {
         Submission submission = requireSubmission(id);
+        ensureContestIpAllowed(submission);
         AuthUser authUser = CurrentUser.required();
 
         boolean canViewDetail = canViewSubmissionDetail(authUser, submission);
@@ -586,6 +591,7 @@ public class SubmissionService {
 
     public String code(long id) {
         Submission submission = requireSubmission(id);
+        ensureContestIpAllowed(submission);
         AuthUser authUser = CurrentUser.required();
         if (!canViewSubmissionCode(authUser, submission)) {
             /**
@@ -598,6 +604,7 @@ public class SubmissionService {
 
     public String adminCode(long id) {
         Submission submission = requireSubmission(id);
+        ensureContestIpAllowed(submission);
         /**
          * 校验管理员CanView提交。调用前会结合当前登录身份执行权限判断。
          */
@@ -631,7 +638,6 @@ public class SubmissionService {
             throw new BizException(409, "原判题任务尚未释放，暂时不能重判");
         }
 
-        // judgeBackend is intentionally preserved so a rejudge cannot switch workers.
         submission.status = SubmissionStatus.REJUDGE_PENDING.name();
         submission.isRejudged = true;
         submission.retryCount = safeInt(submission.retryCount) + 1;
@@ -718,9 +724,7 @@ public class SubmissionService {
             run.language = request.language();
             run.input = request.input();
             SandboxRunResult result = runSandbox(request);
-            String output = result.output() == null || result.output().isBlank()
-                ? result.error()
-                : result.output();
+            String output = result.output() == null ? "" : result.output();
             run.output = limitSandboxOutput(output);
             run.status = result.status();
             run.runAt = LocalDateTime.now();
@@ -734,7 +738,8 @@ public class SubmissionService {
                 run.status,
                 result.timeMs(),
                 result.memoryKb(),
-                run.runAt
+                run.runAt,
+                limitSandboxOutput(result.error())
             );
         }
     }
@@ -785,6 +790,16 @@ public class SubmissionService {
         Integer timeMs,
         Integer memoryKb
     ) {
+    }
+
+    private void ensureContestIpAllowed(Submission submission) {
+        if (submission.contestId == null) {
+            return;
+        }
+        Contest contest = contestMapper.selectById(submission.contestId);
+        if (contest != null) {
+            contestService.ensureClientIpAllowed(contest);
+        }
     }
 
     private Submission requireSubmission(long id) {
@@ -941,7 +956,7 @@ public class SubmissionService {
              */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
-        if (!contestAccessPolicy.can(authUser, com.qoj.security.policy.Permission.MANAGE_SCOREBOARD, contest)) {
+        if (!contestAccessPolicy.can(authUser, Permission.MANAGE_SCOREBOARD, contest)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -949,23 +964,79 @@ public class SubmissionService {
         }
     }
 
+    private record SubmissionViewData(
+        Map<Long, User> users,
+        Map<Long, Contest> contests,
+        Map<Long, ContestProblem> contestProblems,
+        Map<Long, Practice> practices,
+        Map<Long, Problem> problems,
+        Map<Long, SubmissionCaseSummary> caseSummaries
+    ) {
+    }
+
+    private SubmissionViewData loadViewData(List<Submission> submissions, boolean admin) {
+        Map<Long, User> users = new HashMap<>();
+        Map<Long, Contest> contests = new HashMap<>();
+        Map<Long, ContestProblem> contestProblems = new HashMap<>();
+        Map<Long, Practice> practices = new HashMap<>();
+        Map<Long, Problem> problems = new HashMap<>();
+        Map<Long, SubmissionCaseSummary> caseSummaries = new HashMap<>();
+        if (!submissions.isEmpty()) {
+            List<Long> userIds = submissions.stream().map(item -> item.userId).filter(Objects::nonNull).distinct().toList();
+            if (!userIds.isEmpty()) {
+                userMapper.selectList(new QueryWrapper<User>().select("id", "username", "display_name").in("id", userIds))
+                    .forEach(item -> users.put(item.id, item));
+            }
+            List<Long> contestProblemIds = submissions.stream().map(item -> item.contestProblemId).filter(Objects::nonNull).distinct().toList();
+            if (!contestProblemIds.isEmpty()) {
+                contestProblemMapper.selectList(new QueryWrapper<ContestProblem>()
+                    .select("id", "problem_id", "title", "label").in("id", contestProblemIds))
+                    .forEach(item -> contestProblems.put(item.id, item));
+            }
+            Set<Long> problemIds = submissions.stream().map(item -> item.problemId).filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+            if (!admin) {
+                contestProblems.values().stream().map(item -> item.problemId).filter(Objects::nonNull).forEach(problemIds::add);
+            }
+            if (!problemIds.isEmpty()) {
+                problemMapper.selectList(new QueryWrapper<Problem>().select("id", "title").in("id", problemIds))
+                    .forEach(item -> problems.put(item.id, item));
+            }
+            if (admin) {
+                List<Long> contestIds = submissions.stream().map(item -> item.contestId).filter(Objects::nonNull).distinct().toList();
+                if (!contestIds.isEmpty()) {
+                    contestMapper.selectList(new QueryWrapper<Contest>().select("id", "title").in("id", contestIds))
+                        .forEach(item -> contests.put(item.id, item));
+                }
+                List<Long> practiceIds = submissions.stream().map(item -> item.practiceId).filter(Objects::nonNull).distinct().toList();
+                if (!practiceIds.isEmpty()) {
+                    practiceMapper.selectList(new QueryWrapper<Practice>().select("id", "title").in("id", practiceIds))
+                        .forEach(item -> practices.put(item.id, item));
+                }
+            }
+            submissionCaseResultMapper.summarizeBySubmissionIds(submissions.stream().map(item -> item.id).toList())
+                .forEach(item -> caseSummaries.put(item.submissionId(), item));
+        }
+        return new SubmissionViewData(users, contests, contestProblems, practices, problems, caseSummaries);
+    }
+
+    private static final SubmissionCaseSummary EMPTY_CASE_SUMMARY = new SubmissionCaseSummary(null, 0, 0, null, null);
+
     private AdminSubmissionVO toAdminVO(Submission submission, boolean includeCode, boolean includeCases) {
-        User user = submission.userId == null ? null : userMapper.selectById(submission.userId);
-        Contest contest = submission.contestId == null ? null : contestMapper.selectById(submission.contestId);
-        ContestProblem contestProblem = submission.contestProblemId == null ? null : contestProblemMapper.selectById(submission.contestProblemId);
-        Practice practice = submission.practiceId == null ? null : practiceMapper.selectById(submission.practiceId);
-        Problem problem = submission.problemId == null ? null : problemMapper.selectById(submission.problemId);
+        return toAdminVO(submission, includeCode, includeCases, loadViewData(List.of(submission), true));
+    }
+
+    private AdminSubmissionVO toAdminVO(Submission submission, boolean includeCode, boolean includeCases, SubmissionViewData viewData) {
+        User user = viewData.users().get(submission.userId);
+        Contest contest = viewData.contests().get(submission.contestId);
+        ContestProblem contestProblem = viewData.contestProblems().get(submission.contestProblemId);
+        Practice practice = viewData.practices().get(submission.practiceId);
+        Problem problem = viewData.problems().get(submission.problemId);
         Integer codeLength = submission.codeLength;
         if (codeLength == null && includeCode && submission.code != null) {
             codeLength = submission.code.length();
         }
-        QueryWrapper<SubmissionCaseResult> caseWrapper = new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id);
-        long totalCaseCount = submissionCaseResultMapper.selectCount(caseWrapper);
-        long passedCaseCount = submissionCaseResultMapper.selectCount(
-            new QueryWrapper<SubmissionCaseResult>()
-                .eq("submission_id", submission.id)
-                .eq("status", SubmissionStatus.AC.name())
-        );
+        SubmissionCaseSummary summary = viewData.caseSummaries().getOrDefault(submission.id, EMPTY_CASE_SUMMARY);
         List<SubmissionCaseVO> cases = includeCases
             ? submissionCaseResultMapper
                 .selectList(new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id).orderByAsc("case_no"))
@@ -1009,21 +1080,19 @@ public class SubmissionService {
             submission.isRejudged,
             submission.createdAt,
             submission.updatedAt,
-            Math.toIntExact(passedCaseCount),
-            Math.toIntExact(totalCaseCount),
+            Math.toIntExact(summary.passedCaseCount()),
+            Math.toIntExact(summary.totalCaseCount()),
             includeCode ? submission.code : null,
             cases
         );
     }
 
     private SubmissionVO toVO(Submission submission, boolean includeCode, boolean includeCases) {
-        QueryWrapper<SubmissionCaseResult> caseWrapper = new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id);
-        long totalCaseCount = submissionCaseResultMapper.selectCount(caseWrapper);
-        long passedCaseCount = submissionCaseResultMapper.selectCount(
-            new QueryWrapper<SubmissionCaseResult>()
-                .eq("submission_id", submission.id)
-                .eq("status", SubmissionStatus.AC.name())
-        );
+        return toVO(submission, includeCode, includeCases, loadViewData(List.of(submission), false));
+    }
+
+    private SubmissionVO toVO(Submission submission, boolean includeCode, boolean includeCases, SubmissionViewData viewData) {
+        SubmissionCaseSummary summary = viewData.caseSummaries().getOrDefault(submission.id, EMPTY_CASE_SUMMARY);
         List<SubmissionCaseVO> cases = includeCases
             ? submissionCaseResultMapper
                 .selectList(new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submission.id).orderByAsc("case_no"))
@@ -1032,25 +1101,42 @@ public class SubmissionService {
                 .toList()
             : List.of();
         Integer timeUsed = positiveOrNull(submission.timeUsed);
-        if (timeUsed == null) {
-            timeUsed = includeCases ? maxCaseTimeMs(cases) : maxCaseTimeMs(submission.id);
-        }
         Integer memoryUsed = positiveOrNull(submission.memoryUsed);
+        Integer fallbackTime = summary.maxTimeUsed();
+        Integer fallbackMemory = summary.maxMemoryUsed();
+        if (includeCases && (timeUsed == null || memoryUsed == null)) {
+            // Keep detail resource fallbacks consistent with the cases returned in this response.
+            fallbackTime = null;
+            fallbackMemory = null;
+            for (SubmissionCaseVO item : cases) {
+                Integer caseTime = positiveOrNull(item.timeMs());
+                Integer caseMemory = positiveOrNull(item.memoryKb());
+                if (caseTime != null && (fallbackTime == null || caseTime > fallbackTime)) {
+                    fallbackTime = caseTime;
+                }
+                if (caseMemory != null && (fallbackMemory == null || caseMemory > fallbackMemory)) {
+                    fallbackMemory = caseMemory;
+                }
+            }
+        }
+        if (timeUsed == null) {
+            timeUsed = fallbackTime;
+        }
         if (memoryUsed == null) {
-            memoryUsed = includeCases ? maxCaseMemoryKb(cases) : maxCaseMemoryKb(submission.id);
+            memoryUsed = fallbackMemory;
         }
         Integer codeLength = submission.codeLength;
         if (codeLength == null && includeCode && submission.code != null) {
             codeLength = submission.code.length();
         }
-        User user = submission.userId == null ? null : userMapper.selectById(submission.userId);
+        User user = viewData.users().get(submission.userId);
         return new SubmissionVO(
             submission.id,
             submission.userId,
             user == null ? null : user.username,
             user == null ? null : user.displayName,
             submission.problemId,
-            problemTitle(submission),
+            problemTitle(submission, viewData),
             submission.contestId,
             submission.practiceId,
             submission.language,
@@ -1062,83 +1148,22 @@ public class SubmissionService {
             submission.submitTime == null ? submission.createdAt : submission.submitTime,
             submission.createdAt,
             codeLength,
-            Math.toIntExact(passedCaseCount),
-            Math.toIntExact(totalCaseCount),
+            Math.toIntExact(summary.passedCaseCount()),
+            Math.toIntExact(summary.totalCaseCount()),
             includeCode ? submission.code : null,
             cases
         );
-    }
-
-    private Integer maxCaseTimeMs(List<SubmissionCaseVO> cases) {
-        Integer maxTimeMs = null;
-        for (SubmissionCaseVO item : cases) {
-            Integer timeMs = positiveOrNull(item.timeMs());
-            if (timeMs != null && (maxTimeMs == null || timeMs > maxTimeMs)) {
-                maxTimeMs = timeMs;
-            }
-        }
-        return maxTimeMs;
-    }
-
-    private Integer maxCaseTimeMs(Long submissionId) {
-        if (submissionId == null) {
-            return null;
-        }
-        List<SubmissionCaseResult> cases = submissionCaseResultMapper.selectList(
-            new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submissionId)
-        );
-        Integer maxTimeMs = null;
-        for (SubmissionCaseResult item : cases) {
-            Integer timeMs = positiveOrNull(item.timeUsed);
-            if (timeMs != null && (maxTimeMs == null || timeMs > maxTimeMs)) {
-                maxTimeMs = timeMs;
-            }
-        }
-        return maxTimeMs;
-    }
-
-    private Integer maxCaseMemoryKb(List<SubmissionCaseVO> cases) {
-        Integer maxMemoryKb = null;
-        for (SubmissionCaseVO item : cases) {
-            Integer memoryKb = positiveOrNull(item.memoryKb());
-            if (memoryKb != null && (maxMemoryKb == null || memoryKb > maxMemoryKb)) {
-                maxMemoryKb = memoryKb;
-            }
-        }
-        return maxMemoryKb;
-    }
-
-    private Integer maxCaseMemoryKb(Long submissionId) {
-        if (submissionId == null) {
-            return null;
-        }
-        List<SubmissionCaseResult> cases = submissionCaseResultMapper.selectList(
-            new QueryWrapper<SubmissionCaseResult>().eq("submission_id", submissionId)
-        );
-        Integer maxMemoryKb = null;
-        for (SubmissionCaseResult item : cases) {
-            Integer memoryKb = positiveOrNull(item.memoryUsed);
-            if (memoryKb != null && (maxMemoryKb == null || memoryKb > maxMemoryKb)) {
-                maxMemoryKb = memoryKb;
-            }
-        }
-        return maxMemoryKb;
     }
 
     private Integer positiveOrNull(Integer value) {
         return value != null && value > 0 ? value : null;
     }
 
-    private String problemTitle(Submission submission) {
-        if (submission.contestProblemId != null) {
-            ContestProblem contestProblem = contestProblemMapper.selectById(submission.contestProblemId);
-            if (contestProblem != null && contestProblem.problemId != null) {
-                // 动态引用原题：比赛题目标题实时从原题读取
-                Problem source = problemMapper.selectById(contestProblem.problemId);
-                return source == null ? String.valueOf(submission.problemId) : source.title;
-            }
-        }
-        Problem problem = problemMapper.selectById(submission.problemId);
+    private String problemTitle(Submission submission, SubmissionViewData viewData) {
+        ContestProblem contestProblem = viewData.contestProblems().get(submission.contestProblemId);
+        Long problemId = contestProblem != null && contestProblem.problemId != null
+            ? contestProblem.problemId : submission.problemId;
+        Problem problem = viewData.problems().get(problemId);
         return problem == null ? String.valueOf(submission.problemId) : problem.title;
     }
 
@@ -1179,7 +1204,7 @@ public class SubmissionService {
     }
 
     private boolean canViewSubmissionDetail(AuthUser authUser, Submission submission) {
-        return submissionAccessPolicy.can(authUser, com.qoj.security.policy.Permission.VIEW, submission)
+        return submissionAccessPolicy.can(authUser, Permission.VIEW, submission)
             || isContestManager(authUser, submission);
     }
 
@@ -1210,7 +1235,7 @@ public class SubmissionService {
         if ("SUPER_ADMIN".equals(authUser.role())) {
             return true;
         }
-        com.qoj.module.contest.entity.Contest contest = contestMapper.selectById(submission.contestId);
+        Contest contest = contestMapper.selectById(submission.contestId);
         if (contest == null || contest.ownerId == null) {
             return false;
         }

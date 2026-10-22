@@ -1,6 +1,5 @@
 package com.qoj.config;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
@@ -10,11 +9,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 @Controller
 public class SpaForwardController {
 
-    @Value("${admin.path-prefix:admin}")
-    private String adminPathPrefix;
-
     @GetMapping({
         "/",
+        "/about",
+        "/courses",
+        "/courses/**",
+        "/redirect/**",
         "/problems",
         "/problems/**",
         "/practice",
@@ -22,7 +22,6 @@ public class SpaForwardController {
         "/contests",
         "/contests/**",
         "/leaderboard",
-        "/submission-queue",
         "/users/**",
         "/user-center",
         "/login",
@@ -35,7 +34,7 @@ public class SpaForwardController {
     }
 
     // API 路径必须交给 RestController；否则旧接口或未匹配接口会被 SPA fallback 返回 index.html。
-    @GetMapping({"/{path:^(?!ws|api)[a-z]+}", "/{path:^(?!ws|api)[a-z]+}/**"})
+    @GetMapping({"/${admin.path-prefix:admin}", "/${admin.path-prefix:admin}/**", "/teacher", "/teacher/**"})
     public String forwardAdminPaths() {
         return "forward:/index.html";
     }

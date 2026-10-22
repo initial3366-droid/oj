@@ -4,14 +4,16 @@ import com.qoj.common.ApiResponse;
 import com.qoj.common.ErrorCode;
 import com.qoj.common.PageResult;
 import com.qoj.common.exception.BizException;
+import com.qoj.module.contest.dto.ContestRegistrationImportRequest;
+import com.qoj.module.contest.vo.ContestRegistrationImportResultVO;
+import com.qoj.module.contest.service.ContestRosterFileService;
+import org.springframework.web.multipart.MultipartFile;
 import com.qoj.module.contest.dto.ContestCreateRequest;
 import com.qoj.module.contest.dto.ContestDraftRequest;
 import com.qoj.module.contest.dto.ContestRegistrationManageRequest;
 import com.qoj.module.contest.dto.ContestUpdateRequest;
 import com.qoj.module.contest.entity.Contest;
-import com.qoj.module.contest.entity.ContestRegistration;
 import com.qoj.module.contest.mapper.ContestMapper;
-import com.qoj.module.contest.mapper.ContestRegistrationMapper;
 import com.qoj.module.contest.service.ContestInspectionExportService;
 import com.qoj.module.contest.service.ContestService;
 import com.qoj.module.contest.vo.ContestProblemVO;
@@ -49,7 +51,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminContestController {
     private final ContestService contestService;
     private final ContestMapper contestMapper;
-    private final ContestRegistrationMapper contestRegistrationMapper;
     private final ContestAccessPolicy contestAccessPolicy;
     private final ContestInspectionExportService contestInspectionExportService;
 
@@ -59,13 +60,11 @@ public class AdminContestController {
     public AdminContestController(
         ContestService contestService,
         ContestMapper contestMapper,
-        ContestRegistrationMapper contestRegistrationMapper,
         ContestAccessPolicy contestAccessPolicy,
         ContestInspectionExportService contestInspectionExportService
     ) {
         this.contestService = contestService;
         this.contestMapper = contestMapper;
-        this.contestRegistrationMapper = contestRegistrationMapper;
         this.contestAccessPolicy = contestAccessPolicy;
         this.contestInspectionExportService = contestInspectionExportService;
     }
@@ -172,45 +171,25 @@ public class AdminContestController {
 
     @GetMapping("/{id}/registrations")
     public ApiResponse<List<ContestRegistrationVO>> getContestRegistrations(@PathVariable long id) {
-        Contest contest = contestMapper.selectById(id);
-        if (contest == null) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
-        }
-        AuthUser user = CurrentUser.required();
-        if (!contestAccessPolicy.can(user, Permission.MANAGE_REGISTRATION, contest)) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(ErrorCode.FORBIDDEN, "无权查看该比赛报名列表");
-        }
+        return ApiResponse.ok(contestService.adminRegistrations(id));
+    }
 
-        List<ContestRegistration> registrations = contestRegistrationMapper.selectList(
-            new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ContestRegistration>()
-                .eq("contest_id", id)
-                .eq("status", "APPROVED")
-                .orderByDesc("registered_at")
-        );
+    @PostMapping("/{id}/registrations/import")
+    public ApiResponse<ContestRegistrationImportResultVO> importRegistrations(
+        @PathVariable long id,
+        @Valid @RequestBody ContestRegistrationImportRequest request
+    ) {
+        return ApiResponse.ok(contestService.importRegistrations(id, request.studentNos()));
+    }
 
-        // 转换为VO确保字段名正确
-        List<ContestRegistrationVO> vos = registrations.stream().map(r -> {
-            ContestRegistrationVO vo = new ContestRegistrationVO();
-            vo.id = r.id;
-            vo.contestId = r.contestId;
-            vo.userId = r.userId;
-            vo.username = r.username;
-            vo.displayName = r.displayName;
-            vo.identityType = r.identityType;
-            vo.identityId = r.identityId;
-            vo.starred = r.starred;
-            vo.status = r.status;
-            vo.registeredAt = r.registeredAt;
-            return vo;
-        }).collect(java.util.stream.Collectors.toList());
-
-        return ApiResponse.ok(vos);
+    @PostMapping(value = "/{id}/registrations/import-file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<ContestRegistrationImportResultVO> importRegistrationFile(
+        @PathVariable long id,
+        @RequestParam("file") MultipartFile file
+    ) {
+        // Check access before parsing an uploaded workbook.
+        contestService.requireManageRegistrationContest(id);
+        return ApiResponse.ok(contestService.importRegistrations(id, ContestRosterFileService.parse(file)));
     }
 
     @PostMapping("/{id}/registrations")

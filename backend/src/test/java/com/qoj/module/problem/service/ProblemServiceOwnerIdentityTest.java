@@ -1,22 +1,25 @@
 package com.qoj.module.problem.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qoj.module.problem.dto.TestCaseImportProgress;
+import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.problem.mapper.ProblemFolderMapper;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.mapper.ProblemTestCaseMapper;
-import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.submission.mapper.SubmissionMapper;
 import com.qoj.module.submission.mapper.UserProblemStatusMapper;
+import com.qoj.module.teacher.mapper.MajorMapper;
+import com.qoj.module.teacher.mapper.TeacherMapper;
 import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.module.user.mapper.UserMapper;
-import com.qoj.module.teacher.mapper.MajorMapper;
-import com.qoj.module.teacher.mapper.TeacherMapper;
 import com.qoj.security.policy.ProblemAccessPolicy;
 import com.qoj.security.policy.ResourceAccessService;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,7 +30,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -108,7 +110,8 @@ class ProblemServiceOwnerIdentityTest {
             problemService,
             "parseZipTestCases",
             file,
-            true
+            true,
+            (Consumer<TestCaseImportProgress>) progress -> {}
         );
 
         assertEquals(1, testCases.size());
@@ -130,7 +133,8 @@ class ProblemServiceOwnerIdentityTest {
             problemService,
             "parseZipTestCases",
             file,
-            true
+            true,
+            (Consumer<TestCaseImportProgress>) progress -> {}
         );
 
         assertEquals(1, testCases.size());
@@ -141,7 +145,7 @@ class ProblemServiceOwnerIdentityTest {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
             zip.putNextEntry(new ZipEntry(name));
-            zip.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zip.write(content.getBytes(StandardCharsets.UTF_8));
             zip.closeEntry();
         }
         return bytes.toByteArray();

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.config.QojProperties;
 import java.io.InputStream;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -14,6 +15,9 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Component;
 
 /**
@@ -28,6 +32,11 @@ public class GoJudgeClient {
     private static final Pattern SAFE_FILE_ID = Pattern.compile("[A-Za-z0-9_-]{1,128}");
     private static final int ERROR_BODY_LIMIT = 4096;
     private static final int RESPONSE_OVERHEAD_BYTES = 1024 * 1024;
+    private static final ScheduledExecutorService BODY_TIMEOUTS = Executors.newSingleThreadScheduledExecutor(task -> {
+        Thread thread = new Thread(task, "go-judge-body-deadline");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
@@ -59,10 +68,18 @@ public class GoJudgeClient {
      * 封装run相关逻辑。从持久化层读取数据；可能调用外部判题或网关服务。
      */
     public List<Result> run(RunRequest request, Duration timeout) {
+        Duration remaining = JudgeExecutionBudget.remaining(timeout);
+        long requestDeadline = System.nanoTime() + remaining.toNanos();
+        long clock = remaining.toNanos();
+        request = new RunRequest(request.cmd().stream().map(command -> new Command(
+            command.args(), command.env(), command.files(), Math.min(command.cpuLimit(), clock),
+            Math.min(command.clockLimit(), clock), command.memoryLimit(), command.stackLimit(),
+            command.procLimit(), command.copyIn(), command.copyOut(), command.copyOutCached(),
+            command.copyOutMax(), command.copyOutTruncate(), command.strictMemoryLimit())).toList());
         try {
             byte[] payload = objectMapper.writeValueAsBytes(request);
             HttpRequest.Builder builder = HttpRequest.newBuilder(baseUri.resolve("run"))
-                .timeout(timeout)
+                .timeout(remaining)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(payload));
             addAuthorization(builder);
@@ -71,7 +88,7 @@ public class GoJudgeClient {
                 builder.build(), HttpResponse.BodyHandlers.ofInputStream());
             byte[] body;
             try (InputStream stream = response.body()) {
-                body = stream.readNBytes(responseLimitBytes + 1);
+                body = readBounded(stream, responseLimitBytes, requestDeadline);
             }
             if (body.length > responseLimitBytes) {
                 /**
@@ -104,10 +121,50 @@ public class GoJudgeClient {
              */
             throw new GoJudgeClientException("go-judge 请求被中断", ex);
         } catch (Exception ex) {
+            JudgeExecutionBudget.remaining(timeout);
             /**
              * 构造 Go判题ClientException 实例并保存其必要依赖或初始状态。可能调用外部判题或网关服务。
              */
             throw new GoJudgeClientException("go-judge 请求失败", ex);
+        }
+    }
+
+    /** Read at most limit + 1 raw bytes, so UTF-8 replacement cannot bypass a message budget. */
+    public byte[] readFile(String fileId, int limit) {
+        if (fileId == null || !SAFE_FILE_ID.matcher(fileId).matches() || limit < 0 || limit > 64 * 1024 * 1024) {
+            throw new GoJudgeClientException("无效的判题文件读取请求");
+        }
+        Duration remaining = JudgeExecutionBudget.remaining(Duration.ofSeconds(15));
+        long requestDeadline = System.nanoTime() + remaining.toNanos();
+        try {
+            HttpRequest.Builder builder = HttpRequest.newBuilder(baseUri.resolve("file/" + fileId))
+                .timeout(remaining).GET();
+            addAuthorization(builder);
+            HttpResponse<InputStream> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream stream = response.body()) {
+                if (response.statusCode() != 200) throw new GoJudgeClientException("无法读取判题缓存文件");
+                return readBounded(stream, limit, requestDeadline);
+            }
+        } catch (GoJudgeClientException e) { throw e; }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new GoJudgeClientException("判题文件读取中断", e); }
+        catch (Exception e) {
+            JudgeExecutionBudget.remaining(Duration.ofSeconds(15));
+            throw new GoJudgeClientException("判题文件读取失败", e);
+        }
+    }
+
+    private byte[] readBounded(InputStream stream, int limit, long deadline) throws IOException {
+        long nanos = deadline - System.nanoTime();
+        if (nanos <= 0) throw new IOException("go-judge body deadline exceeded");
+        var cancellation = BODY_TIMEOUTS.schedule(() -> {
+            try { stream.close(); } catch (IOException ignored) { }
+        }, nanos, TimeUnit.NANOSECONDS);
+        try {
+            byte[] bytes = stream.readNBytes(limit + 1);
+            if (System.nanoTime() >= deadline) throw new IOException("go-judge body deadline exceeded");
+            return bytes;
+        } finally {
+            cancellation.cancel(false);
         }
     }
 

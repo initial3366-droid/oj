@@ -1,0 +1,26 @@
+{
+  "title": "通信加法",
+  "statement": "<p>Alice 得到秘密整数 a，Bob 得到公开整数 b。Alice 只能发送最多 32 字节的消息，Bob 输出 a+b。</p><p>程序独立运行两次；首个 token 是 ENCODE 或 DECODE。发送阶段读 a；接收阶段读 a 和 b。</p>",
+  "inputFormat": "ENCODE 换行 a；或者 DECODE 换行 a b。",
+  "outputFormat": "发送方输出十进制整数和换行；接收方输出和。",
+  "timeLimit": 1000,
+  "memoryLimit": 256,
+  "judgeMode": "COMMUNICATION",
+  "communication": {
+    "version": 1,
+    "execution": "TWO_PASS",
+    "submissionMode": "PROGRAM",
+    "messageFormat": "UTF8_TEXT",
+    "maxMessageBytes": 32,
+    "allowEmptyMessage": false,
+    "channelSource": "communication/channel.cpp",
+    "checkerSource": "communication/checker.cpp"
+  },
+  "samples": [
+    {
+      "input": "ENCODE\n37\n",
+      "output": "37\n",
+      "explanation": "发送方消息占 3 字节；接收方输入为 DECODE 换行 37 5，输出 42。"
+    }
+  ]
+}

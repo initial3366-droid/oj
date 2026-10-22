@@ -28,6 +28,10 @@ public record ProblemUpdateRequest(
     Long majorId,
     String studentPublishStatus,
     List<ProblemSampleCaseRequest> samples,
-    String sampleCases
+    String sampleCases,
+    CommunicationConfig communication
 ) {
+    public ProblemUpdateRequest(String title, Integer timeLimit, Integer memoryLimit, String statement, String inputFormat, String outputFormat, String checkerSource, Integer difficulty, List<String> tags, Long folderId, Boolean isPublic, String accessScope, Long majorId, String studentPublishStatus, List<ProblemSampleCaseRequest> samples, String sampleCases) {
+        this(title, timeLimit, memoryLimit, statement, inputFormat, outputFormat, checkerSource, difficulty, tags, folderId, isPublic, accessScope, majorId, studentPublishStatus, samples, sampleCases, null);
+    }
 }

@@ -3,7 +3,7 @@ package com.qoj.module.admin.controller;
 import com.qoj.common.ApiResponse;
 import com.qoj.module.auth.dto.AuthTokenResponse;
 import com.qoj.module.auth.dto.LoginRequest;
-import com.qoj.module.auth.dto.UpdateProfileRequest;
+import com.qoj.module.auth.dto.AdminUpdateProfileRequest;
 import com.qoj.module.auth.service.AuthService;
 import com.qoj.module.auth.service.CaptchaService;
 import com.qoj.module.user.vo.UserMeVO;
@@ -53,8 +53,8 @@ public class AdminAuthController {
      * 更新资料。执行持久化写入。
      */
     @PutMapping("/me")
-    public ApiResponse<Void> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
-        authService.updateProfile(request);
+    public ApiResponse<Void> updateProfile(@Valid @RequestBody AdminUpdateProfileRequest request) {
+        authService.updateAdminProfile(request);
         return ApiResponse.ok();
     }
 }

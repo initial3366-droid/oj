@@ -1,0 +1,29 @@
+name: qoj-native-agent
+services:
+  agent:
+    build: .
+    image: qoj-native-agent:latest
+    # Linux host networking reaches the backend's loopback listener.
+    # The Agent itself also binds only to loopback.
+    network_mode: host
+    restart: unless-stopped
+    mem_limit: 1g
+    pids_limit: 256
+    environment:
+      SERVER_ADDRESS: 127.0.0.1
+      AGENT_PORT: 19090
+      QOJ_BASE_URL: http://127.0.0.1:18080
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:?required}
+      ICPC_SKILL_ROOT: /opt/icpc-problem-creator
+      ICPC_SKILL_PATH: /opt/icpc-problem-creator/SKILL.md
+      AGENT_WORKSPACE_ROOT: /var/lib/qoj-agent/workspaces
+    volumes:
+      - /opt/qoj/icpc-skill:/opt/icpc-problem-creator:ro
+      - qoj-agent-workspaces:/var/lib/qoj-agent/workspaces
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+volumes:
+  qoj-agent-workspaces:

@@ -1,10 +1,11 @@
 .html-math {
+  color: var(--qoj-color-text-1);
   overflow-wrap: anywhere;
   line-height: 1.9;
 }
 
 .html-math--empty {
-  color: #9ca3af;
+  color: var(--qoj-color-text-2);
 }
 
 .html-math > :first-child {
@@ -50,10 +51,20 @@
 .html-math blockquote {
   margin: 0.8em 0;
   padding: 0.4em 1em;
-  border-left: 4px solid #3b82f6;
-  background: #f8fafc;
-  color: #475569;
+  border-left: 4px solid var(--qoj-color-primary);
+  background: var(--qoj-color-fill-0);
+  color: var(--qoj-color-text-1);
 }
+
+.html-math .qoj-background-box--green {
+  padding: 12px 20px;
+  border-left: 4px solid var(--qoj-color-success);
+  background: var(--el-color-success-light-9);
+  color: inherit;
+}
+
+.html-math .qoj-background-box--green > :first-child { margin-top: 0; }
+.html-math .qoj-background-box--green > :last-child { margin-bottom: 0; }
 
 .html-math img,
 .html-math video {
@@ -62,7 +73,7 @@
 
 .html-math code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  background: #f1f5f9;
+  background: var(--qoj-color-fill-0);
   padding: 0.1em 0.35em;
   border-radius: 4px;
   font-size: 0.92em;
@@ -71,9 +82,9 @@
 .html-math pre {
   max-width: 100%;
   overflow-x: auto;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--qoj-color-border);
   border-radius: 6px;
-  background: #f8fafc;
+  background: var(--qoj-color-fill-0);
   padding: 12px 14px;
   margin: 0.8em 0;
 }
@@ -91,12 +102,12 @@
 
 .html-math th,
 .html-math td {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--qoj-color-border);
   padding: 6px 12px;
 }
 
 .html-math th {
-  background: #f8fafc;
+  background: var(--qoj-color-fill-0);
   font-weight: 600;
 }
 
@@ -107,4 +118,29 @@
 
 .html-math__inline {
   white-space: normal;
+}
+
+/* Preserve data whitespace without rendering HTML source indentation as blank lines. */
+.html-math--plain-text { white-space: pre-wrap; }
+.html-math--rich-text { white-space: normal; }
+.html-math--rich-text pre { white-space: pre-wrap; }
+
+.html-math a { color: var(--qoj-color-primary); }
+
+/* Imported statements can contain fixed light-theme colors. Keep their layout,
+   but let the live dark theme supply readable text, surfaces and borders. */
+:root:is(.dark, [data-theme="dark"]) .html-math :is([style], [color]) {
+  color: inherit !important;
+}
+:root:is(.dark, [data-theme="dark"]) .html-math :is([style*="background"], [bgcolor]) {
+  background: var(--qoj-color-fill-0) !important;
+}
+:root:is(.dark, [data-theme="dark"]) .html-math [style*="border"] {
+  border-color: var(--qoj-color-border) !important;
+}
+:root:is(.dark, [data-theme="dark"]) .html-math a {
+  color: var(--qoj-color-primary) !important;
+}
+:root:is(.dark, [data-theme="dark"]) .html-math .qoj-background-box--green {
+  background: var(--qoj-color-fill-0);
 }

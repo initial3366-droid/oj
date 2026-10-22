@@ -2,55 +2,13 @@
  * Vite 构建与开发服务器配置。
  * 开发环境将 HTTP 与 WebSocket 请求代理到同一个后端来源，避免浏览器跨域差异。
  */
-import { defineConfig, loadEnv, type Plugin } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
-
-/**
- * 构建完成后将所有 CSS 与 JS chunk 显式写入入口 HTML，便于静态部署时统一加载资源。
- * JS 使用 modulepreload，避免把带有共享依赖的 chunk 当作独立入口重复执行。
- */
-function preloadAllBuildAssets(): Plugin {
-  return {
-    name: "preload-all-build-assets",
-    apply: "build",
-    enforce: "post",
-    generateBundle(_options, bundle) {
-      const indexAsset = bundle["index.html"];
-      if (!indexAsset || indexAsset.type !== "asset" || typeof indexAsset.source !== "string") return;
-
-      const existingReferences: Record<string, boolean> = {};
-      const references = indexAsset.source.match(/(?:src|href)="\/(assets\/[^\"]+)"/g) || [];
-      references.forEach((reference) => {
-        const match = reference.match(/\/(assets\/[^\"]+)"/);
-        if (match) existingReferences[match[1]] = true;
-      });
-
-      const assetFiles: string[] = [];
-      Object.keys(bundle).forEach((key) => {
-        const fileName = bundle[key].fileName;
-        if (/^assets\/.+\.(css|js)$/.test(fileName) && !existingReferences[fileName]) {
-          assetFiles.push(fileName);
-        }
-      });
-      assetFiles.sort();
-      const assetLinks = assetFiles
-        .map((fileName) => fileName.slice(-3) === ".js"
-          ? `<link rel="modulepreload" crossorigin href="/${fileName}">`
-          : `<link rel="stylesheet" crossorigin href="/${fileName}">`)
-        .join("\n    ");
-
-      if (assetLinks) {
-        indexAsset.source = indexAsset.source.replace("</head>", `    ${assetLinks}\n  </head>`);
-      }
-      // index.html 只包含入口标签和资源引用，去掉构建产物中的无意义空白以减小体积。
-      indexAsset.source = indexAsset.source
-        .replace(/>\s+</g, "><")
-        .replace(/\s{2,}/g, " ")
-        .trim();
-    },
-  };
-}
+import { defineConfig, loadEnv } from "vite";
+import vue from "@vitejs/plugin-vue";
+import AutoImport from "unplugin-auto-import/vite";
+import Components from "unplugin-vue-components/vite";
+import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
+import UnoCSS from "unocss/vite";
+import { resolve } from "node:path";
 
 declare const process: {
   cwd: () => string;
@@ -67,9 +25,22 @@ export default defineConfig(({ mode }) => {
   const agentProxyTarget = process.env.VITE_AGENT_PROXY_TARGET ?? env.VITE_AGENT_PROXY_TARGET ?? "http://127.0.0.1:19090";
 
   return {
-    plugins: [react(), tailwindcss(), preloadAllBuildAssets()],
+    plugins: [vue(), UnoCSS(), AutoImport({ imports: ["vue", "@vueuse/core", "pinia", "vue-router", "vue-i18n", { "element-plus": ["ElMessage", "ElMessageBox", "ElNotification", "ElLoading"] }], dts: "src/vue/template-adapter/auto-imports.d.ts" }), Components({ dirs: ["vendor/vue3-element-admin/src/components", "vendor/vue3-element-admin/src/layouts/components"], resolvers: [ElementPlusResolver({ importStyle: false })], dts: false })],
+    resolve: { alias: [
+      { find: "@/stores/tenant", replacement: resolve("src/vue/template-adapter/tenant.ts") },
+      { find: "@/stores/user", replacement: resolve("src/vue/template-adapter/stores.ts") },
+      { find: "@/stores/permission", replacement: resolve("src/vue/template-adapter/stores.ts") },
+      { find: /^@\/stores$/, replacement: resolve("src/vue/template-adapter/stores.ts") },
+      { find: /^@\/router$/, replacement: resolve("src/vue/template-adapter/router.ts") },
+      { find: "@/utils/sse", replacement: resolve("src/vue/template-adapter/sse.ts") },
+      { find: "@/api/auth", replacement: resolve("src/vue/template-adapter/auth.ts") },
+      { find: "@/api/system/notice", replacement: resolve("src/vue/template-adapter/notice.ts") },
+      { find: "@", replacement: resolve("vendor/vue3-element-admin/src") },
+    ] },
+    css: { preprocessorOptions: { scss: { additionalData: '@use "@/styles/variables.scss" as *;' } } },
     define: {
       global: "globalThis",
+      __APP_INFO__: JSON.stringify({ pkg: { name: "QOJ", version: "0.1.0" }, buildTimestamp: Date.now() }),
     },
     optimizeDeps: {
       esbuildOptions: {
@@ -79,6 +50,16 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
+      // Keep route component CSS lazy with its JavaScript chunk.
+      cssCodeSplit: true,
+      assetsInlineLimit: Infinity,
+      modulePreload: false,
+      rollupOptions: {
+        output: {
+          entryFileNames: "assets/app-[hash].js",
+          assetFileNames: "assets/app-[hash][extname]",
+        },
+      },
       // Monaco 编辑器等大型依赖属于预期体积，避免构建时反复输出误导性的 500KB 警告。
       chunkSizeWarningLimit: 5000,
     },

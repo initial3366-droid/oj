@@ -1,8 +1,9 @@
+import { readAuthToken } from '../api/tokenStorage';
 /**
  * QOJ 前端 API 客户端 — 全部后端接口的类型定义与调用封装。
  *
  * 职责：
- * 1. 统一 HTTP 请求（get / request），自动携带 JWT Token（从 localStorage 读取）
+ * 1. 统一 HTTP 请求（get / request），自动携带 JWT Token（按登录选项读取 sessionStorage / localStorage）
  * 2. 超时控制（15 秒）+ 错误信息脱敏（过滤 Java 异常堆栈）
  * 3. 后端实体 → 前端类型映射（BackendProblem → Problem 等）
  * 4. 全局状态 hydration（hydrateStateFromApi）— 合并 home + problems + ratings 到 OjState
@@ -48,8 +49,8 @@ function clearFrontendToken() {
 /**
  * 更新Frontend认证Tokens。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
-export function saveFrontendAuthTokens(tokens: AuthTokenResponse) {
-  saveFrontendTokens(tokens);
+export function saveFrontendAuthTokens(tokens: AuthTokenResponse, rememberMe?: boolean) {
+  saveFrontendTokens(tokens, rememberMe);
 }
 
 /**
@@ -80,7 +81,7 @@ function shouldRefreshFrontendToken(url: string, token?: string, allowRefresh = 
 }
 
 /**
- * 封装timeoutSignal相关逻辑。会更新 React 状态并触发重新渲染。
+ * 封装timeoutSignal相关逻辑。
  */
 function timeoutSignal() {
   const controller = new AbortController();
@@ -153,6 +154,7 @@ export interface AdminUser {
   studentNo?: string;
   email?: string;
   role: "SUPER_ADMIN" | "STUDENT";
+  status?: "NORMAL" | "BANNED";
   createdAt: string;
   updatedAt: string;
 }
@@ -167,6 +169,7 @@ export interface AdminUserPayload {
   studentNo?: string;
   email?: string;
   role?: AdminUser["role"];
+  status?: "NORMAL" | "BANNED";
 }
 
 /**
@@ -242,6 +245,9 @@ export interface PracticePayload {
  */
 export interface Practice {
   id: number;
+  courseId?: number | null;
+  startTime?: string | null;
+  endTime?: string | null;
   title: string;
   description: string;
   audience: "ALL" | "CLASS";
@@ -285,6 +291,7 @@ export interface PracticeReportRank {
  */
 export interface PracticeReport {
   practiceId: number;
+  activeParticipantCount?: number;
   participantCount: number;
   submissionCount: number;
   rankings: PracticeReportRank[];
@@ -320,9 +327,6 @@ export interface ContestProblemPayload {
   caseScores?: ContestCaseScorePayload[];
 }
 
-/** Server-supported judge routes for a contest; submissions cannot override this choice. */
-export type ContestJudgeMode = "GO_JUDGE" | "CCPCOJ";
-
 /**
  * 比赛Draft请求参数接口，明确该模块内部及 API 边界使用的数据结构。
  */
@@ -333,7 +337,6 @@ export interface ContestDraftPayload {
   endTime?: string;
   description?: string;
   type?: "ACM" | "OI";
-  judgeMode?: ContestJudgeMode;
   audience?: "ALL" | "CLASS";
   audienceTypes?: Array<"ALL" | "CLASS">;
   classIds?: number[];
@@ -352,6 +355,8 @@ export interface ContestDraftPayload {
   allowStarRegistration?: boolean;
   allowViewAllSubmissions?: boolean;
   registrationPassword?: string;
+  allowedIpRanges?: string;
+  hidden?: boolean;
   totalScore?: number;
   problems?: ContestProblemPayload[];
 }
@@ -366,7 +371,6 @@ export interface ContestPayload {
   startTime: string;
   endTime: string;
   type: "ACM" | "OI";
-  judgeMode: ContestJudgeMode;
   audience: "ALL" | "CLASS";
   audienceId?: number | null;
   audiences?: Array<{ audienceType: "ALL" | "CLASS"; audienceId?: number | null }>;
@@ -386,6 +390,8 @@ export interface ContestPayload {
   allowViewAllSubmissions?: boolean;
   registrationType?: string;
   registrationPassword?: string;
+  allowedIpRanges?: string;
+  hidden?: boolean;
   problems: ContestProblemPayload[];
 }
 
@@ -400,7 +406,6 @@ export interface AdminContest {
   startTime: string;
   endTime: string;
   type: "ACM" | "OI";
-  judgeMode: ContestJudgeMode;
   ownerId: number;
   ownerName: string;
   audience: "ALL" | "CLASS";
@@ -422,7 +427,10 @@ export interface AdminContest {
   allowViewAllSubmissions: boolean;
   registrationType: string;
   hasPassword: boolean;
+  allowedIpRanges?: string;
+  hidden?: boolean;
   status: "NOT_STARTED" | "RUNNING" | "ENDED";
+  activeParticipantCount?: number;
   participantCount: number;
   submissionCount: number;
   sourceContestId?: number | null;
@@ -470,6 +478,7 @@ export interface PublicContest {
   hasPassword: boolean;
   status: "NOT_STARTED" | "RUNNING" | "ENDED";
   registrationCount?: number;
+  activeParticipantCount?: number;
   participantCount: number;
   submissionCount: number;
   registered: boolean;
@@ -644,6 +653,7 @@ export interface ContestPublicScoreboardRow {
   displayName: string;
   classId?: number | null;
   className?: string | null;
+  teamName?: string | null;
   solved: number;
   penalty: number;
   totalScore: number;
@@ -742,64 +752,6 @@ export interface SubmissionRecord {
 }
 
 /**
- * 提交队列Record接口，明确该模块内部及 API 边界使用的数据结构。
- */
-export interface SubmissionQueueRecord {
-  queueId: number;
-  submissionId: number;
-  contestId?: number | null;
-  contestTitle?: string | null;
-  problemId: number;
-  contestProblemId?: number | null;
-  problemLabel?: string | null;
-  problemTitle: string;
-  userId: number;
-  username?: string | null;
-  displayName: string;
-  language: string;
-  status: string;
-  statusText: string;
-  judgeServer?: string | null;
-  priority: number;
-  submitTime: string;
-  startJudgeTime?: string | null;
-  finishTime?: string | null;
-  waitingTimeMillis: number;
-  runningTimeMillis: number;
-  retryCount: number;
-  errorMessage?: string | null;
-}
-
-/**
- * 提交队列Log接口，明确该模块内部及 API 边界使用的数据结构。
- */
-export interface SubmissionQueueLog {
-  queueId: number;
-  submissionId: number;
-  status: string;
-  judgeServer?: string | null;
-  judgeMessage?: string | null;
-  errorMessage?: string | null;
-  submitTime: string;
-  startJudgeTime?: string | null;
-  finishTime?: string | null;
-}
-
-/**
- * 提交队列Query接口，明确该模块内部及 API 边界使用的数据结构。
- */
-export interface SubmissionQueueQuery {
-  page?: number;
-  pageSize?: number;
-  problemId?: number | null;
-  userId?: number | null;
-  language?: string;
-  status?: string;
-  sortBy?: string;
-  sortOrder?: "asc" | "desc";
-}
-
-/**
  * Backend题目接口，明确该模块内部及 API 边界使用的数据结构。
  */
 interface BackendProblem {
@@ -828,6 +780,7 @@ interface BackendProblem {
   acRate: number;
   attemptStatus?: string | null;
   specialJudge?: boolean;
+  communication?: { version: number; execution: string; maxMessageBytes: number; allowEmptyMessage: boolean } | null;
 }
 
 /**
@@ -861,6 +814,7 @@ interface BackendContestProblem {
   ownerName?: string;
   attemptStatus?: string | null;
   specialJudge?: boolean;
+  communication?: { version: number; execution: string; maxMessageBytes: number; allowEmptyMessage: boolean } | null;
 }
 
 /**
@@ -891,7 +845,6 @@ interface BackendContest {
   startTime: string;
   endTime: string;
   type: "ACM" | "OI";
-  judgeMode?: ContestJudgeMode;
   ownerId?: number;
   ownerName?: string;
   audience: "ALL" | "CLASS";
@@ -913,8 +866,11 @@ interface BackendContest {
   allowViewAllSubmissions?: boolean;
   registrationType: string;
   hasPassword?: boolean;
+  allowedIpRanges?: string;
+  hidden?: boolean;
   status: "NOT_STARTED" | "RUNNING" | "ENDED";
   registrationCount?: number;
+  activeParticipantCount?: number;
   participantCount?: number;
   submissionCount?: number;
   sourceContestId?: number | null;
@@ -1031,6 +987,7 @@ function mapProblem(problem: BackendProblem): Problem {
     updatedAt: problem.updatedAt,
     attemptStatus: problem.attemptStatus ?? null,
     isSpecialJudge: Boolean(problem.specialJudge),
+    communication: problem.communication,
     score: 100,
   };
 }
@@ -1062,6 +1019,7 @@ function mapContestProblem(problem: BackendContestProblem | BackendProblem): Pro
     updatedAt: problem.updatedAt,
     attemptStatus: problem.attemptStatus ?? null,
     isSpecialJudge: Boolean(problem.specialJudge),
+    communication: problem.communication,
     score: 100,
   };
 }
@@ -1071,6 +1029,9 @@ function mapContestProblem(problem: BackendContestProblem | BackendProblem): Pro
  */
 interface BackendPractice {
   id: number;
+  courseId?: number | null;
+  startTime?: string | null;
+  endTime?: string | null;
   title: string;
   description?: string;
   audience: "ALL" | "CLASS";
@@ -1111,7 +1072,6 @@ function mapAdminContest(contest: BackendContest): AdminContest {
     startTime: contest.startTime,
     endTime: contest.endTime,
     type: contest.type,
-    judgeMode: contest.judgeMode === "CCPCOJ" ? "CCPCOJ" : "GO_JUDGE",
     ownerId: Number(contest.ownerId ?? 0),
     ownerName: contest.ownerName || "",
     audience: visibleAudience(contest.audience),
@@ -1133,7 +1093,10 @@ function mapAdminContest(contest: BackendContest): AdminContest {
     allowStarRegistration: Boolean(contest.allowStarRegistration),
     registrationType: contest.registrationType,
     hasPassword: Boolean(contest.hasPassword),
+    allowedIpRanges: contest.allowedIpRanges ?? '',
+    hidden: Boolean(contest.hidden),
     status: contest.status,
+    activeParticipantCount: Number(contest.activeParticipantCount ?? 0),
     participantCount: Number(contest.participantCount ?? 0),
     submissionCount: Number(contest.submissionCount ?? 0),
     sourceContestId: contest.sourceContestId ?? null,
@@ -1183,6 +1146,7 @@ function mapPublicContest(contest: BackendContest): PublicContest {
     hasPassword: Boolean(contest.hasPassword),
     status: contest.status,
     registrationCount: Number(contest.registrationCount ?? contest.participantCount ?? 0),
+    activeParticipantCount: Number(contest.activeParticipantCount ?? 0),
     participantCount: Number(contest.participantCount ?? 0),
     submissionCount: Number(contest.submissionCount ?? 0),
     registered: Boolean(contest.registered),
@@ -1236,6 +1200,9 @@ function mapRating(user: BackendRatingUser): RatingUser {
 function mapPractice(practice: BackendPractice): Practice {
   return {
     id: practice.id,
+    courseId: practice.courseId,
+    startTime: practice.startTime,
+    endTime: practice.endTime,
     title: practice.title,
     description: practice.description || "",
     audience: visibleAudience(practice.audience),
@@ -1355,7 +1322,7 @@ async function request<T>(
 }
 
 /**
- * 封装hydrateStateFromApi相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+ * 封装hydrateStateFromApi相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口会读写浏览器本地会话信息。
  */
 export async function hydrateStateFromApi(current: OjState): Promise<OjState> {
   let token = getFrontendAccessToken() ?? undefined;
@@ -1438,26 +1405,26 @@ export async function adminLogin(username: string, password: string) {
 /**
  * 封装登录相关逻辑。包含异步流程并由调用方处理完成或失败状态。
  */
-export async function login(username: string, password: string) {
+export async function login(username: string, password: string, rememberMe = false, captchaId?: string, captcha?: string) {
   const result = await request<FrontendLoginResponse>("/api/v1/auth/login", {
     method: "POST",
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, rememberMe, captchaId, captcha }),
   });
   if (result.portal === "TEACHER") {
     throw new Error("教师账号请使用教师端登录");
   }
   const tokens: AuthTokenResponse = result;
-  saveFrontendAuthTokens(tokens);
+  saveFrontendAuthTokens(tokens, rememberMe);
   return tokens;
 }
 
 /**
  * 封装登录WithoutPersist相关逻辑。包含异步流程并由调用方处理完成或失败状态。
  */
-export async function loginWithoutPersist(username: string, password: string) {
+export async function loginWithoutPersist(username: string, password: string, rememberMe = false, captchaId?: string, captcha?: string) {
   return request<FrontendLoginResponse>("/api/v1/auth/login", {
     method: "POST",
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, rememberMe, captchaId, captcha }),
   });
 }
 
@@ -1604,10 +1571,12 @@ export async function uploadMyAvatar(file: File, token: string) {
  * 封装bindEmail相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
 export async function bindEmail(payload: BindEmailPayload, token: string) {
-  return request<void>("/api/v1/auth/email", {
+  const result = await request<void>("/api/v1/auth/email", {
     method: "PUT",
     body: JSON.stringify(payload),
   }, token);
+  clearMeCache();
+  return result;
 }
 
 /**
@@ -1659,7 +1628,7 @@ export async function applyToClass(classId: number, payload: ClassJoinApplicatio
  * 读取Problems并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会读写浏览器本地会话信息。
  */
 export async function fetchProblems() {
-  const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
+  const token = readAuthToken('frontend') ?? undefined;
   const result = await get<{ total: number; list: BackendProblem[] }>(
     "/api/v1/problems?page=1&pageSize=200",
     token,
@@ -1690,7 +1659,7 @@ export async function fetchAdminProblems(token: string, page = 1, pageSize = 10,
  * 读取题目详情并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会读写浏览器本地会话信息。
  */
 export async function fetchProblemDetail(problemId: number) {
-  const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
+  const token = readAuthToken('frontend') ?? undefined;
   return mapProblem(await get<BackendProblem>(`/api/v1/problems/${problemId}`, token));
 }
 
@@ -1698,7 +1667,7 @@ export async function fetchProblemDetail(problemId: number) {
  * 读取My题目Submissions并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会读写浏览器本地会话信息。
  */
 export async function fetchMyProblemSubmissions(problemId: number, contestId?: number | null) {
-  const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
+  const token = readAuthToken('frontend') ?? undefined;
   const userId = currentUserIdFromAccessToken(token ?? null);
   const userQuery = userId ? `&userId=${userId}` : "";
   const contestQuery = contestId ? `&contestId=${contestId}` : "";
@@ -1714,7 +1683,7 @@ export async function fetchMyProblemSubmissions(problemId: number, contestId?: n
  * 读取提交详情并返回给调用方。会读写浏览器本地会话信息；失败时向调用方传播异常。
  */
 export async function fetchSubmissionDetail(submissionId: number) {
-  const token = window.localStorage.getItem("qoj.accessToken");
+  const token = readAuthToken('frontend');
   if (!token) {
     throw new Error("请先登录后查看提交代码");
   }
@@ -1739,46 +1708,10 @@ function currentUserIdFromAccessToken(token: string | null) {
 }
 
 /**
- * 封装提交队列Query相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
- */
-function submissionQueueQuery(params: SubmissionQueueQuery = {}) {
-  const query = new URLSearchParams();
-  query.set("page", String(params.page ?? 1));
-  query.set("pageSize", String(params.pageSize ?? 20));
-  if (params.problemId) query.set("problemId", String(params.problemId));
-  if (params.userId) query.set("userId", String(params.userId));
-  if (params.language?.trim()) query.set("language", params.language.trim());
-  if (params.status?.trim()) query.set("status", params.status.trim());
-  if (params.sortBy) query.set("sortBy", params.sortBy);
-  if (params.sortOrder) query.set("sortOrder", params.sortOrder);
-  return query.toString();
-}
-
-/**
- * 读取提交队列并返回给调用方。会读写浏览器本地会话信息。
- */
-export async function fetchSubmissionQueue(params: SubmissionQueueQuery = {}) {
-  const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
-  return request<{ total: number; list: SubmissionQueueRecord[] }>(
-    `/api/v1/submission-queue?${submissionQueueQuery(params)}`,
-    {},
-    token,
-  );
-}
-
-/**
- * 读取提交队列详情并返回给调用方。会读写浏览器本地会话信息。
- */
-export async function fetchSubmissionQueueDetail(queueId: number) {
-  const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
-  return request<SubmissionQueueRecord>(`/api/v1/submission-queue/${queueId}`, {}, token);
-}
-
-/**
  * 读取MySubmissions并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会读写浏览器本地会话信息；失败时向调用方传播异常。
  */
 export async function fetchMySubmissions(page = 1, pageSize = 20) {
-  const token = window.localStorage.getItem("qoj.accessToken");
+  const token = readAuthToken('frontend');
   if (!token) {
     throw new Error("请先登录后查看提交记录");
   }
@@ -2188,7 +2121,7 @@ export async function fetchContest(contestId: number) {
  * 读取比赛Submissions并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会读写浏览器本地会话信息。
  */
 export async function fetchContestSubmissions(contestId: number, page = 1, pageSize = 20) {
-  const token = window.localStorage.getItem("qoj.accessToken") ?? undefined;
+  const token = readAuthToken('frontend') ?? undefined;
   const result = await request<{ total: number; list: SubmissionRecord[] }>(
     `/api/v1/submissions?page=${page}&pageSize=${pageSize}&contestId=${contestId}`,
     {},
@@ -2200,15 +2133,18 @@ export async function fetchContestSubmissions(contestId: number, page = 1, pageS
 /**
  * 读取My比赛Submissions并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会读写浏览器本地会话信息；失败时向调用方传播异常。
  */
-export async function fetchMyContestSubmissions(contestId: number, page = 1, pageSize = 20) {
-  const token = window.localStorage.getItem("qoj.accessToken");
+export async function fetchMyContestSubmissions(contestId: number, page = 1, pageSize = 20, filters: { problemId?: number; status?: string } = {}) {
+  const token = readAuthToken('frontend');
   if (!token) {
     throw new Error("请先登录后查看提交记录");
   }
   const me = await fetchMe(token);
   const userId = Number(me.id.replace('u', ''));
+  const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize), contestId: String(contestId), userId: String(userId) });
+  if (filters.problemId != null) query.set("problemId", String(filters.problemId));
+  if (filters.status) query.set("status", filters.status);
   const result = await request<{ total: number; list: SubmissionRecord[] }>(
-    `/api/v1/submissions?page=${page}&pageSize=${pageSize}&contestId=${contestId}&userId=${userId}`,
+    `/api/v1/submissions?${query}`,
     {},
     token,
   );
@@ -2219,7 +2155,7 @@ export async function fetchMyContestSubmissions(contestId: number, page = 1, pag
  * 读取当前用户在比赛中已通过的题目。独立于提交列表分页，保证题目列表的 AC 状态完整。
  */
 export async function fetchMyContestAcceptedProblems(contestId: number) {
-  const token = window.localStorage.getItem("qoj.accessToken");
+  const token = readAuthToken('frontend');
   if (!token) {
     throw new Error("请先登录后查看比赛状态");
   }
@@ -2300,7 +2236,9 @@ export async function fetchAdminContestBoard(token: string, contestId: number) {
  * 读取比赛榜单并返回给调用方。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
 export async function fetchContestScoreboard(contestId: number) {
-  return get<ContestScoreboard>(`/api/v1/contests/${contestId}/scoreboard`);
+  // 比赛内榜要求报名已通过审核，必须带登录令牌，否则后端按未报名返回 403。
+  const token = await getFrontendAccessTokenForOptionalAuth();
+  return get<ContestScoreboard>(`/api/v1/contests/${contestId}/scoreboard`, token);
 }
 
 /**
@@ -2388,7 +2326,7 @@ export async function fetchContestProblemDetail(contestId: number, contestProble
  * 读取比赛报名Options并返回给调用方。会读写浏览器本地会话信息；失败时向调用方传播异常。
  */
 export async function fetchContestRegistrationOptions(contestId: number) {
-  const token = window.localStorage.getItem("qoj.accessToken");
+  const token = readAuthToken('frontend');
   if (!token) {
     throw new Error("请先登录后报名比赛");
   }
@@ -2403,7 +2341,7 @@ export async function fetchContestRegistrationOptions(contestId: number) {
  * 创建或提交比赛。会读写浏览器本地会话信息；失败时向调用方传播异常。
  */
 export async function registerContest(contestId: number, payload: ContestRegistrationPayload) {
-  const token = window.localStorage.getItem("qoj.accessToken");
+  const token = readAuthToken('frontend');
   if (!token) {
     throw new Error("请先登录后报名比赛");
   }

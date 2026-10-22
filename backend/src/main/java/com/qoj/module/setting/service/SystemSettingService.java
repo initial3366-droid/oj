@@ -20,7 +20,6 @@ import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.SafeUrlValidator;
-import org.springframework.core.env.Environment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +28,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -48,10 +48,7 @@ public class SystemSettingService {
     private static final int DEFAULT_JUDGE_THREAD_POOL_SIZE = 2;
     private static final int DEFAULT_JUDGE_QUEUE_BATCH_SIZE = 2;
     private static final long DEFAULT_JUDGE_POLL_INTERVAL_MS = 1000L;
-    private static final int DEFAULT_CCPCOJ_SESSION_TTL_MINUTES = 720;
     private static final int DEFAULT_JUDGE_STALE_TASK_MINUTES = 15;
-    private static final Pattern CCPCOJ_USERNAME = Pattern.compile("[A-Za-z0-9._-]{1,60}");
-    private static final Pattern CCPCOJ_PASSWORD = Pattern.compile("[A-Za-z0-9._~-]{12,128}");
     private static final Pattern COS_BUCKET = Pattern.compile("[a-z0-9][a-z0-9-]{0,49}-[0-9]{5,20}");
     private static final Pattern COS_REGION = Pattern.compile("[a-z]{2,8}-[a-z0-9-]{2,32}");
     private static final Pattern COS_SECRET_ID = Pattern.compile("AKID[A-Za-z0-9]{16,64}");
@@ -86,7 +83,6 @@ public class SystemSettingService {
     private final AdminUserMapper adminUserMapper;
     private final PasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
-    private final Environment environment;
 
     /**
      * 构造 System设置Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
@@ -95,52 +91,34 @@ public class SystemSettingService {
         SystemSettingMapper settingMapper,
         AdminUserMapper adminUserMapper,
         PasswordEncoder passwordEncoder,
-        ObjectMapper objectMapper,
-        Environment environment
+        ObjectMapper objectMapper
     ) {
         this.settingMapper = settingMapper;
         this.adminUserMapper = adminUserMapper;
         this.passwordEncoder = passwordEncoder;
         this.objectMapper = objectMapper;
-        this.environment = environment;
     }
 
     /**
      * 获取前端配置
      */
     public FrontendSettingsVO getFrontendSettings() {
+        Map<String, String> settings = readSettings(
+            "frontend.site_title", "frontend.site_logo", "frontend.maintenance_mode", "frontend.footer_text",
+            "frontend.icp_number", "frontend.mps_number", "frontend.footer_link1_text", "frontend.footer_link1_url",
+            "frontend.footer_link2_text", "frontend.footer_link2_url"
+        );
         FrontendSettingsVO vo = new FrontendSettingsVO();
-
-        SystemSetting siteTitle = settingMapper.selectById("frontend.site_title");
-        vo.siteTitle = siteTitle != null ? siteTitle.settingValue : "QOJ 在线评测系统";
-
-        SystemSetting siteLogo = settingMapper.selectById("frontend.site_logo");
-        vo.siteLogo = siteLogo != null ? siteLogo.settingValue : "";
-
-        SystemSetting maintenanceMode = settingMapper.selectById("frontend.maintenance_mode");
-        vo.maintenanceMode = maintenanceMode != null ? Boolean.parseBoolean(maintenanceMode.settingValue) : false;
-
-        SystemSetting footerText = settingMapper.selectById("frontend.footer_text");
-        vo.footerText = footerText != null ? footerText.settingValue : "QOJ 在线评测系统";
-
-        SystemSetting icpNumber = settingMapper.selectById("frontend.icp_number");
-        vo.icpNumber = icpNumber != null ? icpNumber.settingValue : "";
-
-        SystemSetting mpsNumber = settingMapper.selectById("frontend.mps_number");
-        vo.mpsNumber = mpsNumber != null ? mpsNumber.settingValue : "";
-
-        SystemSetting footerLink1Text = settingMapper.selectById("frontend.footer_link1_text");
-        vo.footerLink1Text = footerLink1Text != null ? footerLink1Text.settingValue : "";
-
-        SystemSetting footerLink1Url = settingMapper.selectById("frontend.footer_link1_url");
-        vo.footerLink1Url = footerLink1Url != null ? footerLink1Url.settingValue : "";
-
-        SystemSetting footerLink2Text = settingMapper.selectById("frontend.footer_link2_text");
-        vo.footerLink2Text = footerLink2Text != null ? footerLink2Text.settingValue : "";
-
-        SystemSetting footerLink2Url = settingMapper.selectById("frontend.footer_link2_url");
-        vo.footerLink2Url = footerLink2Url != null ? footerLink2Url.settingValue : "";
-
+        vo.siteTitle = settings.getOrDefault("frontend.site_title", "QOJ 在线评测系统");
+        vo.siteLogo = settings.getOrDefault("frontend.site_logo", "");
+        vo.maintenanceMode = Boolean.parseBoolean(settings.get("frontend.maintenance_mode"));
+        vo.footerText = settings.getOrDefault("frontend.footer_text", "QOJ 在线评测系统");
+        vo.icpNumber = settings.getOrDefault("frontend.icp_number", "");
+        vo.mpsNumber = settings.getOrDefault("frontend.mps_number", "");
+        vo.footerLink1Text = settings.getOrDefault("frontend.footer_link1_text", "");
+        vo.footerLink1Url = settings.getOrDefault("frontend.footer_link1_url", "");
+        vo.footerLink2Text = settings.getOrDefault("frontend.footer_link2_text", "");
+        vo.footerLink2Url = settings.getOrDefault("frontend.footer_link2_url", "");
         return vo;
     }
 
@@ -182,9 +160,7 @@ public class SystemSettingService {
     }
 
     public JudgeSettingsVO getJudgeSettings() {
-        JudgeSettingsVO vo = getJudgeRuntimeSettings();
-        vo.ccpcojJudgePassword = "";
-        return vo;
+        return getJudgeRuntimeSettings();
     }
 
     public PublicJudgeSettingsVO getPublicJudgeSettings() {
@@ -196,26 +172,21 @@ public class SystemSettingService {
     }
 
     public JudgeSettingsVO getJudgeRuntimeSettings() {
+        Map<String, String> settings = readSettings(
+            "judge.enabled", "judge.enable_sandbox", "judge.thread_pool_size", "judge.max_concurrent",
+            "judge.queue_batch_size", "judge.poll_interval_ms", "judge.stale_task_minutes"
+        );
         JudgeSettingsVO vo = new JudgeSettingsVO();
-        vo.enabled = boolSetting("judge.enabled", true);
-        // Ordinary work is fixed to go-judge; contest ownership is snapshotted
-        // from each contest instead of being switched globally at runtime.
-        vo.mode = "go-judge";
-        vo.contestMode = "per-contest";
-        vo.enableSandbox = boolSetting("judge.enable_sandbox", false);
-        vo.threadPoolSize = positiveIntSetting("judge.thread_pool_size", DEFAULT_JUDGE_THREAD_POOL_SIZE);
-        vo.maxConcurrent = positiveIntSetting("judge.max_concurrent", DEFAULT_JUDGE_CONCURRENCY);
-        vo.queueBatchSize = positiveIntSetting("judge.queue_batch_size", DEFAULT_JUDGE_QUEUE_BATCH_SIZE);
-        vo.pollIntervalMs = positiveLongSetting("judge.poll_interval_ms", DEFAULT_JUDGE_POLL_INTERVAL_MS);
-        vo.ccpcojJudgeUsername = textSetting("judge.ccpcoj_username", "judger");
-        vo.ccpcojJudgePassword = textSetting("judge.ccpcoj_password_hash", "");
-        vo.hasCcpcojJudgePassword = hasText(vo.ccpcojJudgePassword);
-        vo.ccpcojSessionTtlMinutes = positiveIntSetting(
-            "judge.ccpcoj_session_ttl_minutes", DEFAULT_CCPCOJ_SESSION_TTL_MINUTES);
-        // Kept under the existing key for backward compatibility; it applies
-        // to both CCPCOJ pull claims and embedded GO_JUDGE claims.
-        vo.ccpcojStaleTaskMinutes = positiveIntSetting(
-            "judge.ccpcoj_stale_task_minutes", DEFAULT_JUDGE_STALE_TASK_MINUTES);
+        vo.enabled = boolValue(settings.get("judge.enabled"), true);
+        vo.enableSandbox = boolValue(settings.get("judge.enable_sandbox"), false);
+        vo.threadPoolSize = positiveIntValue(settings.get("judge.thread_pool_size"), DEFAULT_JUDGE_THREAD_POOL_SIZE);
+        vo.maxConcurrent = positiveIntValue(settings.get("judge.max_concurrent"), DEFAULT_JUDGE_CONCURRENCY);
+        vo.queueBatchSize = positiveIntValue(settings.get("judge.queue_batch_size"), DEFAULT_JUDGE_QUEUE_BATCH_SIZE);
+        vo.pollIntervalMs = longValue(settings.get("judge.poll_interval_ms"), DEFAULT_JUDGE_POLL_INTERVAL_MS);
+        if (vo.pollIntervalMs <= 0) {
+            vo.pollIntervalMs = DEFAULT_JUDGE_POLL_INTERVAL_MS;
+        }
+        vo.staleTaskMinutes = positiveIntValue(settings.get("judge.stale_task_minutes"), DEFAULT_JUDGE_STALE_TASK_MINUTES);
         return vo;
     }
 
@@ -241,6 +212,7 @@ public class SystemSettingService {
         vo.reasoningEffort = defaultText(config.get("reasoningEffort"), "medium");
         vo.timeoutMs = longValue(config.get("timeoutMs"), 30000L);
         vo.maxCodeChars = intValue(config.get("maxCodeChars"), 12000);
+        vo.contextWindowTokens = intValue(config.get("contextWindowTokens"), 512000);
         return vo;
     }
 
@@ -322,70 +294,25 @@ public class SystemSettingService {
 
     @Transactional
     public void updateJudgeSettings(JudgeSettingsVO request, AuthUser authUser) {
-        JudgeSettingsVO existing = getJudgeRuntimeSettings();
         JudgeSettingsVO next = new JudgeSettingsVO();
         next.enabled = request.enabled;
-        next.mode = "go-judge";
-        next.contestMode = "per-contest";
         next.enableSandbox = request.enableSandbox;
         next.threadPoolSize = request.threadPoolSize;
         next.maxConcurrent = request.maxConcurrent;
         next.queueBatchSize = request.queueBatchSize;
         next.pollIntervalMs = request.pollIntervalMs;
-        next.ccpcojJudgeUsername = trimToEmpty(request.ccpcojJudgeUsername);
-        if (hasText(next.ccpcojJudgeUsername)
-            && !CCPCOJ_USERNAME.matcher(next.ccpcojJudgeUsername).matches()) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常；可能调用外部判题或网关服务。
-             */
-            throw new BizException(ErrorCode.BAD_REQUEST,
-                "CCPCOJ 评测机账号只能包含字母、数字、点、下划线和连字符，且不超过 60 个字符");
-        }
-        if (hasText(request.ccpcojJudgePassword)
-            && !CCPCOJ_PASSWORD.matcher(request.ccpcojJudgePassword.trim()).matches()) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常；可能调用外部判题或网关服务。
-             */
-            throw new BizException(ErrorCode.BAD_REQUEST,
-                "CCPCOJ 评测机密码需为 12-128 位，且只能包含字母、数字、点、下划线、波浪号和连字符");
-        }
-        next.ccpcojJudgePassword = hasText(request.ccpcojJudgePassword)
-            ? passwordEncoder.encode(request.ccpcojJudgePassword.trim())
-            : existing.ccpcojJudgePassword;
-        next.hasCcpcojJudgePassword = hasText(next.ccpcojJudgePassword);
-        next.ccpcojSessionTtlMinutes = request.ccpcojSessionTtlMinutes;
-        next.ccpcojStaleTaskMinutes = request.ccpcojStaleTaskMinutes;
+        next.staleTaskMinutes = request.staleTaskMinutes;
 
         validateJudgeSettings(next);
 
         String username = authUser.getUsername();
         updateSetting("judge.enabled", String.valueOf(next.enabled), username);
-        updateSetting("judge.mode", next.mode, username);
-        updateSetting("judge.contest_mode", next.contestMode, username);
         updateSetting("judge.enable_sandbox", String.valueOf(next.enableSandbox), username);
         updateSetting("judge.max_concurrent", String.valueOf(next.maxConcurrent), username);
         updateSetting("judge.thread_pool_size", String.valueOf(next.threadPoolSize), username);
         updateSetting("judge.queue_batch_size", String.valueOf(next.queueBatchSize), username);
         updateSetting("judge.poll_interval_ms", String.valueOf(next.pollIntervalMs), username);
-        /**
-         * 更新设置。可能调用外部判题或网关服务。
-         */
-        updateSetting("judge.ccpcoj_username", next.ccpcojJudgeUsername, username);
-        /**
-         * 更新设置。可能调用外部判题或网关服务。
-         */
-        updateSetting("judge.ccpcoj_password_hash",
-            next.ccpcojJudgePassword == null ? "" : next.ccpcojJudgePassword, username);
-        /**
-         * 更新设置。可能调用外部判题或网关服务。
-         */
-        updateSetting("judge.ccpcoj_session_ttl_minutes",
-            String.valueOf(next.ccpcojSessionTtlMinutes), username);
-        /**
-         * 更新设置。可能调用外部判题或网关服务。
-         */
-        updateSetting("judge.ccpcoj_stale_task_minutes",
-            String.valueOf(next.ccpcojStaleTaskMinutes), username);
+        updateSetting("judge.stale_task_minutes", String.valueOf(next.staleTaskMinutes), username);
     }
 
     /**
@@ -402,6 +329,8 @@ public class SystemSettingService {
         next.reasoningEffort = normalizeReasoningEffort(request.reasoningEffort);
         next.timeoutMs = request.timeoutMs != null ? request.timeoutMs : 30000L;
         next.maxCodeChars = request.maxCodeChars != null ? request.maxCodeChars : 12000;
+        next.contextWindowTokens = request.contextWindowTokens != null ? request.contextWindowTokens : getAgentRuntimeSettings().contextWindowTokens;
+        if (next.contextWindowTokens < 8192 || next.contextWindowTokens > 512000) throw new BizException(400, "模型上下文应为 8192–512000 tokens");
 
         if (Boolean.TRUE.equals(next.enabled)) {
             SafeUrlValidator.requirePublicHttpUrl(next.baseUrl, "AI 服务地址");
@@ -424,11 +353,11 @@ public class SystemSettingService {
                 throw new BizException(ErrorCode.BAD_REQUEST, "请填写 AI 模型名称");
             }
         }
-        if (next.timeoutMs < 1000 || next.timeoutMs > 120000) {
+        if (next.timeoutMs < 1000 || next.timeoutMs > 600000) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
-            throw new BizException(ErrorCode.BAD_REQUEST, "AI 请求超时时间必须在 1000-120000 毫秒之间");
+            throw new BizException(ErrorCode.BAD_REQUEST, "AI 请求超时时间必须在 1000-600000 毫秒之间");
         }
         if (next.maxCodeChars < 1000 || next.maxCodeChars > 50000) {
             /**
@@ -444,7 +373,8 @@ public class SystemSettingService {
             "model", next.model,
             "reasoningEffort", next.reasoningEffort,
             "timeoutMs", next.timeoutMs,
-            "maxCodeChars", next.maxCodeChars
+            "maxCodeChars", next.maxCodeChars,
+            "contextWindowTokens", next.contextWindowTokens
         );
         updateSetting(AGENT_CONFIG_KEY, toJson(config), authUser.getUsername());
     }
@@ -452,7 +382,7 @@ public class SystemSettingService {
     private String normalizeReasoningEffort(String value) {
         String normalized = trimToEmpty(value).toLowerCase();
         return switch (normalized) {
-            case "none", "minimal", "low", "medium", "high" -> normalized;
+            case "none", "minimal", "low", "medium", "high", "max" -> normalized;
             default -> "medium";
         };
     }
@@ -807,17 +737,12 @@ public class SystemSettingService {
             case "frontend.footer_link2_text" -> "底部链接2文字";
             case "frontend.footer_link2_url" -> "底部链接2地址";
             case "judge.enabled" -> "判题开关";
-            case "judge.mode" -> "判题模式";
-            case "judge.contest_mode" -> "比赛判题模式";
             case "judge.enable_sandbox" -> "沙箱调试开关";
             case "judge.max_concurrent" -> "判题最大并发数";
             case "judge.thread_pool_size" -> "判题线程池大小";
             case "judge.queue_batch_size" -> "判题队列批量拉取数";
             case "judge.poll_interval_ms" -> "判题队列轮询间隔";
-            case "judge.ccpcoj_username" -> "CCPCOJ 评测机账号";
-            case "judge.ccpcoj_password_hash" -> "CCPCOJ 评测机密码哈希";
-            case "judge.ccpcoj_session_ttl_minutes" -> "CCPCOJ 评测机会话有效期";
-            case "judge.ccpcoj_stale_task_minutes" -> "判题任务失联重取时间";
+            case "judge.stale_task_minutes" -> "go-judge 失联任务重新领取时间";
             case AGENT_CONFIG_KEY -> "AI助手配置";
             case OSS_CONFIG_KEY -> "OSS配置";
             case CODE_TEMPLATE_CONFIG_KEY -> "各语言默认代码模板";
@@ -851,52 +776,29 @@ public class SystemSettingService {
              */
             throw new BizException(ErrorCode.BAD_REQUEST, "判题队列轮询间隔必须在 200-60000 毫秒之间");
         }
-        if (settings.ccpcojSessionTtlMinutes < 10 || settings.ccpcojSessionTtlMinutes > 10080) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常；可能调用外部判题或网关服务。
-             */
-            throw new BizException(ErrorCode.BAD_REQUEST, "CCPCOJ 会话有效期必须在 10-10080 分钟之间");
-        }
-        if (settings.ccpcojStaleTaskMinutes < 2 || settings.ccpcojStaleTaskMinutes > 1440) {
+        if (settings.staleTaskMinutes < 2 || settings.staleTaskMinutes > 1440) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常；可能调用外部判题或网关服务。
              */
             throw new BizException(ErrorCode.BAD_REQUEST, "判题任务失联时间必须在 2-1440 分钟之间");
         }
-        if (!"go-judge".equals(settings.mode) || !"per-contest".equals(settings.contestMode)) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(ErrorCode.BAD_REQUEST, "普通判题必须使用 go-judge，比赛判题必须按比赛配置");
-        }
-        if (!hasText(settings.ccpcojJudgeUsername)) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常；可能调用外部判题或网关服务。
-             */
-            throw new BizException(ErrorCode.BAD_REQUEST, "请填写 CCPCOJ 评测机账号");
-        }
     }
 
-    private boolean boolSetting(String key, boolean defaultValue) {
-        SystemSetting setting = settingMapper.selectById(key);
-        return setting == null ? defaultValue : boolValue(setting.settingValue, defaultValue);
-    }
-
-    private String textSetting(String key, String defaultValue) {
-        SystemSetting setting = settingMapper.selectById(key);
-        if (setting == null || setting.settingValue == null) {
-            return defaultValue;
+    private Map<String, String> readSettings(String... keys) {
+        Map<String, String> settings = new LinkedHashMap<>();
+        for (SystemSetting setting : settingMapper.selectBatchIds(List.of(keys))) {
+            settings.put(setting.settingKey, setting.settingValue);
         }
-        return setting.settingValue;
+        return settings;
     }
 
     private int positiveIntSetting(String key, int defaultValue) {
-        int value = intValue(textSetting(key, null), defaultValue);
-        return value > 0 ? value : defaultValue;
+        SystemSetting setting = settingMapper.selectById(key);
+        return positiveIntValue(setting == null ? null : setting.settingValue, defaultValue);
     }
 
-    private long positiveLongSetting(String key, long defaultValue) {
-        long value = longValue(textSetting(key, null), defaultValue);
+    private int positiveIntValue(Object settingValue, int defaultValue) {
+        int value = intValue(settingValue, defaultValue);
         return value > 0 ? value : defaultValue;
     }
 

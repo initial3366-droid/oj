@@ -18,11 +18,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -94,22 +94,22 @@ class SubmissionQueueServiceTest {
      */
     @Test
     void runningSubmissionCannotBeRejudged() {
-        Submission submission = submission("RUNNING", "GO_JUDGE");
+        Submission submission = submission("RUNNING");
         when(submissionMapper.selectByIdForUpdate(7L)).thenReturn(submission);
 
         BizException error = assertThrows(BizException.class, () -> service.rejudge(7L));
 
         assertEquals(409, error.getCode());
-        verify(submissionMapper, never()).updateById(org.mockito.ArgumentMatchers.any(Submission.class));
+        verify(submissionMapper, never()).updateById(ArgumentMatchers.any(Submission.class));
     }
 
     /**
      * 封装final提交KeepsItsRoutingSnapshotWhenRejudged相关逻辑。执行持久化写入；可能调用外部判题或网关服务。
      */
     @Test
-    void finalSubmissionKeepsItsRoutingSnapshotWhenRejudged() {
-        Submission submission = submission("AC", "CCPCOJ");
-        submission.judgeServer = "CCPCOJ";
+    void finalSubmissionCanBeRejudgedByTheSingleJudgeQueue() {
+        Submission submission = submission("AC");
+        submission.judgeServer = "GO_JUDGE";
         when(submissionMapper.selectByIdForUpdate(7L)).thenReturn(submission);
 
         service.rejudge(7L);
@@ -120,7 +120,6 @@ class SubmissionQueueServiceTest {
          */
         verify(submissionMapper).updateById(saved.capture());
         assertEquals("REJUDGE_PENDING", saved.getValue().status);
-        assertEquals("CCPCOJ", saved.getValue().judgeBackend);
         assertNull(saved.getValue().judgeServer);
     }
 
@@ -129,27 +128,26 @@ class SubmissionQueueServiceTest {
      */
     @Test
     void cancelledSubmissionWaitsForOldWorkerBeforeRejudge() {
-        Submission submission = submission("FAILED", "GO_JUDGE");
+        Submission submission = submission("FAILED");
         submission.judgeWorkerId = "old-go-judge-worker";
         when(submissionMapper.selectByIdForUpdate(7L)).thenReturn(submission);
 
         BizException error = assertThrows(BizException.class, () -> service.rejudge(7L));
 
         assertEquals(409, error.getCode());
-        verify(submissionMapper, never()).updateById(org.mockito.ArgumentMatchers.any(Submission.class));
+        verify(submissionMapper, never()).updateById(ArgumentMatchers.any(Submission.class));
     }
 
     /**
      * 封装提交相关逻辑。直接返回当前实例保存的提交，不产生额外的数据写入。
      */
-    private Submission submission(String status, String backend) {
+    private Submission submission(String status) {
         Submission submission = new Submission();
         submission.id = 7L;
         submission.userId = 2L;
         submission.problemId = 3L;
         submission.language = "cpp";
         submission.status = status;
-        submission.judgeBackend = backend;
         submission.priority = 0;
         submission.retryCount = 0;
         return submission;

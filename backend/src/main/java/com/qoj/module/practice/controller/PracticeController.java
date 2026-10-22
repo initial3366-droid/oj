@@ -3,8 +3,6 @@ package com.qoj.module.practice.controller;
 import com.qoj.common.ApiResponse;
 import com.qoj.common.PageResult;
 import com.qoj.module.practice.dto.PracticeUnlockRequest;
-import com.qoj.module.practice.service.PracticeService;
-import com.qoj.module.practice.vo.PracticeVO;
 import com.qoj.module.practice.service.PracticePublicationService;
 import com.qoj.module.practice.vo.PracticePublicationVO;
 import jakarta.validation.Valid;
@@ -22,14 +20,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/practices")
 public class PracticeController {
-    private final PracticeService practiceService;
     private final PracticePublicationService publicationService;
 
     /**
      * 构造 练习Controller 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
-    public PracticeController(PracticeService practiceService, PracticePublicationService publicationService) {
-        this.practiceService = practiceService;
+    public PracticeController(PracticePublicationService publicationService) {
         this.publicationService = publicationService;
     }
 

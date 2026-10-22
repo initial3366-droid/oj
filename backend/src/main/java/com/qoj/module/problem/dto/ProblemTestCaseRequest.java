@@ -6,6 +6,10 @@ package com.qoj.module.problem.dto;
 public record ProblemTestCaseRequest(
     Integer caseNo,
     String input,
-    String output
+    String output,
+    String publicInput
 ) {
+    public ProblemTestCaseRequest(Integer caseNo, String input, String output) {
+        this(caseNo, input, output, "");
+    }
 }

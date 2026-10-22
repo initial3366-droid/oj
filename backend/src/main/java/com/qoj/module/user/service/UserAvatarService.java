@@ -1,21 +1,5 @@
 package com.qoj.module.user.service;
 
-import com.qoj.common.ErrorCode;
-import com.qoj.common.exception.BizException;
-import com.qoj.common.redis.RedisKeys;
-import com.qoj.module.setting.service.SystemSettingService;
-import com.qoj.module.setting.vo.OssSettingsVO;
-import com.qoj.module.user.entity.User;
-import com.qoj.module.user.mapper.UserMapper;
-import com.qoj.module.user.vo.AvatarUploadVO;
-import com.qoj.module.teacher.entity.Teacher;
-import com.qoj.module.teacher.mapper.TeacherMapper;
-import com.qcloud.cos.COSClient;
-import com.qcloud.cos.exception.CosClientException;
-import com.qcloud.cos.exception.CosServiceException;
-import com.qcloud.cos.model.CannedAccessControlList;
-import com.qcloud.cos.model.ObjectMetadata;
-import com.qcloud.cos.model.PutObjectRequest;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -23,11 +7,30 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+
 import javax.imageio.ImageIO;
-import org.springframework.stereotype.Service;
+
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+
+import com.qcloud.cos.COSClient;
+import com.qcloud.cos.exception.CosClientException;
+import com.qcloud.cos.exception.CosServiceException;
+import com.qcloud.cos.model.CannedAccessControlList;
+import com.qcloud.cos.model.ObjectMetadata;
+import com.qcloud.cos.model.PutObjectRequest;
+import com.qoj.common.ErrorCode;
+import com.qoj.common.exception.BizException;
+import com.qoj.common.redis.RedisKeys;
+import com.qoj.module.setting.service.SystemSettingService;
+import com.qoj.module.setting.vo.OssSettingsVO;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.TeacherMapper;
+import com.qoj.module.user.entity.User;
+import com.qoj.module.user.mapper.UserMapper;
+import com.qoj.module.user.vo.AvatarUploadVO;
 
 /**
  * 用户头像业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。

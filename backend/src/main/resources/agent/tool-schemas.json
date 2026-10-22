@@ -1,0 +1,549 @@
+{
+  "$defs": {
+    "sample": {
+      "type": "object",
+      "properties": {
+        "input": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "explanation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "input",
+        "output"
+      ],
+      "additionalProperties": false
+    },
+    "communication": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "enum": [
+            1,
+            null
+          ]
+        },
+        "maxMessageBytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "allowEmptyMessage": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "channelSource": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200000
+        },
+        "checkerSource": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200000
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "maxMessageBytes",
+              "channelSource",
+              "checkerSource"
+            ],
+            "properties": {
+              "maxMessageBytes": {
+                "type": "integer"
+              },
+              "channelSource": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "checkerSource": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "basic": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S",
+          "maxLength": 200
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "timeLimit": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 60000
+        },
+        "memoryLimit": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 1024
+        },
+        "inputFormat": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outputFormat": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "checkerSource": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200000
+        },
+        "tags": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "difficulty": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 5
+        },
+        "folderId": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "isPublic": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Agent 保存时强制 false"
+        },
+        "accessScope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "majorId": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "studentPublishStatus": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Agent 保存时强制 DRAFT"
+        },
+        "samples": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/sample"
+          }
+        },
+        "communication": {
+          "$ref": "#/$defs/communication"
+        }
+      },
+      "required": [
+        "title",
+        "statement",
+        "timeLimit",
+        "memoryLimit"
+      ],
+      "additionalProperties": false
+    },
+    "testCase": {
+      "type": "object",
+      "properties": {
+        "caseNo": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "input": {
+          "type": "string"
+        },
+        "output": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "caseNo",
+        "input",
+        "output"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "tools": {
+    "query_qoj": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "dashboard",
+            "problems",
+            "problem",
+            "test_cases",
+            "folders",
+            "contests",
+            "contest",
+            "contest_problems",
+            "submissions",
+            "announcements",
+            "announcement",
+            "practices"
+          ]
+        },
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "keyword": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "problem",
+                  "test_cases",
+                  "contest",
+                  "contest_problems",
+                  "announcement"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "id"
+            ]
+          }
+        }
+      ]
+    },
+    "run_code": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string",
+          "enum": [
+            "c",
+            "cpp",
+            "cpp17",
+            "c++",
+            "c++17",
+            "cxx",
+            "g++",
+            "cpp20",
+            "c++20",
+            "cpp23",
+            "c++23",
+            "java",
+            "python",
+            "python3",
+            "py"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S",
+          "maxLength": 65536
+        },
+        "input": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "language",
+        "code"
+      ],
+      "additionalProperties": false
+    },
+    "generate_test_cases": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string",
+          "enum": [
+            "c",
+            "cpp",
+            "cpp17",
+            "c++",
+            "c++17",
+            "cxx",
+            "g++",
+            "cpp20",
+            "c++20",
+            "cpp23",
+            "c++23",
+            "java",
+            "python",
+            "python3",
+            "py"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S",
+          "maxLength": 65536
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "maxItems": 200
+        },
+        "generatorCode": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S",
+          "maxLength": 65536
+        },
+        "generatorLanguage": {
+          "type": "string",
+          "enum": [
+            "c",
+            "cpp",
+            "cpp17",
+            "c++",
+            "c++17",
+            "cxx",
+            "g++",
+            "cpp20",
+            "c++20",
+            "cpp23",
+            "c++23",
+            "java",
+            "python",
+            "python3",
+            "py"
+          ]
+        },
+        "samples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sample"
+          },
+          "maxItems": 20
+        }
+      },
+      "required": [
+        "language",
+        "code"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "inputs"
+          ],
+          "not": {
+            "required": [
+              "generatorCode"
+            ]
+          }
+        },
+        {
+          "required": [
+            "generatorCode"
+          ],
+          "not": {
+            "required": [
+              "inputs"
+            ]
+          }
+        }
+      ],
+      "dependentRequired": {
+        "generatorLanguage": [
+          "generatorCode"
+        ]
+      }
+    },
+    "create_draft": {
+      "type": "object",
+      "properties": {
+        "basic": {
+          "$ref": "#/$defs/basic"
+        },
+        "generationId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]{1,80}$"
+        },
+        "testCases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/testCase"
+          },
+          "maxItems": 200
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "generationId",
+          "testCases"
+        ]
+      }
+    },
+    "update_draft": {
+      "type": "object",
+      "properties": {
+        "draftId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]{1,80}$"
+        },
+        "basic": {
+          "$ref": "#/$defs/basic"
+        },
+        "generationId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]{1,80}$"
+        },
+        "testCases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/testCase"
+          },
+          "maxItems": 200
+        }
+      },
+      "required": [
+        "draftId"
+      ],
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "generationId",
+          "testCases"
+        ]
+      }
+    },
+    "get_draft": {
+      "type": "object",
+      "properties": {
+        "draftId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]{1,80}$"
+        }
+      },
+      "required": [
+        "draftId"
+      ],
+      "additionalProperties": false
+    },
+    "commit_draft": {
+      "type": "object",
+      "properties": {
+        "draftId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]{1,80}$"
+        }
+      },
+      "required": [
+        "draftId"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

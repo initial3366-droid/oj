@@ -8,12 +8,9 @@ import com.qoj.module.contest.vo.ContestOiRankVO;
 import com.qoj.module.contest.vo.OiProblemScoreVO;
 import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.mapper.SubmissionMapper;
-import com.qoj.module.user.entity.User;
-import com.qoj.module.user.mapper.UserMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -28,7 +25,6 @@ public class ContestOiRankService {
     private final ContestProblemMapper contestProblemMapper;
     private final SubmissionMapper submissionMapper;
     private final ContestMapper contestMapper;
-    private final UserMapper userMapper;
 
     /**
      * 构造 比赛Oi排名Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
@@ -39,8 +35,7 @@ public class ContestOiRankService {
         ContestParticipantMapper participantMapper,
         ContestProblemMapper contestProblemMapper,
         SubmissionMapper submissionMapper,
-        ContestMapper contestMapper,
-        UserMapper userMapper
+        ContestMapper contestMapper
     ) {
         this.oiRankCacheMapper = oiRankCacheMapper;
         this.oiRankProblemMapper = oiRankProblemMapper;
@@ -48,7 +43,6 @@ public class ContestOiRankService {
         this.contestProblemMapper = contestProblemMapper;
         this.submissionMapper = submissionMapper;
         this.contestMapper = contestMapper;
-        this.userMapper = userMapper;
     }
 
     /**
@@ -64,7 +58,7 @@ public class ContestOiRankService {
         if (contest == null || !"OI".equals(contest.type)) {
             return;
         }
-        if (!isRankedSubmission(contest, submission)) {
+        if (!ContestRankTimePolicy.isRankedSubmission(contest, submission)) {
             return;
         }
 
@@ -125,13 +119,13 @@ public class ContestOiRankService {
         }
 
         // 更新总榜
-        updateTotalRank(submission, scoreImproved ? currentScore - oldBestScore : 0, fullScore);
+        updateTotalRank(submission, scoreImproved ? currentScore - oldBestScore : 0);
     }
 
     /**
      * 更新总榜
      */
-    private void updateTotalRank(Submission submission, int scoreDelta, int fullScore) {
+    private void updateTotalRank(Submission submission, int scoreDelta) {
         ContestOiRankCache rankCache = oiRankCacheMapper.selectOne(
             new LambdaQueryWrapper<ContestOiRankCache>()
                 .eq(ContestOiRankCache::getContestId, submission.contestId)
@@ -194,9 +188,17 @@ public class ContestOiRankService {
 
         // 重新排名
         List<ContestOiRankCache> sortedRanks = oiRankCacheMapper.selectRankList(contestId);
+        Set<Long> participantIds = sortedRanks.stream()
+            .map(rank -> rank.participantId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        Map<Long, ContestParticipant> participants = participantIds.isEmpty()
+            ? Map.of()
+            : participantMapper.selectBatchIds(participantIds).stream()
+                .collect(Collectors.toMap(participant -> participant.id, participant -> participant));
         int currentRank = 1;
         for (ContestOiRankCache rank : sortedRanks) {
-            ContestParticipant participant = participantMapper.selectById(rank.participantId);
+            ContestParticipant participant = participants.get(rank.participantId);
             if (participant != null && Boolean.TRUE.equals(participant.starred)) {
                 rank.rankNo = 0;
             } else {
@@ -245,14 +247,6 @@ public class ContestOiRankService {
         }
     }
 
-    private boolean isRankedSubmission(Contest contest, Submission submission) {
-        LocalDateTime submittedAt = submission.submitTime == null ? submission.createdAt : submission.submitTime;
-        if (contest.startTime == null || contest.endTime == null || submittedAt == null) {
-            return false;
-        }
-        return !submittedAt.isBefore(contest.startTime) && !submittedAt.isAfter(contest.endTime);
-    }
-
     /**
      * 获取 OI 榜单
      */
@@ -268,17 +262,21 @@ public class ContestOiRankService {
         Map<Long, ContestParticipant> participants = participantMapper.selectBatchIds(participantIds)
             .stream().collect(Collectors.toMap(p -> p.id, p -> p));
 
-        // 获取所有用户信息
-        Set<Long> userIds = participants.values().stream().map(p -> p.userId).collect(Collectors.toSet());
-        Map<Long, User> users = userMapper.selectBatchIds(userIds)
-            .stream().collect(Collectors.toMap(u -> u.id, u -> u));
-
         // 获取所有比赛题目
         List<ContestProblem> problems = contestProblemMapper.selectList(
             new LambdaQueryWrapper<ContestProblem>()
                 .eq(ContestProblem::getContestId, contestId)
                 .orderByAsc(ContestProblem::getDisplayOrder)
         );
+        Map<Long, Map<Long, ContestOiRankProblem>> problemRanksByParticipant = oiRankProblemMapper.selectList(
+                new LambdaQueryWrapper<ContestOiRankProblem>()
+                    .eq(ContestOiRankProblem::getContestId, contestId)
+                    .in(ContestOiRankProblem::getParticipantId, participantIds)
+            ).stream()
+            .collect(Collectors.groupingBy(
+                ContestOiRankProblem::getParticipantId,
+                Collectors.toMap(rank -> rank.contestProblemId, rank -> rank)
+            ));
 
         // 构建结果
         List<ContestOiRankVO> result = new ArrayList<>();
@@ -286,17 +284,8 @@ public class ContestOiRankService {
             ContestParticipant participant = participants.get(rank.participantId);
             if (participant == null) continue;
 
-            User user = users.get(participant.userId);
-
-            // 获取该参赛者的所有单题分数
-            List<ContestOiRankProblem> problemRanks = oiRankProblemMapper.selectList(
-                new LambdaQueryWrapper<ContestOiRankProblem>()
-                    .eq(ContestOiRankProblem::getContestId, contestId)
-                    .eq(ContestOiRankProblem::getParticipantId, rank.participantId)
-            );
-
-            Map<Long, ContestOiRankProblem> problemRankMap = problemRanks.stream()
-                .collect(Collectors.toMap(p -> p.contestProblemId, p -> p));
+            Map<Long, ContestOiRankProblem> problemRankMap = problemRanksByParticipant
+                .getOrDefault(rank.participantId, Map.of());
 
             List<OiProblemScoreVO> problemScores = problems.stream()
                 .map(p -> {

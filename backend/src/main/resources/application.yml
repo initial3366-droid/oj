@@ -3,7 +3,7 @@ server:
   port: ${SERVER_PORT:18080}
   max-http-request-header-size: 16KB
   tomcat:
-    # CCPCOJ uses URL-encoded forms; bound parsing prevents oversized public requests.
+    # Bound form parsing to prevent oversized requests.
     max-http-form-post-size: 64KB
     max-swallow-size: 2MB
 
@@ -25,8 +25,8 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   mvc:
     async:
-      # Allow the bounded AI stream (up to 120s) to finish before servlet async expiry.
-      request-timeout: 180s
+      # Outlive the 15-minute Agent segment and allow its final checkpoint to finish.
+      request-timeout: 1200s
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:13306}/${MYSQL_DATABASE:qoj}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -58,7 +58,7 @@ spring:
   servlet:
     multipart:
       max-file-size: 50MB
-      max-request-size: 50MB
+      max-request-size: 51MB
 
 # MyBatis-Plus 只负责字段命名映射；业务查询条件仍由各 Mapper/Service 显式声明。
 mybatis-plus:
@@ -69,6 +69,11 @@ mybatis-plus:
 
 # QOJ 自有安全与判题参数。生产环境启动校验会拒绝默认 JWT 密钥和空判题令牌。
 qoj:
+  trusted-proxy-ranges: ${TRUSTED_PROXY_RANGES:}
+  auth:
+    source-limit-per-minute: ${AUTH_SOURCE_LIMIT_PER_MINUTE:120}
+    email-source-limit-per-minute: ${AUTH_EMAIL_SOURCE_LIMIT_PER_MINUTE:20}
+    global-limit-per-minute: ${AUTH_GLOBAL_LIMIT_PER_MINUTE:1200}
   jwt:
     secret: ${JWT_SECRET:change-this-secret-to-at-least-32-bytes}
     access-token-ttl-seconds: ${JWT_ACCESS_EXPIRE:900}    # 15 分钟（默认改为更安全的值）
@@ -82,8 +87,9 @@ qoj:
     connect-timeout-ms: ${GO_JUDGE_CONNECT_TIMEOUT_MS:2000}
     request-timeout-ms: ${GO_JUDGE_REQUEST_TIMEOUT_MS:200000}
     compile-timeout-ms: ${GO_JUDGE_COMPILE_TIMEOUT_MS:20000}
+    max-submission-time-ms: ${GO_JUDGE_MAX_SUBMISSION_TIME_MS:120000}
     max-source-bytes: ${GO_JUDGE_MAX_SOURCE_BYTES:65536}
-    max-input-bytes: ${GO_JUDGE_MAX_INPUT_BYTES:2097152}
+    max-input-bytes: ${GO_JUDGE_MAX_INPUT_BYTES:52428800}
     max-output-bytes: ${GO_JUDGE_MAX_OUTPUT_BYTES:2097152}
     max-processes: ${GO_JUDGE_MAX_PROCESSES:32}
 springdoc:

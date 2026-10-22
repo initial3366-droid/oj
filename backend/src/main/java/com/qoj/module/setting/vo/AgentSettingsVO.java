@@ -11,4 +11,5 @@ public class AgentSettingsVO {
     public String reasoningEffort;
     public Long timeoutMs;
     public Integer maxCodeChars;
+    public Integer contextWindowTokens;
 }

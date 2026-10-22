@@ -1,0 +1,41 @@
+name: qoj-native-judge
+services:
+  go-judge:
+    build:
+      context: .
+      args:
+        GO_JUDGE_VERSION: "1.12.1"
+    image: qoj-native-go-judge:1.12.1
+    privileged: true
+    restart: unless-stopped
+    shm_size: 512m
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2.0
+    ports:
+      - "127.0.0.1:15050:5050"
+    command:
+      - "-http-addr=:5050"
+      - "-auth-token=${GO_JUDGE_AUTH_TOKEN:?required}"
+      - "-parallelism=1"
+      - "-pre-fork=1"
+      - "-container-cred-start=10000"
+      - "-no-fallback"
+      - "-file-timeout=10m"
+      - "-output-limit=4m"
+      - "-copy-out-limit=4m"
+      - "-open-file-limit=128"
+      - "-tmp-fs-param=size=256m,nr_inodes=8k"
+      - "-release"
+      - "-silent"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5050/version >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

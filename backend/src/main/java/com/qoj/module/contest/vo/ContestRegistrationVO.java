@@ -10,6 +10,7 @@ public class ContestRegistrationVO {
     public Long contestId;
     public Long userId;
     public String username;
+    public String studentNo;
     public String displayName;
     public String identityType;
     public Long identityId;

@@ -152,6 +152,11 @@ public class AuthUser implements UserDetails {
      * 读取Password并返回给调用方。直接返回当前实例保存的passwordHash，不产生额外的数据写入。
      */
     @Override
+    public boolean isAccountNonLocked() {
+        return user == null || !user.banned();
+    }
+
+    @Override
     public String getPassword() {
         return passwordHash;
     }

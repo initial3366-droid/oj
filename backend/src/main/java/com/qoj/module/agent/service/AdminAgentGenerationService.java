@@ -12,6 +12,7 @@ import com.qoj.security.CurrentUser;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -33,13 +34,19 @@ public class AdminAgentGenerationService {
         this.judge = judge; this.guard = guard; this.redis = redis; this.json = json;
     }
 
-    public SandboxResult runCode(JsonNode args, BooleanSupplier cancelled) {
+    public Map<String, Object> runCode(JsonNode args, BooleanSupplier cancelled) {
         requireAdmin();
         try (var permit = guard.acquire(-CurrentUser.required().id())) {
             var result = judge.runCustomBatch(language(args, "language", "python"), code(args, "code"),
                 List.of(args.path("input").asText("")), cancelled).get(0);
             if (cancelled.getAsBoolean()) throw new AgentRunStoppedException();
-            return result;
+            return Map.of("execution", result, "executionSucceeded", "AC".equals(result.status()),
+                "compilationStatus", List.of("python", "python3", "py").contains(language(args, "language", "python")) ? "NOT_APPLICABLE"
+                    : "CE".equals(result.status()) ? "FAILED"
+                    : List.of("AC", "RE", "TLE", "MLE", "OLE").contains(result.status()) ? "PASSED" : "UNKNOWN",
+                "sampleValidation", "NOT_PERFORMED",
+                "algorithmCorrectness", "NOT_PROVEN", "saved", false,
+                "warnings", List.of("沙箱执行结果不能证明算法正确；未对比预期输出，也未校验特殊判题或通信题协议"));
         }
     }
 
@@ -79,7 +86,7 @@ public class AdminAgentGenerationService {
             var cases = new ArrayList<ProblemTestCaseRequest>();
             for (int i = 0; i < inputs.size(); i++) {
                 String output = results.get(i + sampleInputs.size()).output();
-                if (output == null || output.isBlank()) throw new BizException(400, "标程产生空答案，未保存生成数据");
+                if (output == null) throw new BizException(400, "标程没有返回输出字段，未保存生成数据");
                 totalBytes += bytes(output);
                 if (totalBytes > MAX_TOTAL_BYTES) throw new BizException(400, "本批生成数据超过 8 MB，请减少规模");
                 cases.add(new ProblemTestCaseRequest(i + 1, inputs.get(i), output));
@@ -88,9 +95,22 @@ public class AdminAgentGenerationService {
             String id = UUID.randomUUID().toString();
             try { redis.opsForValue().set(key(id), json.writeValueAsString(cases), Duration.ofHours(6)); }
             catch (Exception e) { throw new BizException(503, "生成数据保存失败，请重试"); }
-            return Map.of("generationId", id, "testCaseCount", cases.size(), "sampleChecks", sampleInputs.size(),
-                "answerSource", "sandbox_reference_solution", "preview", cases.stream().limit(3).map(item -> Map.of(
-                    "caseNo", item.caseNo(), "input", preview(item.input()), "output", preview(item.output()))).toList());
+            var data = new LinkedHashMap<String, Object>();
+            data.put("generationId", id); data.put("testCaseCount", cases.size());
+            data.put("sampleChecks", sampleInputs.size());
+            data.put("sampleValidation", sampleInputs.isEmpty() ? "NOT_PERFORMED" : "PASSED");
+            data.put("compilationStatus", List.of("python", "python3", "py").contains(language) ? "NOT_APPLICABLE" : "PASSED");
+            data.put("executionSucceeded", true);
+            data.put("generatorExecutionStatus", args.has("generatorCode") ? "PASSED" : "NOT_USED");
+            data.put("algorithmCorrectness", "NOT_PROVEN");
+            data.put("saved", false); data.put("temporaryGenerationStored", true);
+            data.put("answerSource", "sandbox_reference_solution");
+            data.put("warnings", sampleInputs.isEmpty()
+                ? List.of("没有提供题面样例，尚未校验样例", "标程运行成功不证明算法正确；未验证覆盖率、特殊判题或通信题协议")
+                : List.of("仅按空白分词比较了提供的样例；未证明算法正确，也未验证覆盖率、特殊判题或通信题协议"));
+            data.put("preview", cases.stream().limit(3).map(item -> Map.of(
+                "caseNo", item.caseNo(), "input", preview(item.input()), "output", preview(item.output()))).toList());
+            return data;
         }
     }
 

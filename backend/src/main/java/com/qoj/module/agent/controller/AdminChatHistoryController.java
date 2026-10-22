@@ -33,22 +33,23 @@ public class AdminChatHistoryController {
 
     @PutMapping("/{id}")
     public ApiResponse<AdminChatSessionVO> save(@PathVariable String id, @Valid @RequestBody AdminChatSessionRequest request) {
-        return ApiResponse.ok(history.save(id, request));
+        throw new com.qoj.common.exception.BizException(410, "聊天记录已改为浏览器本地保存，请刷新页面");
     }
 
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable String id) {
-        history.delete(id);
+    public ApiResponse<Void> delete(@PathVariable String id, @RequestParam(defaultValue = "false") boolean migratedToLocal) {
+        if (migratedToLocal) history.deleteForLocalMigration(id);
+        else history.delete(id);
         return ApiResponse.ok();
     }
 
     @PutMapping("/{id}/title")
     public ApiResponse<AdminChatSessionVO> rename(@PathVariable String id, @Valid @RequestBody AdminChatTitleRequest request) {
-        return ApiResponse.ok(history.rename(id, request.title()));
+        throw new com.qoj.common.exception.BizException(410, "请在浏览器本地重命名聊天");
     }
 
     @PostMapping("/{id}/title/generate")
     public ApiResponse<AdminChatSessionVO> generateTitle(@PathVariable String id, @RequestBody(required = false) AdminChatTitleGenerateRequest request) {
-        return ApiResponse.ok(history.generateTitle(id, request != null && Boolean.TRUE.equals(request.onlyIfPending())));
+        throw new com.qoj.common.exception.BizException(410, "聊天标题已改为本地管理");
     }
 }

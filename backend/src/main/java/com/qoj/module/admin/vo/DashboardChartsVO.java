@@ -1,6 +1,5 @@
 package com.qoj.module.admin.vo;
 
-import java.util.List;
 import java.util.Map;
 
 /**

@@ -17,6 +17,7 @@ public record ClassRoomMemberVO(
     String email,
     String source,
     Map<String, String> profileFields,
-    LocalDateTime joinedAt
+    LocalDateTime joinedAt,
+    LocalDateTime lastSubmissionTime
 ) {
 }

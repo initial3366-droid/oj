@@ -1,0 +1,8 @@
+[mysqld]
+bind-address = 127.0.0.1
+mysqlx-bind-address = 127.0.0.1
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+default-time-zone = '+08:00'
+# A 50 MB attachment becomes roughly 100 MB with --hex-blob SQL backups.
+max_allowed_packet = 128M

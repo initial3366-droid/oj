@@ -4,12 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.common.ApiResponse;
 import com.qoj.security.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -18,7 +20,6 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * Spring Security 核心配置类。
@@ -93,8 +94,6 @@ public class SecurityConfig {
                 .requestMatchers("/api/internal/agent/**").permitAll()
                 .requestMatchers(adminApiPrefix + "/auth/login").permitAll()
                 .requestMatchers("/api/teacher/v1/auth/login").permitAll()
-                // CCPCOJ workers authenticate with their dedicated HttpOnly session cookie.
-                .requestMatchers("/ojtool/judge/**").permitAll()
                 .requestMatchers("/ws/**", "/ws-sockjs/**").permitAll()
                 .requestMatchers(
                     "/",
@@ -107,11 +106,14 @@ public class SecurityConfig {
                     "/" + adminPathPrefix + "/**",
                     "/admin/**",
                     "/teacher/**",
+                    "/courses",
+                    "/courses/**",
+                    "/redirect/**",
                     "/problems/**",
                     "/practice/**",
                     "/contests/**",
                     "/leaderboard",
-                    "/submission-queue",
+                    "/about",
                     "/users/**",
                     "/user-center",
                     "/login",
@@ -121,8 +123,8 @@ public class SecurityConfig {
                 ).permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
                 .access((authentication, context) -> openApiPublicAccess
-                    ? new org.springframework.security.authorization.AuthorizationDecision(true)
-                    : new org.springframework.security.authorization.AuthorizationDecision(
+                    ? new AuthorizationDecision(true)
+                    : new AuthorizationDecision(
                         authentication.get().isAuthenticated()
                             && authentication.get().getAuthorities().stream()
                                 .anyMatch(authority -> "ROLE_SUPER_ADMIN".equals(authority.getAuthority())))
@@ -183,7 +185,7 @@ public class SecurityConfig {
             .toList();
     }
 
-    private void writeJson(HttpServletResponse response, int status, ApiResponse<Void> body) throws java.io.IOException {
+    private void writeJson(HttpServletResponse response, int status, ApiResponse<Void> body) throws IOException {
         response.setStatus(status);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType("application/json;charset=UTF-8");

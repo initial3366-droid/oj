@@ -2,21 +2,21 @@ package com.qoj.module.admin.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qoj.common.enums.UserRole;
+import com.qoj.common.redis.RedisKeys;
 import com.qoj.module.admin.vo.AdminDashboardContestVO;
 import com.qoj.module.admin.vo.AdminDashboardVO;
 import com.qoj.module.admin.vo.DashboardChartsVO;
-import com.qoj.common.enums.UserRole;
-import com.qoj.common.redis.RedisKeys;
 import com.qoj.module.contest.entity.Contest;
 import com.qoj.module.contest.mapper.ContestMapper;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.mapper.SubmissionMapper;
-import com.qoj.module.user.entity.User;
-import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.module.teacher.entity.Teacher;
 import com.qoj.module.teacher.mapper.TeacherMapper;
+import com.qoj.module.user.entity.User;
+import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
 import java.time.LocalDate;
@@ -26,9 +26,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -77,10 +79,11 @@ public class AdminDashboardService {
             + teacherMapper.selectCount(new QueryWrapper<Teacher>().eq("status", "ACTIVE"));
         long problemCount = problemMapper.selectCount(new QueryWrapper<Problem>());
         long submissionCount = submissionMapper.selectCount(new QueryWrapper<Submission>());
-        long todaySubmissions = submissionMapper.selectCount(
-            new QueryWrapper<Submission>().ge("created_at", todayStart).lt("created_at", tomorrowStart)
-        );
-        long todayAccepted = todayAcceptedCount(todayStart, tomorrowStart);
+        // Reuse one aggregation so today's cards and chart cannot disagree about the same submissions.
+        List<DashboardChartsVO.DailySubmission> submissionTrend = buildSubmissionTrend(weekAgo);
+        DashboardChartsVO.DailySubmission todayStats = submissionTrend.get(submissionTrend.size() - 1);
+        long todaySubmissions = todayStats.total();
+        long todayAccepted = todayStats.accepted();
         long todayActiveUsers = submissionMapper.countTodayActiveUsers(todayStart, tomorrowStart);
 
         return new AdminDashboardVO(
@@ -96,7 +99,7 @@ public class AdminDashboardService {
             ),
             recentContests(),
             buildTotalStats(userCount, problemCount, submissionCount),
-            buildSubmissionTrend(weekAgo),
+            submissionTrend,
             buildVerdictDistribution(),
             buildLanguageUsage(submissionCount),
             buildDifficultyDistribution(),
@@ -189,7 +192,7 @@ public class AdminDashboardService {
 
     private boolean isCppLanguage(String language) {
         if (language == null) return false;
-        return switch (language.trim().toLowerCase(java.util.Locale.ROOT)) {
+        return switch (language.trim().toLowerCase(Locale.ROOT)) {
             case "cpp", "cpp17", "cpp20", "cpp23", "c++", "c++17", "c++20", "c++23", "cxx", "g++" -> true;
             default -> false;
         };
@@ -197,7 +200,7 @@ public class AdminDashboardService {
 
     private boolean isCSharpLanguage(String language) {
         if (language == null) return false;
-        return switch (language.trim().toLowerCase(java.util.Locale.ROOT)) {
+        return switch (language.trim().toLowerCase(Locale.ROOT)) {
             case "c#", "csharp", "c-sharp", "cs", "dotnet" -> true;
             default -> false;
         };
@@ -245,14 +248,6 @@ public class AdminDashboardService {
     private long onlineUserCount() {
         Set<String> keys = redisTemplate.keys(RedisKeys.onlineUserPattern());
         return keys == null ? 0 : keys.size();
-    }
-
-    private long todayAcceptedCount(LocalDateTime todayStart, LocalDateTime tomorrowStart) {
-        Long count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(DISTINCT user_id) FROM submissions WHERE status = 'AC' AND created_at >= ? AND created_at < ?",
-            Long.class, todayStart, tomorrowStart
-        );
-        return count == null ? 0 : count;
     }
 
     private List<AdminDashboardContestVO> recentContests() {
@@ -307,7 +302,7 @@ public class AdminDashboardService {
             return emptyTeacherDashboard();
         }
 
-        String classIdList = classIds.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+        String classIdList = classIds.stream().map(String::valueOf).collect(Collectors.joining(","));
         String studentSub = "(SELECT cm.user_id FROM class_members cm WHERE cm.class_id IN (" + classIdList + "))";
 
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
@@ -328,7 +323,7 @@ public class AdminDashboardService {
             "SELECT COUNT(*) FROM submissions WHERE user_id IN " + studentSub + " AND created_at >= ? AND created_at < ?",
             Long.class, todayStart, tomorrowStart);
         long todayAccepted = jdbcTemplate.queryForObject(
-            "SELECT COUNT(DISTINCT user_id) FROM submissions WHERE user_id IN " + studentSub + " AND status = 'AC' AND created_at >= ? AND created_at < ?",
+            "SELECT COUNT(*) FROM submissions WHERE user_id IN " + studentSub + " AND status = 'AC' AND created_at >= ? AND created_at < ?",
             Long.class, todayStart, tomorrowStart);
         long todayActiveUsers = jdbcTemplate.queryForObject(
             "SELECT COUNT(DISTINCT user_id) FROM submissions WHERE user_id IN " + studentSub + " AND created_at >= ? AND created_at < ?",

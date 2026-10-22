@@ -9,8 +9,7 @@
 }
 
 .front-layout .qoj-table-wrap,
-.front-layout .problems-table-wrap,
-.public-scoreboard .public-scoreboard-table-wrap {
+.front-layout .problems-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--front-table-border);
   border-radius: 14px;
@@ -62,6 +61,11 @@
   padding: 15px 16px;
 }
 
+.front-layout .qoj-beui-table-wrap .qoj-table thead th,
+.front-layout .problems-table thead th {
+  padding: 0;
+}
+
 .front-layout .qoj-table-small th,
 .front-layout .qoj-table-small td {
   padding: 10px 12px;
@@ -70,6 +74,62 @@
 .front-layout .qoj-table-wrap .qoj-pagination {
   border-top: 1px solid var(--front-table-divider);
   background: #f8fbff;
+}
+
+/* 比赛榜单：beUI Table 接管渲染，首列在横向滚动时保持固定，题目列紧凑排布。 */
+.scoreboard-table-wrap {
+  min-width: 0;
+}
+
+.scoreboard-table-wrap > .scoreboard-table {
+  border: 1px solid var(--front-table-border, #cbd8e8);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(24, 52, 90, .075);
+}
+
+/* 榜单表头按内容高度收拢：beUI 默认让表头行跟行高一样高，会在表头上方留出一大片空白。 */
+.scoreboard-table thead tr,
+.scoreboard-table thead th > div {
+  height: auto !important;
+}
+
+.scoreboard-table thead th {
+  padding: 12px 0;
+}
+
+.scoreboard-table thead th > div > span {
+  padding-right: 8px;
+  padding-left: 8px;
+}
+
+.scoreboard-table tbody td {
+  padding: 8px;
+}
+
+.scoreboard-table thead th:first-child,
+.scoreboard-table tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  box-shadow: 1px 0 0 var(--front-table-divider, #dbe5f1);
+}
+
+.scoreboard-table thead th:first-child {
+  z-index: 5;
+  background: var(--front-table-heading, #e8f0fa);
+}
+
+.scoreboard-table tbody td:first-child {
+  background: #fff;
+}
+
+.scoreboard-table tbody tr:nth-child(even) > td:first-child {
+  background: var(--front-table-stripe, #f5f9fe);
+}
+
+.scoreboard-table tbody tr:hover > td:first-child {
+  background: var(--front-table-hover, #eaf3ff);
 }
 
 @media (max-width: 640px) {

@@ -8,7 +8,7 @@
 
 .practice-assignment-header {
   padding: 8px 4px 28px;
-  border-bottom: 1px solid #e5e6eb;
+  border-bottom: 1px solid var(--el-border-color);
 }
 
 .practice-assignment-heading-row {
@@ -72,7 +72,7 @@
   overflow-x: auto;
   border: 1px solid var(--front-table-border);
   border-radius: 14px;
-  background: #fff;
+  background: var(--content-bg);
   box-shadow: 0 12px 28px rgba(24, 52, 90, .075);
 }
 

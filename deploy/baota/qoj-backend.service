@@ -1,0 +1,26 @@
+[Unit]
+Description=QOJ Spring Boot backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=qoj
+Group=qoj
+WorkingDirectory=/var/lib/qoj
+EnvironmentFile=/etc/qoj/backend.env
+ExecStart=/usr/local/bin/qoj-java -Xms256m -Xmx1536m -Duser.timezone=Asia/Shanghai -jar /www/wwwroot/qoj/backend/qoj-backend.jar
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+SuccessExitStatus=143
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/qoj /var/log/qoj
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target

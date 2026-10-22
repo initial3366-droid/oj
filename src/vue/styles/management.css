@@ -1,0 +1,125 @@
+/* QOJ management content only; the upstream navigation and public pages keep their own styles. */
+.qoj-management{height:100%;min-width:0;--management-gap:16px;--management-padding:20px}
+.qoj-management .layout-content{min-width:0;overflow-x:hidden;scrollbar-gutter:stable}
+.qoj-management .layout-content > .page-container{
+  width:100%;max-width:none;height:auto;min-height:100%;margin:0;
+  padding:var(--management-padding);gap:var(--management-gap);overflow:visible;
+}
+.qoj-management .page-container > *{min-width:0;flex-shrink:0}
+.qoj-management .page-container :is(.el-card,.el-card__body,.el-tabs,.el-tab-pane,.el-row,.el-col){min-width:0}
+.qoj-management .page-container > :is(.page-heading,.workspace-heading,.course-heading,.editor-heading){
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:12px;margin:0;
+}
+.qoj-management .page-container > :is(.page-heading,.workspace-heading,.course-heading):not(:has(button,input,.el-select,p)){display:none}
+.qoj-management .page-container :is(.heading-actions,.actions,.row-actions,.batch-buttons,.card-heading>div,.section-header>div,.selection-row>div){display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.qoj-management .page-container :is(.heading-actions,.actions,.row-actions,.batch-buttons,.toolbar,.table-toolbar,.selection-row) .el-button + .el-button{margin-left:0}
+.qoj-management .page-container :is(.toolbar,.table-toolbar,.course-toolbar,.section-header,.card-heading,.card-header,.team-header,.selection-toolbar,.selection-row,.batch-toolbar,.testcase-toolbar){
+  display:flex;flex-wrap:wrap;align-items:center;gap:12px;min-width:0;
+}
+.qoj-management .page-container :is(.toolbar,.table-toolbar,.course-toolbar) > :is(.el-input,.el-select){flex:1 1 220px;width:auto;min-width:0;max-width:360px}
+.qoj-management .page-container :is(.filters,.filter-row){
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));align-items:center;gap:12px;
+}
+.qoj-management .page-container :is(.filters,.filter-row) > *{width:100%;min-width:0;max-width:none;margin:0}
+.qoj-management .page-container :is(.filters,.filter-row) > .el-switch{grid-column:1 / -1;justify-content:flex-start;gap:8px}
+.qoj-management .page-container :is(.filters,.filter-row) > .el-switch .el-switch__label{white-space:normal}
+.qoj-management .page-container :is(.el-input,.el-select,.el-date-editor,.el-input-number){max-width:100%}
+.qoj-management .page-container .el-table{width:100%;max-width:100%;min-width:0}
+.qoj-management .page-container .el-table .cell{overflow-wrap:anywhere}
+.qoj-management .page-container :is(.pagination,.course-pagination,.table-footer,.table-actions,.right-pagination){
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:12px;margin-top:16px;min-width:0;
+}
+.qoj-management .page-container :is(.pagination,.course-pagination,.table-footer,.right-pagination) > .el-scrollbar{max-width:100%;min-width:0}
+.qoj-management .page-container .pagination-container{padding:0;margin:0;justify-content:flex-end}
+.qoj-management .page-container .toolbar-primary{margin-left:auto!important}
+.qoj-management .page-container > :is(.page-heading,.editor-heading):has(p){justify-content:space-between}
+.qoj-management .page-container :is(.queue-stats,.metric-grid,.summary-grid,.today-grid,.chart-grid,.editor-grid,.generator-grid,.two-col,.two-column,.field-grid,.form-two-col){gap:16px;min-width:0}
+.qoj-management .page-container :is(.queue-stats,.metric-grid,.summary-grid,.today-grid,.chart-grid,.editor-grid,.generator-grid,.two-col,.two-column,.field-grid,.form-two-col)>*{min-width:0}
+.qoj-management .page-container .profile-card{width:100%;max-width:none}
+.qoj-management .page-container :is(.settings-form,.profile-form){width:100%;max-width:none}
+.qoj-management .page-container .identity{flex-wrap:wrap;gap:16px}
+.qoj-management .page-container .identity > div{min-width:0;overflow-wrap:anywhere}
+.qoj-management .page-container .settings-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.qoj-management .page-container :is(.import-card,.stats-card){width:100%;max-width:none}
+.qoj-management .page-container .el-card__header{padding:16px 20px}
+.qoj-management .page-container .el-card__body{padding:20px}
+.qoj-management .page-container :is(.chat-layout,.chat-conversation,.chat-sessions){min-width:0}
+.qoj-management .page-container .chat-input .el-textarea{min-width:0}
+@media(max-width:1100px){
+  .qoj-management .page-container .queue-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .qoj-management .page-container :is(.generator-grid,.editor-grid){grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:800px){
+  .qoj-management{--management-padding:16px;--management-gap:16px}
+  .qoj-management .page-container :is(.metric-grid,.queue-stats,.today-grid,.summary-grid){grid-template-columns:repeat(2,minmax(0,1fr))}
+  .qoj-management .page-container :is(.chart-grid,.two-col,.two-column,.field-grid,.form-two-col){grid-template-columns:minmax(0,1fr)}
+  .qoj-management .page-container > :is(.page-heading,.workspace-heading,.course-heading,.editor-heading){align-items:stretch;flex-direction:row}
+  .qoj-management .page-container :is(.heading-actions,.page-heading>.toolbar){width:100%;justify-content:flex-start}
+  .qoj-management .page-container :is(.toolbar,.table-toolbar,.course-toolbar) > :is(.el-input,.el-select){max-width:none;flex-basis:100%}
+  .qoj-management .page-container .el-table__cell.is-fixed-column--right{position:static!important}
+  .qoj-management .page-container .chat-layout{grid-template-columns:minmax(0,1fr)}
+  .qoj-management .page-container .chat-sessions{max-height:200px;overflow:auto;border-right:0;border-bottom:1px solid var(--card-border);padding:0 0 12px}
+  .qoj-management .page-container .el-card__body,.qoj-management .page-container .el-card__header{padding:16px}
+}
+@media(max-width:480px){
+  .qoj-management{--management-padding:12px;--management-gap:12px}
+  .qoj-management .page-container :is(.filters,.filter-row){grid-template-columns:minmax(0,1fr)}
+  .qoj-management .page-container :is(.queue-stats,.metric-grid,.today-grid,.summary-grid){gap:12px}
+  .qoj-management .page-container .queue-stats strong{font-size:22px}
+  .qoj-management .page-container :is(.table-footer,.pagination,.course-pagination){align-items:stretch}
+  .qoj-management .page-container :is(.table-footer,.pagination,.course-pagination)>.el-scrollbar{width:100%}
+}
+
+/* Dialogs teleport outside the shell, so they carry an explicit management class. */
+.qoj-management-dialog{max-width:calc(100vw - 24px);margin-inline:auto}
+.qoj-management-dialog :is(.el-form,.el-form-item,.el-form-item__content,.el-card,.el-card__body){min-width:0}
+.qoj-management-dialog :is(.el-input,.el-select,.el-input-number,.el-date-editor){max-width:100%}
+.qoj-management-dialog :is(.toolbar,.actions,.profile-row){display:flex;flex-wrap:wrap;gap:12px;min-width:0}
+@media(max-width:800px){
+  .qoj-management-dialog :is(.two-col,.two-column,.field-grid,.form-two-col){grid-template-columns:minmax(0,1fr)}
+  .qoj-management-dialog .el-table__cell.is-fixed-column--right{position:static!important}
+  .qoj-management-dialog .el-form-item__label{white-space:normal;line-height:1.5}
+}
+.qoj-management .page-container :is(.table-card,.settings-card,.chat-card){border:1px solid var(--el-border-color-light);border-radius:var(--card-radius)}
+.qoj-management .page-container .chat-sessions .el-empty{padding:16px 0}
+.qoj-management .page-container .chat-sessions .el-empty__image{width:64px}
+@media(max-width:800px){
+  .qoj-management .page-container .queue-stats > .el-card:last-child{grid-column:1 / -1}
+  .qoj-management .page-container .chat-history .el-empty__image{width:96px}
+}
+.qoj-management .page-container .el-card__body > :is(.toolbar,.table-toolbar,.course-toolbar){margin-bottom:16px}
+/* The overlay owns dialog scrolling; form bodies expand with their content. */
+.qoj-management-dialog{max-height:none}
+.qoj-management-dialog > .el-dialog__body{overflow:visible}
+@media(max-width:800px){.qoj-management-dialog{margin-top:12px}}
+
+/* Fill the management workspace instead of leaving a narrow form on the left. */
+.qoj-management .page-container > :is(.el-card,.el-tabs,.el-form){width:100%;max-width:none;align-self:stretch}
+@media(min-width:1101px){
+  .qoj-management .page-container .profile-form,
+  .qoj-management .profile-page .profile-card .el-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px}
+  .qoj-management .page-container .profile-form > .el-button,
+  .qoj-management .profile-page .profile-card .el-form > .el-button{grid-column:1 / -1;justify-self:end}
+}
+
+/* Page actions share the existing content card header. */
+.qoj-management .management-card-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;min-width:0}
+.qoj-management .management-card-title{min-width:0;flex:1}
+.qoj-management .management-card-actions{margin-left:auto;min-width:0;max-width:100%}
+.qoj-management .management-card-actions :is(.page-heading,.workspace-heading,.course-heading,.heading-actions,.actions){display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin:0;min-width:0}
+.qoj-management .management-card-actions .el-button{margin-left:0}
+.qoj-management .el-card__header:has(.management-card-heading):not(:has(.el-button)):not(:has(.management-card-title)){display:none}
+@media(max-width:800px){
+  .qoj-management .management-card-actions{width:100%;margin-left:0}
+  .qoj-management .management-card-actions :is(.heading-actions,.actions){justify-content:flex-end}
+}
+
+/* Filters and page actions occupy one shared toolbar, wrapping only as needed. */
+.qoj-management .page-container .management-inline-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;width:100%;min-width:0}
+.qoj-management .page-container .management-inline-toolbar > :is(.el-input,.el-select){flex:1 1 140px;width:auto;min-width:120px;max-width:240px}
+.qoj-management .page-container .management-inline-toolbar > .el-button{flex:0 0 auto;width:auto}
+.qoj-management .page-container .management-inline-toolbar > .management-card-actions{flex:0 1 auto;width:auto;margin-left:auto}
+@media(max-width:800px){
+  .qoj-management .page-container .management-inline-toolbar > :is(.el-input,.el-select){max-width:none}
+  .qoj-management .page-container .management-inline-toolbar > .management-card-actions{flex-basis:100%}
+}

@@ -126,7 +126,7 @@ public class QojProperties implements EnvironmentAware {
         /**
          * 校验Range。可能调用外部判题或网关服务。
          */
-        requireRange(goJudge.maxInputBytes, 1024, 4 * 1024 * 1024, "GO_JUDGE_MAX_INPUT_BYTES");
+        requireRange(goJudge.maxInputBytes, 1024, GoJudge.MAX_SUPPORTED_INPUT_BYTES, "GO_JUDGE_MAX_INPUT_BYTES");
         /**
          * 校验Range。可能调用外部判题或网关服务。
          */
@@ -266,13 +266,15 @@ public class QojProperties implements EnvironmentAware {
 
     /** Fixed deployment configuration for the internal go-judge HTTP service. */
     public static class GoJudge {
+        // 与测试点 ZIP 导入的单文件上限一致，避免成功导入后无法判题。
+        public static final int MAX_SUPPORTED_INPUT_BYTES = 50 * 1024 * 1024;
         private String baseUrl = "http://127.0.0.1:15050";
         private String authToken = "";
         private int connectTimeoutMs = 2000;
         private int requestTimeoutMs = 200000;
         private int compileTimeoutMs = 20000;
         private int maxSourceBytes = 65536;
-        private int maxInputBytes = 2 * 1024 * 1024;
+        private int maxInputBytes = MAX_SUPPORTED_INPUT_BYTES;
         private int maxOutputBytes = 2 * 1024 * 1024;
         private int maxProcesses = 32;
 

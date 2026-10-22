@@ -1,0 +1,1 @@
+import{M as o}from"./ManagementLogin-Bu3yh0Gy.js";import{d as e,h as r,i as t}from"./main-Clz7B1b7.js";import"./index-C-3Xn0N2.js";import"./index-CGqVRaTM.js";import"./index-C5ZSRKy7.js";import"./app-BR9PwwyB.js";import"./index-D9Oz3FkO.js";const u=e({__name:"TeacherLoginPage",setup(a){return(m,n)=>(r(),t(o))}});export{u as default};

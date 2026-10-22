@@ -23,6 +23,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private final JwtService jwtService;
+    private final UserSocketSessions userSocketSessions;
     private final UserMapper userMapper;
     private final AdminUserMapper adminUserMapper;
     private final TeacherMapper teacherMapper;
@@ -34,9 +35,11 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         JwtService jwtService,
         UserMapper userMapper,
         AdminUserMapper adminUserMapper,
-        TeacherMapper teacherMapper
+        TeacherMapper teacherMapper,
+        UserSocketSessions userSocketSessions
     ) {
         this.jwtService = jwtService;
+        this.userSocketSessions = userSocketSessions;
         this.userMapper = userMapper;
         this.adminUserMapper = adminUserMapper;
         this.teacherMapper = teacherMapper;
@@ -54,6 +57,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 token = token.substring(7);
                 try {
                     Claims claims = jwtService.parse(token);
+                    if (!"access".equals(claims.get("typ", String.class))) return null;
                     String accountType = claims.get("accountType", String.class);
                     Long accountId = Long.valueOf(claims.getSubject());
 
@@ -74,6 +78,10 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                         }
                     } else {
                         User user = userMapper.selectById(accountId);
+                        if (user != null && user.banned()) {
+                            userSocketSessions.reject(accessor.getSessionId());
+                            return null;
+                        }
                         if (user != null) {
                             authUser = new AuthUser(user);
                         } else {
@@ -84,6 +92,8 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                     // 将用户信息存储到 session attributes
                     accessor.setUser(() -> String.valueOf(authUser.id()));
                     accessor.getSessionAttributes().put("authUser", authUser);
+                    accessor.getSessionAttributes().put("accessExpiresAt", claims.getExpiration().getTime());
+                    accessor.getSessionAttributes().put("accessTokenId", claims.getId());
 
                 } catch (Exception e) {
                     // Token 无效，拒绝连接
@@ -95,6 +105,18 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
             }
         }
 
+        if (accessor != null && !StompCommand.CONNECT.equals(accessor.getCommand())
+            && !StompCommand.DISCONNECT.equals(accessor.getCommand())) {
+            Map<String, Object> attributes = accessor.getSessionAttributes();
+            if (attributes != null && attributes.get("authUser") instanceof AuthUser actor
+                && "USER".equals(actor.accountType())) {
+                User user = userMapper.selectById(actor.id());
+                if (user == null || user.banned()) {
+                    userSocketSessions.reject(accessor.getSessionId());
+                    return null;
+                }
+            }
+        }
         return message;
     }
 }

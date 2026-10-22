@@ -1,6 +1,11 @@
 # 本地开发依赖。端口只绑定回环地址，避免数据库与 Redis 暴露到局域网。
 services:
   mysql:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     image: mysql:8.0
     container_name: qoj-mysql
     environment:
@@ -21,6 +26,11 @@ services:
       retries: 20
 
   redis:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     image: redis:7-alpine
     container_name: qoj-redis
     # 本地环境仍要求密码，保持与后端默认连接配置一致。

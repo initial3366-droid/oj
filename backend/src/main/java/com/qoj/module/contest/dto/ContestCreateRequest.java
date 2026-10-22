@@ -2,7 +2,6 @@ package com.qoj.module.contest.dto;
 
 import com.qoj.common.enums.AudienceType;
 import com.qoj.common.enums.ContestType;
-import com.qoj.common.enums.JudgeBackend;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
@@ -19,7 +18,6 @@ public record ContestCreateRequest(
     @NotNull LocalDateTime startTime,
     @NotNull LocalDateTime endTime,
     @NotNull ContestType type,
-    JudgeBackend judgeMode,
     @NotNull AudienceType audience,
     Long audienceId,
     List<ContestAudienceRequest> audiences,
@@ -39,6 +37,39 @@ public record ContestCreateRequest(
     Boolean allowViewAllSubmissions,
     String registrationType,
     String registrationPassword,
-    List<ContestProblemRequest> problems
+    List<ContestProblemRequest> problems,
+    String allowedIpRanges,
+    Boolean hidden
 ) {
+    public ContestCreateRequest(
+    String title,
+    String description,
+    Integer durationMinutes,
+    LocalDateTime startTime,
+    LocalDateTime endTime,
+    ContestType type,
+    AudienceType audience,
+    Long audienceId,
+    List<ContestAudienceRequest> audiences,
+    Boolean frozen,
+    LocalDateTime freezeTime,
+    Boolean enableRollingScoreboard,
+    BigDecimal goldRatio,
+    BigDecimal silverRatio,
+    BigDecimal bronzeRatio,
+    Boolean allowAfterEndSubmit,
+    Boolean allowAfterEndViewProblem,
+    Boolean allowAfterEndViewCode,
+    Boolean enableCodeTemplates,
+    Boolean publicScoreboardEnabled,
+    Boolean showClassOnScoreboard,
+    Boolean allowStarRegistration,
+    Boolean allowViewAllSubmissions,
+    String registrationType,
+    String registrationPassword,
+    List<ContestProblemRequest> problems,
+    String allowedIpRanges
+    ) {
+        this(title, description, durationMinutes, startTime, endTime, type, audience, audienceId, audiences, frozen, freezeTime, enableRollingScoreboard, goldRatio, silverRatio, bronzeRatio, allowAfterEndSubmit, allowAfterEndViewProblem, allowAfterEndViewCode, enableCodeTemplates, publicScoreboardEnabled, showClassOnScoreboard, allowStarRegistration, allowViewAllSubmissions, registrationType, registrationPassword, problems, allowedIpRanges, null);
+    }
 }

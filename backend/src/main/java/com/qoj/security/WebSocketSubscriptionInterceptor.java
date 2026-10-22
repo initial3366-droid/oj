@@ -1,10 +1,14 @@
 package com.qoj.security;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.qoj.module.contest.entity.Contest;
+import com.qoj.module.contest.entity.ContestParticipant;
 import com.qoj.module.contest.mapper.ContestMapper;
 import com.qoj.module.contest.mapper.ContestParticipantMapper;
+import com.qoj.module.contest.service.ContestIpAccessService;
 import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.mapper.SubmissionMapper;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.messaging.Message;
@@ -24,6 +28,7 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
     private final ContestMapper contestMapper;
     private final ContestParticipantMapper participantMapper;
     private final SubmissionMapper submissionMapper;
+    private final ContestIpAccessService contestIpAccessService;
 
     // 频道模式
     private static final Pattern CONTEST_SCOREBOARD_PATTERN = Pattern.compile("^/topic/contests/(\\d+)/scoreboard$");
@@ -38,16 +43,28 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
     public WebSocketSubscriptionInterceptor(
         ContestMapper contestMapper,
         ContestParticipantMapper participantMapper,
-        SubmissionMapper submissionMapper
+        SubmissionMapper submissionMapper,
+        ContestIpAccessService contestIpAccessService
     ) {
         this.contestMapper = contestMapper;
         this.participantMapper = participantMapper;
         this.submissionMapper = submissionMapper;
+        this.contestIpAccessService = contestIpAccessService;
     }
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+
+        if (accessor != null && accessor.getDestination() != null && accessor.getDestination().contains("contest-message")) {
+            String destination = accessor.getDestination();
+            if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
+                if (!destination.equals("/user/queue/contest-messages") && !destination.equals("/user/queue/contest-message-acks")) return null;
+                // Per-session destinations: recipients are checked again on every push.
+                return accessor.getSessionAttributes() != null && accessor.getSessionAttributes().get("authUser") != null ? message : null;
+            }
+            if (StompCommand.SEND.equals(accessor.getCommand()) && !destination.startsWith("/app/contest-messages/")) return null;
+        }
 
         if (accessor != null && StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
             AuthUser authUser = (AuthUser) accessor.getSessionAttributes().get("authUser");
@@ -61,7 +78,10 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
             }
 
             // 检查订阅权限
-            if (!canSubscribe(authUser, destination)) {
+            Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
+            Object clientIpValue = sessionAttributes == null ? null : sessionAttributes.get("clientIp");
+            String clientIp = clientIpValue instanceof String value ? value : null;
+            if (!canSubscribe(authUser, destination, clientIp)) {
                 return null; // 无权限，拒绝订阅
             }
         }
@@ -69,7 +89,7 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
         return message;
     }
 
-    private boolean canSubscribe(AuthUser authUser, String destination) {
+    private boolean canSubscribe(AuthUser authUser, String destination, String clientIp) {
         // 管理员可以订阅所有频道
         if (authUser.adminAccount()) {
             return true;
@@ -82,7 +102,7 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
             /**
              * 判断访问比赛是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
              */
-            return canAccessContest(authUser, contestId);
+            return canAccessContest(authUser, contestId, clientIp);
         }
 
         // 检查比赛公告订阅权限
@@ -92,7 +112,7 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
             /**
              * 判断访问比赛是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
              */
-            return canAccessContest(authUser, contestId);
+            return canAccessContest(authUser, contestId, clientIp);
         }
 
         // 检查比赛状态订阅权限
@@ -102,7 +122,7 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
             /**
              * 判断访问比赛是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
              */
-            return canAccessContest(authUser, contestId);
+            return canAccessContest(authUser, contestId, clientIp);
         }
 
         // 检查提交状态订阅权限
@@ -112,7 +132,7 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
             /**
              * 判断访问提交是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
              */
-            return canAccessSubmission(authUser, submissionId);
+            return canAccessSubmission(authUser, submissionId, clientIp);
         }
 
         if (SUBMISSION_QUEUE_PATTERN.matcher(destination).matches()) {
@@ -123,9 +143,12 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
         return false;
     }
 
-    private boolean canAccessContest(AuthUser authUser, long contestId) {
+    private boolean canAccessContest(AuthUser authUser, long contestId, String clientIp) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
+            return false;
+        }
+        if (!contestIpAccessService.isAllowed(contest, authUser, clientIp)) {
             return false;
         }
 
@@ -136,16 +159,23 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
 
         // 私有比赛，检查是否是参赛者
         return participantMapper.selectCount(
-            new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<com.qoj.module.contest.entity.ContestParticipant>()
+            new QueryWrapper<ContestParticipant>()
                 .eq("contest_id", contestId)
                 .eq("user_id", authUser.id())
         ) > 0;
     }
 
-    private boolean canAccessSubmission(AuthUser authUser, long submissionId) {
+    private boolean canAccessSubmission(AuthUser authUser, long submissionId, String clientIp) {
         Submission submission = submissionMapper.selectById(submissionId);
         if (submission == null) {
             return false;
+        }
+
+        if (submission.contestId != null) {
+            Contest contest = contestMapper.selectById(submission.contestId);
+            if (contest != null && !contestIpAccessService.isAllowed(contest, authUser, clientIp)) {
+                return false;
+            }
         }
 
         // 只能查看自己的提交

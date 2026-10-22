@@ -1,0 +1,143 @@
+/* Content can grow independently of the upstream navigation shell. */
+:is(.front-site,.qoj-management .page-container,.el-dialog,.el-drawer) {
+  overflow-wrap:anywhere;
+}
+:is(.front-site,.qoj-management .page-container,.el-dialog,.el-drawer) .el-table .cell {
+  white-space:normal;
+  text-overflow:clip;
+  overflow:visible;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+:is(.front-site,.qoj-management .page-container,.el-dialog,.el-drawer) :is(.el-button:not(.is-circle),.el-tag) {
+  height:auto;
+  min-height:var(--el-component-size,32px);
+  max-width:100%;
+  padding-block:6px;
+  white-space:normal;
+  line-height:1.5;
+}
+:is(.front-site,.qoj-management .page-container,.el-dialog,.el-drawer) :is(.el-button>span,.el-tag__content,.el-link__inner) {
+  min-width:0;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+:is(.front-site,.qoj-management .page-container,.el-dialog,.el-drawer) :is(.el-form-item__label,.el-checkbox,.el-radio,.el-switch,.el-switch__label) {
+  height:auto;
+  min-height:32px;
+  white-space:normal;
+  line-height:1.5;
+}
+:is(.front-site,.qoj-management .page-container,.el-dialog,.el-drawer) :is(.el-checkbox__label,.el-radio__label,.el-switch__label) {
+  min-width:0;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+:is(.front-site,.qoj-management .page-container,.el-dialog,.el-drawer) :is(.el-checkbox__input,.el-radio__input,.el-switch__core) {flex-shrink:0}
+.el-select-dropdown__item{height:auto;min-height:34px;line-height:1.5;white-space:normal;overflow-wrap:anywhere;padding-block:7px}
+.el-select__selected-item{white-space:normal;overflow-wrap:anywhere}
+.el-dialog{max-width:calc(100vw - 24px)}
+/* Read-only content and ordinary forms use the page/overlay scroll surface. */
+:is(.front-site,.qoj-management,.el-dialog) :is(.form-fields,.detail-code,.code-viewer,.judge-message,.submission-code,.history-code,.generator-logs,.import-review,.formula-library,.thread-list,.entry-list,.file-content) {
+  height:auto;
+  max-height:none;
+  overflow:visible;
+}
+:is(.front-site,.qoj-management,.el-dialog) :is(.detail-code,.code-viewer,.submission-code,.history-code,.file-content pre,.import-review pre) {
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  max-height:none;
+  overflow:visible;
+}
+.qoj-management .page-container .chat-sessions{max-height:none;overflow:visible}
+:is(.front-site,.qoj-management,.el-dialog) :is(.session-row>button:first-child,.thread-list button span,.entry-list strong,.entry-list small,.file-attachment strong,.file-attachment small,.case-row>span:first-child) {
+  white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;
+}
+.pinned-announcement-button{height:auto!important;min-height:70px;padding-block:16px!important}
+.pinned-announcement-title{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.5!important;overflow-wrap:anywhere}
+/* Preserve editor and conversation viewports, which have their own interaction model. */
+:is(.front-site,.qoj-management .page-container,.el-dialog) :is(.truncate,.summary-card p,.problem-meta strong,.chat-file-link,.chat-image-link,.file-preview strong,.file-preview small){white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+:is(.qoj-management,.el-dialog) .attachment.file{max-width:100%}
+:is(.qoj-management,.el-dialog) .file-preview{height:auto;min-height:76px;overflow:visible}
+/* Native field sizing grows ordinary textareas as users enter longer content. */
+:is(.front-main,.qoj-management .page-container,.el-dialog) .el-textarea__inner {
+  field-sizing:content;
+  height:auto;
+  max-height:none;
+  min-height:3lh;
+}
+.front-site .front-account .account-name{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.5;overflow-wrap:anywhere}
+:is(.front-site,.qoj-management .page-container,.el-dialog,.el-drawer) .el-tag{min-height:var(--el-tag-height,24px);padding-block:2px}
+:is(.front-site,.qoj-management .page-container,.el-dialog,.el-drawer) .el-button:not(.is-circle){min-height:var(--el-button-size,32px)}
+.el-overlay .el-dialog :is(.notice-dialog__title,.notice-dialog__content){max-height:none;overflow:visible;white-space:normal;text-overflow:clip;overflow-wrap:anywhere}
+:is(.front-site,.qoj-management .page-container,.el-overlay .el-dialog) :is(.html-preview,.code-view){height:auto;max-height:none;overflow:visible;white-space:pre-wrap;overflow-wrap:anywhere}
+.practice-workspace .pane-header{flex-shrink:0}
+.practice-workspace .pane .problem-heading h1{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.5}
+
+.el-overlay .el-dialog .file-preview-layout{max-height:none}
+/* Allocate the remaining viewport after the actual header height, including wrapped names. */
+.qoj-management .layout-root{display:flex;flex-direction:column;min-height:0}
+.qoj-management .layout-root .layout-main{display:flex;flex-direction:column;flex:1;min-height:0;overflow:visible}
+.qoj-management .layout-root .layout-content{height:auto!important;flex:1;min-height:0}
+.qoj-management :is(.layout-navbar,.layout-header){height:auto;min-height:50px;flex-shrink:0}
+.qoj-management :is(.layout-navbar__actions,.layout-header__right,.layout-toolbar){min-width:0}
+.qoj-management .layout-toolbar .layout-user{height:auto;min-height:32px;padding-block:6px}
+.qoj-management .layout-toolbar .layout-user__name{max-width:min(220px,40vw);white-space:normal;overflow-wrap:anywhere;line-height:1.5}
+.qoj-management .layout-tabs{flex-shrink:0}
+.qoj-management .layout-root :is(.layout-navbar,.layout-header){height:auto;min-height:50px;flex-shrink:0}
+.qoj-management .layout-toolbar .layout-toolbar__item--profile,
+.qoj-management .layout-toolbar .layout-toolbar__item--profile .el-dropdown{height:auto}
+/* Single-select labels participate in sizing instead of floating over a fixed row. */
+.el-select__selection .el-select__placeholder{position:static;transform:none;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+
+/* Restore floating placeholders in management selects so searchable inputs
+   and selected labels do not occupy separate rows. Multi-select tags can wrap. */
+:is(.qoj-management,.qoj-management-dialog) .el-select__wrapper{min-height:34px}
+:is(.qoj-management,.qoj-management-dialog) .el-select--small .el-select__wrapper{min-height:26px}
+:is(.qoj-management,.qoj-management-dialog) .el-select--large .el-select__wrapper{min-height:42px}
+:is(.qoj-management,.qoj-management-dialog) .el-select__selection .el-select__placeholder{position:absolute;top:50%;transform:translateY(-50%);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+:is(.qoj-management,.qoj-management-dialog) .el-select__selected-item{white-space:nowrap;min-width:0}
+
+/* Switch labels must center their text, rather than align it to the top of a
+   shared minimum-height label box. Applies to management pages and overlays. */
+:is(.qoj-management, body[data-qoj-portal="admin"], body[data-qoj-portal="teacher"]) .el-switch {
+  align-items: center;
+}
+:is(.qoj-management, body[data-qoj-portal="admin"], body[data-qoj-portal="teacher"]) .el-switch__label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 0;
+  height: auto;
+  line-height: 1.5;
+}
+
+/* Normal action buttons use the same size as single-line Element Plus inputs. */
+:is(.front-site, .qoj-management .page-container, .el-dialog, .el-drawer) .el-button:not(.is-circle) {
+  padding-block: 0;
+}
+
+/* Pair single-line fields with their actions using one border-box height.
+   Keep textareas, table action links and multi-select tags independently sized. */
+:is(.front-site, .qoj-management .page-container, .el-dialog, .el-drawer)
+  :has(> .el-input):has(> .el-button:not(.is-link, .is-text, .is-circle)) {
+  --qoj-inline-control-height: 36px;
+}
+:is(.front-site, .qoj-management .page-container, .el-dialog, .el-drawer)
+  :has(> .el-input):has(> .el-button:not(.is-link, .is-text, .is-circle))
+  > :is(.el-input, .el-button:not(.is-link, .is-text, .is-circle)) {
+  box-sizing: border-box;
+  height: var(--qoj-inline-control-height);
+  min-height: var(--qoj-inline-control-height);
+  vertical-align: middle;
+}
+:is(.front-site, .qoj-management .page-container, .el-dialog, .el-drawer)
+  :has(> .el-input):has(> .el-button:not(.is-link, .is-text, .is-circle))
+  > .el-button:not(.is-link, .is-text, .is-circle) {
+  padding-block: 0;
+}
+:is(.front-site, .qoj-management .page-container, .el-dialog, .el-drawer)
+  :has(> .el-input):has(> .el-button:not(.is-link, .is-text, .is-circle))
+  > :is(.el-input, .el-select:not(.is-multiple)) > :is(.el-input__wrapper, .el-select__wrapper) {
+  box-sizing: border-box;
+  min-height: var(--qoj-inline-control-height);
+}

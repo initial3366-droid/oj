@@ -1,0 +1,29 @@
+/* Map existing QOJ domain content to the original template's live theme. */
+:root {
+  --qoj-color-primary: var(--el-color-primary);
+  --qoj-color-primary-light-default: var(--el-color-primary-light-9);
+  --qoj-color-primary-light-hover: var(--el-color-primary-light-8);
+  --qoj-color-success: var(--el-color-success);
+  --qoj-color-success-dark: var(--el-color-success-dark-2);
+  --qoj-color-success-light-default: var(--el-color-success-light-9);
+  --qoj-color-warning: var(--el-color-warning);
+  --qoj-color-warning-dark: var(--el-color-warning-dark-2);
+  --qoj-color-warning-light-default: var(--el-color-warning-light-9);
+  --qoj-color-danger-dark: var(--el-color-danger-dark-2);
+  --qoj-color-danger-light-default: var(--el-color-danger-light-9);
+  --qoj-color-bg-0: var(--content-bg);
+  --qoj-color-bg-1: var(--page-bg);
+  --qoj-color-bg-2: var(--el-fill-color-light);
+  --qoj-color-fill-0: var(--el-fill-color-light);
+  --qoj-color-fill-1: var(--el-fill-color);
+  --qoj-color-border: var(--card-border);
+  --qoj-color-text-0: var(--el-text-color-primary);
+  --qoj-color-text-1: var(--el-text-color-regular);
+  --qoj-color-text-2: var(--el-text-color-secondary);
+  --qoj-color-text-3: var(--el-text-color-placeholder);
+}
+#root { height: 100%; }
+
+/* The template's final toolbar item opens appearance settings; QOJ fixes its palette. */
+.layout-toolbar > .layout-toolbar__item:last-child:not(.layout-toolbar__item--profile) { display: none; }
+.settings-drawer { display: none; }

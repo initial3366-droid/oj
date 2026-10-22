@@ -14,6 +14,7 @@ const ADMIN_API_PREFIX = (
  * @returns 使用当前环境前缀的完整路径
  */
 export function adminPath(sub: string): string {
+  if (!sub) return `/${ADMIN_PREFIX}`;
   // API 调用也统一走这个固定入口，避免页面或客户端自行拼接后台前缀。
   if (sub === ADMIN_API_CANONICAL_PREFIX || sub.startsWith(`${ADMIN_API_CANONICAL_PREFIX}/`)) {
     return `${ADMIN_API_PREFIX}${sub.slice(ADMIN_API_CANONICAL_PREFIX.length)}`;

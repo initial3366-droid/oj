@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-QOJ is a React/TypeScript frontend with a Spring Boot backend. Frontend source lives in `src/`: public pages in `src/pages`, admin UI in `src/admin`, teacher flows in `src/teacher`, shared components in `src/components`, API wrappers in `src/api`, and styles in `src/styles.css` plus `src/styles/`. Static assets belong in `public/`; generated output goes to `dist/`.
+QOJ uses Vue 3 and TypeScript with a Spring Boot backend. Vue Router owns every public, admin, teacher, and shared UI route; React and its UI dependencies have been removed. The entry is `src/main.ts`, with application assembly under `src/vue/main.ts`. All UI belongs in `src/vue/`; all three portals share `src/vue/layouts/components/ManagementShell.vue`, which adapts QOJ data to the original template under `vendor/vue3-element-admin`. API wrappers stay in `src/api`; framework-neutral helpers remain under their existing modules. Shared styles and tokens remain in `src/styles/`; public page CSS under `src/pages` and `src/layouts` is still imported by Vue. Static assets belong in `public/`; generated output goes to `dist/`.
 
 Backend code is under `backend/src/main/java/com/qoj`, organized by modules such as `contest`, `problem`, `submission`, and `judge`. Resources and Flyway migrations live in `backend/src/main/resources`; tests are in `backend/src/test/java`. Operational docs are in `docs/`; deployment bundles and backups are archival.
 
@@ -19,13 +19,13 @@ Backend code is under `backend/src/main/java/com/qoj`, organized by modules such
 
 ## Coding Style & Naming Conventions
 
-Use TypeScript React function components and keep route-level screens in `PascalCase` files such as `ContestDetailPage.tsx`. Shared helpers should live near their domain (`src/lib`, `src/utils`, or module APIs). The frontend main UI library is Ant Design 6 (`antd`; antd 6 API: `Modal open`, `Card styles.body`, `Tabs items`, `TableColumnsType`; icons from `@ant-design/icons`). Semi UI has been fully removed — do not reintroduce `@douyinfe/semi-ui` / `@douyinfe/semi-icons` imports or the `--semi-*` CSS variables (use `--qoj-*` tokens defined in `src/styles/tokens.css`). Admin (`src/admin`) and teacher (`src/teacher`) UIs use Arco (`@arco-design/web-react`). Prefer the installed library for the target area before adding dependencies.
+Write new and migrated frontend UI as Vue 3 single-file components with `<script setup lang="ts">` under `src/vue/`. Use Vue Router, Pinia, Element Plus, and `@element-plus/icons-vue`, following the Vue 3 + Vite + TypeScript structure from `https://gitee.com/youlaiorg/vue3-element-admin` while retaining QOJ's API contracts and route behavior. Directly reuse upstream UI from `vendor/vue3-element-admin`; do not reimplement or restyle equivalent template components. Keep upstream templates, styles, icons and assets unchanged. QOJ interface adaptations belong under `src/vue/template-adapter`; any unavoidable upstream script adaptation must be documented in `vendor/vue3-element-admin.upstream.json`. Run `npm run verify:template` to verify integrity. Keep shared helpers framework-neutral where possible. Do not reintroduce React or a second frontend runtime. Use the `--qoj-*` tokens from `src/styles/tokens.css` where applicable. Do not add Semi UI or the removed `--semi-*` variables.
 
 Java packages follow `com.qoj.module.<feature>` with `controller`, `service`, `entity`, `mapper`, `dto`, and `vo` subpackages where applicable. Use 4-space indentation in Java and 2-space indentation in TypeScript/CSS.
 
 ## Testing Guidelines
 
-Backend tests use JUnit via Spring Boot Test; name tests `*Test.java` and place them under the related package in `backend/src/test/java`. Run `mvn test` before backend changes. The frontend currently relies on `npm run build` for TypeScript validation; add focused tests for risky UI logic.
+Backend tests use JUnit via Spring Boot Test; name tests `*Test.java` and place them under the related package in `backend/src/test/java`. Run `mvn test` before backend changes. For frontend behavior, prefer E2E flows as the testing mechanism and produce repeatable reports, traces, or screenshots as artifacts; do not add unit tests for the Vue migration. `npm run build` includes TypeScript and Vue SFC type checking.
 
 ## Commit & Pull Request Guidelines
 
@@ -35,9 +35,9 @@ Pull requests should include a summary, verification commands, linked issues whe
 
 ## Security & Configuration Tips
 
-Do not commit real secrets. Use `.env` locally and rotate production values such as `JWT_SECRET`, MySQL, Redis, and CCPCOJ credentials. Never enable `ENABLE_UNSAFE_LOCAL_JUDGE` in production. Add database changes as new Flyway migrations under `backend/src/main/resources/db/migration`.
+Do not commit real secrets. Use `.env` locally and rotate production values such as `JWT_SECRET`, MySQL, Redis, and go-judge credentials. Never enable `ENABLE_UNSAFE_LOCAL_JUDGE` in production. Add database changes as new Flyway migrations under `backend/src/main/resources/db/migration`.
 
 ## Notes
 
-- Judge languages: go-judge + CCPCOJ support C/C++/Java/Python only; C# support was removed — do not reintroduce `csharp`/`cs` handling or `mono`/`mcs` in docker/go-judge.
-- Frontend UI: all pages use antd 6 + `@ant-design/icons` (Semi UI fully removed). Use `--qoj-*` design tokens from `src/styles/tokens.css` instead of the old `--semi-*` variables.
+- Judge languages: go-judge supports C/C++/Java/Python only; C# support was removed — do not reintroduce `csharp`/`cs` handling or `mono`/`mcs` in docker/go-judge.
+- Frontend UI: new and migrated Vue pages use Element Plus and `@element-plus/icons-vue`; all routes use the Vue runtime. Use `--qoj-*` design tokens from `src/styles/tokens.css` where applicable; do not reintroduce Semi UI or `--semi-*` variables.

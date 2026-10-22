@@ -1,0 +1,3 @@
+ALTER TABLE users
+    ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'NORMAL' COMMENT 'NORMAL 正常，BANNED 封禁',
+    ADD CONSTRAINT chk_users_account_status CHECK (status IN ('NORMAL', 'BANNED'));

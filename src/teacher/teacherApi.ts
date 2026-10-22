@@ -98,6 +98,7 @@ export interface TeacherStudent {
   source?: string | null;
   profileFields?: Record<string, string>;
   joinedAt: string;
+  lastSubmissionTime?: string | null;
 }
 
 /**
@@ -162,7 +163,7 @@ export interface ImportPayload {
 export interface ImportResult {
   successCount: number;
   failureCount: number;
-  successes: Array<{ rowNumber: number; studentNo?: string | null; displayName?: string | null }>;
+  successes: Array<{ rowNumber: number; studentNo?: string | null; displayName?: string | null; initialPassword?: string | null }>;
   errors: Array<{ rowNumber: number; studentNo?: string | null; reason: string }>;
 }
 
@@ -181,7 +182,7 @@ function getTeacherRefreshToken() {
 }
 
 /**
- * 封装set教师Tokens相关逻辑。会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+ * 封装set教师Tokens相关逻辑会读写浏览器本地会话信息。
  */
 export function setTeacherTokens(accessToken: string, refreshToken?: string) {
   window.localStorage.setItem(TEACHER_TOKEN_KEY, accessToken);
@@ -199,14 +200,14 @@ export function clearTeacherTokens() {
 }
 
 /**
- * 读取WithTimeout并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；失败时向调用方传播异常。
+ * 读取WithTimeout并返回给调用方。包含异步流程并由调用方处理完成或失败状态失败时向调用方传播异常。
  */
-async function fetchWithTimeout(url: string, init: RequestInit) {
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = API_TIMEOUT_MS) {
   if (url.startsWith('/api/admin/v1')) {
     url = adminPath(url);
   }
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (error) {
@@ -220,7 +221,7 @@ async function fetchWithTimeout(url: string, init: RequestInit) {
 }
 
 /**
- * 封装refresh教师访问令牌相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；失败时向调用方传播异常。
+ * 封装refresh教师访问令牌相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口失败时向调用方传播异常。
  */
 async function refreshTeacherAccessToken() {
   const refreshToken = getTeacherRefreshToken();
@@ -262,7 +263,7 @@ async function refreshTeacherAccessToken() {
 /**
  * 封装教师FetchWith认证相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；可能改变当前路由或查询参数；失败时向调用方传播异常。
  */
-async function teacherFetchWithAuth(url: string, init: RequestInit = {}, allowRefresh = true): Promise<Response> {
+async function teacherFetchWithAuth(url: string, init: RequestInit = {}, allowRefresh = true, timeoutMs = API_TIMEOUT_MS): Promise<Response> {
   let token = getTeacherToken();
   if (!token) {
     token = await refreshTeacherAccessToken();
@@ -279,12 +280,12 @@ async function teacherFetchWithAuth(url: string, init: RequestInit = {}, allowRe
       ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...init.headers,
     },
-  });
+  }, timeoutMs);
 
   if (response.status === 401 && allowRefresh) {
     const nextToken = await refreshTeacherAccessToken();
     if (nextToken) {
-      return teacherFetchWithAuth(url, init, false);
+      return teacherFetchWithAuth(url, init, false, timeoutMs);
     }
   }
   return response;
@@ -316,16 +317,16 @@ async function parse<T>(response: Response, requireAuth = true): Promise<T> {
 /**
  * 封装请求相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口。
  */
-async function request<T>(url: string, init: RequestInit = {}, requireAuth = true): Promise<T> {
+async function request<T>(url: string, init: RequestInit = {}, requireAuth = true, timeoutMs = API_TIMEOUT_MS): Promise<T> {
   const response = requireAuth
-    ? await teacherFetchWithAuth(url, init)
+    ? await teacherFetchWithAuth(url, init, true, timeoutMs)
     : await fetchWithTimeout(url, {
         ...init,
         headers: {
           ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
           ...init.headers,
         },
-      });
+      }, timeoutMs);
   return parse<T>(response, requireAuth);
 }
 
@@ -359,7 +360,7 @@ export async function teacherLogout() {
 }
 
 /**
- * 封装教师登录相关逻辑。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；失败时向调用方传播异常。
+ * 封装教师登录相关逻辑。包含异步流程并由调用方处理完成或失败状态失败时向调用方传播异常。
  */
 export async function teacherLogin(username: string, password: string, captchaId: string, captcha: string) {
   const tokens = await request<{ accessToken: string; refreshToken: string }>(
@@ -402,36 +403,36 @@ export async function teacherImportStudentsFile(payload: {
 /**
  * 封装教师Get相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
-export function teacherGet<T>(url: string) {
-  return request<T>(url);
+export function teacherGet<T>(url: string, timeoutMs?: number) {
+  return request<T>(url, {}, true, timeoutMs);
 }
 
 /**
  * 封装教师Post相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
-export function teacherPost<T>(url: string, body?: unknown) {
+export function teacherPost<T>(url: string, body?: unknown, timeoutMs?: number) {
   return request<T>(url, {
     method: 'POST',
     body: body === undefined
       ? undefined
       : body instanceof FormData
         ? body
-        : JSON.stringify(body),
-  });
+      : JSON.stringify(body),
+  }, true, timeoutMs);
 }
 
 /**
  * 封装教师Put相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
-export function teacherPut<T>(url: string, body?: unknown) {
+export function teacherPut<T>(url: string, body?: unknown, timeoutMs?: number) {
   return request<T>(url, {
     method: 'PUT',
     body: body === undefined
       ? undefined
       : body instanceof FormData
         ? body
-        : JSON.stringify(body),
-  });
+      : JSON.stringify(body),
+  }, true, timeoutMs);
 }
 
 /**

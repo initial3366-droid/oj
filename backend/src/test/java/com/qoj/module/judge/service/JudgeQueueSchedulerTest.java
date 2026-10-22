@@ -59,8 +59,6 @@ class JudgeQueueSchedulerTest {
     void rejectedDispatchAtomicallyReturnsClaimToOriginalQueueState() {
         JudgeSettingsVO settings = new JudgeSettingsVO();
         settings.enabled = true;
-        settings.mode = "go-judge";
-        settings.contestMode = "per-contest";
         settings.pollIntervalMs = 1;
         settings.maxConcurrent = 2;
         settings.queueBatchSize = 2;
@@ -68,11 +66,10 @@ class JudgeQueueSchedulerTest {
         Submission submission = new Submission();
         submission.id = 7L;
         submission.status = "WAITING";
-        submission.judgeBackend = "GO_JUDGE";
 
         when(settingService.getJudgeRuntimeSettings()).thenReturn(settings);
         when(submissionMapper.countRunning()).thenReturn(0L);
-        when(submissionMapper.selectWaitingForEmbeddedJudge(2))
+        when(submissionMapper.selectWaiting(2))
             .thenReturn(List.of(submission));
         when(submissionMapper.atomicClaim(
             eq(7L), eq("WAITING"), eq("JUDGING"), eq("GO_JUDGE"), anyString(), any(LocalDateTime.class)
@@ -115,14 +112,14 @@ class JudgeQueueSchedulerTest {
         settings.pollIntervalMs = 1;
         settings.maxConcurrent = 2;
         settings.queueBatchSize = 2;
-        settings.ccpcojStaleTaskMinutes = 15;
+        settings.staleTaskMinutes = 15;
 
         when(settingService.getJudgeRuntimeSettings()).thenReturn(settings);
         when(submissionMapper.requeueStaleGoJudgeClaims(
             any(LocalDateTime.class), any(LocalDateTime.class))
         ).thenReturn(1);
         when(submissionMapper.countRunning()).thenReturn(0L);
-        when(submissionMapper.selectWaitingForEmbeddedJudge(2)).thenReturn(List.of());
+        when(submissionMapper.selectWaiting(2)).thenReturn(List.of());
 
         JudgeQueueScheduler scheduler = new JudgeQueueScheduler(
             submissionMapper,
@@ -192,8 +189,6 @@ class JudgeQueueSchedulerTest {
     private JudgeTask runNonContestJudgement(List<JudgeCaseResult> caseResults, String language) {
         JudgeSettingsVO settings = new JudgeSettingsVO();
         settings.enabled = true;
-        settings.mode = "go-judge";
-        settings.contestMode = "per-contest";
         settings.pollIntervalMs = 1;
         settings.maxConcurrent = 2;
         settings.queueBatchSize = 2;
@@ -204,7 +199,6 @@ class JudgeQueueSchedulerTest {
         submission.problemId = 3L;
         submission.language = language;
         submission.status = "WAITING";
-        submission.judgeBackend = "GO_JUDGE";
 
         Problem problem = new Problem();
         problem.id = 3L;
@@ -224,7 +218,7 @@ class JudgeQueueSchedulerTest {
 
         when(settingService.getJudgeRuntimeSettings()).thenReturn(settings);
         when(submissionMapper.countRunning()).thenReturn(0L);
-        when(submissionMapper.selectWaitingForEmbeddedJudge(2))
+        when(submissionMapper.selectWaiting(2))
             .thenReturn(List.of(submission));
         when(submissionMapper.atomicClaim(
             eq(10L), eq("WAITING"), eq("JUDGING"), eq("GO_JUDGE"), anyString(), any(LocalDateTime.class)

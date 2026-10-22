@@ -22,6 +22,7 @@ import com.qoj.module.home.mapper.HomeCarouselSlideMapper;
 import com.qoj.module.home.vo.CarouselSlideVO;
 import com.qoj.module.home.vo.HomeConfigVO;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -71,7 +72,7 @@ public class HomeService {
                     return null;
                 }
             })
-            .filter(java.util.Objects::nonNull)
+            .filter(Objects::nonNull)
             .toList();
         /**
          * 封装首页配置VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。

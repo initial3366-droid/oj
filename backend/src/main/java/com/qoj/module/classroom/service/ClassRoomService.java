@@ -133,6 +133,49 @@ public class ClassRoomService {
     }
 
     @Transactional
+    public ClassRoom adminEnsureUnassignedClass(String name) {
+        String normalizedName = name == null ? "" : name.trim();
+        if (normalizedName.isEmpty()) {
+            throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "班级不能为空");
+        }
+        ClassRoom existing = classRoomMapper.selectOne(
+            new QueryWrapper<ClassRoom>().eq("name", normalizedName).last("LIMIT 1")
+        );
+        if (existing != null) return existing;
+
+        ClassRoom classRoom = new ClassRoom();
+        classRoom.id = generateClassId();
+        classRoom.name = normalizedName;
+        classRoom.teacherId = null;
+        classRoom.joinEnabled = true;
+        classRoom.approvalRequired = true;
+        classRoomMapper.insert(classRoom);
+        return classRoom;
+    }
+
+    @Transactional
+    public void adminAssignImportedStudent(long classId, long userId) {
+        ClassRoom classRoom = requireClass(classId);
+        User user = requireActiveUser(userId);
+        if (user.classId != null && !Objects.equals(user.classId, classId)) {
+            throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "学生已属于其他班级");
+        }
+        ClassMember member = classMemberMapper.selectOne(
+            new QueryWrapper<ClassMember>().eq("class_id", classId).eq("user_id", userId)
+        );
+        if (member == null) {
+            member = new ClassMember();
+            member.classId = classId;
+            member.userId = userId;
+            member.source = "IMPORT";
+            member.joinedAt = LocalDateTime.now();
+            classMemberMapper.insert(member);
+        }
+        user.classId = classRoom.id;
+        userMapper.updateById(user);
+    }
+
+    @Transactional
     public ClassRoomVO adminCreate(ClassRoomCreateRequest request) {
         if (request.teacherId() == null) {
             /**
@@ -325,11 +368,8 @@ public class ClassRoomService {
         if (classIds.isEmpty()) {
             return List.of();
         }
-        return classMemberMapper
-            .selectList(new QueryWrapper<ClassMember>().in("class_id", classIds).orderByDesc("joined_at"))
-            .stream()
-            .map(this::toMemberVO)
-            .toList();
+        return toMemberVOs(classMemberMapper
+            .selectList(new QueryWrapper<ClassMember>().in("class_id", classIds).orderByDesc("joined_at")));
     }
 
     public UserVO teacherStudentDetail(long userId) {
@@ -401,12 +441,14 @@ public class ClassRoomService {
                 continue;
             }
             try {
-                upsertImportedStudent(classRoom, fields, row, studentNo.trim(), displayName.trim(), batchId);
-                successes.add(new StudentImportResultVO.RowSuccess(rowNumber, studentNo.trim(), displayName.trim()));
+                String initialPassword = upsertImportedStudent(classRoom, fields, row, studentNo.trim(), displayName.trim(), batchId);
+                successes.add(new StudentImportResultVO.RowSuccess(rowNumber, studentNo.trim(), displayName.trim(), initialPassword));
                 success += 1;
             } catch (BizException ex) {
                 errors.add(new StudentImportResultVO.RowError(rowNumber, studentNo, ex.getMessage()));
             } catch (RuntimeException ex) {
+                org.slf4j.LoggerFactory.getLogger(ClassRoomService.class)
+                    .warn("Student import failed at row {}", rowNumber, ex);
                 errors.add(new StudentImportResultVO.RowError(rowNumber, studentNo, "导入失败"));
             }
         }
@@ -523,6 +565,13 @@ public class ClassRoomService {
             throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "申请已处理");
         }
         User user = requireActiveUser(application.userId);
+        // Administrative class changes hold the user lock and cancel pending applications.
+        // Re-read with a locking read so an approval started earlier cannot undo that change.
+        application = applicationMapper.selectOne(new QueryWrapper<ClassJoinApplication>()
+            .eq("id", applicationId).last("FOR UPDATE"));
+        if (application == null || !"PENDING".equals(application.status)) {
+            throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "申请已处理");
+        }
         if (user.classId != null && !Objects.equals(user.classId, classRoom.id)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
@@ -632,7 +681,7 @@ public class ClassRoomService {
         return user;
     }
 
-    private void upsertImportedStudent(
+    private String upsertImportedStudent(
         ClassRoom classRoom,
         List<String> fields,
         Map<String, String> row,
@@ -640,6 +689,7 @@ public class ClassRoomService {
         String displayName,
         String batchId
     ) {
+        String initialPassword = null;
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("student_no", studentNo));
         if (user == null) {
             user = userMapper.selectOne(new QueryWrapper<User>().eq("username", studentNo));
@@ -657,7 +707,8 @@ public class ClassRoomService {
             user.username = studentNo;
             user.studentNo = studentNo;
             user.displayName = displayName;
-            user.passwordHash = passwordEncoder.encode(defaultStudentPassword(studentNo));
+            initialPassword = UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+            user.passwordHash = passwordEncoder.encode(initialPassword);
             user.role = UserRole.STUDENT.name();
             user.classId = classRoom.id;
             userMapper.insert(user);
@@ -678,9 +729,14 @@ public class ClassRoomService {
             ensureScore(user.id);
         }
         upsertMember(classRoom.id, user, "IMPORT", batchId, profileJson(fields, row));
+        return initialPassword;
     }
 
     private void upsertMember(Long classId, User user, String source, String importBatchId, String profileFields) {
+        User locked = requireActiveUser(user.id);
+        if (locked.classId != null && !Objects.equals(locked.classId, classId)) {
+            throw new BizException(400, "学生已属于其他班级");
+        }
         ClassMember existing = classMemberMapper.selectOne(
             new QueryWrapper<ClassMember>().eq("class_id", classId).eq("user_id", user.id)
         );
@@ -851,7 +907,7 @@ public class ClassRoomService {
     }
 
     private User requireActiveUser(Long userId) {
-        User user = userMapper.selectById(userId);
+        User user = userMapper.selectOne(new QueryWrapper<User>().eq("id", userId).last("FOR UPDATE"));
         if (user == null || !UserRole.isActiveFrontendRole(user.role)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
@@ -891,7 +947,8 @@ public class ClassRoomService {
         boolean existsInUsers = userMapper.selectCount(userWrapper) > 0;
         boolean existsInAdmins = ("username".equals(column) || "email".equals(column))
             && adminUserMapper.selectCount(new QueryWrapper<AdminUser>().eq(column, value.trim())) > 0;
-        QueryWrapper<Teacher> teacherWrapper = new QueryWrapper<Teacher>().eq(column, value.trim());
+        QueryWrapper<Teacher> teacherWrapper = new QueryWrapper<Teacher>().eq(
+            "student_no".equals(column) ? "teacher_no" : column, value.trim());
         if (currentUserId != null) {
             teacherWrapper.ne("id", currentUserId);
         }
@@ -943,11 +1000,8 @@ public class ClassRoomService {
         Teacher teacher = classRoom.teacherId == null ? null : teacherMapper.selectById(classRoom.teacherId);
         Long memberCount = classMemberMapper.selectCount(new QueryWrapper<ClassMember>().eq("class_id", classRoom.id));
         List<ClassRoomMemberVO> members = includeMembers
-            ? classMemberMapper
-                .selectList(new QueryWrapper<ClassMember>().eq("class_id", classRoom.id).orderByDesc("joined_at"))
-                .stream()
-                .map(this::toMemberVO)
-                .toList()
+            ? toMemberVOs(classMemberMapper
+                .selectList(new QueryWrapper<ClassMember>().eq("class_id", classRoom.id).orderByDesc("joined_at")))
             : List.of();
         /**
          * 封装班级RoomVO相关逻辑。执行持久化写入。
@@ -967,7 +1021,17 @@ public class ClassRoomService {
         );
     }
 
+    private List<ClassRoomMemberVO> toMemberVOs(List<ClassMember> members) {
+        Map<Long, LocalDateTime> lastSubmissions = userMapper.lastSubmissionTimes(
+            members.stream().map(member -> member.userId).distinct().toList());
+        return members.stream().map(member -> toMemberVO(member, lastSubmissions.get(member.userId))).toList();
+    }
+
     private ClassRoomMemberVO toMemberVO(ClassMember member) {
+        return toMemberVO(member, userMapper.lastSubmissionTimes(List.of(member.userId)).get(member.userId));
+    }
+
+    private ClassRoomMemberVO toMemberVO(ClassMember member, LocalDateTime lastSubmissionTime) {
         User user = userMapper.selectById(member.userId);
         ClassRoom classRoom = member.classId == null ? null : classRoomMapper.selectById(member.classId);
         /**
@@ -984,7 +1048,8 @@ public class ClassRoomService {
             user == null ? null : user.email,
             member.source,
             readProfile(member.profileFields),
-            member.joinedAt
+            member.joinedAt,
+            lastSubmissionTime
         );
     }
 
@@ -1108,14 +1173,6 @@ public class ClassRoomService {
             text = "'" + text;
         }
         return text.length() > 500 ? text.substring(0, 500) : text;
-    }
-
-    private String defaultStudentPassword(String studentNo) {
-        if (studentNo == null) {
-            return "123456";
-        }
-        String trimmed = studentNo.trim();
-        return trimmed.length() <= 6 ? trimmed : trimmed.substring(trimmed.length() - 6);
     }
 
     private String blankToNull(String value) {

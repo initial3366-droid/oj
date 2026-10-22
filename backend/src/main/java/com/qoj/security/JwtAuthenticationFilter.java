@@ -68,7 +68,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     /**
      * 过滤器入口。每个 HTTP 请求到达时被调用。
-     * 无论认证是否成功，必须调用 filterChain.doFilter() 将请求传递给下游。
+     * 封禁身份立即返回 403；其他请求交给下游权限规则处理。
      */
     @Override
     protected void doFilterInternal(
@@ -78,19 +78,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
         String authorization = request.getHeader("Authorization");
         if (StringUtils.hasText(authorization) && authorization.startsWith("Bearer ")) {
-            authenticate(authorization.substring(7)); // 剥离 "Bearer " 前缀
+            SecurityContextHolder.clearContext();
+            if (authenticateAndCheckBanned(authorization.substring(7))) {
+                // A banned identity must never fall back to anonymous access, even on public endpoints.
+                SecurityContextHolder.clearContext();
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.setContentType("application/json;charset=UTF-8");
+                response.getWriter().write("{\"code\":403,\"message\":\"账号已封禁，无法进行任何操作\",\"data\":null}");
+                return;
+            }
         }
-        filterChain.doFilter(request, response); // 无论如何都放行，权限由 SecurityConfig 配合处理
-    }
-
-    /**
-     * The CCPCOJ gateway has an isolated worker-cookie authentication protocol.
-     * Skipping JWT parsing avoids mixing user credentials into that trust boundary.
-     */
-    @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
-        return path != null && path.startsWith("/ojtool/judge/");
+        filterChain.doFilter(request, response);
     }
 
     @Override
@@ -101,23 +99,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     /**
      * 核心认证逻辑。
-     * 所有 RuntimeException 被静默捕获：即使 Token 无效也不应中断请求处理。
+     * 返回 true 表示封禁账号；无效令牌由下游权限规则处理。
      */
-    private void authenticate(String token) {
+    private boolean authenticateAndCheckBanned(String token) {
         try {
             Claims claims = jwtService.parse(token);
             if (!"access".equals(claims.get("typ", String.class))) {
-                return;
+                return false;
             }
             // 检查 Token 是否在 Redis 黑名单中（已登出/被撤销的 Token）
             if (Boolean.TRUE.equals(redisTemplate.hasKey(RedisKeys.tokenBlacklist(claims.getId())))) {
-                return;
+                return false;
             }
             Long userId = Long.valueOf(claims.getSubject());
             AuthUser authUser = authUser(claims, userId);
             if (authUser == null) {
-                return;
+                return false;
             }
+            if (!authUser.isAccountNonLocked()) return true;
+            if (!jwtService.credentialsCurrent(claims, authUser)) return false;
             UsernamePasswordAuthenticationToken authentication =
                 /**
                  * 封装rnamePasswordAuthentication令牌相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
@@ -134,6 +134,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // Token 解析失败或数据库查询异常时，静默清空上下文，不阻止请求继续
             SecurityContextHolder.clearContext();
         }
+        return false;
     }
 
     /**

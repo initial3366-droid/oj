@@ -1,7 +1,6 @@
 package com.qoj.module.practice.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qoj.common.ErrorCode;
 import com.qoj.common.PageResult;
 import com.qoj.common.enums.SubmissionStatus;
@@ -18,15 +17,16 @@ import com.qoj.module.practice.vo.PracticeVO;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.service.ProblemService;
-import com.qoj.module.problem.vo.ProblemVO;
 import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.mapper.SubmissionMapper;
-import com.qoj.module.user.entity.User;
-import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.module.teacher.entity.Major;
 import com.qoj.module.teacher.mapper.MajorMapper;
+import com.qoj.module.user.entity.User;
+import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
+import com.qoj.security.policy.Permission;
+import com.qoj.security.policy.PracticeAccessPolicy;
 import com.qoj.security.policy.ResourceAccessService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -37,8 +37,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,7 +51,7 @@ public class PracticeService {
     private final ProblemService problemService;
     private final SubmissionMapper submissionMapper;
     private final UserMapper userMapper;
-    private final com.qoj.security.policy.PracticeAccessPolicy practiceAccessPolicy;
+    private final PracticeAccessPolicy practiceAccessPolicy;
     private final ResourceAccessService resourceAccessService;
     private final MajorMapper majorMapper;
 
@@ -67,7 +65,7 @@ public class PracticeService {
         ProblemService problemService,
         SubmissionMapper submissionMapper,
         UserMapper userMapper,
-        com.qoj.security.policy.PracticeAccessPolicy practiceAccessPolicy,
+        PracticeAccessPolicy practiceAccessPolicy,
         ResourceAccessService resourceAccessService,
         MajorMapper majorMapper
     ) {
@@ -92,6 +90,16 @@ public class PracticeService {
         int from = Math.min((normalizedPage - 1) * normalizedSize, visible.size());
         int to = Math.min(from + normalizedSize, visible.size());
         return new PageResult<>(visible.size(), visible.subList(from, to).stream().map(this::toVO).toList());
+    }
+
+    public PracticeVO managementDetail(long id) {
+        AuthUser user = CurrentUser.required();
+        Practice practice = practiceMapper.selectById(id);
+        if (practice == null || Boolean.TRUE.equals(practice.isDeleted)
+            || !resourceAccessService.canAccessPractice(user, practice)) {
+            throw new BizException(404, "题单不存在或无权访问");
+        }
+        return toVO(practice);
     }
 
     @Transactional
@@ -328,7 +336,7 @@ public class PracticeService {
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "练习不存在");
         }
         AuthUser user = CurrentUser.required();
-        if (!practiceAccessPolicy.can(user, com.qoj.security.policy.Permission.UPDATE, practice)) {
+        if (!practiceAccessPolicy.can(user, Permission.UPDATE, practice)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */

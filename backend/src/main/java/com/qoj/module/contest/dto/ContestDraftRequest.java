@@ -2,7 +2,6 @@ package com.qoj.module.contest.dto;
 
 import com.qoj.common.enums.AudienceType;
 import com.qoj.common.enums.ContestType;
-import com.qoj.common.enums.JudgeBackend;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -16,7 +15,6 @@ public record ContestDraftRequest(
     String endTime,
     String description,
     ContestType type,
-    JudgeBackend judgeMode,
     AudienceType audience,
     List<AudienceType> audienceTypes,
     List<Long> classIds,
@@ -35,6 +33,8 @@ public record ContestDraftRequest(
     Boolean allowViewAllSubmissions,
     String registrationPassword,
     Integer totalScore,
-    List<ContestProblemRequest> problems
+    List<ContestProblemRequest> problems,
+    String allowedIpRanges,
+    Boolean hidden
 ) {
 }

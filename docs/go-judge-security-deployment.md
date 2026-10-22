@@ -1,60 +1,28 @@
-# go-judge 与 CCPCOJ 迁移及安全部署
+# go-judge 安全部署说明
 
-## 当前架构
+QOJ 将题库、练习、自定义输入和比赛提交统一交给 go-judge。判题后端不按比赛切换；调度器通过数据库队列领取任务，服务恢复后继续处理等待中的提交。
 
-- 普通题、练习和自定义输入固定由 Spring 后端调用 `criyle/go-judge v1.12.1`。
-- 比赛提交固定由 CCPCOJ worker 通过 `/ojtool/judge` 拉取。
-- 两条链路复用现有提交表、状态机、排行榜、回调服务和 WebSocket，不改变比赛业务模型。
-- 浏览器不能获取或调用 go-judge 地址和令牌；这些值只来自后端环境变量。
+## 网络与凭据
 
-## 数据库迁移
+- go-judge 应部署在独立 Linux 主机或 VM 上，只允许 QOJ 后端通过回环地址或可信私网访问。
+- 生产环境设置随机 `GO_JUDGE_AUTH_TOKEN`，令牌只存在后端和评测服务部署环境，不写入浏览器配置或数据库。
+- 不要把 go-judge API 端口暴露到公网。MySQL、Redis 和 go-judge 均应限制在受信任的容器网络或私网中。
+- 生产 profile 会校验 `JWT_SECRET` 和 `GO_JUDGE_AUTH_TOKEN`。将后端放在 HTTPS 反向代理后，并配置可信 CORS 来源。
 
-V65 将 `judge.mode` 固定为 `go-judge`，将 `judge.contest_mode` 固定为 `ccpcoj`，删除旧判题设置，并条件删除三张表中的历史外部 ID 字段。历史提交保留，旧判题机名称统一为 `LEGACY`。
+## 沙箱与资源限制
 
-升级前使用 `mysqldump --single-transaction` 备份。升级后检查：
+go-judge 在隔离环境内编译并运行用户程序。生产节点应启用 Linux cgroup、进程数、CPU、内存、运行时长和输出大小限制，并定期检查内核与容器运行时更新。
 
-```sql
-SELECT version, success FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1;
-SELECT setting_key, setting_value FROM system_settings
-WHERE setting_key IN ('judge.mode', 'judge.contest_mode');
-```
+执行命令、编译参数、环境变量、源文件名和资源限制由后端生成。用户提交内容只作为源码或标准输入；当评测服务不可用时任务留在队列中，不会回退到后端主机执行。
 
-## go-judge 部署
+部署文件位于 [`docker/go-judge/`](../docker/go-judge/)。数据库升级由 Flyway 在后端启动时执行。
 
-```bash
-cd docker/go-judge
-umask 077
-cp .env.example .env
-openssl rand -hex 32
-# 将生成值写入 GO_JUDGE_AUTH_TOKEN，并在后端使用相同值。
-docker compose up -d --build
-```
+## 比赛评测后端清理
 
-后端环境：
+比赛过去可以指定外部评测服务。V99 会把该服务上仍处于评测中的提交重置为等待状态，再移除比赛和提交上的判题路由字段，并删除相关后台设置。已完成的提交记录和比赛数据保留。
 
-```bash
-GO_JUDGE_BASE_URL=http://127.0.0.1:15050
-GO_JUDGE_AUTH_TOKEN=<64-character-random-hex>
-```
+## 测试点输入大小
 
-生产环境必须使用独立 Linux 主机或 VM。go-judge 只绑定回环或私网地址，防火墙仅允许应用后端访问；评测主机不得保存数据库、JWT、对象存储或备份凭据。上游 `/version` 端点不校验 Token，因此不能用它验证鉴权状态。Docker 的 `privileged` 权限只授予专用评测容器，不能与业务服务共享宿主机信任边界。
+单个测试点输入默认允许 **50 MiB（52428800 字节，按 UTF-8 编码计算）**，与测试点 ZIP 导入的单文件上限一致。`GO_JUDGE_MAX_INPUT_BYTES` 可在 1024～52428800 字节范围内配置；程序输出默认上限仍为 2 MiB。
 
-默认 2 GiB 容器只运行一个沙箱。提高 `GO_JUDGE_PARALLELISM` 前必须按“并发数 x 单题最大内存 + 编译器与沙箱开销”同步扩容容器和宿主机。服务以 `-silent` 运行，避免启动日志记录认证参数；同时必须限制 Docker socket 和 Docker 管理员权限，因为具有容器检查权限的账号本身等同于评测主机 root 权限。
-
-## 安全边界
-
-- 仅允许 C、C++17、C++20、C++23、Java 17、Python 3；语言名在提交入口和执行器内双重校验。
-- 命令、参数、环境变量、文件名和缓存 ID 均由服务端生成，源码和输入不会进入 shell 参数。
-- CPU、墙钟、内存、栈、进程、输入、输出、源码和 HTTP 响应体均有限制。
-- 每个测试点单独请求；go-judge 的多命令并发组不会被用于批量测试点，避免资源放大。
-- `/run` 不自动重试，防止同一任务被重复执行；编译缓存无论成功或异常都会删除。
-- CCPCOJ Session 存于 Redis，领取、源码、隐藏测试数据和结果回调均校验当前 worker 所有权。
-- MyBatis 查询使用绑定参数；动态排序只允许后端固定列白名单。
-
-## 运维影响
-
-- go-judge 不可用时，普通提交会记录系统错误，不会回退到宿主机执行。
-- CCPCOJ 不可用时，比赛提交保持在可重新领取的队列状态，不会被 go-judge 抢占。
-- 题目时间限制为 100-60000ms，内存限制为 16-1024MB；部署资源必须覆盖配置的并发数与单题上限。
-- Token 轮换需要同时重启 go-judge 和后端。不要把 Token 写入源码、日志、工单或浏览器配置。
-- 修改 CCPCOJ 评测机账号或密码会立即使旧 worker Cookie 失效，评测机必须重新登录。
+升级时如果现有后端环境文件显式设置了 `GO_JUDGE_MAX_INPUT_BYTES=2097152`，需要改为 `GO_JUDGE_MAX_INPUT_BYTES=52428800` 并重启后端，否则旧配置会覆盖新版本默认值。使用原生部署包时检查 `/etc/qoj/backend.env`。超过上限的判题错误会报告测试点编号、实际字节数和配置上限。

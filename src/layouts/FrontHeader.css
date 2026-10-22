@@ -8,6 +8,11 @@
   backdrop-filter: blur(18px);
 }
 
+/* button 元素默认是箭头光标，导航区可点击项统一显示手型。 */
+.front-header button:not(:disabled) {
+  cursor: pointer;
+}
+
 .front-header-inner {
   display: flex;
   align-items: center;
@@ -31,12 +36,10 @@
   place-items: center;
   width: 40px;
   height: 40px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, .18);
-  border-radius: 13px;
-  background: linear-gradient(145deg, #3288ff, #075acb);
-  box-shadow: 0 6px 15px rgba(0, 93, 204, .22);
-  color: #fff;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--qoj-color-primary, #0066ff);
   font-size: 15px;
   letter-spacing: -.05em;
 }

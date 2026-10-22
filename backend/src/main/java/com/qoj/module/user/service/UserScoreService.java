@@ -50,7 +50,7 @@ public class UserScoreService {
         score.acCount = solved;
         score.totalScore = solved * 100;
         score.rating = 0;
-        score.streak = computeTrainingStreak(userId);
+        score.streak = trainingStreak(userId);
         if (insert) {
             userScoreMapper.insert(score);
         } else {
@@ -61,7 +61,7 @@ public class UserScoreService {
     /**
      * 计算TrainingStreak。从持久化层读取数据。
      */
-    private int computeTrainingStreak(Long userId) {
+    public int trainingStreak(Long userId) {
         List<LocalDate> dates = submissionMapper.selectFirstAcceptedProblemDatesByUserId(userId);
         if (dates == null || dates.isEmpty()) {
             return 0;

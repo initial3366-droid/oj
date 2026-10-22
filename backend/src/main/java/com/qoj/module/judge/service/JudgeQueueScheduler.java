@@ -13,6 +13,8 @@ import com.qoj.module.judge.JudgeResourceLimits;
 import com.qoj.module.judge.JudgeResult;
 import com.qoj.module.judge.JudgeTask;
 import com.qoj.module.judge.gojudge.GoJudgeService;
+import com.qoj.module.judge.gojudge.JudgeExecutionBudget;
+import com.qoj.module.problem.dto.CommunicationConfig;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.problem.mapper.ProblemMapper;
@@ -33,6 +35,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CancellationException;
+import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.task.TaskRejectedException;
@@ -44,9 +49,8 @@ import org.springframework.stereotype.Service;
 /**
  * Claims queue entries for the embedded go-judge execution path.
  *
- * <p>CCPCOJ-owned scopes are excluded before claiming, so the pull-based contest
- * worker and go-judge can never race for the same submission. Database status
- * transitions remain the single source of truth for both paths.
+ * <p>Database status transitions remain the single source of truth for claiming
+ * and recovering go-judge tasks.
  */
 @Service
 public class JudgeQueueScheduler {
@@ -65,6 +69,10 @@ public class JudgeQueueScheduler {
     private final StringRedisTemplate redisTemplate;
     private final String workerId;
     private long lastPollAt;
+    private long lastHeartbeatAt;
+    private final Map<Long, Submission> activeClaims = new ConcurrentHashMap<>();
+    @Value("${qoj.go-judge.max-submission-time-ms:120000}")
+    private long submissionBudgetMs = 120000;
 
     public JudgeQueueScheduler(
         SubmissionMapper submissionMapper,
@@ -99,11 +107,20 @@ public class JudgeQueueScheduler {
     @Scheduled(fixedDelay = 200)
     public void pollAndDispatch() {
         try {
+            if (System.currentTimeMillis() - lastHeartbeatAt >= 5000) {
+                for (Submission active : activeClaims.values()) {
+                    submissionMapper.renewGoJudgeClaim(active.id, active.judgeWorkerId, LocalDateTime.now());
+                }
+                lastHeartbeatAt = System.currentTimeMillis();
+            }
             JudgeSettingsVO settings = settingService.getJudgeRuntimeSettings();
             if (!settings.enabled || !shouldPoll(settings.pollIntervalMs)) {
                 return;
             }
             LocalDateTime now = LocalDateTime.now();
+            int exhausted = submissionMapper.failExhaustedGoJudgeClaims(
+                now.minusMinutes(staleTaskMinutes(settings)), now);
+            if (exhausted > 0) messagePublisher.submissionQueueUpdated();
             int recovered = submissionMapper.requeueStaleGoJudgeClaims(
                 now.minusMinutes(staleTaskMinutes(settings)), now);
             if (recovered > 0) {
@@ -111,11 +128,13 @@ public class JudgeQueueScheduler {
                 messagePublisher.submissionQueueUpdated();
             }
             int slots = settings.maxConcurrent - Math.toIntExact(submissionMapper.countRunning());
+            int localLimit = settings.threadPoolSize > 0 ? settings.threadPoolSize : settings.maxConcurrent;
+            slots = Math.min(slots, localLimit - activeClaims.size());
             if (slots <= 0) {
                 return;
             }
             int limit = Math.min(slots, settings.queueBatchSize);
-            List<Submission> submissions = submissionMapper.selectWaitingForEmbeddedJudge(limit);
+            List<Submission> submissions = submissionMapper.selectWaiting(limit);
             for (Submission submission : submissions) {
                 claimAndDispatch(submission);
             }
@@ -128,6 +147,7 @@ public class JudgeQueueScheduler {
      * 封装claimAndDispatch相关逻辑。从持久化层读取数据；结果依赖当前时间。
      */
     private void claimAndDispatch(Submission submission) {
+        String attemptId = UUID.randomUUID().toString();
         String originalStatus = submission.status;
         LocalDateTime now = LocalDateTime.now();
         int updated = submissionMapper.atomicClaim(
@@ -135,7 +155,7 @@ public class JudgeQueueScheduler {
             originalStatus,
             SubmissionStatus.JUDGING.name(),
             "GO_JUDGE",
-            workerId,
+            attemptId,
             now
         );
         if (updated == 0) {
@@ -143,14 +163,16 @@ public class JudgeQueueScheduler {
         }
         submission.status = SubmissionStatus.JUDGING.name();
         submission.judgeServer = "GO_JUDGE";
-        submission.judgeWorkerId = workerId;
+        submission.judgeWorkerId = attemptId;
         submission.judgeStartTime = now;
         try {
+            activeClaims.put(submission.id, submission);
             judgeTaskExecutor.submit(() -> execute(submission));
             messagePublisher.submissionChanged(submission.id, submission.status, null, null);
         } catch (TaskRejectedException ex) {
+            activeClaims.remove(submission.id, submission);
             int restored = submissionMapper.restoreRejectedEmbeddedClaim(
-                submission.id, workerId, originalStatus, LocalDateTime.now());
+                submission.id, attemptId, originalStatus, LocalDateTime.now());
             if (restored > 0) {
                 messagePublisher.submissionChanged(submission.id, originalStatus, null, null);
                 messagePublisher.submissionQueueUpdated();
@@ -163,23 +185,25 @@ public class JudgeQueueScheduler {
      * 封装execute相关逻辑。从持久化层读取数据；可能调用外部判题或网关服务；结果依赖当前时间。
      */
     private void execute(Submission submission) {
-        try {
-            // Routing is an immutable submission snapshot. Runtime settings must
-            // never move an already claimed task to another judge service.
-            if (!"GO_JUDGE".equals(submission.judgeBackend)) {
-                failDirectly(submission, "提交的判题路由无效");
-                return;
-            }
-            JudgeTask task = buildTask(submission);
+        JudgeTask task = null;
+        try (var budget = new JudgeExecutionBudget(Math.max(1000, Math.min(600000, submissionBudgetMs)),
+            () -> submissionMapper.renewGoJudgeClaim(submission.id, submission.judgeWorkerId, LocalDateTime.now()) == 1)) {
+            task = buildTask(submission);
             JudgeResult result = task == null
                 ? JudgeResult.systemError("题目未配置可用的隐藏测试点")
                 : goJudgeService.judge(task);
             complete(submission, result);
+        } catch (JudgeExecutionBudget.Exceeded ex) {
+            if (task != null) complete(submission, JudgeExecutionBudget.exceeded(task, List.of()));
+            else failDirectly(submission, "Submission execution budget exceeded");
+        } catch (CancellationException ex) {
+            log.info("go-judge claim lost for submission {}", submission.id);
         } catch (Exception ex) {
             log.error("go-judge execution failed for submission {}", submission.id, ex);
             failDirectly(submission, "go-judge 判题异常");
         } finally {
-            submissionMapper.releaseWorker(submission.id, workerId, LocalDateTime.now());
+            activeClaims.remove(submission.id, submission);
+            submissionMapper.releaseWorker(submission.id, submission.judgeWorkerId, LocalDateTime.now());
         }
     }
 
@@ -189,7 +213,7 @@ public class JudgeQueueScheduler {
     private void complete(Submission submission, JudgeResult result) {
         JudgeResultCallbackRequest request = new JudgeResultCallbackRequest();
         request.submissionId = submission.id;
-        request.workerId = workerId;
+        request.workerId = submission.judgeWorkerId;
         request.status = result.status().name();
         request.timeUsed = result.maxTimeMs();
         request.memoryUsed = result.maxMemoryKb();
@@ -208,7 +232,7 @@ public class JudgeQueueScheduler {
             ? Utf8TextLimiter.fitMysqlText(judgeMessage == null ? "go-judge 系统错误" : judgeMessage)
             : null;
         int updated = submissionMapper.updateGoJudgeCompletionMetadata(
-            completed.id, workerId, judgeMessage, errorMessage, LocalDateTime.now());
+            completed.id, submission.judgeWorkerId, judgeMessage, errorMessage, LocalDateTime.now());
         if (updated == 0) {
             log.info("ignoring stale go-judge result for submission {}", submission.id);
             return;
@@ -323,8 +347,9 @@ public class JudgeQueueScheduler {
                 positive(problem.timeLimit, 1000),
                 positive(problem.memoryLimit, 256),
                 problem.checkerSource,
+                CommunicationConfig.decode(problem.communicationConfig),
                 cases.stream().map(item -> new JudgeTask.TestCase(
-                    item.caseNo, item.inputData, item.outputData)).toList()
+                    item.caseNo, item.inputData, item.outputData, item.publicInput)).toList()
             );
         }
 
@@ -346,8 +371,9 @@ public class JudgeQueueScheduler {
             positive(problem.timeLimit, 1000),
             positive(problem.memoryLimit, 256),
             problem.checkerSource,
+            CommunicationConfig.decode(problem.communicationConfig),
             cases.stream().map(item -> new JudgeTask.TestCase(
-                item.caseNo, item.inputData, item.outputData)).toList()
+                item.caseNo, item.inputData, item.outputData, item.publicInput)).toList()
         );
     }
 
@@ -356,6 +382,7 @@ public class JudgeQueueScheduler {
         int timeLimit,
         int memoryLimit,
         String checkerSource,
+        CommunicationConfig communication,
         List<JudgeTask.TestCase> cases
     ) {
         if (cases.isEmpty()) {
@@ -373,7 +400,8 @@ public class JudgeQueueScheduler {
             limits.timeLimitMs(),
             limits.memoryLimitMb(),
             checkerSource,
-            cases
+            cases,
+            communication
         );
     }
 
@@ -396,7 +424,7 @@ public class JudgeQueueScheduler {
         LocalDateTime now = LocalDateTime.now();
         String limitedMessage = Utf8TextLimiter.fitMysqlText(message);
         int updated = submissionMapper.markGoJudgeFailure(
-            submission.id, workerId, now, limitedMessage, limitedMessage, now);
+            submission.id, submission.judgeWorkerId, now, limitedMessage, limitedMessage, now);
         if (updated == 0) {
             log.info("ignoring failure from stale go-judge worker for submission {}", submission.id);
             return;
@@ -420,9 +448,7 @@ public class JudgeQueueScheduler {
     }
 
     private int staleTaskMinutes(JudgeSettingsVO settings) {
-        // Keep the existing admin setting backward-compatible; it now applies
-        // to both CCPCOJ and embedded go-judge claims.
-        return Math.max(2, settings.ccpcojStaleTaskMinutes);
+        return Math.max(2, settings.staleTaskMinutes);
     }
 
     private String generateWorkerId() {

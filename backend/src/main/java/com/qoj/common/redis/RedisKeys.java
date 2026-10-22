@@ -97,7 +97,7 @@ public final class RedisKeys {
      * 封装排行榜班级相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
     public static String leaderboardClass() {
-        return "oj:leaderboard:class:student:ac";
+        return "oj:leaderboard:class:student:ac:v2";
     }
 
     /**
@@ -188,23 +188,4 @@ public final class RedisKeys {
         return "oj:email:verify:" + email;
     }
 
-    /** CCPCOJ worker session containing its identity and credential-state fingerprint. */
-    public static String ccpcojJudgeSession(String sessionId) {
-        return "oj:ccpcoj:judge:session:" + sessionId;
-    }
-
-    /**
-     * Fixed-window login counter keyed by a SHA-256 fingerprint of IP and username.
-     */
-    public static String ccpcojJudgeLoginRate(String fingerprint) {
-        return "oj:ccpcoj:judge:login-rate:" + fingerprint;
-    }
-
-    /**
-     * CCPCOJ login counter keyed only by the remote address fingerprint.
-     * This prevents attackers from bypassing BCrypt rate limits by rotating usernames.
-     */
-    public static String ccpcojJudgeLoginIpRate(String fingerprint) {
-        return "oj:ccpcoj:judge:login-ip-rate:" + fingerprint;
-    }
 }

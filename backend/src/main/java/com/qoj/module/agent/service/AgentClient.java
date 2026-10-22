@@ -1,10 +1,12 @@
 package com.qoj.module.agent.service;
 
+import com.qoj.common.exception.BizException;
 import com.qoj.module.setting.vo.AgentSettingsVO;
-
 import java.util.List;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import org.springframework.ai.content.Media;
+import org.springframework.ai.tool.ToolCallback;
 
 /**
  * AgentClient接口。定义模块之间可依赖的稳定能力边界。
@@ -16,7 +18,7 @@ public interface AgentClient {
     String chat(AgentSettingsVO agent, String systemPrompt, String userPrompt);
 
     default String chat(AgentSettingsVO agent, String systemPrompt, String userPrompt, List<Media> media) {
-        if (!media.isEmpty()) throw new com.qoj.common.exception.BizException(400, "当前 AI 客户端不支持图片");
+        if (!media.isEmpty()) throw new BizException(400, "当前 AI 客户端不支持图片");
         return chat(agent, systemPrompt, userPrompt);
     }
 
@@ -24,7 +26,7 @@ public interface AgentClient {
     void streamChat(AgentSettingsVO agent, List<Message> messages, Consumer<String> onDelta);
 
     default void streamChat(AgentSettingsVO agent, List<Message> messages, Consumer<String> onDelta,
-                            java.util.function.BooleanSupplier cancelled) {
+                            BooleanSupplier cancelled) {
         streamChat(agent, messages, content -> {
             if (cancelled.getAsBoolean()) throw new AgentRunStoppedException();
             onDelta.accept(content);
@@ -33,14 +35,14 @@ public interface AgentClient {
 
     /** Native tool-call loop. Implementations must return each observation to the model. */
     default void runAgent(AgentSettingsVO agent, List<Message> messages,
-                         List<org.springframework.ai.tool.ToolCallback> tools, Consumer<String> onDelta,
+                         List<ToolCallback> tools, Consumer<String> onDelta,
                          Consumer<ToolEvent> onTool) {
-        throw new com.qoj.common.exception.BizException(503, "当前 AI 客户端不支持工具调用");
+        throw new BizException(503, "当前 AI 客户端不支持工具调用");
     }
 
     default boolean runAgentSegment(AgentSettingsVO agent, List<Message> messages,
-                                    List<org.springframework.ai.tool.ToolCallback> tools, AgentRunState state,
-                                    Runnable checkpoint, java.util.function.BooleanSupplier cancelled, Consumer<String> onDelta, Consumer<ToolEvent> onTool) {
+                                    List<ToolCallback> tools, AgentRunState state,
+                                    Runnable checkpoint, BooleanSupplier cancelled, Consumer<String> onDelta, Consumer<ToolEvent> onTool) {
         runAgent(agent, messages, tools, onDelta, onTool);
         state.complete = true;
         checkpoint.run();

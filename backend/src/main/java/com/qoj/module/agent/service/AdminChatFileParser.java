@@ -11,10 +11,12 @@ import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -33,8 +35,8 @@ public class AdminChatFileParser {
     private static final Set<String> TEXT_TYPES = Set.of("txt", "md", "markdown", "html", "htm", "json", "csv", "xml", "yaml", "yml", "log", "tex", "in", "out", "ans", "cpp", "cc", "c", "h", "hpp", "java", "py", "go", "js", "ts", "sql");
 
     public Bundle parse(String name, byte[] bytes) {
-        if (bytes.length == 0 || bytes.length > MAX_BYTES) throw new BizException(400, "文件不能为空，且不能超过 50 MB");
         String extension = extension(name);
+        if (bytes.length > MAX_BYTES || (bytes.length == 0 && !TEXT_TYPES.contains(extension))) throw new BizException(400, "非文本文件不能为空，且文件不能超过 50 MB");
         if (!TEXT_TYPES.contains(extension) && !Set.of("zip", "pdf", "docx", "xlsx", "xls").contains(extension)) {
             throw new BizException(400, "支持 ZIP、PDF、DOCX、Excel、JSON、Markdown 和文本文件；RAR/7z 请先转成 ZIP");
         }
@@ -54,7 +56,7 @@ public class AdminChatFileParser {
         if (depth > 3) throw new BizException(400, "ZIP 嵌套超过 3 层，请先整理压缩包");
         if (bytes.length < 4 || bytes[0] != 'P' || bytes[1] != 'K') throw new BizException(400, "ZIP 文件已损坏或格式不正确");
         try (var zip = new ZipInputStream(new ByteArrayInputStream(bytes))) {
-            java.util.zip.ZipEntry item;
+            ZipEntry item;
             while ((item = zip.getNextEntry()) != null) {
                 String path = prefix + safePath(item.getName());
                 if (item.isDirectory()) continue;
@@ -140,7 +142,7 @@ public class AdminChatFileParser {
         long total = 0;
         int count = 0;
         try (var zip = new ZipInputStream(new ByteArrayInputStream(bytes))) {
-            java.util.zip.ZipEntry item;
+            ZipEntry item;
             byte[] buffer = new byte[8192];
             while ((item = zip.getNextEntry()) != null) {
                 safePath(item.getName());
@@ -177,7 +179,7 @@ public class AdminChatFileParser {
     private String safePath(String raw) {
         String path = raw.replace('\\', '/');
         if (path.startsWith("/") || path.matches("^[A-Za-z]:.*") || path.indexOf('\0') >= 0
-            || java.util.Arrays.asList(path.split("/")).contains("..")) throw new BizException(400, "压缩包包含非法路径");
+            || Arrays.asList(path.split("/")).contains("..")) throw new BizException(400, "压缩包包含非法路径");
         while (path.startsWith("./")) path = path.substring(2);
         if (path.length() > 500 || path.isBlank()) throw new BizException(400, "文件路径过长或无效");
         return path;

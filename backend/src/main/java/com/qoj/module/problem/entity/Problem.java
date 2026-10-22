@@ -3,6 +3,7 @@ package com.qoj.module.problem.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -18,6 +19,8 @@ public class Problem {
     public String inputFormat;
     public String outputFormat;
     public String checkerSource;
+    @JsonIgnore
+    public String communicationConfig;
     public String sampleCases;
     public Integer timeLimit;
     public Integer memoryLimit;

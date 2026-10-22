@@ -2,14 +2,14 @@ package com.qoj.module.problem.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.common.exception.BizException;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import com.qoj.common.redis.RedisKeys;
+import com.qoj.module.problem.dto.CommunicationConfig;
 import com.qoj.module.problem.dto.ProblemDraftBasicRequest;
 import com.qoj.module.problem.dto.ProblemDraftTestCasesRequest;
 import com.qoj.module.problem.dto.ProblemDraftVO;
 import com.qoj.module.problem.dto.ProblemSampleCaseRequest;
 import com.qoj.module.problem.dto.ProblemTestCaseRequest;
+import com.qoj.module.problem.dto.TestCaseImportProgress;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.problem.mapper.ProblemMapper;
@@ -19,14 +19,12 @@ import com.qoj.security.CurrentUser;
 import com.qoj.security.policy.ResourceAccessService;
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.TreeSet;
+import java.util.Objects;
 import java.util.UUID;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import java.util.function.Consumer;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,12 +36,6 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class ProblemDraftService {
     private static final Duration DRAFT_TTL = Duration.ofHours(6);
-    private static final int MAX_ZIP_TEST_CASES = 200;
-    private static final int MAX_ZIP_ENTRIES = 500;
-    private static final long MAX_TEST_CASE_UPLOAD_BYTES = 50L * 1024 * 1024;
-    private static final long MAX_ZIP_ENTRY_BYTES = MAX_TEST_CASE_UPLOAD_BYTES;
-    private static final long MAX_ZIP_TOTAL_BYTES = MAX_TEST_CASE_UPLOAD_BYTES;
-
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
     private final ProblemMapper problemMapper;
@@ -83,6 +75,7 @@ public class ProblemDraftService {
     }
 
     public ProblemDraftVO saveBasic(String draftId, ProblemDraftBasicRequest request) {
+        CommunicationConfig.encode(request.communication());
         DraftData draft = loadOrNew(draftId);
         List<ProblemTestCaseRequest> testCases = normalizeCases(draft.testCases());
         validateHiddenTestCases(request, testCases);
@@ -113,8 +106,14 @@ public class ProblemDraftService {
     }
 
     public ProblemDraftVO importZip(String draftId, MultipartFile file, boolean overwrite) {
+        return importZip(draftId, file, overwrite, progress -> {});
+    }
+
+    public ProblemDraftVO importZip(String draftId, MultipartFile file, boolean overwrite,
+                                   Consumer<TestCaseImportProgress> progress) {
         DraftData draft = requireDraft(draftId);
-        List<ProblemTestCaseRequest> parsed = parseZip(file, allowsBlankExpectedOutput(draft.basic()));
+        List<ProblemTestCaseRequest> parsed = parseZip(file, allowsBlankExpectedOutput(draft.basic()), progress);
+        int importedCount = parsed.size();
         if (!overwrite) {
             parsed = appendCases(draft.testCases(), parsed);
         }
@@ -123,10 +122,20 @@ public class ProblemDraftService {
         /**
          * 更新目标数据。执行持久化写入。
          */
+        progress.accept(new TestCaseImportProgress("savingDraft", importedCount, importedCount, 0));
         save(draft, draftId);
+        progress.accept(new TestCaseImportProgress("saved", importedCount, importedCount, 0));
         /**
          * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
+        return toVO(draftId, draft);
+    }
+
+    public ProblemDraftVO importCommunicationPackage(String draftId, CommunicationPackageReader.Package imported) {
+        requireDraft(draftId);
+        validateHiddenTestCases(imported.basic(), imported.testCases());
+        DraftData draft = new DraftData(imported.basic(), imported.testCases());
+        save(draft, draftId);
         return toVO(draftId, draft);
     }
 
@@ -168,6 +177,7 @@ public class ProblemDraftService {
         problem.inputFormat = basic.inputFormat();
         problem.outputFormat = basic.outputFormat();
         problem.checkerSource = problemService.normalizeCheckerSource(basic.checkerSource());
+        problem.communicationConfig = CommunicationConfig.encode(basic.communication());
         problem.sampleCases = "[]";
         problem.timeLimit = basic.timeLimit();
         problem.memoryLimit = basic.memoryLimit();
@@ -185,7 +195,7 @@ public class ProblemDraftService {
         if (problem.isPublic) {
             problem.publishedByAccountType = owner.accountType();
             problem.publishedById = owner.id();
-            problem.publishedAt = java.time.LocalDateTime.now();
+            problem.publishedAt = LocalDateTime.now();
         }
         problem.acRate = BigDecimal.ZERO;
         problemMapper.insert(problem);
@@ -279,14 +289,14 @@ public class ProblemDraftService {
         List<ProblemTestCaseRequest> result = new ArrayList<>();
         int index = 1;
         for (ProblemTestCaseRequest item : testCases == null ? List.<ProblemTestCaseRequest>of() : testCases) {
-            result.add(new ProblemTestCaseRequest(item.caseNo() == null ? index : item.caseNo(), item.input(), item.output()));
+            result.add(new ProblemTestCaseRequest(item.caseNo() == null ? index : item.caseNo(), item.input(), item.output(), item.publicInput()));
             index++;
         }
         return result;
     }
 
     private boolean allowsBlankExpectedOutput(ProblemDraftBasicRequest basic) {
-        return basic != null && !ProblemService.requiresExpectedOutput(false, basic.checkerSource());
+        return basic != null && (CommunicationConfig.encode(basic.communication()) != null || !ProblemService.requiresExpectedOutput(false, basic.checkerSource()));
     }
 
     private void validateHiddenTestCases(ProblemDraftBasicRequest basic, List<ProblemTestCaseRequest> testCases) {
@@ -296,8 +306,8 @@ public class ProblemDraftService {
         int index = 1;
         for (ProblemTestCaseRequest testCase : testCases == null ? List.<ProblemTestCaseRequest>of() : testCases) {
             int caseNo = testCase.caseNo() == null ? index : testCase.caseNo();
-            if (testCase.output() == null || testCase.output().isBlank()) {
-                throw new BizException(400, "测试点 " + caseNo + " 的输出数据不能为空");
+            if (testCase.output() == null) {
+                throw new BizException(400, "测试点 " + caseNo + " 的输出字段不能缺失");
             }
             index++;
         }
@@ -310,142 +320,23 @@ public class ProblemDraftService {
         List<ProblemTestCaseRequest> result = new ArrayList<>(current == null ? List.of() : current);
         int nextCaseNo = result.stream()
             .map(ProblemTestCaseRequest::caseNo)
-            .filter(java.util.Objects::nonNull)
+            .filter(Objects::nonNull)
             .max(Integer::compareTo)
             .orElse(0) + 1;
         for (ProblemTestCaseRequest item : imported) {
-            result.add(new ProblemTestCaseRequest(nextCaseNo++, item.input(), item.output()));
+            result.add(new ProblemTestCaseRequest(nextCaseNo++, item.input(), item.output(), item.publicInput()));
         }
         return result;
     }
 
-    private List<ProblemTestCaseRequest> parseZip(MultipartFile file, boolean allowMissingOutput) {
-        if (file == null || file.isEmpty()) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "测试点 ZIP 不能为空");
-        }
-        if (file.getSize() > MAX_TEST_CASE_UPLOAD_BYTES) {
-            throw new BizException(400, "测试点 ZIP 文件不能超过 50MB");
-        }
+    private List<ProblemTestCaseRequest> parseZip(MultipartFile file, boolean allowMissingOutput, Consumer<TestCaseImportProgress> progress) {
+        TestCaseZipReader.validateUpload(file);
         String filename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
         if (!filename.endsWith(".zip")) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
             throw new BizException(400, "测试点必须为 ZIP");
         }
-        Map<Integer, String> inputs = new HashMap<>();
-        Map<Integer, String> outputs = new HashMap<>();
-        int[] counters = new int[] {0, 0};
-        try (ZipInputStream zip = new ZipInputStream(file.getInputStream())) {
-            ZipEntry entry;
-            while ((entry = zip.getNextEntry()) != null) {
-                if (entry.isDirectory()) {
-                    continue;
-                }
-                if (++counters[0] > MAX_ZIP_ENTRIES) {
-                    /**
-                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                     */
-                    throw new BizException(400, "测试点 ZIP 文件数量过多");
-                }
-                String name = safeZipEntryName(entry.getName());
-                Integer caseNo = caseNumber(name);
-                if (caseNo == null) {
-                    continue;
-                }
-                if (inputs.size() + outputs.size() >= MAX_ZIP_TEST_CASES * 2) {
-                    /**
-                     * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                     */
-                    throw new BizException(400, "测试点数量过多");
-                }
-                String content = readZipEntryText(zip, counters);
-                if (name.endsWith(".in")) {
-                    inputs.put(caseNo, content);
-                } else {
-                    outputs.put(caseNo, content);
-                }
-            }
-        } catch (BizException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "测试点 ZIP 解析失败");
-        }
-        TreeSet<Integer> caseNos = new TreeSet<>(inputs.keySet());
-        if (caseNos.isEmpty()) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, allowMissingOutput ? "ZIP 中未找到测试点" : "ZIP 中未找到 1.in/1.out 格式测试点");
-        }
-        List<ProblemTestCaseRequest> result = new ArrayList<>();
-        for (Integer caseNo : caseNos) {
-            if (!outputs.containsKey(caseNo) && !allowMissingOutput) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(400, caseNo + ".out 缺失");
-            }
-            result.add(new ProblemTestCaseRequest(caseNo, inputs.get(caseNo), outputs.getOrDefault(caseNo, "")));
-        }
-        return result;
-    }
-
-    private String safeZipEntryName(String rawName) {
-        String name = rawName == null ? "" : rawName.replace('\\', '/');
-        if (name.contains("../") || name.startsWith("/")) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "测试点 ZIP 包含非法路径");
-        }
-        int slash = name.lastIndexOf('/');
-        if (slash >= 0) {
-            name = name.substring(slash + 1);
-        }
-        return name;
-    }
-
-    private String readZipEntryText(ZipInputStream zip, int[] counters) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        int entryBytes = 0;
-        int read;
-        while ((read = zip.read(buffer)) != -1) {
-            entryBytes += read;
-            counters[1] += read;
-            if (entryBytes > MAX_ZIP_ENTRY_BYTES) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(400, "单个测试点文件过大");
-            }
-            if (counters[1] > MAX_ZIP_TOTAL_BYTES) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(400, "测试点 ZIP 解压后过大");
-            }
-            out.write(buffer, 0, read);
-        }
-        return out.toString(java.nio.charset.StandardCharsets.UTF_8);
-    }
-
-    private Integer caseNumber(String filename) {
-        if (!filename.endsWith(".in") && !filename.endsWith(".out")) {
-            return null;
-        }
-        String number = filename.substring(0, filename.lastIndexOf('.'));
-        if (!number.matches("\\d+")) {
-            return null;
-        }
-        return Integer.valueOf(number);
+        return TestCaseZipReader.read(file, allowMissingOutput, progress,
+            allowMissingOutput ? "ZIP 中未找到测试点" : "ZIP 中未找到 1.in/1.out 格式测试点");
     }
 
     private List<ProblemTestCase> sampleEntities(List<ProblemSampleCaseRequest> samples) {
@@ -472,6 +363,7 @@ public class ProblemDraftService {
             testCase.caseNo = item.caseNo();
             testCase.inputData = item.input();
             testCase.outputData = item.output();
+            testCase.publicInput = item.publicInput();
             result.add(testCase);
         }
         return result;

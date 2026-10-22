@@ -3,6 +3,8 @@ package com.qoj.module.ws;
 import java.util.Map;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * WebSocket 消息推送服务
@@ -24,18 +26,20 @@ public class JudgeMessagePublisher {
      * 频道: /topic/submissions/{submissionId}
      */
     public void submissionChanged(Long submissionId, String status, Integer time, Integer memory) {
-        messagingTemplate.convertAndSend(
-            "/topic/submissions/" + submissionId,
-            Map.of(
-                "submissionId", submissionId,
-                "status", status,
-                "time", time == null ? 0 : time,
-                "memory", memory == null ? 0 : memory,
-                "timestamp", System.currentTimeMillis()
-            ),
-            Map.of()
-        );
-        submissionQueueUpdated();
+        afterCommitOrNow(() -> {
+            messagingTemplate.convertAndSend(
+                "/topic/submissions/" + submissionId,
+                Map.of(
+                    "submissionId", submissionId,
+                    "status", status,
+                    "time", time == null ? 0 : time,
+                    "memory", memory == null ? 0 : memory,
+                    "timestamp", System.currentTimeMillis()
+                ),
+                Map.of()
+            );
+            sendSubmissionQueueUpdate();
+        });
     }
 
     /**
@@ -43,6 +47,25 @@ public class JudgeMessagePublisher {
      * 频道: /topic/submission-queue
      */
     public void submissionQueueUpdated() {
+        afterCommitOrNow(this::sendSubmissionQueueUpdate);
+    }
+
+    private void afterCommitOrNow(Runnable publish) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()
+            && TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    publish.run();
+                }
+            });
+        } else {
+            // The scheduler calls here after the result transaction and autocommit metadata writes return.
+            publish.run();
+        }
+    }
+
+    private void sendSubmissionQueueUpdate() {
         messagingTemplate.convertAndSend(
             "/topic/submission-queue",
             Map.of(

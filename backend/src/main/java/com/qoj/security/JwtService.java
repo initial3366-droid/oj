@@ -8,13 +8,18 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
+import java.util.Base64;
+import java.security.MessageDigest;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import javax.crypto.SecretKey;
 import org.springframework.stereotype.Service;
 
 /**
  * JWT 令牌签发与验证服务。
  *
- * 双令牌体系：Access Token（短期，默认15分钟）+ Refresh Token（长期，默认7天）。
+ * 双令牌体系：Access Token（默认15分钟）+ Refresh Token（固定会话截止时间）。
+ * 所有入口统一 8 小时，记住登录仅影响浏览器存储方式。
  * Token Family 机制：每次刷新产生新 refresh token 但共享 familyId，用于检测重放攻击。
  * 签名算法：HMAC-SHA，Keys.hmacShaKeyFor 根据密钥长度自动选择 HS256/HS384/HS512。
  */
@@ -34,31 +39,23 @@ public class JwtService {
 
     /** 签发全新令牌对（access + refresh），生成新的 familyId */
     public TokenPair issueTokens(AuthUser user) {
-        String familyId = UUID.randomUUID().toString();
-        /**
-         * 构造 令牌Pair 实例并保存其必要依赖或初始状态。保持该职责的输入、输出和异常边界集中，便于调用方复用。
-         */
+        return issueTokens(user, false);
+    }
+
+    /** 登录截止时间固定，刷新不会重新计算 8 小时。 */
+    public TokenPair issueTokens(AuthUser user, boolean rememberMe) {
+        long sessionExpiresAt = Instant.now().getEpochSecond() + 8 * 3600;
+        return issueSessionTokens(user, UUID.randomUUID().toString(), sessionExpiresAt);
+    }
+
+    public TokenPair issueSessionTokens(AuthUser user, String familyId, long sessionExpiresAt) {
+        long remaining = sessionExpiresAt - Instant.now().getEpochSecond();
+        if (remaining <= 0) throw new IllegalArgumentException("登录已过期");
         return new TokenPair(
-            issueToken(user, properties.getJwt().getAccessTokenTtlSeconds(), "access", null),
-            issueToken(user, properties.getJwt().getRefreshTokenTtlSeconds(), "refresh", familyId),
+            issueToken(user, Math.min(properties.getJwt().getAccessTokenTtlSeconds(), remaining), "access", null, sessionExpiresAt),
+            issueToken(user, remaining, "refresh", familyId, sessionExpiresAt),
             familyId
         );
-    }
-
-    /** 仅签发 Access Token，用于 refresh 续期流程 */
-    public String issueAccessToken(AuthUser user) {
-        /**
-         * 判断sue令牌是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
-         */
-        return issueToken(user, properties.getJwt().getAccessTokenTtlSeconds(), "access", null);
-    }
-
-    /** 在已有 family 中签发新 Refresh Token，实现令牌轮换 */
-    public String issueRefreshToken(AuthUser user, String familyId) {
-        /**
-         * 判断sue令牌是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
-         */
-        return issueToken(user, properties.getJwt().getRefreshTokenTtlSeconds(), "refresh", familyId);
     }
 
     /**
@@ -71,7 +68,7 @@ public class JwtService {
      * JWT 载荷字段：jti（唯一标识）、sub（用户ID）、username、displayName、
      * role、typ（令牌类型）、accountType（ADMIN/USER）、userId
      */
-    private String issueToken(AuthUser user, long ttlSeconds, String tokenType, String familyId) {
+    private String issueToken(AuthUser user, long ttlSeconds, String tokenType, String familyId, Long sessionExpiresAt) {
         Instant now = Instant.now();
         var builder = Jwts.builder()
             .id(UUID.randomUUID().toString())
@@ -82,6 +79,7 @@ public class JwtService {
             .claim("typ", tokenType)
             .claim("accountType", user.accountType())
             .claim("userId", user.id())
+            .claim("credential", credentialFingerprint(user))
             .issuedAt(Date.from(now))
             .expiration(Date.from(now.plusSeconds(ttlSeconds)))
             .signWith(key);
@@ -89,6 +87,12 @@ public class JwtService {
         // familyId 仅对 refresh 令牌生效，access 令牌不携带此字段
         if (familyId != null && "refresh".equals(tokenType)) {
             builder.claim("familyId", familyId);
+        }
+        if (sessionExpiresAt != null) {
+            builder.claim("sessionExpiresAt", sessionExpiresAt);
+            // 使用固定的秒级时间，避免每次轮换引入毫秒误差或越过会话截止时间。
+            long expiresAt = Math.min(now.getEpochSecond() + ttlSeconds, sessionExpiresAt);
+            builder.expiration(Date.from(Instant.ofEpochSecond(expiresAt)));
         }
 
         return builder.compact();
@@ -101,6 +105,23 @@ public class JwtService {
             .build()
             .parseSignedClaims(token)
             .getPayload();
+    }
+
+    public boolean credentialsCurrent(Claims claims, AuthUser user) {
+        String fingerprint = claims.get("credential", String.class);
+        return fingerprint != null && MessageDigest.isEqual(fingerprint.getBytes(StandardCharsets.UTF_8),
+            credentialFingerprint(user).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String credentialFingerprint(AuthUser user) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(key.getEncoded(), "HmacSHA256"));
+            String state = user.accountType() + ":" + user.id() + ":" + user.getPassword();
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(mac.doFinal(state.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.GeneralSecurityException ex) {
+            throw new IllegalStateException("Cannot fingerprint credentials", ex);
+        }
     }
 
     /**

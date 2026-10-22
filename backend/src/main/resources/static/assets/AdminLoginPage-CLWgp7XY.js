@@ -1,0 +1,1 @@
+import{M as o}from"./ManagementLogin-Bu3yh0Gy.js";import{d as t,h as e,i as r}from"./main-Clz7B1b7.js";import"./index-C-3Xn0N2.js";import"./index-CGqVRaTM.js";import"./index-C5ZSRKy7.js";import"./app-BR9PwwyB.js";import"./index-D9Oz3FkO.js";const g=t({__name:"AdminLoginPage",setup(m){return(n,a)=>(e(),r(o))}});export{g as default};

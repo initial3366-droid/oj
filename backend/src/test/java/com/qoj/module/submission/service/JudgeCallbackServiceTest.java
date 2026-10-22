@@ -15,9 +15,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -97,13 +97,13 @@ class JudgeCallbackServiceTest {
         request.status = "WA";
         service.handleJudgeResult(request);
 
-        verify(submissionMapper, never()).updateById(org.mockito.ArgumentMatchers.isA(Submission.class));
+        verify(submissionMapper, never()).updateById(ArgumentMatchers.isA(Submission.class));
     }
 
     @Test
     void staleGoJudgeWorkerResultCannotOverwriteReclaimedSubmission() {
         Submission submission = submission("RUNNING");
-        submission.judgeBackend = "GO_JUDGE";
+        submission.judgeServer = "GO_JUDGE";
         submission.judgeWorkerId = "new-worker";
         when(submissionMapper.selectByIdForUpdate(1L)).thenReturn(submission);
 
@@ -114,7 +114,7 @@ class JudgeCallbackServiceTest {
 
         service.handleJudgeResult(request);
 
-        verify(submissionMapper, never()).updateById(org.mockito.ArgumentMatchers.isA(Submission.class));
+        verify(submissionMapper, never()).updateById(ArgumentMatchers.isA(Submission.class));
         verify(caseResultMapper, never()).delete(any());
     }
 
@@ -181,7 +181,7 @@ class JudgeCallbackServiceTest {
          * 校验前置条件。执行持久化写入。
          */
         verify(caseResultMapper, never()).insert(
-            org.mockito.ArgumentMatchers.isA(SubmissionCaseResult.class));
+            ArgumentMatchers.isA(SubmissionCaseResult.class));
     }
 
     /**

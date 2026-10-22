@@ -79,6 +79,35 @@ public class ProblemFolderService {
             .collect(Collectors.toList());
     }
 
+    public record FolderOption(Long id, String name, long problemCount) {}
+
+    public List<FolderOption> options() {
+        AuthUser user = CurrentUser.required();
+        List<ProblemFolder> folders = folderMapper.selectList(
+            new QueryWrapper<ProblemFolder>().orderByAsc("display_order").orderByAsc("id")
+        ).stream().filter(folder -> resourceAccessService.canAccessFolder(user, folder)).toList();
+        if (folders.isEmpty()) return List.of();
+        List<ProblemFolderItem> items = folderItemMapper.selectList(
+            new QueryWrapper<ProblemFolderItem>().select("folder_id", "problem_id")
+                .in("folder_id", folders.stream().map(folder -> folder.id).toList())
+        );
+        List<Long> ids = items.stream().map(item -> item.problemId).distinct().toList();
+        Set<Long> visibleIds = ids.isEmpty() ? Set.of() : problemMapper.selectList(
+            new QueryWrapper<Problem>().select("id", "owner_account_type", "owner_id", "access_scope", "major_id", "is_deleted")
+                .in("id", ids).eq("is_deleted", false)
+        ).stream().filter(problem -> resourceAccessService.canUseProblem(user, problem))
+            .map(problem -> problem.id).collect(Collectors.toSet());
+        Map<Long, Set<Long>> counts = new HashMap<>();
+        for (ProblemFolderItem item : items) {
+            if (visibleIds.contains(item.problemId)) {
+                counts.computeIfAbsent(item.folderId, ignored -> new LinkedHashSet<>()).add(item.problemId);
+            }
+        }
+        return folders.stream().map(folder -> new FolderOption(
+            folder.id, folder.name, counts.getOrDefault(folder.id, Set.of()).size()
+        )).toList();
+    }
+
     /**
      * 封装详情相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
@@ -443,15 +472,18 @@ public class ProblemFolderService {
             .filter(problem -> problem != null && !Boolean.TRUE.equals(problem.isDeleted))
             .toList();
         problems = problems.stream().filter(problem -> resourceAccessService.canUseProblem(user, problem)).toList();
+        Map<Long, Long> testCaseCounts = loadTestCaseCounts(
+            problems.stream().map(problem -> problem.id).toList()
+        );
         List<ProblemFolderVO.FolderProblemVO> problemVOs = problems.stream()
-            .map(p -> {
-                long testCaseCount = testCaseMapper.selectCount(
-                    new QueryWrapper<ProblemTestCase>().eq("problem_id", p.id)
-                );
-                return new ProblemFolderVO.FolderProblemVO(
-                    p.id, p.title, p.difficulty, p.timeLimit, p.memoryLimit, testCaseCount
-                );
-            })
+            .map(p -> new ProblemFolderVO.FolderProblemVO(
+                p.id,
+                p.title,
+                p.difficulty,
+                p.timeLimit,
+                p.memoryLimit,
+                testCaseCounts.getOrDefault(p.id, 0L)
+            ))
             .collect(Collectors.toList());
         /**
          * 封装题目文件夹VO相关逻辑。执行持久化写入。
@@ -464,6 +496,28 @@ public class ProblemFolderService {
             folder.ownerAccountType, folder.ownerId, folder.accessScope, folder.majorId,
             major == null ? null : major.name, owner, owner || resourceAccessService.isSuperAdmin(user)
         );
+    }
+
+    private Map<Long, Long> loadTestCaseCounts(List<Long> problemIds) {
+        if (problemIds.isEmpty()) {
+            return Map.of();
+        }
+
+        List<Map<String, Object>> rows = testCaseMapper.selectMaps(
+            new QueryWrapper<ProblemTestCase>()
+                .select("problem_id", "COUNT(*) AS test_case_count")
+                .in("problem_id", problemIds)
+                .groupBy("problem_id")
+        );
+        Map<Long, Long> counts = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object problemId = row.get("problem_id");
+            Object count = row.get("test_case_count");
+            if (problemId instanceof Number id && count instanceof Number total) {
+                counts.put(id.longValue(), total.longValue());
+            }
+        }
+        return counts;
     }
 
     private boolean isProblemOwner(Problem problem, AuthUser user) {
@@ -500,7 +554,4 @@ public class ProblemFolderService {
         );
     }
 
-    private String accountType(AuthUser user) {
-        return user.accountType();
-    }
 }

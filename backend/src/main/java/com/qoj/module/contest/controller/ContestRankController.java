@@ -7,6 +7,7 @@ import com.qoj.module.contest.entity.Contest;
 import com.qoj.module.contest.entity.ContestScoreboardSnapshot;
 import com.qoj.module.contest.mapper.ContestMapper;
 import com.qoj.module.contest.service.ContestAcmRankService;
+import com.qoj.module.contest.service.ContestService;
 import com.qoj.module.contest.service.ContestOiRankService;
 import com.qoj.module.contest.service.ContestScoreboardSnapshotService;
 import com.qoj.module.contest.vo.ContestAcmRankVO;
@@ -25,6 +26,7 @@ public class ContestRankController {
     private final ContestOiRankService oiRankService;
     private final ContestScoreboardSnapshotService snapshotService;
     private final ContestMapper contestMapper;
+    private final ContestService contestService;
 
     /**
      * 构造 比赛排名Controller 实例并保存其必要依赖或初始状态。从持久化层读取数据。
@@ -33,12 +35,14 @@ public class ContestRankController {
         ContestAcmRankService acmRankService,
         ContestOiRankService oiRankService,
         ContestScoreboardSnapshotService snapshotService,
-        ContestMapper contestMapper
+        ContestMapper contestMapper,
+        ContestService contestService
     ) {
         this.acmRankService = acmRankService;
         this.oiRankService = oiRankService;
         this.snapshotService = snapshotService;
         this.contestMapper = contestMapper;
+        this.contestService = contestService;
     }
 
     /**
@@ -50,6 +54,7 @@ public class ContestRankController {
         @PathVariable Long contestId,
         @RequestParam(required = false) String mode
     ) {
+        contestService.requireUnfrozenScoreboardAccess(contestId, false);
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null) {
             /**
@@ -84,6 +89,8 @@ public class ContestRankController {
         @PathVariable Long contestId,
         @PathVariable String type
     ) {
+        contestService.requireInternalScoreboardAccess(contestId);
+        if ("final".equalsIgnoreCase(type == null ? "" : type.trim())) contestService.requireUnfrozenScoreboardAccess(contestId, true);
         ContestScoreboardSnapshot snapshot = snapshotService.getSnapshot(contestId, type);
         return ApiResponse.ok(snapshot);
     }

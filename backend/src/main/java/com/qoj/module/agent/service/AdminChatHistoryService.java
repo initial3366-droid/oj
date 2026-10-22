@@ -10,11 +10,14 @@ import com.qoj.module.agent.dto.AdminChatSessionRequest;
 import com.qoj.module.agent.dto.AdminChatSessionRequest.Message;
 import com.qoj.module.agent.entity.AdminChatSession;
 import com.qoj.module.agent.mapper.AdminChatSessionMapper;
+import com.qoj.module.agent.vo.AdminChatFileVO;
 import com.qoj.module.agent.vo.AdminChatSessionVO;
 import com.qoj.security.CurrentUser;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -103,7 +106,7 @@ public class AdminChatHistoryService {
             }
             // Chat snapshots only update messages. Titles have their own endpoints and revision.
             // Task tokens are server-owned: browser snapshots cannot invent or replace them.
-            var existingMessages = readMessages(session).stream().collect(java.util.stream.Collectors.toMap(Message::id, message -> message));
+            var existingMessages = readMessages(session).stream().collect(Collectors.toMap(Message::id, message -> message));
             canonicalMessages.replaceAll(message -> {
                 var old = existingMessages.get(message.id());
                 if (old != null && "assistant".equals(old.role()) && "stopped".equals(old.generationStatus())) return old;
@@ -120,6 +123,13 @@ public class AdminChatHistoryService {
     }
 
     @Transactional
+    public void deleteForLocalMigration(String id) {
+        long owner = ownerId();
+        mapper.delete(new QueryWrapper<AdminChatSession>().eq("id", id).eq("owner_admin_id", owner));
+        // Attachments are still referenced by the browser's local copy.
+    }
+
+    @Transactional
     public void delete(String id) {
         long owner = ownerId();
         AdminChatSession session = mapper.lockOwned(id, owner);
@@ -128,6 +138,13 @@ public class AdminChatHistoryService {
         mapper.delete(new QueryWrapper<AdminChatSession>().eq("id", id).eq("owner_admin_id", owner));
         for (var message : messages) imageService.deleteUnused(owner, message.images());
         for (var message : messages) fileService.deleteUnused(owner, message.files());
+        var exportLink = Pattern.compile("/qoj-file/([A-Za-z0-9-]{1,80})");
+        for (var message : messages) {
+            var links = exportLink.matcher(message.content());
+            var exports = new ArrayList<AdminChatFileVO>();
+            while (links.find()) exports.add(new AdminChatFileVO(links.group(1), null, null, null));
+            fileService.deleteUnused(owner, exports);
+        }
     }
 
     @Transactional

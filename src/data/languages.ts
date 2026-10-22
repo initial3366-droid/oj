@@ -45,6 +45,8 @@ export function isCppLanguage(language: string | null | undefined): boolean {
 export function languageLabel(language: string | null | undefined): string {
   const normalized = (language ?? "").trim().toLowerCase();
   switch (normalized) {
+    case "c":
+      return "C";
     case "cpp":
     case "cpp17":
     case "c++":

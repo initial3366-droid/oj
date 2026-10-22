@@ -19,6 +19,7 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -32,6 +33,76 @@ public class StudentImportFileService {
     private static final int MAX_COLUMNS = 50;
     private static final Pattern TAG_PATTERN = Pattern.compile("<[^>]*>");
     private static final Pattern SCRIPT_PATTERN = Pattern.compile("(?i)<\\s*script[^>]*>.*?<\\s*/\\s*script\\s*>");
+
+    public List<Map<String, String>> parseAdminStudentXlsx(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BizException(400, "请选择导入文件");
+        }
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new BizException(400, "文件不能超过 5MB");
+        }
+        String filename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
+        if (!filename.toLowerCase(Locale.ROOT).endsWith(".xlsx")) {
+            throw new BizException(400, "仅支持 .xlsx 文件");
+        }
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook(file.getInputStream())) {
+            if (workbook.getNumberOfSheets() == 0) {
+                throw new BizException(400, "导入文件没有工作表");
+            }
+            Sheet sheet = workbook.getSheetAt(0);
+            int headerRowIndex = sheet.getFirstRowNum();
+            Row header = sheet.getRow(headerRowIndex);
+            if (header == null) {
+                throw new BizException(400, "表头不能为空");
+            }
+
+            DataFormatter formatter = new DataFormatter(Locale.ROOT);
+            Map<String, Integer> columnIndexes = new LinkedHashMap<>();
+            int lastHeaderCell = Math.min(header.getLastCellNum(), MAX_COLUMNS);
+            for (int cellIndex = 0; cellIndex < lastHeaderCell; cellIndex++) {
+                Cell cell = header.getCell(cellIndex, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+                if (cell == null) continue;
+                String field = formatter.formatCellValue(cell).trim();
+                if (!field.isEmpty()) columnIndexes.putIfAbsent(field, cellIndex);
+            }
+            for (String requiredField : List.of("用户名", "学号", "班级")) {
+                if (!columnIndexes.containsKey(requiredField)) {
+                    throw new BizException(400, "导入文件缺少字段：" + requiredField);
+                }
+            }
+
+            int lastRowIndex = sheet.getLastRowNum();
+            if (lastRowIndex - headerRowIndex > MAX_ROWS) {
+                throw new BizException(400, "导入行数不能超过 5000");
+            }
+            List<Map<String, String>> rows = new ArrayList<>();
+            for (int rowIndex = headerRowIndex + 1; rowIndex <= lastRowIndex; rowIndex++) {
+                Row row = sheet.getRow(rowIndex);
+                if (row == null) continue;
+                Map<String, String> values = new LinkedHashMap<>();
+                boolean empty = true;
+                for (String field : List.of("用户名", "学号", "班级")) {
+                    Cell cell = row.getCell(columnIndexes.get(field), Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+                    String value = cell == null ? "" : formatter.formatCellValue(cell).trim();
+                    values.put(field, value);
+                    empty &= value.isEmpty();
+                }
+                if (!empty) {
+                    values.put("__rowNumber", String.valueOf(rowIndex + 1));
+                    rows.add(values);
+                }
+            }
+            if (rows.isEmpty()) {
+                throw new BizException(400, "导入文件没有学生数据");
+            }
+            return rows;
+        } catch (BizException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new BizException(400, "文件解析失败，请检查 .xlsx 格式");
+        }
+    }
 
     /**
      * 解析并规范化输入数据。不满足业务约束时直接抛出明确异常。

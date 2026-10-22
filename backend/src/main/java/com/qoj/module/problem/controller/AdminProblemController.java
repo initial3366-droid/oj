@@ -1,9 +1,12 @@
 package com.qoj.module.problem.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.common.ApiResponse;
 import com.qoj.common.ErrorCode;
 import com.qoj.common.PageResult;
 import com.qoj.common.exception.BizException;
+import com.qoj.module.problem.dto.CommunicationConfig;
+import com.qoj.module.problem.dto.ProblemBatchRequest;
 import com.qoj.module.problem.dto.ProblemDraftTestCasesRequest;
 import com.qoj.module.problem.dto.ProblemTestCaseRequest;
 import com.qoj.module.problem.dto.ProblemUpdateRequest;
@@ -16,6 +19,7 @@ import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
 import com.qoj.security.policy.Permission;
 import com.qoj.security.policy.ProblemAccessPolicy;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -38,6 +42,7 @@ import org.springframework.web.multipart.MultipartFile;
 @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
 public class AdminProblemController {
     private final ProblemService problemService;
+    private final ObjectMapper objectMapper;
     private final ProblemMapper problemMapper;
     private final ProblemAccessPolicy problemAccessPolicy;
 
@@ -47,11 +52,13 @@ public class AdminProblemController {
     public AdminProblemController(
         ProblemService problemService,
         ProblemMapper problemMapper,
-        ProblemAccessPolicy problemAccessPolicy
+        ProblemAccessPolicy problemAccessPolicy,
+        ObjectMapper objectMapper
     ) {
         this.problemService = problemService;
         this.problemMapper = problemMapper;
         this.problemAccessPolicy = problemAccessPolicy;
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping
@@ -71,6 +78,21 @@ public class AdminProblemController {
     public ApiResponse<?> detail(@PathVariable long id) {
         // Service层根据权限返回AdminProblemVO或PublicProblemVO
         return ApiResponse.ok(problemService.detail(id));
+    }
+
+    @PostMapping("/batch-publish")
+    public ApiResponse<Integer> batchPublish(@Valid @RequestBody ProblemBatchRequest request) {
+        return ApiResponse.ok(problemService.batchPublish(request.ids()));
+    }
+
+    @PostMapping("/batch-delete")
+    public ApiResponse<Integer> batchDelete(@Valid @RequestBody ProblemBatchRequest request) {
+        return ApiResponse.ok(problemService.batchDelete(request.ids()));
+    }
+
+    @PostMapping("/batch-unpublish")
+    public ApiResponse<Integer> batchUnpublish(@Valid @RequestBody ProblemBatchRequest request) {
+        return ApiResponse.ok(problemService.batchUnpublish(request.ids()));
     }
 
     @PutMapping("/{id}")
@@ -100,6 +122,11 @@ public class AdminProblemController {
     @GetMapping("/{id}/checker-source")
     public ApiResponse<String> checkerSource(@PathVariable long id) {
         return ApiResponse.ok(problemService.checkerSource(id));
+    }
+
+    @GetMapping("/{id}/communication-config")
+    public ApiResponse<CommunicationConfig> communicationConfig(@PathVariable long id) {
+        return ApiResponse.ok(problemService.communicationConfig(id));
     }
 
     @DeleteMapping("/{id}")
@@ -231,7 +258,9 @@ public class AdminProblemController {
     public ApiResponse<Void> importZip(
         @PathVariable long id,
         @RequestParam("file") MultipartFile file,
-        @RequestParam(defaultValue = "false") boolean overwrite
+        @RequestParam(defaultValue = "false") boolean overwrite,
+        @RequestParam(defaultValue = "false") boolean stream,
+        HttpServletResponse response
     ) {
         Problem problem = problemMapper.selectById(id);
         if (problem == null) {
@@ -249,6 +278,10 @@ public class AdminProblemController {
             throw new BizException(ErrorCode.FORBIDDEN, "无权修改该题目");
         }
 
+        if (stream) {
+            TestCaseImportStream.run(response, objectMapper, progress -> { problemService.importHiddenTestCases(id, file, overwrite, progress); return null; });
+            return null;
+        }
         problemService.importHiddenTestCases(id, file, overwrite);
         return ApiResponse.ok();
     }

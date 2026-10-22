@@ -2,12 +2,14 @@ package com.qoj.module.practice.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.qoj.common.PageResult;
+import com.qoj.common.enums.SubmissionStatus;
 import com.qoj.common.exception.BizException;
 import com.qoj.common.redis.RedisKeys;
 import com.qoj.module.classroom.entity.ClassMember;
 import com.qoj.module.classroom.entity.ClassRoom;
 import com.qoj.module.classroom.mapper.ClassMemberMapper;
 import com.qoj.module.classroom.mapper.ClassRoomMapper;
+import com.qoj.module.course.service.CourseService;
 import com.qoj.module.practice.dto.PracticePublicationRequest;
 import com.qoj.module.practice.entity.Practice;
 import com.qoj.module.practice.entity.PracticeProblem;
@@ -19,7 +21,6 @@ import com.qoj.module.practice.mapper.PracticeProblemMapper;
 import com.qoj.module.practice.mapper.PracticePublicationClassMapper;
 import com.qoj.module.practice.mapper.PracticePublicationMapper;
 import com.qoj.module.practice.mapper.PracticePublicationProblemMapper;
-import com.qoj.common.enums.SubmissionStatus;
 import com.qoj.module.practice.vo.PracticePublicationVO;
 import com.qoj.module.practice.vo.PracticeRankVO;
 import com.qoj.module.practice.vo.PracticeReportVO;
@@ -27,6 +28,7 @@ import com.qoj.module.practice.vo.PracticeSubmissionVO;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.service.ProblemService;
+import com.qoj.module.problem.vo.ProblemVO;
 import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.mapper.SubmissionMapper;
 import com.qoj.module.submission.service.UserProblemStatusService;
@@ -36,6 +38,7 @@ import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
 import com.qoj.security.policy.ResourceAccessService;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -45,14 +48,21 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PracticePublicationService {
+    @Autowired
+    private CourseService courseService;
+
     private final PracticePublicationMapper publicationMapper;
     private final PracticePublicationClassMapper publicationClassMapper;
     private final PracticePublicationProblemMapper publicationProblemMapper;
@@ -106,6 +116,7 @@ public class PracticePublicationService {
     @Transactional
     public PracticePublicationVO publish(long practiceId, PracticePublicationRequest request) {
         AuthUser publisher = requirePublisher();
+        validateSchedule(request);
         Practice source = requireSource(practiceId);
         if (!resourceAccessService.canAccessPractice(publisher, source)) {
             throw new BizException(403, "无权发布该题单");
@@ -123,7 +134,7 @@ public class PracticePublicationService {
             .filter(problemId -> !sourceByProblem.containsKey(problemId))
             .toList();
         requireUsableProblems(publisher, addedProblemIds);
-        List<Long> classIds = normalizeClasses(publisher, request.studentAccessMode(), request.classIds());
+        List<Long> classIds = publicationClasses(publisher, request);
         String publicationTitle = hasText(request.title()) ? request.title().trim() : source.title;
         String publicationDescription = request.description() == null ? source.description : request.description().trim();
 
@@ -154,6 +165,10 @@ public class PracticePublicationService {
 
         PracticePublication publication = new PracticePublication();
         publication.sourcePracticeId = source.id;
+        publication.courseId = request.courseId();
+        publication.displayOrder = request.displayOrder() == null ? nextCourseOrder(request.courseId()) : request.displayOrder();
+        publication.startTime = request.startTime();
+        publication.endTime = request.endTime();
         publication.publisherAccountType = publisher.accountType();
         publication.publisherId = publisher.id();
         publication.title = publicationTitle;
@@ -186,6 +201,22 @@ public class PracticePublicationService {
     @Transactional
     public PracticePublicationVO update(long publicationId, PracticePublicationRequest request) {
         PracticePublication publication = requireManaged(publicationId);
+        validateSchedule(request);
+        if (publication.courseId != null && request.courseId() == null) {
+            throw new BizException(400, "请选择所属课程");
+        }
+        Long previousCourseId = publication.courseId;
+        // Lock both courses in ID order, matching course-class updates, before locking the publication.
+        Stream.of(previousCourseId, request.courseId())
+            .filter(Objects::nonNull).distinct().sorted()
+            .forEach(courseService::requireManagedLocked);
+        if (previousCourseId != null || request.courseId() != null) {
+            publication = publicationMapper.selectOne(new QueryWrapper<PracticePublication>()
+                .eq("id", publicationId).last("FOR UPDATE"));
+            if (publication == null || !Objects.equals(previousCourseId, publication.courseId)) {
+                throw new BizException(409, "题单归属已发生变化，请刷新后重试");
+            }
+        }
         AuthUser publisher = CurrentUser.required();
         List<PracticePublicationProblem> currentItems = publicationProblems(publicationId);
         Map<Long, PracticePublicationProblem> currentByProblem = new LinkedHashMap<>();
@@ -198,9 +229,17 @@ public class PracticePublicationService {
         List<Long> addedProblemIds = requestedVisibility.keySet().stream()
             .filter(problemId -> !currentByProblem.containsKey(problemId))
             .toList();
-        Map<Long, Problem> addedProblems = requireUsableProblems(publisher, addedProblemIds);
+        requireUsableProblems(publisher, addedProblemIds);
 
-        List<Long> classIds = normalizeClasses(publisher, request.studentAccessMode(), request.classIds());
+        List<Long> classIds = publicationClasses(publisher, request);
+        boolean moved = !Objects.equals(publication.courseId, request.courseId());
+        publication.courseId = request.courseId();
+        if (request.displayOrder() != null) publication.displayOrder = request.displayOrder();
+        else if (moved) publication.displayOrder = nextCourseOrder(request.courseId());
+        if (request.startTime() != null) {
+            publication.startTime = request.startTime();
+            publication.endTime = request.endTime();
+        }
         publication.title = hasText(request.title()) ? request.title().trim() : publication.title;
         publication.description = request.description() == null ? publication.description : request.description().trim();
         publication.studentAccessMode = normalizeStudentAccessMode(request.studentAccessMode());
@@ -282,7 +321,7 @@ public class PracticePublicationService {
         Map<Long, Problem> problems = problemIds.isEmpty()
             ? Map.of()
             : problemMapper.selectBatchIds(problemIds).stream()
-                .collect(java.util.stream.Collectors.toMap(item -> item.id, item -> item));
+                .collect(Collectors.toMap(item -> item.id, item -> item));
 
         List<Submission> submissions = submissionMapper.selectList(
             new QueryWrapper<Submission>()
@@ -292,7 +331,7 @@ public class PracticePublicationService {
         Map<Long, User> users = submissions.isEmpty()
             ? Map.of()
             : userMapper.selectBatchIds(submissions.stream().map(item -> item.userId).distinct().toList()).stream()
-                .collect(java.util.stream.Collectors.toMap(item -> item.id, item -> item));
+                .collect(Collectors.toMap(item -> item.id, item -> item));
 
         Map<Long, RankAccumulator> ranks = new LinkedHashMap<>();
         for (Submission submission : submissions) {
@@ -348,6 +387,11 @@ public class PracticePublicationService {
     @Transactional
     public void delete(long publicationId) {
         PracticePublication publication = requireManaged(publicationId);
+        if (publication.courseId != null) {
+            publication.status = "ARCHIVED";
+            publicationMapper.updateById(publication);
+            return;
+        }
         // 删除发布实例时连同学生提交一起彻底清理（判题明细随 submissions 行级联删除），
         // 否则 submissions 外键（ON DELETE RESTRICT）会拒绝删除，且残留孤儿数据
         List<Submission> submissions = submissionMapper.selectList(
@@ -447,7 +491,7 @@ public class PracticePublicationService {
                 String attemptsKey = RedisKeys.practicePublicationPasswordAttempts(id, student.id());
                 Long attempts = redisTemplate.opsForValue().increment(attemptsKey);
                 if (attempts != null && attempts == 1L) {
-                    redisTemplate.expire(attemptsKey, java.time.Duration.ofMinutes(5));
+                    redisTemplate.expire(attemptsKey, Duration.ofMinutes(5));
                 }
                 if (attempts != null && attempts > 5L) {
                     throw new BizException(429, "密码尝试次数过多，请5分钟后再试");
@@ -456,7 +500,7 @@ public class PracticePublicationService {
                     throw new BizException(401, "题单密码错误");
                 }
                 redisTemplate.delete(attemptsKey);
-                redisTemplate.opsForValue().set(unlockKey, "1", java.time.Duration.ofHours(2));
+                redisTemplate.opsForValue().set(unlockKey, "1", Duration.ofHours(2));
             }
         }
         return toVO(publication, false);
@@ -488,9 +532,21 @@ public class PracticePublicationService {
         ).stream().map(item -> toVO(item, true)).toList();
     }
 
+    public List<PracticePublicationVO> coursePublications(long courseId) {
+        courseService.requireManaged(courseId);
+        return publicationMapper.selectList(new QueryWrapper<PracticePublication>()
+            .eq("course_id", courseId).orderByAsc("display_order").orderByAsc("id"))
+            .stream().map(item -> toVO(item, true)).toList();
+    }
+
     public boolean canSubmit(Long publicationId, Long userId, Long problemId) {
         PracticePublication publication = publicationMapper.selectById(publicationId);
-        if (publication == null || !studentCanAccess(userId, publication)) {
+        if (publication == null || !studentCanAccess(userId, publication)
+            || (publication.courseId != null && !courseService.studentCanAccess(publication.courseId, userId, true))) {
+            return false;
+        }
+        if (publication.courseId != null && hasText(publication.passwordHash)
+            && !Boolean.TRUE.equals(redisTemplate.hasKey(RedisKeys.practicePublicationUnlock(publicationId, userId)))) {
             return false;
         }
         return publicationProblemMapper.selectCount(
@@ -515,6 +571,7 @@ public class PracticePublicationService {
             throw new BizException(404, "发布实例不存在");
         }
         AuthUser user = requirePublisher();
+        if (publication.courseId != null) courseService.requireManaged(publication.courseId);
         if (!resourceAccessService.isSuperAdmin(user)
             && (!user.accountType().equals(publication.publisherAccountType) || !user.id().equals(publication.publisherId))) {
             throw new BizException(403, "无权管理该发布实例");
@@ -567,6 +624,30 @@ public class PracticePublicationService {
             practiceProblemMapper.insert(item);
         }
         return copy;
+    }
+
+    private List<Long> publicationClasses(AuthUser publisher, PracticePublicationRequest request) {
+        if (request.courseId() == null) {
+            return normalizeClasses(publisher, request.studentAccessMode(), request.classIds());
+        }
+        var course = courseService.requireManagedLocked(request.courseId());
+        List<Long> classIds = courseService.classIdsLocked(course.id);
+        if (classIds.isEmpty() || !"ACTIVE".equals(course.status)) {
+            throw new BizException(400, "请选择已关联班级且进行中的课程");
+        }
+        if (!"SELECTED_CLASSES".equals(request.studentAccessMode())
+            || (request.classIds() != null && !request.classIds().isEmpty()
+                && !request.classIds().stream().distinct().sorted().toList().equals(classIds))) {
+            throw new BizException(400, "课程题单自动发布给课程全部关联班级，不能指定课程外班级");
+        }
+        return normalizeClasses(publisher, "SELECTED_CLASSES", classIds);
+    }
+
+    private int nextCourseOrder(Long courseId) {
+        if (courseId == null) return 1;
+        PracticePublication last = publicationMapper.selectOne(new QueryWrapper<PracticePublication>()
+            .eq("course_id", courseId).orderByDesc("display_order").last("LIMIT 1"));
+        return last == null || last.displayOrder == null ? 1 : last.displayOrder + 1;
     }
 
     private List<Long> normalizeClasses(AuthUser publisher, String modeValue, List<Long> requested) {
@@ -629,12 +710,31 @@ public class PracticePublicationService {
         if (problems.stream().anyMatch(problem -> !resourceAccessService.canUseProblem(publisher, problem))) {
             throw new BizException(403, "包含无权使用的题目");
         }
-        return problems.stream().collect(java.util.stream.Collectors.toMap(item -> item.id, item -> item));
+        return problems.stream().collect(Collectors.toMap(item -> item.id, item -> item));
+    }
+
+    private void validateSchedule(PracticePublicationRequest request) {
+        if ((request.startTime() == null) != (request.endTime() == null)) {
+            throw new BizException(400, "请同时设置开始时间和截止时间");
+        }
+        if (request.startTime() != null && !request.endTime().isAfter(request.startTime())) {
+            throw new BizException(400, "截止时间必须晚于开始时间");
+        }
+    }
+
+    private boolean withinSchedule(PracticePublication publication) {
+        LocalDateTime now = LocalDateTime.now();
+        return (publication.startTime == null || !now.isBefore(publication.startTime))
+            && (publication.endTime == null || now.isBefore(publication.endTime));
     }
 
     private boolean studentCanAccess(Long userId, PracticePublication publication) {
-        if (publication == null || !"PUBLISHED".equals(publication.status) || userId == null) {
+        if (publication == null || !"PUBLISHED".equals(publication.status) || userId == null
+            || !withinSchedule(publication)) {
             return false;
+        }
+        if (publication.courseId != null) {
+            return courseService.studentCanAccess(publication.courseId, userId, false);
         }
         if ("ALL".equals(publication.studentAccessMode)) {
             return true;
@@ -659,7 +759,7 @@ public class PracticePublicationService {
         List<PracticePublicationProblem> items = publicationProblems(publication.id).stream()
             .filter(item -> includeHidden || "VISIBLE".equals(item.visibility))
             .toList();
-        List<com.qoj.module.problem.vo.ProblemVO> problems = items.stream()
+        List<ProblemVO> problems = items.stream()
             .map(item -> problemService.detailAsVOUnchecked(item.problemId))
             .toList();
         List<PracticePublicationVO.PublicationProblemVO> itemVOs = items.stream().map(item -> {
@@ -686,7 +786,11 @@ public class PracticePublicationService {
             publication.status,
             publication.studentAccessMode,
             classIds,
-            itemVOs
+            itemVOs,
+            publication.courseId,
+            publication.displayOrder,
+            publication.startTime,
+            publication.endTime
         );
     }
 

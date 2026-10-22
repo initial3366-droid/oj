@@ -2,15 +2,15 @@ package com.qoj.module.practice.controller;
 
 import com.qoj.common.ApiResponse;
 import com.qoj.module.practice.dto.PracticeUnlockRequest;
-import com.qoj.module.practice.service.PracticeService;
 import com.qoj.module.practice.service.PracticePublicationService;
+import com.qoj.module.practice.service.PracticeService;
 import com.qoj.module.practice.vo.PracticePublicationVO;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,8 +59,8 @@ class PracticeControllerTest {
     private PracticePublicationVO publication() {
         return new PracticePublicationVO(
             1L, 10L, "Practice", "", "ALL", null, true, 2L,
-            java.util.List.of(), null, null, "TEACHER", "PUBLISHED", "ALL",
-            java.util.List.of(), java.util.List.of()
+            List.of(), null, null, "TEACHER", "PUBLISHED", "ALL",
+            List.of(), List.of()
         );
     }
 }

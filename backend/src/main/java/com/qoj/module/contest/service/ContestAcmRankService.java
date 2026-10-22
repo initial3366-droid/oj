@@ -8,12 +8,9 @@ import com.qoj.module.contest.vo.AcmProblemStatusVO;
 import com.qoj.module.contest.vo.ContestAcmRankVO;
 import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.mapper.SubmissionMapper;
-import com.qoj.module.user.entity.User;
-import com.qoj.module.user.mapper.UserMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -29,7 +26,6 @@ public class ContestAcmRankService {
     private final ContestProblemMapper contestProblemMapper;
     private final SubmissionMapper submissionMapper;
     private final ContestMapper contestMapper;
-    private final UserMapper userMapper;
 
     /**
      * 构造 比赛Acm排名Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
@@ -40,8 +36,7 @@ public class ContestAcmRankService {
         ContestParticipantMapper participantMapper,
         ContestProblemMapper contestProblemMapper,
         SubmissionMapper submissionMapper,
-        ContestMapper contestMapper,
-        UserMapper userMapper
+        ContestMapper contestMapper
     ) {
         this.acmRankCacheMapper = acmRankCacheMapper;
         this.acmRankProblemMapper = acmRankProblemMapper;
@@ -49,7 +44,6 @@ public class ContestAcmRankService {
         this.contestProblemMapper = contestProblemMapper;
         this.submissionMapper = submissionMapper;
         this.contestMapper = contestMapper;
-        this.userMapper = userMapper;
     }
 
     /**
@@ -65,7 +59,7 @@ public class ContestAcmRankService {
         if (contest == null || !"ACM".equals(contest.type)) {
             return;
         }
-        if (!isRankedSubmission(contest, submission)) {
+        if (!ContestRankTimePolicy.isRankedSubmission(contest, submission)) {
             return;
         }
 
@@ -209,9 +203,17 @@ public class ContestAcmRankService {
      */
     private void recalculateRanks(Long contestId) {
         List<ContestAcmRankCache> ranks = acmRankCacheMapper.selectRankList(contestId);
+        Set<Long> participantIds = ranks.stream()
+            .map(rank -> rank.participantId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        Map<Long, ContestParticipant> participants = participantIds.isEmpty()
+            ? Map.of()
+            : participantMapper.selectBatchIds(participantIds).stream()
+                .collect(Collectors.toMap(participant -> participant.id, participant -> participant));
         int currentRank = 1;
         for (ContestAcmRankCache rank : ranks) {
-            ContestParticipant participant = participantMapper.selectById(rank.participantId);
+            ContestParticipant participant = participants.get(rank.participantId);
             if (participant != null && Boolean.TRUE.equals(participant.starred)) {
                 rank.rankNo = 0;
             } else {
@@ -260,14 +262,6 @@ public class ContestAcmRankService {
         }
     }
 
-    private boolean isRankedSubmission(Contest contest, Submission submission) {
-        LocalDateTime submittedAt = submission.submitTime == null ? submission.createdAt : submission.submitTime;
-        if (contest.startTime == null || contest.endTime == null || submittedAt == null) {
-            return false;
-        }
-        return !submittedAt.isBefore(contest.startTime) && !submittedAt.isAfter(contest.endTime);
-    }
-
     /**
      * 获取 ACM 榜单
      */
@@ -283,17 +277,21 @@ public class ContestAcmRankService {
         Map<Long, ContestParticipant> participants = participantMapper.selectBatchIds(participantIds)
             .stream().collect(Collectors.toMap(p -> p.id, p -> p));
 
-        // 获取所有用户信息
-        Set<Long> userIds = participants.values().stream().map(p -> p.userId).collect(Collectors.toSet());
-        Map<Long, User> users = userMapper.selectBatchIds(userIds)
-            .stream().collect(Collectors.toMap(u -> u.id, u -> u));
-
         // 获取所有比赛题目
         List<ContestProblem> problems = contestProblemMapper.selectList(
             new LambdaQueryWrapper<ContestProblem>()
                 .eq(ContestProblem::getContestId, contestId)
                 .orderByAsc(ContestProblem::getDisplayOrder)
         );
+        Map<Long, Map<Long, ContestAcmRankProblem>> problemRanksByParticipant = acmRankProblemMapper.selectList(
+                new LambdaQueryWrapper<ContestAcmRankProblem>()
+                    .eq(ContestAcmRankProblem::getContestId, contestId)
+                    .in(ContestAcmRankProblem::getParticipantId, participantIds)
+            ).stream()
+            .collect(Collectors.groupingBy(
+                ContestAcmRankProblem::getParticipantId,
+                Collectors.toMap(rank -> rank.contestProblemId, rank -> rank)
+            ));
 
         // 构建结果
         List<ContestAcmRankVO> result = new ArrayList<>();
@@ -301,17 +299,8 @@ public class ContestAcmRankService {
             ContestParticipant participant = participants.get(rank.participantId);
             if (participant == null) continue;
 
-            User user = users.get(participant.userId);
-
-            // 获取该参赛者的所有单题状态
-            List<ContestAcmRankProblem> problemRanks = acmRankProblemMapper.selectList(
-                new LambdaQueryWrapper<ContestAcmRankProblem>()
-                    .eq(ContestAcmRankProblem::getContestId, contestId)
-                    .eq(ContestAcmRankProblem::getParticipantId, rank.participantId)
-            );
-
-            Map<Long, ContestAcmRankProblem> problemRankMap = problemRanks.stream()
-                .collect(Collectors.toMap(p -> p.contestProblemId, p -> p));
+            Map<Long, ContestAcmRankProblem> problemRankMap = problemRanksByParticipant
+                .getOrDefault(rank.participantId, Map.of());
 
             List<AcmProblemStatusVO> problemStatus = problems.stream()
                 .map(p -> {

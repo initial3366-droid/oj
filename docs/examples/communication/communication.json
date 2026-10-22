@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "version": 1,
+  "maxMessageBytes": 32,
+  "allowEmptyMessage": false,
+  "channelSource": "#include <fstream>\n#include <iostream>\n#include <string>\n// argv: original input, sender message, expected answer, receiver public input.\n// Only approved message and public input cross into the receiver sandbox.\nint main(int argc, char** argv) {\n    if (argc != 5) return 3;\n    std::ifstream message(argv[2]), publicData(argv[4]);\n    long long value, addend;\n    if (!(message >> value)) return 1;\n    std::string extra;\n    if (message >> extra) return 1;\n    if (!(publicData >> addend)) return 3;\n    std::cout << \"DECODE\\n\" << value << ' ' << addend << '\\n';\n    return 0;\n}\n",
+  "checkerSource": "#include \"testlib.h\"\nint main(int argc, char** argv) {\n    registerTestlibCmd(argc, argv);\n    long long actual = ouf.readLong(), expected = ans.readLong();\n    if (!ouf.seekEof()) quitf(_wa, \"extra output\");\n    if (actual != expected) quitf(_wa, \"wrong sum\");\n    quitf(_ok, \"correct\");\n}\n"
+}

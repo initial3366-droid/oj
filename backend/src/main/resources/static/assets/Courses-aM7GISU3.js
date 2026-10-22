@@ -1,0 +1,1 @@
+import{a as s}from"./main-Clz7B1b7.js";const t=(e,o)=>s(`/api/v1/courses?page=${e}&pageSize=12&keyword=${encodeURIComponent(o)}`,!0),a=e=>s(`/api/v1/courses/${e}`,!0),c=e=>s(`/api/v1/courses/${e}/practices`,!0);export{a,c as b,t as f};

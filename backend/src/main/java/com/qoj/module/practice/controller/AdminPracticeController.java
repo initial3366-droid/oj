@@ -2,14 +2,16 @@ package com.qoj.module.practice.controller;
 
 import com.qoj.common.ApiResponse;
 import com.qoj.common.PageResult;
+import com.qoj.common.exception.BizException;
 import com.qoj.module.practice.dto.PracticeCreateRequest;
 import com.qoj.module.practice.dto.PracticePublicationRequest;
-import com.qoj.module.practice.service.PracticeService;
 import com.qoj.module.practice.service.PracticePublicationService;
+import com.qoj.module.practice.service.PracticeService;
 import com.qoj.module.practice.vo.PracticePublicationVO;
 import com.qoj.module.practice.vo.PracticeReportVO;
 import com.qoj.module.practice.vo.PracticeVO;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -55,6 +57,11 @@ public class AdminPracticeController {
         return ApiResponse.ok(practiceService.create(request));
     }
 
+    @GetMapping("/{id:[0-9]+}")
+    public ApiResponse<PracticeVO> detail(@PathVariable("id") long id) {
+        return ApiResponse.ok(practiceService.managementDetail(id));
+    }
+
     @PutMapping("/{id}")
     public ApiResponse<PracticeVO> update(@PathVariable long id, @Valid @RequestBody PracticeCreateRequest request) {
         return ApiResponse.ok(practiceService.update(id, request));
@@ -81,16 +88,22 @@ public class AdminPracticeController {
         @PathVariable long id,
         @Valid @RequestBody PracticePublicationRequest request
     ) {
+        if (request.courseId() == null) {
+            throw new BizException(400, "请选择所属课程后发布题单");
+        }
+        if (request.startTime() == null || request.endTime() == null) {
+            throw new BizException(400, "请设置题单开始时间和截止时间");
+        }
         return ApiResponse.ok(publicationService.publish(id, request));
     }
 
     @GetMapping("/publications/mine")
-    public ApiResponse<java.util.List<PracticePublicationVO>> myPublications() {
+    public ApiResponse<List<PracticePublicationVO>> myPublications() {
         return ApiResponse.ok(publicationService.myPublications());
     }
 
     @GetMapping("/publications")
-    public ApiResponse<java.util.List<PracticePublicationVO>> publications() {
+    public ApiResponse<List<PracticePublicationVO>> publications() {
         return ApiResponse.ok(publicationService.allPublications());
     }
 

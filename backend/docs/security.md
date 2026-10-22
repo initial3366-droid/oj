@@ -40,7 +40,7 @@
 
 ### 1.3 QOJ 的处理策略
 
-QOJ 已删除所有宿主机执行和旧 Docker 执行器。普通提交只能由后端调用 go-judge，比赛提交只能由 CCPCOJ worker 领取；任一服务不可用时均失败关闭，不会回退到宿主机执行。
+QOJ 已删除所有宿主机执行和旧 Docker 执行器。题库、练习和比赛提交均只能由后端调用 go-judge；评测服务不可用时失败关闭，不会回退到宿主机执行。
 
 ---
 
@@ -392,7 +392,7 @@ private boolean canRejudge(AuthUser user, Submission submission) {
 
 - [ ] `JWT_SECRET` 为至少 64 字节的随机值
 - [ ] go-judge 使用至少 32 位随机 Token，并且只绑定回环或私网
-- [ ] go-judge/CCPCOJ 位于独立评测主机，不保存业务系统凭据
+- [ ] go-judge 位于独立评测主机，不保存业务系统凭据
 - [ ] 判题容器启用 cgroup、进程、输出、CPU、墙钟和内存限制
 - [ ] 生产环境启用 HTTPS
 - [ ] CORS `allowedOrigins` 配置为可信域名，非通配符

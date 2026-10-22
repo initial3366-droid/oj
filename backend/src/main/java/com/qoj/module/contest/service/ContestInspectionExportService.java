@@ -27,6 +27,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -34,6 +35,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.springframework.stereotype.Service;
@@ -98,14 +100,22 @@ public class ContestInspectionExportService {
                 .orderByAsc("id")
         );
         Map<Long, ContestProblem> contestProblems = contestProblemMap(contest.id);
+        Set<Long> userIds = submissions.stream()
+            .map(submission -> submission.userId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<Long, User> usersById = userIds.isEmpty()
+            ? Map.of()
+            : userMapper.selectList(new QueryWrapper<User>().select("id", "username", "display_name").in("id", userIds))
+                .stream().collect(Collectors.toMap(user -> user.id, user -> user));
         auditLogger.logPermissionAllowed(CurrentUser.required(), Permission.VIEW_CODE, "Contest", contest.id, "导出比赛提交代码");
 
         try (ByteArrayOutputStream output = new ByteArrayOutputStream();
              ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
             putText(zip, "scoreboard.csv", scoreboardCsvText(scoreboard));
-            putText(zip, "submissions.csv", submissionsCsvText(submissions, contestProblems));
+            putText(zip, "submissions.csv", submissionsCsvText(submissions, contestProblems, usersById));
             for (Submission submission : submissions) {
-                putText(zip, codeEntryName(submission, contestProblems), submission.code == null ? "" : submission.code);
+                putText(zip, codeEntryName(submission, contestProblems, usersById), submission.code == null ? "" : submission.code);
             }
             zip.finish();
             return output.toByteArray();
@@ -129,11 +139,11 @@ public class ContestInspectionExportService {
         Set<Long> userIds = registrations.stream()
             .map(registration -> registration.userId)
             .filter(Objects::nonNull)
-            .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+            .collect(Collectors.toCollection(LinkedHashSet::new));
         Map<Long, User> usersById = userIds.isEmpty()
             ? Map.of()
             : userMapper.selectBatchIds(userIds).stream()
-                .collect(java.util.stream.Collectors.toMap(user -> user.id, user -> user));
+                .collect(Collectors.toMap(user -> user.id, user -> user));
         auditLogger.logPermissionAllowed(CurrentUser.required(), Permission.MANAGE_REGISTRATION, "Contest", contest.id, "导出比赛报名用户");
         /**
          * 封装withBom相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
@@ -199,7 +209,7 @@ public class ContestInspectionExportService {
         StringBuilder builder = new StringBuilder();
         builder.append(csvLine(scoreboardHeader(scoreboard.problems())));
         for (ContestScoreboardRowVO row : scoreboard.rows()) {
-            java.util.ArrayList<String> values = new java.util.ArrayList<>();
+            ArrayList<String> values = new ArrayList<>();
             values.add(String.valueOf(row.rank()));
             values.add(String.valueOf(row.userId()));
             values.add(row.displayName());
@@ -224,7 +234,7 @@ public class ContestInspectionExportService {
     }
 
     private List<String> scoreboardHeader(List<ContestScoreboardProblemVO> problems) {
-        java.util.ArrayList<String> headers = new java.util.ArrayList<>(
+        ArrayList<String> headers = new ArrayList<>(
             List.of("排名", "用户ID", "用户", "AC/解决数", "罚时", "总分", "最后AC时间", "身份类型", "身份ID")
         );
         for (ContestScoreboardProblemVO problem : problems) {
@@ -237,7 +247,7 @@ public class ContestInspectionExportService {
         return headers;
     }
 
-    private String submissionsCsvText(List<Submission> submissions, Map<Long, ContestProblem> contestProblems) {
+    private String submissionsCsvText(List<Submission> submissions, Map<Long, ContestProblem> contestProblems, Map<Long, User> usersById) {
         StringBuilder builder = new StringBuilder();
         builder.append(csvLine(List.of(
             "提交ID",
@@ -258,7 +268,7 @@ public class ContestInspectionExportService {
             "代码长度"
         )));
         for (Submission submission : submissions) {
-            User user = submission.userId == null ? null : userMapper.selectById(submission.userId);
+            User user = submission.userId == null ? null : usersById.get(submission.userId);
             ContestProblem contestProblem = contestProblemFor(submission, contestProblems);
             builder.append(csvLine(List.of(
                 text(submission.id),
@@ -338,8 +348,8 @@ public class ContestInspectionExportService {
         return submission.problemId == null ? null : contestProblems.get(submission.problemId);
     }
 
-    private String codeEntryName(Submission submission, Map<Long, ContestProblem> contestProblems) {
-        User user = submission.userId == null ? null : userMapper.selectById(submission.userId);
+    private String codeEntryName(Submission submission, Map<Long, ContestProblem> contestProblems, Map<Long, User> usersById) {
+        User user = submission.userId == null ? null : usersById.get(submission.userId);
         ContestProblem contestProblem = contestProblemFor(submission, contestProblems);
         String userPart = "user-" + text(submission.userId) + "-" + safeName(user == null ? "" : user.username);
         String label = contestProblem == null || contestProblem.label == null ? "problem-" + text(submission.problemId) : contestProblem.label;
@@ -368,7 +378,7 @@ public class ContestInspectionExportService {
     }
 
     private String csvLine(List<String> values) {
-        return values.stream().map(this::csv).collect(java.util.stream.Collectors.joining(",")) + "\n";
+        return values.stream().map(this::csv).collect(Collectors.joining(",")) + "\n";
     }
 
     private String csv(String value) {

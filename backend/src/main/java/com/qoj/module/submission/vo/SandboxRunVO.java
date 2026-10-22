@@ -11,6 +11,7 @@ public record SandboxRunVO(
     String status,
     Integer timeUsed,
     Integer memoryUsed,
-    LocalDateTime runAt
+    LocalDateTime runAt,
+    String error
 ) {
 }

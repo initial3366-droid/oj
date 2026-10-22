@@ -41,6 +41,7 @@ public class PublicScoreboardVO {
         public String displayName;
         public Long classId;
         public String className;
+        public String teamName; // 参赛者所属队伍名称，未加入队伍时为 null
         public Integer solved; // Number of problems solved (ACM)
         public Integer penalty; // Penalty time in minutes (ACM)
         public Integer totalScore; // Total score (OI)

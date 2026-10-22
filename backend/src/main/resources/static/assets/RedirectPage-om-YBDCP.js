@@ -1,0 +1,1 @@
+import{d as r,u as s,c as n,o as c,h as p,k as u}from"./main-Clz7B1b7.js";import"./app-BR9PwwyB.js";const _=r({__name:"RedirectPage",setup(h){const a=s(),o=n();return c(()=>{const e=a.params.path,t=Array.isArray(e)?e.join("/"):e||"";o.replace({path:`/${t.replace(/^\/+/,"")}`,query:a.query,hash:a.hash})}),(e,t)=>(p(),u("span"))}});export{_ as default};

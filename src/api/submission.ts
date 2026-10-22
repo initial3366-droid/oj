@@ -1,3 +1,4 @@
+import { readAuthToken } from './tokenStorage';
 /**
  * 提交相关 API
  */
@@ -60,6 +61,7 @@ export interface SandboxRunPayload {
  * 沙箱Run结果接口，明确该模块内部及 API 边界使用的数据结构。
  */
 export interface SandboxRunResult {
+  error?: string;
   status: string;
   output: string;
   timeUsed?: number;
@@ -71,7 +73,7 @@ export interface SandboxRunResult {
  * 封装current用户标识From访问令牌相关逻辑。会读写浏览器本地会话信息。
  */
 function currentUserIdFromAccessToken() {
-  const token = window.localStorage.getItem("qoj.accessToken");
+  const token = readAuthToken('frontend');
   if (!token) return null;
   try {
     const payloadPart = token.split(".")[1] ?? "";
@@ -157,8 +159,16 @@ export async function fetchMyProblemSubmissions(
 /**
  * 获取提交详情
  */
-export async function fetchSubmissionDetail(submissionId: number): Promise<SubmissionRecord> {
-  return apiGet<SubmissionRecord>(`/api/v1/submissions/${submissionId}`, true);
+const submissionDetailRequests = new Map<number, Promise<SubmissionRecord>>();
+
+export function fetchSubmissionDetail(submissionId: number): Promise<SubmissionRecord> {
+  const pending = submissionDetailRequests.get(submissionId);
+  if (pending) return pending;
+
+  const request = apiGet<SubmissionRecord>(`/api/v1/submissions/${submissionId}`, true)
+    .finally(() => submissionDetailRequests.delete(submissionId));
+  submissionDetailRequests.set(submissionId, request);
+  return request;
 }
 
 /**

@@ -17,7 +17,7 @@ QOJ 提供完整的在线评测功能，包括：
 - **比赛系统**: ACM 和 OI 两种赛制，封榜/滚榜，实时排名
 - **练习模式**: 按知识点组织题目，跟踪学习进度
 - **组织管理**: 班级和社团管理，权限分级控制
-- **判题服务**: go-judge 普通评测 + CCPCOJ 比赛评测，支持 C、C++17、C++20、C++23、Java、Python
+- **判题服务**: 所有评测由 go-judge 执行，支持 C、C++17、C++20、C++23、Java、Python
 - **实时通信**: WebSocket 推送判题结果、比赛公告、榜单更新
 
 **核心特性**:
@@ -25,7 +25,7 @@ QOJ 提供完整的在线评测功能，包括：
 - ✅ JWT Token 自动轮换机制
 - ✅ WebSocket 实时推送
 - ✅ 私有题目和比赛数据隔离
-- ✅ 用户代码仅在独立 go-judge/CCPCOJ 沙箱节点执行
+- ✅ 用户代码仅在独立 go-judge 沙箱节点执行
 
 ---
 
@@ -48,12 +48,12 @@ QOJ 提供完整的在线评测功能，包括：
 - **数据库迁移**: Flyway
 - **缓存**: Redis 7
 - **WebSocket**: Spring WebSocket + STOMP
-- **判题集成**: go-judge REST API / CCPCOJ 拉取网关
+- **判题集成**: go-judge REST API
 
 ### 数据库与中间件
 - **数据库**: MySQL 8.0
 - **缓存**: Redis 7
-- **判题服务**: go-judge（普通题/练习）/ CCPCOJ（比赛）
+- **判题服务**: go-judge（题库、练习和比赛）
 
 ---
 
@@ -327,12 +327,7 @@ python3 -c "import secrets; print(secrets.token_urlsafe(64))"
 
 ### 判题方式
 
-QOJ 固定两条互斥链路，后台不能修改执行端地址或切换到宿主机执行：
-
-1. 普通题、练习和自定义输入由 `JudgeQueueScheduler` 发送到 go-judge。
-2. 比赛提交由 CCPCOJ worker 通过 `/ojtool/judge` 领取并回传结果。
-
-go-judge 的可执行文件、参数、环境变量、源码文件名和资源限制均由后端白名单生成；用户输入只作为源码内容或标准输入。部署文件见 `docker/go-judge/`，CCPCOJ worker 见 `docker/ccpcoj/`。
+题库、练习、自定义输入和比赛提交均由 `JudgeQueueScheduler` 发送到 go-judge。评测命令、环境变量、源码文件名和资源限制由后端白名单生成；用户输入只作为源码内容或标准输入。部署文件见 `docker/go-judge/`。
 
 生产环境必须将评测器放在独立 Linux 主机或 VM，仅允许后端私网访问，禁止把 go-judge 端口暴露到公网。完整配置和威胁边界见 [go-judge 安全部署说明](../docs/go-judge-security-deployment.md)。
 

@@ -1,0 +1,198 @@
+import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || '/Users/initial/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs');
+const out = process.env.MANAGEMENT_OUTPUT || '.runtime/chat-title-profile';
+await fs.mkdir(out, { recursive: true });
+const routerSource = await fs.readFile('src/vue/router/index.ts', 'utf8');
+const adminSource = routerSource.split('component: AdminLayout,')[1].split('path: "/teacher/login"')[0];
+const teacherSource = routerSource.split('path: "/teacher",')[1].split('component: FrontLayout,')[0];
+const prefix = process.env.LAYOUT_ADMIN_PREFIX || 'auth_ac';
+const paths = source => [...source.matchAll(/\bpath:\s*"([^"]+)"/g)].map(m=>m[1]).filter(p=> !p.includes('redirect') && !p.includes('pathMatch') && !p.startsWith('/') && p!=='contests/rankings').map(p=>p.replace(/:[a-zA-Z]+/g,'1'));
+const allRoutes = [...new Set([...paths(adminSource).map(p=>`/${prefix}/${p}`), ...paths(teacherSource).map(p=>`/teacher/${p}`)])];
+const routes = process.env.MANAGEMENT_PATHS ? allRoutes.filter(path=>process.env.MANAGEMENT_PATHS.split(',').includes(path)) : allRoutes;
+const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH || '/Users/initial/Library/Caches/ms-playwright/chromium-1243/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing' });
+const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+await context.addInitScript(() => { sessionStorage.setItem('qoj.adminAccessToken','fixture');localStorage.setItem('qoj.teacherAccessToken','fixture'); });
+const page = await context.newPage(); page.setDefaultTimeout(8000);
+let routeErrors = [];
+page.on('pageerror', error => routeErrors.push(error.message));
+page.on('console', message => { if(message.text().includes('Failed to resolve component')) routeErrors.push(message.text()); });
+const user={id:1,userId:1,username:'fixture',displayName:'布局测试用户',studentNo:'2026001',email:'fixture@example.com',role:'SUPER_ADMIN',status:'ACTIVE',createdAt:'2026-10-14T10:00:00',className:'测试班级'};
+const problem={id:1,title:'布局测试题目',difficulty:1,description:'<p>计算两个整数之和。</p>',inputFormat:'两个整数',outputFormat:'输出和',samples:[],tags:[],timeLimit:1000,memoryLimit:256,isPublic:true,canEdit:true,canDelete:true,canPublish:true,status:'ACTIVE',createdAt:'2026-10-14T10:00:00'};
+if(process.env.LAYOUT_LONG_TEXT) {
+ const long = '用于验证完整显示的超长标题与用户名称ABCDEFGHIJKLMN'.repeat(4);
+ user.displayName=long;problem.title=long;
+}
+const classroom={id:1,name:'测试班级',teacherId:1,teacherName:'测试教师',memberCount:1,studentCount:1,joinEnabled:true,approvalRequired:true,members:[user]};
+const course={id:1,title:'测试课程',term:'2026 秋季',status:'ACTIVE',classIds:[1],classes:[classroom],studentCount:1,practiceCount:1};
+const practice={id:1,title:'测试题单',description:'题单说明',accessScope:'ALL',problems:[problem],canEdit:true,canPublish:true,canDelete:true};
+const publication={...practice,courseId:1,startTime:'2026-10-14T10:00:00',endTime:'2026-10-15T10:00:00',publicationProblems:[{problemId:1,title:problem.title,visibility:'VISIBLE'}]};
+const contest={id:1,title:'布局测试比赛',type:'ACM',audience:'ALL',status:'NOT_STARTED',ownerId:1,startTime:'2026-10-14T10:00:00',endTime:'2026-10-14T13:00:00',durationMinutes:180,problems:[],audiences:[],classIds:[],participantCount:1,submissionCount:1,description:'比赛说明'};
+const folder={id:1,name:'测试文件夹',description:'',problemCount:1,problems:[problem],accessScope:'ALL',canEdit:true,displayOrder:1};
+const submission={id:1,submissionId:1,queueId:1,userId:1,displayName:user.displayName,problemId:1,problemTitle:problem.title,practiceId:1,practiceTitle:practice.title,language:'cpp17',status:'AC',statusText:'AC',submitTime:'2026-10-14T10:00:00',priority:0,retryCount:0};
+const dashboard={todaySubmissionCount:1,todayAcceptedCount:1,todayActiveUserCount:1,activeContestCount:0,recentContests:[contest],totalStats:{userCount:1,userByRole:{STUDENT:1},problemCount:1,problemByDifficulty:{1:1},submissionCount:1,passRate:100,contestCount:1,contestByType:{ACM:1}},submissionTrend:[{date:'2026-10-14',total:1,accepted:1}],verdictDistribution:[{verdict:'AC',count:1}],languageUsage:[{language:'cpp17',count:1}],difficultyDistribution:[{difficulty:1,count:1}],hourlyActivity:[{hour:10,count:1}],userGrowth:[{month:'2026-10',cumulative:1}],topProblems:[{problemId:1,title:problem.title,difficulty:1,submissions:1,acRate:100}]};
+const report={practiceId:1,participantCount:1,submissionCount:1,rankings:[],submissions:[submission],students:[],practices:[]};
+const paged=list=>({list,total:list.length});
+const unknown = new Set();
+let agentSettings={enabled:true,baseUrl:'https://fixture.example/v1',apiKey:'',model:'fixture-model',reasoningEffort:'medium',timeoutMs:30000,maxCodeChars:12000};
+const agentSaves=[];
+
+await page.route('**/api/**', async request => {
+ const url=new URL(request.request().url()), path=url.pathname;
+ if(!path.startsWith('/api/'))return request.continue();
+ const suffix=path.replace(/^\/api\/(?:[^/]+\/)?v1/,'');
+ let data;
+ if(suffix==='/me' && request.request().method()==='PUT') { Object.assign(user,request.request().postDataJSON()); data=null; }
+ else if(suffix==='/me')data={...user,role:path.includes('/teacher/')?'TEACHER':'SUPER_ADMIN'};
+ else if(suffix==='/dashboard')data=dashboard;
+ else if(suffix==='/settings/frontend')data={siteTitle:'QOJ'};
+ else if(suffix==='/settings/register')data={enabled:true,emailVerification:false,emailConfig:{}};
+ else if(suffix==='/settings/system/agent') {
+   if(request.request().method()==='PUT') {const payload=request.request().postDataJSON();agentSaves.push(payload);agentSettings={...payload,apiKey:''};}
+   data=agentSettings;
+ }
+ else if(suffix.startsWith('/settings/'))data={};
+ else if(suffix==='/classes')data=[classroom];
+ else if(suffix==='/classes/1')data=classroom;
+ else if(suffix==='/students')data=[user];
+ else if(suffix==='/students/quotas')data={1:{remaining:5,total:10,used:5}};
+ else if(suffix==='/teachers')data=[{...user,majorId:1,majorName:'计算机'}];
+ else if(suffix==='/users')data=paged([user]);
+ else if(suffix==='/teams')data=[{id:1,name:'测试队伍',memberCount:1,members:[user]}];
+ else if(suffix==='/majors')data=[{id:1,name:'计算机',code:'CS',status:'ACTIVE'}];
+ else if(suffix==='/problems')data=paged(process.env.LAYOUT_PICKER ? Array.from({length:25},(_,index)=>({...problem,id:index+1,title:`${problem.title}-${index+1}`})) : [problem]);
+ else if(suffix==='/problems/1')data=problem;
+ else if(suffix==='/problems/1/test-cases')data=[];
+ else if(suffix==='/problems/1/checker-source')data='';
+ else if(suffix==='/problems/1/communication-config')data={enabled:false,maxMessageBytes:1024,allowEmptyMessage:false,channelSource:'',checkerSource:''};
+ else if(suffix==='/problem-drafts')data={draftId:'fixture',basic:{},testCases:[]};
+ else if(suffix==='/problem-folders'||suffix==='/problem-folders/options')data=[folder];
+ else if(suffix==='/problem-folders/1')data=folder;
+ else if(suffix==='/problem-folders/1/candidates')data=paged([problem]);
+ else if(suffix==='/courses')data=paged([course]);
+ else if(suffix==='/courses/1')data=course;
+ else if(suffix==='/courses/1/practices')data=[publication];
+ else if(suffix.endsWith('/report'))data=report;
+ else if(suffix==='/practices')data=paged([practice]);
+ else if(suffix==='/practices/1')data=practice;
+ else if(suffix==='/practices/publications')data=[publication];
+ else if(suffix==='/practices/publications/1')data=publication;
+ else if(suffix==='/contests')data=paged([contest]);
+ else if(suffix==='/contests/1')data=contest;
+ else if(suffix==='/contests/draft')data=null;
+ else if(suffix.startsWith('/contests/1/'))data=[];
+ else if(suffix==='/submissions'||suffix==='/submission-queue')data=paged([submission]);
+ else if(suffix==='/submission-queue/stats')data={waiting:0,judging:0,finished:1,total:1,currentConcurrent:0,maxConcurrent:2};
+ else if(suffix==='/leaderboard/global')data=[{userId:1,name:user.displayName,className:classroom.name,acCount:1,streak:1}];
+ else if(suffix==='/leaderboard/classes')data=[{classId:1,className:classroom.name,memberCount:1,acCount:1}];
+ else if(suffix==='/announcements/pinned')data=null;
+ else if(suffix==='/announcements')data=paged([]);
+ else if(suffix==='/agent/chat/sessions'||suffix==='/applications'||suffix.includes('carousel'))data=[];
+ else {unknown.add(suffix);data=[];}
+ await request.fulfill({json:{code:200,message:'ok',data}});
+});
+const base=process.env.LAYOUT_BASE_URL||'http://127.0.0.1:5173';
+
+const results=[];
+try {
+  for(const [width,height] of [[1440,900],[1366,768],[1024,600],[390,844]]) {
+    await page.setViewportSize({width,height});
+    await page.goto(base+`/${prefix}/ai/chat`);
+    await page.locator('.chat-screen').waitFor();
+    await page.waitForTimeout(300);
+    const metrics=await page.evaluate(()=>{
+      const card=document.querySelector('.chat-card').getBoundingClientRect();
+      const scrollables=[document.documentElement,document.body,...document.querySelectorAll('.layout-main,.layout-content,.app-main')];
+      return {bottom:card.bottom,viewport:innerHeight,overflow:scrollables.filter(el=>el.scrollHeight>el.clientHeight+2).map(el=>({class:el.className,h:el.clientHeight,scroll:el.scrollHeight}))};
+    });
+    assert.ok(metrics.bottom<=height,JSON.stringify(metrics));
+    assert.deepEqual(metrics.overflow,[],JSON.stringify(metrics));
+    assert.equal(await page.locator('.layout-toolbar__item:has(.notice__dropdown)').isVisible(),false);
+    assert.equal(await page.locator('.layout-toolbar__item:has([class*="i-svg:language"])').isVisible(),false);
+    assert.match(await page.title(),/AI.*后台管理.*QOJ/);
+    await page.screenshot({path:`${out}/chat-${width}-${height}.png`});
+    results.push({width,height,metrics});
+  }
+  await page.goto(base+`/${prefix}/profile`);
+  await page.getByRole('textbox',{name:'用户名',exact:true}).fill('updated_admin');
+  await page.getByRole('textbox',{name:'显示名称',exact:true}).fill('更新后的管理员');
+  await page.getByRole('textbox',{name:'邮箱',exact:true}).fill('updated@example.com');
+  await page.getByRole('button',{name:'保存修改',exact:true}).click();
+  await page.getByText('个人信息已更新',{exact:true}).waitFor();
+  await page.locator('.layout-user__name').getByText('更新后的管理员',{exact:true}).waitFor();
+  await page.reload();
+  await page.waitForFunction(()=>document.querySelector('input[aria-label="显示名称"]')?.value==='更新后的管理员');
+  assert.equal(await page.getByRole('textbox',{name:'邮箱',exact:true}).inputValue(),'updated@example.com');
+  await page.screenshot({path:`${out}/profile-saved.png`});
+  results.push({profileSavedAndReloaded:true});
+  await context.addInitScript(() => sessionStorage.setItem('qoj.accessToken',`e2e.${btoa(JSON.stringify({sub:1,exp:Math.floor(Date.now()/1000)+3600}))}.fixture`));
+  let branding={siteTitle:'测试评测网站',siteLogo:'data:image/svg+xml;base64,'+Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="green"/></svg>').toString('base64')};
+  await page.route('**/api/v1/**',async request=>{
+    const path=new URL(request.request().url()).pathname;
+    let data=[];
+    if(path.endsWith('/settings/site-title')) data='测试评测网站';
+    else if(path.endsWith('/settings/frontend')) data=branding;
+    else if(path.endsWith('/auth/me')) data={...user,role:'STUDENT'};
+    else if(path==='/api/v1/contests/1') data={...contest,title:'春季程序设计赛',status:'RUNNING',registered:true,problems:[],startTime:'2020-01-01T00:00:00',endTime:'2030-01-01T00:00:00'};
+    else if(path.endsWith('/problems/1')) data={...problem,title:'两数相加',statement:'计算和',samples:[]};
+    else if(path.endsWith('/announcements/pinned')) data={id:2,title:'置顶公告标题',content:'<strong>置顶正文内容</strong>',isPinned:true,createdAt:'2026-10-14T00:00:00'};
+    else if(path.endsWith('/announcements') || path.endsWith('/announcements/latest')) data=[{id:3,title:'普通公告标题',content:'<strong>普通正文内容</strong>',createdAt:'2026-10-14T00:00:00'}];
+    else if(path.endsWith('/settings/judge')) data={enabled:true};
+    else if(path.includes('/submissions')) data={total:0,list:[]};
+    await request.fulfill({json:{code:200,message:'ok',data}});
+  });
+  await page.goto(base+'/contests/1');
+  await page.waitForFunction(()=>document.title==='春季程序设计赛 - 测试评测网站').catch(async e=>{console.log(await page.title(),routeErrors,await page.locator('h1').allTextContents());throw e;});
+  assert.equal(await page.getByRole('button',{name:'返回比赛列表',exact:true}).count(),0);
+  await page.getByRole('tab',{name:'比赛介绍',exact:true}).click();
+  await page.waitForFunction(()=>document.title==='春季程序设计赛 - 测试评测网站');
+  const cipher=ts.transpileModule(await fs.readFile('src/utils/cipher.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
+  const {encryptId}=await import(`data:text/javascript;base64,${Buffer.from(cipher).toString('base64')}`);
+  await page.goto(base+`/practice/problem/p${encryptId(1)}`);
+  await page.waitForFunction(()=>document.title==='1 - 两数相加 - 测试评测网站');
+  await page.goto(base+`/practice/problem/cp${encryptId(1)}?contestId=1&contestProblemLabel=A`);
+  await page.waitForFunction(()=>document.title==='A - 两数相加 - 春季程序设计赛 - 测试评测网站');
+  assert.equal(await page.getByRole('button',{name:'返回比赛详情',exact:true}).count(),0);
+  await page.screenshot({path:`${out}/problem-title.png`});
+  await page.goto(base+'/contests');
+  await page.waitForFunction(()=>document.title==='比赛 - 测试评测网站');
+  results.push({dynamicContestAndProblemTitles:true,routeChangeResetsTitle:true,backLinksRemoved:true});
+  await page.setViewportSize({width:1440,height:900});
+  await page.goto(base+'/');
+  await page.locator('.brand-title').getByText('测试评测网站',{exact:true}).waitFor();
+  await page.waitForFunction(()=>document.querySelector('.front-brand img')?.naturalWidth>0);
+  assert.equal(await page.locator('.front-brand').getAttribute('href'),'/');
+  await page.screenshot({path:`${out}/home-brand-desktop.png`});
+  await page.getByRole('button',{name:'置顶公告标题',exact:true}).waitFor();
+  assert.equal(await page.getByText('置顶正文内容',{exact:true}).count(),0);
+  const center=await page.locator('[data-testid="ordinary-announcements"] .el-table__body td').evaluate(el=>getComputedStyle(el).textAlign);
+  assert.equal(center,'center');
+  await page.getByRole('button',{name:'置顶公告标题',exact:true}).click();
+  await page.getByRole('dialog').getByText('置顶正文内容',{exact:true}).waitFor();
+  await page.getByRole('dialog').getByRole('button',{name:'Close this dialog',exact:true}).click();
+  await page.getByRole('button',{name:'普通公告标题',exact:true}).click();
+  await page.getByRole('dialog').getByText('普通正文内容',{exact:true}).waitFor();
+  await page.getByRole('dialog').getByRole('button',{name:'Close this dialog',exact:true}).click();
+  results.push({announcementTitlesOnlyAndCentered:true,announcementHtmlInDialog:true});
+
+  branding={...branding,siteTitle:'这是配置的很长的网站名称用于验证手机适配'};
+  await page.setViewportSize({width:390,height:844});
+  await page.reload();
+  await page.getByRole('link',{name:branding.siteTitle+' 首页',exact:true}).waitFor();
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.screenshot({path:`${out}/home-brand-mobile.png`});
+  await page.locator('.front-brand img').dispatchEvent('error');
+  await page.locator('.front-brand .el-icon').waitFor();
+  branding={siteTitle:'',siteLogo:''};
+  await page.reload();
+  await page.getByRole('link',{name:'QOJ 首页',exact:true}).waitFor();
+  assert.equal(await page.locator('.front-brand img').count(),0);
+  results.push({configuredSiteNameAndLogo:true,mobileBrandNoOverflow:true,missingOrBrokenLogoFallback:true});
+  await fs.writeFile(`${out}/report.json`,JSON.stringify({passed:true,results},null,2));
+} finally {
+  await page.screenshot({path:`${out}/last.png`}).catch(()=>{});
+  await context.tracing.stop({path:`${out}/trace.zip`});
+  await browser.close();
+}

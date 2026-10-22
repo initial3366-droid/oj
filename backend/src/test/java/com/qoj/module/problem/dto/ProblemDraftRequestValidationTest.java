@@ -31,7 +31,7 @@ class ProblemDraftRequestValidationTest {
             "ALL",
             null,
             "PUBLISHED",
-            List.of(new ProblemSampleCaseRequest("", "", null))
+            List.of(new ProblemSampleCaseRequest(null, null, null))
         );
 
         Set<String> messages = validator.validate(request).stream()
@@ -43,8 +43,8 @@ class ProblemDraftRequestValidationTest {
         assertTrue(messages.contains("内存限制不能小于16MB"));
         assertTrue(messages.contains("题目描述不能为空"));
         assertTrue(messages.contains("难度不能小于1"));
-        assertTrue(messages.contains("样例输入数据不能为空"));
-        assertTrue(messages.contains("样例输出数据不能为空"));
+        assertTrue(messages.contains("样例输入字段不能缺失"));
+        assertTrue(messages.contains("样例输出字段不能缺失"));
     }
 
     @Test

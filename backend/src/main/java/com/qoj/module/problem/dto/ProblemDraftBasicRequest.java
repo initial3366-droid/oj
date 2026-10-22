@@ -28,6 +28,10 @@ public record ProblemDraftBasicRequest(
     String accessScope,
     Long majorId,
     String studentPublishStatus,
-    @Valid List<ProblemSampleCaseRequest> samples
+    @Valid List<ProblemSampleCaseRequest> samples,
+    CommunicationConfig communication
 ) {
+    public ProblemDraftBasicRequest(String title, Integer timeLimit, Integer memoryLimit, String statement, String inputFormat, String outputFormat, String checkerSource, List<String> tags, Integer difficulty, Long folderId, Boolean isPublic, String accessScope, Long majorId, String studentPublishStatus, List<ProblemSampleCaseRequest> samples) {
+        this(title, timeLimit, memoryLimit, statement, inputFormat, outputFormat, checkerSource, tags, difficulty, folderId, isPublic, accessScope, majorId, studentPublishStatus, samples, null);
+    }
 }

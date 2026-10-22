@@ -37,6 +37,7 @@ class ContestServiceAccountIsolationTest {
     @Mock private ContestRegistrationMapper registrationMapper;
     @Mock private UserMapper userMapper;
     @Mock private ClassMemberMapper classMemberMapper;
+    @Mock private ContestIpAccessService contestIpAccessService;
     @InjectMocks private ContestService contestService;
 
     @AfterEach

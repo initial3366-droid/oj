@@ -13,7 +13,7 @@ import com.qoj.module.classroom.mapper.ClassRoomMapper;
 import com.qoj.module.leaderboard.vo.ClassRankVO;
 import com.qoj.module.leaderboard.vo.RatingUserVO;
 import com.qoj.module.leaderboard.vo.UserRankVO;
-import com.qoj.module.submission.mapper.SubmissionMapper;
+import com.qoj.module.user.service.UserScoreService;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.entity.UserScore;
 import com.qoj.module.user.mapper.UserMapper;
@@ -21,14 +21,9 @@ import com.qoj.module.user.mapper.UserScoreMapper;
 import com.qoj.module.teacher.entity.Teacher;
 import com.qoj.module.teacher.mapper.TeacherMapper;
 import jakarta.annotation.PostConstruct;
-import java.time.LocalDate;
+import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -39,12 +34,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class LeaderboardService {
     private static final int DAILY_LIMIT = 10;
+    private static final int CLASS_CACHE_LIMIT = 5000;
+    private static final Duration CLASS_CACHE_TTL = Duration.ofMinutes(1);
 
     private final UserScoreMapper userScoreMapper;
     private final UserMapper userMapper;
     private final ClassRoomMapper classRoomMapper;
     private final ClassMemberMapper classMemberMapper;
-    private final SubmissionMapper submissionMapper;
+    private final UserScoreService userScoreService;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
     private final TeacherMapper teacherMapper;
@@ -57,7 +54,7 @@ public class LeaderboardService {
         UserMapper userMapper,
         ClassRoomMapper classRoomMapper,
         ClassMemberMapper classMemberMapper,
-        SubmissionMapper submissionMapper,
+        UserScoreService userScoreService,
         StringRedisTemplate redisTemplate,
         ObjectMapper objectMapper,
         TeacherMapper teacherMapper
@@ -66,7 +63,7 @@ public class LeaderboardService {
         this.userMapper = userMapper;
         this.classRoomMapper = classRoomMapper;
         this.classMemberMapper = classMemberMapper;
-        this.submissionMapper = submissionMapper;
+        this.userScoreService = userScoreService;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.teacherMapper = teacherMapper;
@@ -107,7 +104,7 @@ public class LeaderboardService {
                 .inSql("user_id", "SELECT id FROM users WHERE role = 'STUDENT'")
         );
         Integer acCount = score.acCount == null ? 0 : score.acCount.intValue();
-        Integer streak = trainingStreak(userId);
+        Integer streak = userScoreService.trainingStreak(userId);
         Integer weekAcCount = weekAcCount(userId);
         String className = getClassName(userId);
         return List.of(new UserRankVO(
@@ -124,17 +121,13 @@ public class LeaderboardService {
 
     public List<ClassRankVO> classRanking(int limit) {
         int normalizedLimit = Math.max(1, limit);
-        List<ClassRankVO> cached = cachedClassRanking();
+        List<ClassRankVO> cached = normalizedLimit <= CLASS_CACHE_LIMIT ? cachedClassRanking() : List.of();
         if (!cached.isEmpty()) {
-            // 如果缓存中第一条记录缺少 teacherName（旧格式缓存），则重新计算
-            if (cached.get(0).teacherName() != null) {
-                return cached.subList(0, Math.min(normalizedLimit, cached.size()));
-            }
+            return cached.subList(0, Math.min(normalizedLimit, cached.size()));
         }
-        /**
-         * 计算班级Ranking。保持该职责的输入、输出和异常边界集中，便于调用方复用。
-         */
-        return computeClassRanking(normalizedLimit);
+        List<ClassRankVO> result = computeClassRanking(Math.max(normalizedLimit, CLASS_CACHE_LIMIT));
+        if (normalizedLimit <= CLASS_CACHE_LIMIT) cacheClassRanking(result);
+        return result.subList(0, Math.min(normalizedLimit, result.size()));
     }
 
     @PostConstruct
@@ -158,9 +151,12 @@ public class LeaderboardService {
     }
 
     public void refreshClassRankingCache() {
-        List<ClassRankVO> result = computeClassRanking(5000);
+        cacheClassRanking(computeClassRanking(CLASS_CACHE_LIMIT));
+    }
+
+    private void cacheClassRanking(List<ClassRankVO> result) {
         try {
-            redisTemplate.opsForValue().set(RedisKeys.leaderboardClass(), objectMapper.writeValueAsString(result));
+            redisTemplate.opsForValue().set(RedisKeys.leaderboardClass(), objectMapper.writeValueAsString(result), CLASS_CACHE_TTL);
         } catch (Exception ignored) {
         }
     }
@@ -202,7 +198,7 @@ public class LeaderboardService {
                 String name = user == null ? String.valueOf(score.userId) : user.displayName;
                 String className = user == null ? "" : getClassName(user.id);
                 Integer acCount = score.acCount == null ? 0 : score.acCount.intValue();
-                Integer streak = trainingStreak(score.userId);
+                Integer streak = userScoreService.trainingStreak(score.userId);
                 Integer weekAcCount = weekAcCount(score.userId);
                 /**
                  * 封装Rating用户VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
@@ -235,7 +231,10 @@ public class LeaderboardService {
             if (memberIds.isEmpty()) {
                 continue;
             }
-            Integer totalAc = submissionMapper.countAcceptedProblemsByUserIds(memberIds);
+            // Use the same non-contest AC counters displayed by the individual leaderboard.
+            int totalAc = Math.toIntExact(userScoreMapper.selectList(
+                new QueryWrapper<UserScore>().in("user_id", memberIds)
+            ).stream().mapToLong(score -> score.acCount == null ? 0 : score.acCount.longValue()).sum());
 
             String teacherName = "";
             if (classRoom.teacherId != null) {
@@ -243,7 +242,7 @@ public class LeaderboardService {
                 teacherName = teacher != null && teacher.displayName != null ? teacher.displayName : "";
             }
 
-            result.add(new ClassRankVO(classRoom.id, classRoom.name, memberIds.size(), totalAc == null ? 0 : totalAc, teacherName));
+            result.add(new ClassRankVO(classRoom.id, classRoom.name, memberIds.size(), totalAc, teacherName));
         }
 
         return result.stream()
@@ -272,24 +271,6 @@ public class LeaderboardService {
 
     private Integer weekAcCount(Long userId) {
         return 0;
-    }
-
-    private int trainingStreak(Long userId) {
-        List<LocalDate> dates = submissionMapper.selectFirstAcceptedProblemDatesByUserId(userId);
-        if (dates == null || dates.isEmpty()) {
-            return 0;
-        }
-        Set<LocalDate> acceptedDates = new HashSet<>(dates);
-        LocalDate cursor = LocalDate.now();
-        if (!acceptedDates.contains(cursor)) {
-            cursor = cursor.minusDays(1);
-        }
-        int streak = 0;
-        while (acceptedDates.contains(cursor)) {
-            streak++;
-            cursor = cursor.minusDays(1);
-        }
-        return streak;
     }
 
     private boolean isStudentUser(Long userId) {

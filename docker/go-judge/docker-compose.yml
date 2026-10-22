@@ -1,6 +1,11 @@
 # QOJ 内嵌 go-judge 沙箱。服务仅监听本机，并要求后端携带共享鉴权令牌。
 services:
   go-judge:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     build:
       context: .
       args:

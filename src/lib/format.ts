@@ -1,19 +1,27 @@
-/**
- * format工具模块。提供无页面依赖的通用处理能力。
- */
-export function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+/** Display calendar dates consistently, preserving the browser's local timezone. */
+export function formatDisplayDate(value?: string | number | Date | null): string {
+  if (value == null || value === '') return '-';
+  const date = value instanceof Date ? value : new Date(
+    typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value,
+  );
+  if (!Number.isFinite(date.getTime())) return '-';
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${String(date.getFullYear()).padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
+
+/** Display timestamps as local date and time with second precision. */
+export function formatDisplayDateTime(value?: string | number | Date | null): string {
+  if (value == null || value === '') return '-';
+  const date = value instanceof Date ? value : new Date(
+    typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value,
+  );
+  if (!Number.isFinite(date.getTime())) return '-';
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${String(date.getFullYear()).padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+export const formatDateTime = formatDisplayDate;
+export const formatLocalDateTime = formatDisplayDate;
 
 /**
  * 封装difficultyColor相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。

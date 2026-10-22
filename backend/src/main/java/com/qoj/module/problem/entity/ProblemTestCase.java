@@ -16,6 +16,7 @@ public class ProblemTestCase {
     public Integer caseNo;
     public String inputData;
     public String outputData;
+    public String publicInput;
     public String explanation;
     public Boolean sample;
     public LocalDateTime createdAt;

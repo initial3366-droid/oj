@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ES2020",
     "useDefineForClassFields": true,
-    "lib": ["DOM", "DOM.Iterable", "ES2020"],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2020"
+    ],
     "allowJs": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -15,8 +19,46 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "jsx": "react-jsx"
+    "jsx": "preserve",
+    "paths": {
+      "@/*": [
+        "vendor/vue3-element-admin/src/*"
+      ],
+      "@/stores": [
+        "src/vue/template-adapter/stores.ts"
+      ],
+      "@/stores/user": [
+        "src/vue/template-adapter/stores.ts"
+      ],
+      "@/stores/permission": [
+        "src/vue/template-adapter/stores.ts"
+      ],
+      "@/stores/tenant": [
+        "src/vue/template-adapter/tenant.ts"
+      ],
+      "@/router": [
+        "src/vue/template-adapter/router.ts"
+      ],
+      "@/utils/sse": [
+        "src/vue/template-adapter/sse.ts"
+      ],
+      "@/api/system/notice": [
+        "src/vue/template-adapter/notice.ts"
+      ],
+      "@/api/auth": [
+        "src/vue/template-adapter/auth.ts"
+      ]
+    }
   },
-  "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": [
+    "src",
+    "vendor/vue3-element-admin/types/env.d.ts",
+    "vendor/vue3-element-admin/types/modules.d.ts",
+    "vendor/vue3-element-admin/types/router.d.ts"
+  ],
+  "references": [
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ]
 }

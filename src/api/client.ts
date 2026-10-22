@@ -33,7 +33,7 @@ interface ApiRequestOptions {
 }
 
 /**
- * 封装timeoutSignal相关逻辑。会更新 React 状态并触发重新渲染。
+ * 封装timeoutSignal相关逻辑。
  */
 function timeoutSignal(timeoutMs = API_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -71,9 +71,9 @@ function getToken(): string | null {
 /**
  * 封装set令牌相关逻辑。保持输入与返回值转换集中，避免调用处重复实现同一规则。
  */
-export function setToken(token: string, refreshToken?: string) {
+export function setToken(token: string, refreshToken?: string, rememberMe?: boolean) {
   if (refreshToken) {
-    saveFrontendTokens({ accessToken: token, refreshToken });
+    saveFrontendTokens({ accessToken: token, refreshToken }, rememberMe);
   }
 }
 
@@ -129,6 +129,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
   // 处理 403 禁止访问
   if (response.status === 403) {
+    if (body?.message?.includes("账号已封禁")) clearToken();
     throw new Error(body?.message || "权限不足，无法访问该资源");
   }
 

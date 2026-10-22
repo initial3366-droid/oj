@@ -37,7 +37,6 @@ public class Submission {
     public String identityType;
     public Long identityId;
     public String judgeServer;
-    public String judgeBackend;
     public String judgeWorkerId;
     public Integer priority;
     public Integer retryCount;

@@ -1,3 +1,4 @@
+import { clearAuthTokens, readAuthToken, storeAuthTokens } from '../../api/tokenStorage';
 /**
  * 后台管理专用 API 客户端
  * 与前台 API 客户端完全隔离
@@ -13,13 +14,18 @@ interface ApiResponse<T> {
   data: T;
 }
 
+export class AdminApiError extends Error {
+  constructor(message: string, readonly status: number, readonly code = status) {
+    super(message);
+    this.name = 'AdminApiError';
+  }
+}
+
 const API_TIMEOUT_MS = 15000;
-const ADMIN_TOKEN_KEY = "qoj.adminAccessToken";
-const ADMIN_REFRESH_TOKEN_KEY = "qoj.adminRefreshToken";
 let adminRefreshPromise: Promise<string | null> | null = null;
 
 /**
- * 封装timeoutSignal相关逻辑。会更新 React 状态并触发重新渲染。
+ * 封装timeoutSignal相关逻辑。
  */
 function timeoutSignal(timeoutMs = API_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -33,51 +39,55 @@ function timeoutSignal(timeoutMs = API_TIMEOUT_MS) {
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number | null = API_TIMEOUT_MS) {
   if (timeoutMs === null) return fetch(url, init);
   const { controller, timeout } = timeoutSignal(timeoutMs);
+  const cancel = () => controller.abort();
+  if (init.signal?.aborted) cancel();
+  else init.signal?.addEventListener('abort', cancel, { once: true });
   try {
     return await fetch(url, {
       ...init,
       signal: controller.signal,
     });
   } catch (error) {
+    if (init.signal?.aborted) throw error;
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error("请求超时，请检查后端服务");
     }
     throw error;
   } finally {
     window.clearTimeout(timeout);
+    init.signal?.removeEventListener('abort', cancel);
   }
 }
 
 /**
  * 读取管理员令牌并返回给调用方。会读写浏览器本地会话信息。
  */
-function getAdminToken(): string | null {
-  return window.localStorage.getItem(ADMIN_TOKEN_KEY);
+export function getAdminToken(): string | null {
+  return readAuthToken('admin');
 }
 
 /**
  * 读取管理员Refresh令牌并返回给调用方。会读写浏览器本地会话信息。
  */
 function getAdminRefreshToken(): string | null {
-  return window.localStorage.getItem(ADMIN_REFRESH_TOKEN_KEY);
+  return readAuthToken('admin', 'refresh');
 }
 
 /**
- * 封装set管理员令牌相关逻辑。会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+ * 封装set管理员令牌相关逻辑会读写浏览器本地会话信息。
  */
-export function setAdminToken(token: string, refreshToken?: string) {
-  window.localStorage.setItem(ADMIN_TOKEN_KEY, token);
-  if (refreshToken) {
-    window.localStorage.setItem(ADMIN_REFRESH_TOKEN_KEY, refreshToken);
-  }
+export function setAdminToken(token: string, refreshToken?: string, rememberMe?: boolean) {
+  loginRedirectPending = false;
+  storeAuthTokens('admin', token, refreshToken, rememberMe);
+  window.dispatchEvent(new Event('qoj:admin-auth-changed'));
 }
 
 /**
  * 重置管理员令牌。会读写浏览器本地会话信息。
  */
 export function clearAdminToken() {
-  window.localStorage.removeItem(ADMIN_TOKEN_KEY);
-  window.localStorage.removeItem(ADMIN_REFRESH_TOKEN_KEY);
+  clearAuthTokens('admin');
+  window.dispatchEvent(new Event('qoj:admin-auth-changed'));
 }
 
 /**
@@ -112,18 +122,21 @@ export async function adminLogout() {
 /**
  * 处理Unauthorized。可能改变当前路由或查询参数。
  */
+let loginRedirectPending = false;
+
 function handleUnauthorized() {
   clearAdminToken();
   const loginPath = adminPath('/login');
-  if (!window.location.pathname.startsWith(loginPath)) {
+  if (!loginRedirectPending && !window.location.pathname.startsWith(loginPath)) {
+    loginRedirectPending = true;
     window.location.href = loginPath;
   }
 }
 
 /**
- * 封装refresh管理员访问令牌相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口；会更新 React 状态并触发重新渲染；失败时向调用方传播异常。
+ * 封装refresh管理员访问令牌相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口失败时向调用方传播异常。
  */
-async function refreshAdminAccessToken() {
+export async function refreshAdminAccessToken() {
   const refreshToken = getAdminRefreshToken();
   if (!refreshToken) {
     return null;
@@ -152,6 +165,7 @@ async function refreshAdminAccessToken() {
       if (!body || body.code !== 200 || !body.data?.accessToken || !body.data?.refreshToken) {
         throw new Error(body?.message || '刷新登录状态返回格式错误');
       }
+      if (getAdminRefreshToken() !== refreshToken) return getAdminToken();
       setAdminToken(body.data.accessToken, body.data.refreshToken);
       return body.data.accessToken;
     })().finally(() => {
@@ -238,27 +252,27 @@ async function parseResponse<T>(response: Response, shouldHandleUnauth: boolean,
   // 对于需要认证的请求，401 时跳转到登录页
   if (response.status === 401 && shouldHandleUnauth) {
     handleUnauthorized();
-    throw new Error("未登录或登录已过期，请重新登录");
+    throw new AdminApiError("未登录或登录已过期，请重新登录", 401);
   }
 
   if (response.status === 401) {
-    throw new Error(sanitizeErrorMessage(body?.message || "账号或密码错误"));
+    throw new AdminApiError(sanitizeErrorMessage(body?.message || "账号或密码错误"), response.status, Number(body?.code ?? response.status));
   }
 
   if (response.status === 403) {
-    throw new Error(sanitizeErrorMessage(body?.message || "权限不足，无法访问该资源"));
+    throw new AdminApiError(sanitizeErrorMessage(body?.message || "权限不足，无法访问该资源"), response.status, Number(body?.code ?? response.status));
   }
 
   if (response.status === 404) {
-    throw new Error(sanitizeErrorMessage(body?.message || `${endpointLabel} 不存在，请确认后端服务已更新并重启`));
+    throw new AdminApiError(sanitizeErrorMessage(body?.message || `${endpointLabel} 不存在，请确认后端服务已更新并重启`), response.status, Number(body?.code ?? response.status));
   }
 
   if (response.status === 500) {
-    throw new Error(sanitizeErrorMessage(body?.message || "服务器内部错误，请稍后重试"));
+    throw new AdminApiError(sanitizeErrorMessage(body?.message || "服务器内部错误，请稍后重试"), response.status, Number(body?.code ?? response.status));
   }
 
   if (!response.ok) {
-    throw new Error(sanitizeErrorMessage(body?.message || `请求失败：${response.status}`));
+    throw new AdminApiError(sanitizeErrorMessage(body?.message || `请求失败：${response.status}`), response.status, Number(body?.code ?? response.status));
   }
 
   if (!body) {
@@ -275,7 +289,7 @@ async function parseResponse<T>(response: Response, shouldHandleUnauth: boolean,
     const fallbackMessage = body.code == null
       ? `${endpointLabel} 请求失败`
       : `${endpointLabel} 请求失败（业务码：${body.code}）`;
-    throw new Error(sanitizeErrorMessage(body.message || fallbackMessage));
+    throw new AdminApiError(sanitizeErrorMessage(body.message || fallbackMessage), response.status, Number(body.code));
   }
 
   return body.data;
@@ -331,19 +345,104 @@ export async function adminGetBlob(url: string): Promise<Blob> {
   return response.blob();
 }
 
-/**
- * 封装管理员Post相关逻辑。包含异步流程并由调用方处理完成或失败状态。
- */
+export interface TestCaseImportProgress {
+  phase: 'reading' | 'parsed' | 'saved' | 'savingDraft';
+  current: number;
+  total: number | null;
+  caseNo: number;
+}
+
+/** 上传表单，报告上传和服务端逐测试点进度，复用后台认证和响应解析。 */
+export async function adminUpload<T>(
+  url: string,
+  body: FormData,
+  options: {
+    timeoutMs: number;
+    onProgress: (percent: number | null) => void;
+    onUploaded: () => void;
+    onProcessing?: (progress: TestCaseImportProgress) => void;
+  },
+): Promise<T> {
+  const requestUrl = url.startsWith('/api/admin/v1') ? adminPath(url) : url;
+  let token = getAdminToken() || await refreshAdminAccessToken();
+  if (!token) {
+    handleUnauthorized();
+    throw new Error('请先登录');
+  }
+  const send = (accessToken: string) => new Promise<Response>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', requestUrl);
+    xhr.timeout = options.timeoutMs;
+    xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+    xhr.upload.onprogress = (event) => options.onProgress(
+      event.lengthComputable ? Math.round(event.loaded / event.total * 100) : null,
+    );
+    xhr.upload.onload = () => options.onUploaded();
+    let consumed = 0;
+    let result: ApiResponse<T> | undefined;
+    const isStream = () => xhr.getResponseHeader('Content-Type')?.includes('application/x-ndjson');
+    const consume = () => {
+      const text = xhr.responseText;
+      let end: number;
+      while ((end = text.indexOf('\n', consumed)) !== -1) {
+        const line = text.slice(consumed, end).trim();
+        consumed = end + 1;
+        if (!line) continue;
+        const event = JSON.parse(line) as { type: string; data: TestCaseImportProgress | ApiResponse<T> };
+        if (event.type === 'progress') options.onProcessing?.(event.data as TestCaseImportProgress);
+        if (event.type === 'result') result = event.data as ApiResponse<T>;
+      }
+    };
+    xhr.onprogress = () => {
+      if (!isStream()) return;
+      try { consume(); } catch {
+        reject(new Error('导入进度响应格式错误，请刷新确认测试点是否已导入'));
+        xhr.abort();
+      }
+    };
+    xhr.onload = () => {
+      if (isStream()) {
+        try { consume(); } catch {
+          reject(new Error('导入结果格式错误，请刷新确认测试点是否已导入'));
+          return;
+        }
+        if (!result) {
+          reject(new Error('导入连接已结束，但未收到最终结果，请刷新确认测试点是否已导入'));
+          return;
+        }
+      }
+      resolve(new Response(isStream() ? JSON.stringify(result) : xhr.responseText, {
+        status: xhr.status,
+        headers: { 'Content-Type': isStream() ? 'application/json' : xhr.getResponseHeader('Content-Type') || '' },
+      }));
+    };
+    xhr.onerror = () => reject(new Error('上传失败，请检查网络连接'));
+    xhr.ontimeout = () => reject(new Error(`导入请求超过 ${options.timeoutMs / 1000} 秒，请刷新确认测试点是否已导入，再决定是否重试`));
+    xhr.onabort = () => reject(new Error('上传已取消'));
+    options.onProgress(0);
+    xhr.send(body);
+  });
+  let response = await send(token);
+  if (response.status === 401) {
+    token = await refreshAdminAccessToken();
+    if (token) response = await send(token);
+  }
+  return parseResponse<T>(response, true, url);
+}
+
+/** 发起后台 POST 请求。 */
 export async function adminPost<T>(
   url: string,
   body?: unknown,
   requireAuth = true,
-  timeoutMs = API_TIMEOUT_MS
+  timeoutMs = API_TIMEOUT_MS,
+  signal?: AbortSignal
 ): Promise<T> {
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
 
   const response = await adminFetchWithAuth(url, {
     method: "POST",
+    signal,
     headers: {
       ...(body && !isFormData ? { "Content-Type": "application/json" } : {}),
     },
@@ -385,14 +484,16 @@ export async function adminPostEventStream(
 
     if (!response.ok) {
       let message = `请求失败：${response.status}`;
+      let code = response.status;
       try {
         const result = await response.json() as ApiResponse<unknown>;
         message = result.message || message;
+        code = Number(result.code ?? response.status);
       } catch {
         // Stream errors may use text/plain before the SSE response begins.
       }
       if (response.status === 401) handleUnauthorized();
-      throw new Error(message);
+      throw new AdminApiError(message, response.status, code);
     }
     if (!response.body) throw new Error('AI 服务没有返回流式响应');
 
@@ -460,16 +561,19 @@ export async function adminPostStream(
     }
     if (event === 'stopped') throw new DOMException('Aborted', 'AbortError');
     if (event === 'error') {
-      throw new Error(typeof payload.message === 'string' ? payload.message : 'AI 回复失败');
+      throw new AdminApiError(typeof payload.message === 'string' ? payload.message : 'AI 回复失败', 200, typeof payload.code === 'number' ? payload.code : 500);
     }
     if (event === 'continue' && typeof payload.continuationToken === 'string') {
+      continuationToken = payload.continuationToken; completed = true; return true;
+    }
+    if (event === 'approval_required' && typeof payload.continuationToken === 'string') {
       continuationToken = payload.continuationToken; completed = true; return true;
     }
     if (event === 'done') {
       completed = true;
       return true;
     }
-  }, signal, { idleTimeoutMs: 150000, totalTimeoutMs: 180000 });
+  }, signal, { idleTimeoutMs: 1200000, totalTimeoutMs: 1200000 });
   if (!completed) throw new Error('AI 回复连接已中断，请重试');
   return continuationToken;
 }
@@ -515,10 +619,10 @@ export async function adminDelete<T>(url: string, requireAuth = true, body?: unk
 /**
  * 封装管理员Download相关逻辑。包含异步流程并由调用方处理完成或失败状态。
  */
-export async function adminDownload(url: string, filename: string, requireAuth = true): Promise<void> {
+export async function adminDownload(url: string, filename: string, requireAuth = true, timeoutMs = API_TIMEOUT_MS): Promise<void> {
   const response = await adminFetchWithAuth(url, {
     method: "GET",
-  }, requireAuth);
+  }, requireAuth, true, timeoutMs);
 
   if (!response.ok) {
     await parseDownloadError(response, requireAuth);

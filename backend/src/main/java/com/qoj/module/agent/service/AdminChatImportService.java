@@ -1,5 +1,6 @@
 package com.qoj.module.agent.service;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.common.exception.BizException;
@@ -15,19 +16,26 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,11 +48,11 @@ public class AdminChatImportService {
     private final AdminChatFileService files;
     private final ProblemDraftService drafts;
     private final Validator validator;
-    private final org.springframework.beans.factory.ObjectProvider<AdminChatAgentService> agent;
+    private final ObjectProvider<AdminChatAgentService> agent;
 
     public AdminChatImportService(JdbcTemplate jdbc, ObjectMapper json, AdminChatFileService files,
                                   ProblemDraftService drafts, Validator validator,
-                                  org.springframework.beans.factory.ObjectProvider<AdminChatAgentService> agent) {
+                                  ObjectProvider<AdminChatAgentService> agent) {
         this.jdbc = jdbc; this.json = json; this.files = files; this.drafts = drafts; this.validator = validator;
         this.agent = agent;
     }
@@ -96,7 +104,7 @@ public class AdminChatImportService {
                 try { parsed = json.readTree(meta.get(0).entry().text()); }
                 catch (Exception e) { groupWarnings.add("题目 JSON 解析失败，请手动补充题面"); }
             }
-            String documentText = documents.stream().map(source -> source.entry().text()).collect(java.util.stream.Collectors.joining("\n\n"));
+            String documentText = documents.stream().map(source -> source.entry().text()).collect(Collectors.joining("\n\n"));
             if (documents.size() > 1 && meta.isEmpty()) groupWarnings.add("同目录包含多份文档，请核对是否混入其他题目或题解");
             ProblemDraftBasicRequest basic = basic(parsed, fallbackTitle, documentText, groupWarnings);
             var mappings = pair(group.getValue(), groupWarnings);
@@ -138,10 +146,10 @@ public class AdminChatImportService {
         if (response.path("warnings").isArray()) for (var warning : response.path("warnings")) warnings.add(warning.asText());
         warnings.add("AI 已识别题目分组与数据配对，请核对后导入；测试原文不由 AI 生成");
         var candidates = new ArrayList<Candidate>();
-        var usedInputs = new java.util.HashSet<Reference>();
+        var usedInputs = new HashSet<Reference>();
         for (var problem : response.path("problems")) {
             var candidateWarnings = new ArrayList<String>();
-            var selectedSources = new java.util.LinkedHashSet<Reference>();
+            var selectedSources = new LinkedHashSet<Reference>();
             if (problem.path("sources").isArray()) for (var source : problem.path("sources")) {
                 int index = source.asInt(-1) - 1;
                 if (index >= 0 && index < sources.size()) selectedSources.add(sources.get(index).reference());
@@ -161,17 +169,17 @@ public class AdminChatImportService {
             if (mappings.size() > 200) throw new BizException(400, "每题最多 200 个测试点，请分批整理");
             if (selectedSources.isEmpty() && response.path("problems").size() == 1) sources.forEach(source -> selectedSources.add(source.reference()));
             var group = sources.stream().filter(source -> selectedSources.contains(source.reference())).toList();
-            String rawText = group.stream().filter(this::isStatement).map(source -> source.entry().text()).collect(java.util.stream.Collectors.joining("\n\n"));
+            String rawText = group.stream().filter(this::isStatement).map(source -> source.entry().text()).collect(Collectors.joining("\n\n"));
             var basic = basic(problem.path("basic"), "待整理题目", rawText, candidateWarnings);
             if (basic.statement().isBlank()) candidateWarnings.add("缺少题面，请在导入前填写");
             if (mappings.isEmpty()) candidateWarnings.add("暂无测试点，将保存为未发布题面，补充测试数据后才能用于判题");
-            var outputs = mappings.stream().map(CaseMapping::output).filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
-            var inputs = mappings.stream().map(CaseMapping::input).collect(java.util.stream.Collectors.toSet());
+            var outputs = mappings.stream().map(CaseMapping::output).filter(Objects::nonNull).collect(Collectors.toSet());
+            var inputs = mappings.stream().map(CaseMapping::input).collect(Collectors.toSet());
             var options = new LinkedHashMap<Reference, CaseOption>();
             group.stream().filter(source -> source.entry().kind().equals("text") && !isMetadata(source.entry().path()))
                 .forEach(source -> options.put(source.reference(), new CaseOption(source.reference(), source.entry().size(), inputs.contains(source.reference()) ? "input" : outputs.contains(source.reference()) ? "output" : "file")));
             for (var mapping : mappings) {
-                for (Reference reference : java.util.Arrays.asList(mapping.input(), mapping.output())) {
+                for (Reference reference : Arrays.asList(mapping.input(), mapping.output())) {
                     if (reference == null || reference.excerpt() == null) continue;
                     options.put(reference, new CaseOption(reference, reference.excerpt().getBytes(StandardCharsets.UTF_8).length,
                         reference.equals(mapping.input()) ? "input" : "output"));
@@ -187,7 +195,7 @@ public class AdminChatImportService {
         var plan = new Plan(UUID.randomUUID().toString(), metadata, List.copyOf(candidates), List.copyOf(warnings), List.of());
         try {
             jdbc.update("INSERT INTO admin_ai_chat_imports (id, owner_admin_id, source_key, plan_json) VALUES (?, ?, ?, ?)", plan.id(), owner, sourceKey, write(plan));
-        } catch (org.springframework.dao.DuplicateKeyException e) {
+        } catch (DuplicateKeyException e) {
             var row = jdbc.query("SELECT id, plan_json, result_json FROM admin_ai_chat_imports WHERE owner_admin_id = ? AND source_key = ?",
                 (rs, index) -> new StoredPlan(rs.getString("id"), rs.getString("plan_json"), rs.getString("result_json")), owner, sourceKey);
             if (row.isEmpty()) throw e;
@@ -207,7 +215,7 @@ public class AdminChatImportService {
         Plan plan = readPlan(stored);
         var sourceEntries = new HashMap<Reference, AdminChatFileParser.Entry>();
         for (var file : plan.files()) for (var entry : files.bundle(owner, file.id()).entries()) sourceEntries.put(new Reference(file.id(), entry.path()), entry);
-        var selections = new java.util.HashSet<String>();
+        var selections = new HashSet<String>();
         var results = new ArrayList<Imported>();
         for (Selection selection : request.selections()) {
             var candidate = plan.candidates().stream().filter(item -> item.key().equals(selection.key())).findFirst()
@@ -222,8 +230,8 @@ public class AdminChatImportService {
             List<CaseMapping> mappings = selection.testCases() == null ? candidate.testCases() : selection.testCases();
             if (mappings.size() > 200) throw new BizException(400, "每题最多 200 个测试点");
             var testCases = new ArrayList<ProblemTestCaseRequest>();
-            var usedInputs = new java.util.HashSet<Reference>();
-            var allowed = candidate.caseOptions().stream().map(item -> item.reference().wholeFile()).collect(java.util.stream.Collectors.toSet());
+            var usedInputs = new HashSet<Reference>();
+            var allowed = candidate.caseOptions().stream().map(item -> item.reference().wholeFile()).collect(Collectors.toSet());
             long totalBytes = 0;
             for (var mapping : mappings) {
                 if (mapping.input() == null || !allowed.contains(mapping.input().wholeFile()) || !usedInputs.add(mapping.input())) throw new BizException(400, "测试输入无效或重复");
@@ -235,7 +243,7 @@ public class AdminChatImportService {
                 String outputText = output == null ? "" : caseContent(mapping.output(), output);
                 totalBytes += inputText.getBytes(StandardCharsets.UTF_8).length + outputText.getBytes(StandardCharsets.UTF_8).length;
                 if (totalBytes > AdminChatFileParser.MAX_BYTES) throw new BizException(400, "每题测试数据不能超过 50 MB");
-                if (outputText.isBlank() && (basic.checkerSource() == null || basic.checkerSource().isBlank())) throw new BizException(400, "测试点 " + (testCases.size() + 1) + " 缺少有效答案，请补充原始答案文件或特殊判题源码");
+                if (output == null && (basic.checkerSource() == null || basic.checkerSource().isBlank())) throw new BizException(400, "测试点 " + (testCases.size() + 1) + " 缺少答案文件，请补充原始答案文件或特殊判题源码");
                 testCases.add(new ProblemTestCaseRequest(testCases.size() + 1, inputText, outputText));
             }
             String draftId = drafts.createDraft().draftId();
@@ -271,7 +279,7 @@ public class AdminChatImportService {
             return entry.text();
         }
         String excerpt = reference.excerpt();
-        if (!Set.of("text", "document").contains(entry.kind()) || excerpt.isEmpty() || excerpt.length() > 200000
+        if (!Set.of("text", "document").contains(entry.kind()) || excerpt.length() > 200000
             || !entry.text().contains(excerpt)) {
             throw new BizException(400, "测试数据片段不在附件原文中，请逐字引用已提供的输入和答案，不要推算或编造");
         }
@@ -288,9 +296,9 @@ public class AdminChatImportService {
             else outputs.computeIfAbsent(caseKey(source.entry().path()), key -> new ArrayList<>()).add(source);
         }
         inputs.sort(Comparator.comparing(source -> naturalKey(caseKey(source.entry().path()))));
-        var usedKeys = new java.util.HashSet<String>();
+        var usedKeys = new HashSet<String>();
         var result = new ArrayList<CaseMapping>();
-        var usedOutputs = new java.util.HashSet<Reference>();
+        var usedOutputs = new HashSet<Reference>();
         for (var input : inputs) {
             String key = caseKey(input.entry().path());
             List<Source> matches = outputs.getOrDefault(key, List.of());
@@ -319,12 +327,12 @@ public class AdminChatImportService {
         String lower = path.toLowerCase(Locale.ROOT);
         String directory = parent(lower).replaceAll("(?:^|/)(?:inputs?|outputs?|answers?|in|out|ans)(?=/|$)", "").replaceAll("/+", "/").replaceAll("^/|/$", "");
         String stem = leaf(lower).replaceFirst("\\.[^.]+$", "").replaceFirst("^(?:input|output|answer|in|out|ans)[-_ ]*(?=\\d)", "");
-        stem = Pattern.compile("\\d+").matcher(stem).replaceAll(match -> new java.math.BigInteger(match.group()).toString());
+        stem = Pattern.compile("\\d+").matcher(stem).replaceAll(match -> new BigInteger(match.group()).toString());
         return directory + "/" + stem;
     }
 
     private String naturalKey(String value) {
-        return Pattern.compile("\\d+").matcher(value).replaceAll(match -> String.format("%020d", new java.math.BigInteger(match.group())));
+        return Pattern.compile("\\d+").matcher(value).replaceAll(match -> String.format("%020d", new BigInteger(match.group())));
     }
 
     private boolean isMetadata(String path) { return leaf(path).equalsIgnoreCase("problem.json") || leaf(path).equalsIgnoreCase("题目.json"); }
@@ -339,7 +347,7 @@ public class AdminChatImportService {
     private ProblemDraftBasicRequest basic(JsonNode node, String fallbackTitle, String documentText, List<String> warnings) {
         if (node == null || !node.isObject()) node = json.createObjectNode();
         var samples = new ArrayList<ProblemSampleCaseRequest>();
-        if (node.path("samples").isArray()) for (var sample : node.path("samples")) samples.add(new ProblemSampleCaseRequest(sample.path("input").asText(""), sample.path("output").asText(""), sample.path("explanation").asText(null)));
+        if (node.path("samples").isArray()) for (var sample : node.path("samples")) samples.add(new ProblemSampleCaseRequest(sample.path("input").asText(null), sample.path("output").asText(null), sample.path("explanation").asText(null)));
         var tags = new ArrayList<String>();
         if (node.path("tags").isArray()) for (var tag : node.path("tags")) if (tag.isTextual()) tags.add(tag.asText());
         if (!node.has("timeLimit") || !node.has("memoryLimit")) warnings.add("未提供完整时间/内存限制，暂按 1000 ms / 256 MB 填充，请核对");
@@ -369,7 +377,7 @@ public class AdminChatImportService {
     }
 
     public record PreviewRequest(@NotEmpty @Size(max = 4) List<@NotBlank String> fileIds, Boolean useAi, @Size(max = 12000) String instructions) {}
-    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Reference(@NotBlank String fileId, @NotBlank String path, @Size(max = 200000) String excerpt) {
         public Reference(String fileId, String path) { this(fileId, path, null); }
         public Reference wholeFile() { return new Reference(fileId, path); }

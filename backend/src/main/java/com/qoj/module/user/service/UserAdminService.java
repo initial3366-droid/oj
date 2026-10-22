@@ -2,6 +2,9 @@ package com.qoj.module.user.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.qoj.security.CurrentUser;
+import java.util.Objects;
 import com.qoj.common.PageResult;
 import com.qoj.common.enums.UserRole;
 import com.qoj.common.exception.BizException;
@@ -13,14 +16,16 @@ import com.qoj.module.user.entity.UserScore;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.module.user.mapper.UserScoreMapper;
-import com.qoj.module.user.vo.UserVO;
+import com.qoj.module.user.vo.AdminUserVO;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDateTime;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -33,6 +38,7 @@ public class UserAdminService {
     private final UserScoreMapper userScoreMapper;
     private final PasswordEncoder passwordEncoder;
     private final JdbcTemplate jdbcTemplate;
+    private final ApplicationEventPublisher events;
 
     /**
      * 构造 用户管理员Service 实例并保存其必要依赖或初始状态。从持久化层读取数据。
@@ -42,16 +48,18 @@ public class UserAdminService {
         AdminUserMapper adminUserMapper,
         UserScoreMapper userScoreMapper,
         PasswordEncoder passwordEncoder,
-        JdbcTemplate jdbcTemplate
+        JdbcTemplate jdbcTemplate,
+        ApplicationEventPublisher events
     ) {
         this.userMapper = userMapper;
         this.adminUserMapper = adminUserMapper;
         this.userScoreMapper = userScoreMapper;
         this.passwordEncoder = passwordEncoder;
         this.jdbcTemplate = jdbcTemplate;
+        this.events = events;
     }
 
-    public UserVO detail(long id) {
+    public AdminUserVO detail(long id) {
         User user = userMapper.selectById(id);
         if (user == null) {
             /**
@@ -63,10 +71,19 @@ public class UserAdminService {
         /**
          * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
-        return toVO(user, classNameMap.getOrDefault(user.id, null));
+        UserScore score = userScoreMapper.selectById(user.id);
+        return toVO(user, classNameMap.getOrDefault(user.id, null), score == null ? 0 : score.acCount);
     }
 
-    public PageResult<UserVO> list(int page, int pageSize, String role, String keyword) {
+    public PageResult<AdminUserVO> list(int page, int pageSize, String role, String keyword) {
+        return list(page, pageSize, role, keyword, null, null, null);
+    }
+
+    public PageResult<AdminUserVO> list(int page, int pageSize, String role, String keyword,
+        Long classId, Boolean unassigned, Long teacherId) {
+        if (Boolean.TRUE.equals(unassigned) && (classId != null || teacherId != null)) {
+            throw new BizException(400, "未分班筛选不能同时指定班级或教师");
+        }
         QueryWrapper<User> wrapper = new QueryWrapper<>();
         if (role != null && !role.isBlank()) {
             validateUserRole(role);
@@ -85,14 +102,34 @@ public class UserAdminService {
                 .like("email", keyword)
             );
         }
-        wrapper.orderByDesc("created_at");
-        Page<User> result = userMapper.selectPage(Page.of(page, pageSize), wrapper);
+        if (classId != null) {
+            wrapper.apply("EXISTS (SELECT 1 FROM class_members cm WHERE cm.user_id = users.id AND cm.class_id = {0})", classId);
+        }
+        if (Boolean.TRUE.equals(unassigned)) {
+            wrapper.isNull("class_id").apply("NOT EXISTS (SELECT 1 FROM class_members cm WHERE cm.user_id = users.id)");
+        }
+        if (teacherId != null) {
+            wrapper.apply("EXISTS (SELECT 1 FROM class_members cm JOIN classes c ON c.id = cm.class_id WHERE cm.user_id = users.id AND c.teacher_id = {0})", teacherId);
+        }
+        wrapper.orderByDesc("created_at").orderByDesc("id");
+        Page<User> result = userMapper.selectPage(Page.of(Math.max(1, page), Math.max(1, Math.min(100, pageSize))), wrapper);
         List<User> records = result.getRecords();
 
         Map<Long, String> classNameMap = batchQueryClassNames(records);
+        List<Long> userIds = records.stream().map(user -> user.id).toList();
+        Map<Long, LocalDateTime> lastSubmissions = userMapper.lastSubmissionTimes(userIds);
+        Map<Long, Integer> acCountMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            userScoreMapper.selectBatchIds(userIds).forEach(score -> acCountMap.put(score.userId, score.acCount));
+        }
 
         return new PageResult<>(result.getTotal(),
-            records.stream().map(u -> toVO(u, classNameMap.getOrDefault(u.id, null))).toList());
+            records.stream().map(user -> toVO(
+                user,
+                classNameMap.getOrDefault(user.id, null),
+                acCountMap.getOrDefault(user.id, 0),
+                lastSubmissions.get(user.id)
+            )).toList());
     }
 
     private Map<Long, String> batchQueryClassNames(List<User> users) {
@@ -110,7 +147,7 @@ public class UserAdminService {
     }
 
     @Transactional
-    public UserVO create(UserCreateRequest request) {
+    public AdminUserVO create(UserCreateRequest request) {
         validateUserRole(request.role().name());
         ensureUnique(request.username(), request.studentNo(), request.email(), null);
         User user = new User();
@@ -120,24 +157,53 @@ public class UserAdminService {
         user.studentNo = blankToNull(request.studentNo());
         user.email = blankToNull(request.email());
         user.role = request.role().name();
+        if (request.status() != null) user.status = request.status().name();
         userMapper.insert(user);
         ensureScore(user.id);
         /**
          * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
-        return toVO(user, null);
+        if (request.classId() != null) assignClass(user.id, request.classId());
+        return detail(user.id);
+    }
+
+    public void assertImportedStudentAvailable(String username, String studentNo) {
+        ensureUnique(username, studentNo, null, null);
     }
 
     @Transactional
-    public UserVO update(long id, UserUpdateRequest request) {
-        User user = userMapper.selectById(id);
+    public long createImportedStudent(String username, String studentNo) {
+        String normalizedUsername = username.trim();
+        String normalizedStudentNo = studentNo.trim();
+        ensureUnique(normalizedUsername, normalizedStudentNo, null, null);
+        User user = new User();
+        user.username = normalizedUsername;
+        user.displayName = normalizedUsername;
+        user.studentNo = normalizedStudentNo;
+        user.email = null;
+        user.role = UserRole.STUDENT.name();
+        user.passwordHash = passwordEncoder.encode(
+            normalizedStudentNo.substring(Math.max(0, normalizedStudentNo.length() - 6))
+        );
+        userMapper.insert(user);
+        ensureScore(user.id);
+        return user.id;
+    }
+
+    @Transactional
+    public AdminUserVO update(long id, UserUpdateRequest request) {
+        User user = userMapper.selectOne(new QueryWrapper<User>().eq("id", id).last("FOR UPDATE"));
         if (user == null) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
             throw new BizException(404, "用户不存在");
         }
-        ensureUnique(request.username(), request.studentNo(), request.email(), id);
+        // Existing cross-account duplicates must not prevent unrelated profile edits.
+        ensureUnique(
+            Objects.equals(request.username(), user.username) ? null : request.username(),
+            Objects.equals(blankToNull(request.studentNo()), user.studentNo) ? null : request.studentNo(),
+            Objects.equals(blankToNull(request.email()), user.email) ? null : request.email(), id);
         if (request.username() != null && !request.username().isBlank()) {
             user.username = request.username();
         }
@@ -157,12 +223,47 @@ public class UserAdminService {
             validateUserRole(request.role().name());
             user.role = request.role().name();
         }
+        if (request.status() != null && !request.status().name().equals(user.status)) {
+            if (!CurrentUser.required().isAdmin()) throw new BizException(403, "仅超级管理员可以设置用户状态");
+            user.status = request.status().name();
+            events.publishEvent(new UserStatusChangedEvent(user.id, user.status));
+        }
         userMapper.updateById(user);
+        // MyBatis skips null entity fields; explicitly persist optional-field clearing.
+        if (request.studentNo() != null || request.email() != null) {
+            UpdateWrapper<User> optionalFields = new UpdateWrapper<User>().eq("id", id);
+            if (request.studentNo() != null) optionalFields.set("student_no", user.studentNo);
+            if (request.email() != null) optionalFields.set("email", user.email);
+            userMapper.update(null, optionalFields);
+        }
+        if (request.classId() != null) assignClass(id, request.classId());
         ensureScore(user.id);
         /**
          * 构造或转换VO。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
-        return toVO(user, null);
+        return detail(id);
+    }
+
+    // classId omitted means keep membership; zero explicitly means unassigned.
+    private void assignClass(long userId, long classId) {
+        Long target = classId == 0 ? null : classId;
+        if (target != null && jdbcTemplate.queryForList(
+            "SELECT id FROM classes WHERE id = ? FOR SHARE", Long.class, target).isEmpty()) {
+            throw new BizException(400, "请选择有效的目标班级");
+        }
+        List<Long> current = jdbcTemplate.queryForList(
+            "SELECT class_id FROM class_members WHERE user_id = ? FOR UPDATE", Long.class, userId);
+        if (target == null || current.size() != 1 || !target.equals(current.get(0))) {
+            jdbcTemplate.update("DELETE FROM class_members WHERE user_id = ?", userId);
+            if (target != null) {
+                jdbcTemplate.update("INSERT INTO class_members (class_id, user_id, source, joined_at) VALUES (?, ?, 'ADMIN', NOW())",
+                    target, userId);
+            }
+        }
+        jdbcTemplate.update("UPDATE users SET class_id = ? WHERE id = ?", target, userId);
+        jdbcTemplate.update("UPDATE class_join_applications SET status = 'REJECTED', reason = '管理员已调整学生班级', "
+            + "handled_at = NOW(), handled_by = ?, handled_by_account_type = ? WHERE user_id = ? AND status = 'PENDING'",
+            CurrentUser.id(), CurrentUser.required().accountType(), userId);
     }
 
     @Transactional
@@ -182,11 +283,15 @@ public class UserAdminService {
         userMapper.deleteById(id);
     }
 
-    public UserVO toVO(User user, String className) {
+    private AdminUserVO toVO(User user, String className, Integer acCount) {
+        return toVO(user, className, acCount, userMapper.lastSubmissionTimes(List.of(user.id)).get(user.id));
+    }
+
+    private AdminUserVO toVO(User user, String className, Integer acCount, LocalDateTime lastSubmissionTime) {
         /**
          * 封装rVO相关逻辑。执行持久化写入。
          */
-        return new UserVO(
+        return new AdminUserVO(
             user.id,
             user.username,
             user.displayName,
@@ -194,9 +299,13 @@ public class UserAdminService {
             user.studentNo,
             user.email,
             user.role,
+            user.status,
             className,
+            user.classId,
+            acCount == null ? 0 : acCount,
             user.createdAt,
-            user.updatedAt
+            user.updatedAt,
+            lastSubmissionTime
         );
     }
 

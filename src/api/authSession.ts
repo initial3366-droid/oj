@@ -1,3 +1,5 @@
+import { publishFrontendSessionClear, publishFrontendSessionRotation, synchronizeFrontendSession } from './frontendSessionSync';
+import { clearAuthTokens, readAuthToken, storeAuthTokens } from './tokenStorage';
 /**
  * 认证会话接口封装。集中处理请求参数、响应类型与后端 API 调用边界。
  */
@@ -16,8 +18,6 @@ export interface FrontendAuthTokens {
 }
 
 const API_TIMEOUT_MS = 15000;
-const ACCESS_TOKEN_KEY = "qoj.accessToken";
-const REFRESH_TOKEN_KEY = "qoj.refreshToken";
 const REFRESH_LOCK_NAME = "qoj.frontend-token-refresh";
 
 let refreshPromise: Promise<string | null> | null = null;
@@ -40,7 +40,7 @@ function tokenExpiresSoon(token: string, skewSeconds = 30) {
 }
 
 /**
- * 读取WithTimeout并返回给调用方。包含异步流程并由调用方处理完成或失败状态；会更新 React 状态并触发重新渲染；失败时向调用方传播异常。
+ * 读取WithTimeout并返回给调用方。包含异步流程并由调用方处理完成或失败状态失败时向调用方传播异常。
  */
 async function fetchWithTimeout(url: string, init: RequestInit) {
   const controller = new AbortController();
@@ -61,30 +61,29 @@ async function fetchWithTimeout(url: string, init: RequestInit) {
  * 读取Frontend访问令牌并返回给调用方。会读写浏览器本地会话信息。
  */
 export function getFrontendAccessToken() {
-  return window.localStorage.getItem(ACCESS_TOKEN_KEY);
+  return readAuthToken('frontend');
 }
 
 /**
  * 读取FrontendRefresh令牌并返回给调用方。会读写浏览器本地会话信息。
  */
 export function getFrontendRefreshToken() {
-  return window.localStorage.getItem(REFRESH_TOKEN_KEY);
+  return readAuthToken('frontend', 'refresh');
 }
 
 /**
- * 更新FrontendTokens。会更新 React 状态并触发重新渲染；会读写浏览器本地会话信息。
+ * 更新FrontendTokens会读写浏览器本地会话信息。
  */
-export function saveFrontendTokens(tokens: FrontendAuthTokens) {
-  window.localStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken);
-  window.localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
+export function saveFrontendTokens(tokens: FrontendAuthTokens, rememberMe?: boolean) {
+  storeAuthTokens('frontend', tokens.accessToken, tokens.refreshToken, rememberMe);
 }
 
 /**
  * 重置FrontendTokens。会读写浏览器本地会话信息。
  */
 export function clearFrontendTokens() {
-  window.localStorage.removeItem(ACCESS_TOKEN_KEY);
-  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+  publishFrontendSessionClear();
+  clearAuthTokens('frontend');
   window.dispatchEvent(new Event("qoj:auth-cleared"));
 }
 
@@ -124,7 +123,8 @@ async function performRefresh(expectedRefreshToken: string) {
     throw new Error(body?.message || "刷新登录状态返回格式错误");
   }
 
-  saveFrontendTokens(body.data);
+  if (getFrontendRefreshToken() !== latestRefreshToken) return getFrontendAccessToken();
+  publishFrontendSessionRotation(body.data);
   return body.data.accessToken;
 }
 
@@ -138,7 +138,10 @@ export async function refreshFrontendAccessToken() {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       if (typeof navigator !== "undefined" && navigator.locks) {
-        return navigator.locks.request(REFRESH_LOCK_NAME, () => performRefresh(refreshToken));
+        return navigator.locks.request(REFRESH_LOCK_NAME, async () => {
+          await synchronizeFrontendSession();
+          return performRefresh(refreshToken);
+        });
       }
       return performRefresh(refreshToken);
     })().finally(() => {

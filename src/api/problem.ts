@@ -1,3 +1,4 @@
+import { readAuthToken } from './tokenStorage';
 /**
  * 题目相关 API
  */
@@ -35,6 +36,7 @@ export interface BackendProblem {
   acRate: number;
   attemptStatus?: string | null;
   specialJudge?: boolean;
+  communication?: { version: number; execution: string; maxMessageBytes: number; allowEmptyMessage: boolean } | null;
 }
 
 /**
@@ -72,6 +74,7 @@ export function mapProblem(problem: BackendProblem): Problem {
     updatedAt: problem.updatedAt,
     attemptStatus: problem.attemptStatus ?? null,
     isSpecialJudge: Boolean(problem.specialJudge),
+    communication: problem.communication,
     score: 100,
   };
 }
@@ -101,6 +104,7 @@ export function mapContestProblem(problem: BackendProblem & { contestProblemId?:
     updatedAt: problem.updatedAt,
     attemptStatus: problem.attemptStatus ?? null,
     isSpecialJudge: Boolean(problem.specialJudge),
+    communication: problem.communication,
     score: 100,
   };
 }
@@ -131,7 +135,7 @@ export async function fetchProblems(
 export async function fetchProblemDetail(problemId: number): Promise<Problem> {
   const backend = await apiGet<BackendProblem>(
     `/api/v1/problems/${problemId}`,
-    Boolean(window.localStorage.getItem("qoj.accessToken")),
+    Boolean(readAuthToken('frontend')),
   );
   return mapProblem(backend);
 }

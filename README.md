@@ -62,7 +62,7 @@ npm run dev
 - **题库系统**: 题目管理、分类、难度标签、样例数据
 - **练习集**: 教师可创建面向班级/社团的练习
 - **比赛系统**: ACM/OI 双赛制，含封榜
-- **判题系统**: 普通题/练习使用 go-judge，比赛使用 CCPCOJ 拉取式评测
+- **判题系统**: 题库、练习和比赛统一使用 go-judge
 - **排行榜**: 全局/班级 Rating 排名
 - **实时比赛**: 倒计时精确到秒，比赛结束通过 WebSocket 向比赛页、首页和写题页面推送通知
 - **评测数据**: 显示运行时间、内存占用以及题目的时间/内存限制
@@ -71,10 +71,10 @@ npm run dev
 ## 技术栈
 
 ### 前端
-- React 19 + TypeScript 5
+- Vue 3 + TypeScript 5（全站迁移进行中；未迁移路由暂由 React 19 承载）
 - Vite 5
-- Ant Design 6（公共页面）
-- Arco Design（管理后台和教师端）
+- Element Plus（Vue 页面）
+- React Router、Ant Design、Arco Design（待迁移页面的过渡依赖）
 - Monaco Editor
 - KaTeX
 
@@ -96,7 +96,7 @@ npm run dev
 npm run build
 ```
 
-产物位于 `dist/`。构建会将生成的 CSS/JS 资源写入入口 `index.html`，并压缩入口 HTML 的无意义空白，适合交给 Nginx 或 CDN 托管。
+产物位于 `dist/`。入口 `index.html` 只引入一个 `assets/app-[hash].js` 和一个 `assets/app-[hash].css`，不再生成页面分包或预加载列表。Monaco Worker、字体及构建导入的图片内嵌到 JS/CSS；`public/` 中的静态文件仍原样复制。文件名保留内容哈希，兼容 Nginx/CDN 长期缓存。合并后首屏需要下载完整代码包。
 
 构建后端 JAR：
 
@@ -162,8 +162,6 @@ JWT_REFRESH_EXPIRE=604800
 # go-judge 地址与令牌只从部署环境读取，浏览器和数据库均不保存。
 GO_JUDGE_BASE_URL=http://127.0.0.1:15050
 GO_JUDGE_AUTH_TOKEN=replace-with-openssl-rand-hex-32
-
-# CCPCOJ 账号、密码和任务超时在管理后台“判题配置”中维护。
 
 # 前端开发代理和管理后台路径
 VITE_API_PROXY_TARGET=http://127.0.0.1:18080

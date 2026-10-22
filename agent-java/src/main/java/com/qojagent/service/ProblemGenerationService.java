@@ -5,17 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qojagent.api.ProblemGenerateRequest;
 import com.qojagent.config.AgentSettings;
 import com.qojagent.config.AgentSettingsClient;
-import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatModel.ResponseFormat;
-import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
@@ -32,6 +23,15 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatModel.ResponseFormat;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 
 /** Owns the Go agent's problem creation flow while keeping execution isolated from the QOJ API process. */
 @Service
@@ -217,7 +217,7 @@ public class ProblemGenerationService {
 
     private void writeFiles(Path directory, List<GeneratedFile> files) {
         for (GeneratedFile file : files) {
-            Path relative = Paths.get(file.path().replace('/', java.io.File.separatorChar));
+            Path relative = Paths.get(file.path().replace('/', File.separatorChar));
             Path target = directory.resolve(relative).normalize();
             if (relative.isAbsolute() || file.path().contains("\\") || !target.startsWith(directory) || target.equals(directory)) {
                 throw new AgentException(400, "生成文件包含不安全路径：" + file.path());

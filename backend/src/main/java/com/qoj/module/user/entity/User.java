@@ -17,10 +17,14 @@ public class User {
     public String email;
     public String passwordHash;
     public String role;
+    public String status;
     public Long classId;
     public Long teamId;
     public String displayName;
     public String avatarUrl;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;
+    public boolean banned() {
+        return "BANNED".equals(status);
+    }
 }

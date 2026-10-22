@@ -1,31 +1,56 @@
 package com.qoj.module.auth.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoj.common.exception.BizException;
 import com.qoj.common.redis.RedisKeys;
 import com.qoj.module.setting.entity.SystemSetting;
 import com.qoj.module.setting.mapper.SystemSettingMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.stereotype.Service;
-
-import javax.imageio.ImageIO;
+import jakarta.mail.Authenticator;
+import jakarta.mail.Message;
+import jakarta.mail.PasswordAuthentication;
+import jakarta.mail.Session;
+import jakarta.mail.Transport;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.security.SecureRandom;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
-import java.security.SecureRandom;
+import java.util.Properties;
 import java.util.UUID;
+import java.util.List;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import javax.imageio.ImageIO;
+import org.springframework.core.env.Environment;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Service;
 
 /**
  * Captcha业务服务。集中编排权限校验、数据读写及相关领域规则，供控制器或后台任务调用。
  */
 @Service
 public class CaptchaService {
+    private static final DefaultRedisScript<Long> RESERVE_EMAIL = new DefaultRedisScript<>("""
+        if redis.call('EXISTS', KEYS[1]) == 1 then return 0 end
+        if tonumber(redis.call('GET', KEYS[2]) or '0') >= 10 then return 0 end
+        redis.call('SET', KEYS[1], ARGV[1], 'EX', 60)
+        local count = redis.call('INCR', KEYS[2])
+        if count == 1 or redis.call('TTL', KEYS[2]) < 0 then redis.call('EXPIRE', KEYS[2], 86400) end
+        redis.call('DEL', KEYS[3], KEYS[4])
+        return 1
+        """, Long.class);
+    private static final DefaultRedisScript<Long> PUBLISH_EMAIL = new DefaultRedisScript<>("""
+        if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+        redis.call('SET', KEYS[2], ARGV[2], 'EX', 600)
+        redis.call('DEL', KEYS[3])
+        return 1
+        """, Long.class);
     private static final String DEFAULT_EMAIL_SUBJECT = "QOJ 注册验证码";
     private static final String DEFAULT_EMAIL_CONTENT = "您好，\n\n您的验证码是: {{code}}\n\n验证码将在10分钟后过期，请勿泄露给他人。\n\nQOJ Online Judge System";
 
@@ -33,7 +58,7 @@ public class CaptchaService {
     private final SystemSettingMapper settingMapper;
     private final ObjectMapper objectMapper;
     private final SecureRandom random = new SecureRandom();
-    private final org.springframework.core.env.Environment env;
+    private final Environment env;
 
     /**
      * 构造 CaptchaService 实例并保存其必要依赖或初始状态。从持久化层读取数据；读写 Redis 中的缓存、锁或限流状态。
@@ -42,7 +67,7 @@ public class CaptchaService {
         StringRedisTemplate redisTemplate,
         SystemSettingMapper settingMapper,
         ObjectMapper objectMapper,
-        org.springframework.core.env.Environment env
+        Environment env
     ) {
         this.redisTemplate = redisTemplate;
         this.settingMapper = settingMapper;
@@ -71,59 +96,14 @@ public class CaptchaService {
     }
 
     public long sendEmailVerificationCode(String email, String captchaId, String captcha) {
-        // 验证图形验证码
-        String captchaKey = RedisKeys.captcha(captchaId);
-        String storedCaptcha = redisTemplate.opsForValue().get(captchaKey);
-        if (storedCaptcha == null) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "图形验证码已过期，请刷新重试");
-        }
-        if (!storedCaptcha.equalsIgnoreCase(captcha)) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(400, "图形验证码错误");
-        }
-
-        // 检查发送频率限制（60秒内只能发送一次）和每日次数限制
+        verifyCaptcha(captchaId, captcha);
         String rateLimitKey = "oj:email:rate:" + email;
-        Long ttl = redisTemplate.getExpire(rateLimitKey);
-        if (ttl != null && ttl > 0) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(429, "发送过于频繁，请" + ttl + "秒后再试");
-        }
-        String dailyLimitKey = "oj:email:daily:" + email + ":" + java.time.LocalDate.now();
-        String dailyCountValue = redisTemplate.opsForValue().get(dailyLimitKey);
-        int dailyCount = parseInt(dailyCountValue, 0);
-        if (dailyCount >= 10) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(429, "今日验证码发送次数已达上限");
-        }
-
+        String dailyLimitKey = "oj:email:daily:" + email + ":" + LocalDate.now();
+        String reservation = UUID.randomUUID().toString();
+        Long reserved = redisTemplate.execute(RESERVE_EMAIL,
+            List.of(rateLimitKey, dailyLimitKey, RedisKeys.emailVerificationCode(email), EmailVerificationCodes.attemptsKey(email)), reservation);
+        if (!Long.valueOf(1).equals(reserved)) throw new BizException(429, "发送过于频繁或已达每日上限，请稍后重试");
         String code = generateRandomCode(6);
-
-        // 删除已使用的图形验证码
-        redisTemplate.delete(captchaKey);
-
-        // 保存验证码到 Redis，10分钟过期
-        redisTemplate.opsForValue().set(
-            RedisKeys.emailVerificationCode(email),
-            code,
-            Duration.ofMinutes(10)
-        );
-
-        // 设置发送频率限制，60秒过期，并记录每日次数
-        redisTemplate.opsForValue().set(rateLimitKey, "1", Duration.ofSeconds(60));
-        Long nextDailyCount = redisTemplate.opsForValue().increment(dailyLimitKey);
-        if (nextDailyCount != null && nextDailyCount == 1L) {
-            redisTemplate.expire(dailyLimitKey, Duration.ofDays(1));
-        }
 
         // 从系统设置中获取邮件配置和模板
         String subject = DEFAULT_EMAIL_SUBJECT;
@@ -155,20 +135,11 @@ public class CaptchaService {
         subject = subject.replace("{{code}}", code).replace("{{email}}", email);
         content = content.replace("{{code}}", code).replace("{{email}}", email);
 
-        // 如果是开发环境且未配置邮件服务，输出到控制台
-        boolean isDevMode = "dev".equals(env.getProperty("spring.profiles.active"));
-        if (isDevMode && (emailConfig == null || !emailConfig.containsKey("host"))) {
-            System.out.println("=================================================");
-            System.out.println("【开发模式 - 邮件验证码】");
-            System.out.println("收件人: " + email);
-            System.out.println("验证码: " + code);
-            System.out.println("有效期: 10分钟");
-            System.out.println("=================================================");
-            return 60L;
-        }
-
         // 发送真实邮件
         sendEmail(emailConfig, email, subject, content);
+        Long published = redisTemplate.execute(PUBLISH_EMAIL,
+            List.of(rateLimitKey, RedisKeys.emailVerificationCode(email), EmailVerificationCodes.attemptsKey(email)), reservation, code);
+        if (!Long.valueOf(1).equals(published)) throw new BizException(503, "验证码发送超时，请重新获取");
 
         return 60L;
     }
@@ -237,11 +208,14 @@ public class CaptchaService {
             }
 
             // 使用 JavaMail API 发送邮件
-            java.util.Properties props = new java.util.Properties();
+            Properties props = new Properties();
             props.put("mail.smtp.host", host);
             props.put("mail.smtp.port", port);
             props.put("mail.smtp.auth", "true");
             props.put("mail.mime.charset", "UTF-8");
+            props.put("mail.smtp.connectiontimeout", "5000");
+            props.put("mail.smtp.timeout", "5000");
+            props.put("mail.smtp.writetimeout", "5000");
 
             if (useSsl) {
                 props.put("mail.smtp.ssl.enable", "true");
@@ -249,31 +223,31 @@ public class CaptchaService {
                 props.put("mail.smtp.starttls.enable", "true");
             }
 
-            jakarta.mail.Session session = jakarta.mail.Session.getInstance(props,
-                new jakarta.mail.Authenticator() {
+            Session session = Session.getInstance(props,
+                new Authenticator() {
                     /**
                      * 读取PasswordAuthentication并返回给调用方。保持该职责的输入、输出和异常边界集中，便于调用方复用。
                      */
                     @Override
-                    protected jakarta.mail.PasswordAuthentication getPasswordAuthentication() {
-                        return new jakarta.mail.PasswordAuthentication(username, password);
+                    protected PasswordAuthentication getPasswordAuthentication() {
+                        return new PasswordAuthentication(username, password);
                     }
                 });
 
-            jakarta.mail.internet.MimeMessage message = new jakarta.mail.internet.MimeMessage(session);
-            message.setFrom(new jakarta.mail.internet.InternetAddress(username));
-            message.setRecipients(jakarta.mail.Message.RecipientType.TO,
-                jakarta.mail.internet.InternetAddress.parse(to));
+            MimeMessage message = new MimeMessage(session);
+            message.setFrom(new InternetAddress(username));
+            message.setRecipients(Message.RecipientType.TO,
+                InternetAddress.parse(to));
             message.setSubject(subject, "UTF-8");
             message.setText(content, "UTF-8", "plain");
             message.setHeader("Content-Language", "zh-CN");
 
-            jakarta.mail.Transport.send(message);
+            Transport.send(message);
         } catch (Exception e) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
-            throw new BizException(500, "邮件发送失败: " + e.getMessage());
+            throw new BizException(500, "邮件发送失败，请稍后重试或联系管理员");
         }
     }
 
@@ -294,7 +268,7 @@ public class CaptchaService {
             throw new BizException(400, "请输入验证码");
         }
         String captchaKey = RedisKeys.captcha(captchaId);
-        String storedCaptcha = redisTemplate.opsForValue().get(captchaKey);
+        String storedCaptcha = redisTemplate.opsForValue().getAndDelete(captchaKey);
         if (storedCaptcha == null) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
@@ -307,8 +281,6 @@ public class CaptchaService {
              */
             throw new BizException(400, "验证码错误");
         }
-        // 验证通过后删除，防止重复使用
-        redisTemplate.delete(captchaKey);
     }
 
     private String generateRandomCode(int length) {

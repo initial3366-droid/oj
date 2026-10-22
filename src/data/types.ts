@@ -47,6 +47,7 @@ export interface Problem {
   updatedAt?: string;
   attemptStatus?: string | null;
   isSpecialJudge?: boolean;
+  communication?: { version: number; execution: string; maxMessageBytes: number; allowEmptyMessage: boolean } | null;
   score: number;
 }
 

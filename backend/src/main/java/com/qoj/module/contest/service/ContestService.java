@@ -11,9 +11,13 @@ import com.qoj.common.enums.AudienceType;
 import com.qoj.common.enums.ContestStatus;
 import com.qoj.common.enums.ContestType;
 import com.qoj.common.enums.IdentityType;
-import com.qoj.common.enums.JudgeBackend;
 import com.qoj.common.exception.BizException;
 import com.qoj.common.redis.RedisKeys;
+import com.qoj.common.util.IpNetworkUtils;
+import com.qoj.module.classroom.entity.ClassMember;
+import com.qoj.module.classroom.entity.ClassRoom;
+import com.qoj.module.classroom.mapper.ClassMemberMapper;
+import com.qoj.module.classroom.mapper.ClassRoomMapper;
 import com.qoj.module.contest.dto.ContestAudienceRequest;
 import com.qoj.module.contest.dto.ContestCreateRequest;
 import com.qoj.module.contest.dto.ContestDraftRequest;
@@ -36,11 +40,12 @@ import com.qoj.module.contest.mapper.ContestProblemMapper;
 import com.qoj.module.contest.mapper.ContestProblemTestCaseMapper;
 import com.qoj.module.contest.mapper.ContestRegistrationMapper;
 import com.qoj.module.contest.mapper.ContestRollingStateMapper;
-import com.qoj.module.contest.vo.ContestAudienceVO;
 import com.qoj.module.contest.vo.ContestAcceptedProblemVO;
+import com.qoj.module.contest.vo.ContestAudienceVO;
 import com.qoj.module.contest.vo.ContestProblemCaseScoreVO;
 import com.qoj.module.contest.vo.ContestProblemVO;
 import com.qoj.module.contest.vo.ContestRegistrationCandidateVO;
+import com.qoj.module.contest.vo.ContestRegistrationImportResultVO;
 import com.qoj.module.contest.vo.ContestRegistrationOptionVO;
 import com.qoj.module.contest.vo.ContestRegistrationVO;
 import com.qoj.module.contest.vo.ContestRollingStepVO;
@@ -49,34 +54,33 @@ import com.qoj.module.contest.vo.ContestScoreboardProblemVO;
 import com.qoj.module.contest.vo.ContestScoreboardRowVO;
 import com.qoj.module.contest.vo.ContestScoreboardVO;
 import com.qoj.module.contest.vo.ContestVO;
+import com.qoj.module.contest.vo.PublicScoreboardVO;
+import com.qoj.module.problem.dto.CommunicationConfig;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.entity.ProblemTestCase;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.mapper.ProblemTestCaseMapper;
 import com.qoj.module.problem.vo.ProblemSampleCaseVO;
 import com.qoj.module.problem.vo.ProblemVO;
-import com.qoj.module.classroom.entity.ClassMember;
-import com.qoj.module.classroom.entity.ClassRoom;
-import com.qoj.module.classroom.mapper.ClassMemberMapper;
-import com.qoj.module.classroom.mapper.ClassRoomMapper;
-import com.qoj.module.team.entity.Team;
-import com.qoj.module.team.mapper.TeamMapper;
 import com.qoj.module.submission.entity.Submission;
 import com.qoj.module.submission.entity.SubmissionCaseResult;
 import com.qoj.module.submission.mapper.SubmissionCaseResultMapper;
 import com.qoj.module.submission.mapper.SubmissionMapper;
-import com.qoj.module.setting.service.SystemSettingService;
+import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.teacher.mapper.TeacherMapper;
+import com.qoj.module.team.entity.Team;
+import com.qoj.module.team.mapper.TeamMapper;
 import com.qoj.module.user.entity.AdminUser;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.AdminUserMapper;
 import com.qoj.module.user.mapper.UserMapper;
-import com.qoj.module.teacher.entity.Teacher;
-import com.qoj.module.teacher.mapper.TeacherMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
+import com.qoj.security.policy.ContestAccessPolicy;
 import com.qoj.security.policy.Permission;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -84,14 +88,16 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.BadSqlGrammarException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -124,9 +130,9 @@ public class ContestService {
     private final TeamMapper teamMapper;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
-    private final com.qoj.security.policy.ContestAccessPolicy contestAccessPolicy;
+    private final ContestAccessPolicy contestAccessPolicy;
     private final PasswordEncoder passwordEncoder;
-    private final SystemSettingService settingService;
+    private final ContestIpAccessService contestIpAccessService;
 
     public ContestService(
         ContestMapper contestMapper,
@@ -149,9 +155,9 @@ public class ContestService {
         TeamMapper teamMapper,
         StringRedisTemplate redisTemplate,
         ObjectMapper objectMapper,
-        com.qoj.security.policy.ContestAccessPolicy contestAccessPolicy,
+        ContestAccessPolicy contestAccessPolicy,
         PasswordEncoder passwordEncoder,
-        SystemSettingService settingService
+        ContestIpAccessService contestIpAccessService
     ) {
         this.contestMapper = contestMapper;
         this.contestProblemMapper = contestProblemMapper;
@@ -175,7 +181,7 @@ public class ContestService {
         this.objectMapper = objectMapper;
         this.contestAccessPolicy = contestAccessPolicy;
         this.passwordEncoder = passwordEncoder;
-        this.settingService = settingService;
+        this.contestIpAccessService = contestIpAccessService;
     }
 
     /**
@@ -186,6 +192,10 @@ public class ContestService {
 
         // 过滤已删除的比赛
         wrapper.eq("is_deleted", false);
+        Set<Long> deniedContestIds = contestIpAccessService.deniedContestIds();
+        if (!deniedContestIds.isEmpty()) {
+            wrapper.notIn("id", deniedContestIds);
+        }
 
         // 根据用户身份过滤可见比赛
         AuthUser user = CurrentUser.get();
@@ -203,7 +213,9 @@ public class ContestService {
             );
         } else {
             // 普通用户：看自己有权访问的比赛
-            List<Long> visibleContestIds = new ArrayList<>();
+            List<Long> visibleContestIds = new ArrayList<>(registrationMapper.selectList(
+                new QueryWrapper<ContestRegistration>().eq("user_id", user.id()).eq("status", "APPROVED")
+            ).stream().map(registration -> registration.contestId).toList());
 
             // 查询 ALL 类型的比赛
             List<ContestAudience> allAudiences = contestAudienceMapper.selectList(
@@ -256,6 +268,10 @@ public class ContestService {
         wrapper.eq("is_deleted", false)
             .inSql("id", "SELECT contest_id FROM contest_registrations WHERE user_id = " + user.id() + " AND status = 'APPROVED'")
             .orderByDesc("start_time");
+        Set<Long> deniedContestIds = contestIpAccessService.deniedContestIds();
+        if (!deniedContestIds.isEmpty()) {
+            wrapper.notIn("id", deniedContestIds);
+        }
         Page<Contest> result = contestMapper.selectPage(Page.of(page, pageSize), wrapper);
         return new PageResult<>(result.getTotal(), result.getRecords().stream().map(this::toVO).toList());
     }
@@ -292,6 +308,7 @@ public class ContestService {
              */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
+        contestIpAccessService.requireAllowed(contest);
 
         // 检查软删除（只有超级管理员和创建者能看到已删除的比赛）
         if (Boolean.TRUE.equals(contest.isDeleted)) {
@@ -333,6 +350,7 @@ public class ContestService {
         if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
+        contestIpAccessService.requireAllowed(contest);
         if (!canCurrentUserViewContest(contest)) {
             throw new BizException(ErrorCode.FORBIDDEN, "无权查看该比赛");
         }
@@ -362,6 +380,7 @@ public class ContestService {
              */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
+        contestIpAccessService.requireAllowed(contest);
 
         AuthUser user = CurrentUser.get();
         if (!canCurrentUserViewContestProblemDetail(user, contest)) {
@@ -375,7 +394,7 @@ public class ContestService {
         boolean afterEndViewingEnabled = isRegistrationClosed(contest)
             && !Boolean.FALSE.equals(contest.allowAfterEndViewProblem);
         if (!AudienceType.ALL.name().equals(contest.audience) && !afterEndViewingEnabled) {
-            if (user != null && !contestAccessPolicy.can(user, com.qoj.security.policy.Permission.UPDATE, contest)) {
+            if (user != null && !contestAccessPolicy.can(user, Permission.UPDATE, contest)) {
                 ContestRegistration registration = registrationMapper.selectOne(
                     new QueryWrapper<ContestRegistration>()
                         .eq("contest_id", contestId)
@@ -390,7 +409,7 @@ public class ContestService {
                 // 验证报名身份是否仍然有效
                 try {
                     IdentityType type = IdentityType.valueOf(registration.identityType);
-                    resolveRegistrationIdentity(contest, type, registration.identityId, user.id());
+                    resolveRegistrationIdentity(contest, type, user.id());
                 } catch (BizException e) {
                     /**
                      * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
@@ -426,9 +445,8 @@ public class ContestService {
         contest.startTime = request.startTime();
         contest.endTime = request.endTime();
         contest.type = request.type().name();
-        JudgeBackend judgeBackend = JudgeBackend.contestDefault(request.judgeMode());
-        ensureJudgeBackendConfigured(judgeBackend);
-        contest.judgeMode = judgeBackend.name();
+        contest.allowedIpRanges = normalizeAllowedIpRanges(request.allowedIpRanges());
+        contest.hidden = Boolean.TRUE.equals(request.hidden());
         contest.ownerId = authUser.id();
         contest.ownerAccountType = authUser.accountType();
         AudienceType primaryAudience = requireSupportedAudience(request.audience());
@@ -479,31 +497,11 @@ public class ContestService {
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
         AuthUser authUser = CurrentUser.required();
-        if (!contestAccessPolicy.can(authUser, com.qoj.security.policy.Permission.UPDATE, contest)) {
+        if (!contestAccessPolicy.can(authUser, Permission.UPDATE, contest)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
             throw new BizException(ErrorCode.FORBIDDEN, "无访问权限");
-        }
-        if (request.judgeMode() != null
-            && !request.judgeMode().name().equals(contest.judgeMode)) {
-            // A locking read is required here: a prior REPEATABLE READ snapshot
-            // must not hide the first submission after this transaction waited
-            // for the same contest row lock.
-            Submission existingSubmission = submissionMapper.selectOne(
-                new QueryWrapper<Submission>()
-                    .select("id")
-                    .eq("contest_id", id)
-                    .last("LIMIT 1 FOR UPDATE")
-            );
-            if (existingSubmission != null) {
-                /**
-                 * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-                 */
-                throw new BizException(409, "比赛已有提交，不能切换判题服务");
-            }
-            ensureJudgeBackendConfigured(request.judgeMode());
-            contest.judgeMode = request.judgeMode().name();
         }
         if (request.title() != null) {
             contest.title = request.title();
@@ -522,6 +520,10 @@ public class ContestService {
         }
         if (request.type() != null) {
             contest.type = request.type().name();
+        }
+        if (request.hidden() != null) contest.hidden = request.hidden();
+        if (request.allowedIpRanges() != null) {
+            contest.allowedIpRanges = normalizeAllowedIpRanges(request.allowedIpRanges());
         }
         if (request.audience() != null) {
             contest.audience = requireSupportedAudience(request.audience()).name();
@@ -648,7 +650,6 @@ public class ContestService {
         replay.startTime = source.startTime;
         replay.endTime = source.endTime;
         replay.type = source.type;
-        replay.judgeMode = source.judgeMode;
         replay.ownerId = authUser.id();
         replay.ownerAccountType = authUser.accountType();
         replay.audience = source.audience;
@@ -667,6 +668,8 @@ public class ContestService {
         replay.showClassOnScoreboard = source.showClassOnScoreboard;
         replay.allowStarRegistration = source.allowStarRegistration;
         replay.allowViewAllSubmissions = source.allowViewAllSubmissions;
+        replay.allowedIpRanges = source.allowedIpRanges;
+        replay.hidden = source.hidden;
         replay.registrationType = "PUBLIC";
         replay.registrationPassword = null;
         replay.status = calculateStatus(replay.startTime, replay.endTime).name();
@@ -705,7 +708,7 @@ public class ContestService {
         List<ContestProblemCaseScore> sourceCaseScores = caseScoreMapper.selectList(
             new QueryWrapper<ContestProblemCaseScore>().eq("contest_id", sourceContestId)
         );
-        Map<Long, Long> oldToNewId = new java.util.HashMap<>();
+        Map<Long, Long> oldToNewId = new HashMap<>();
         for (ContestProblem sourceProblem : sourceProblems) {
             ContestProblem target = new ContestProblem();
             target.contestId = targetContestId;
@@ -776,6 +779,7 @@ public class ContestService {
              */
             throw new BizException(404, "比赛不存在");
         }
+        contestIpAccessService.requireAllowed(contest);
         var user = CurrentUser.required();
         if (!"USER".equals(user.accountType())) {
             /**
@@ -797,7 +801,7 @@ public class ContestService {
             throw new BizException(404, "用户不存在");
         }
 
-        RegistrationIdentity identity = resolveRegistrationIdentity(contest, request.identityType(), request.identityId(), user.id());
+        RegistrationIdentity identity = resolveRegistrationIdentity(contest, request.identityType(), user.id());
         ContestRegistration registration = new ContestRegistration();
         registration.contestId = id;
         registration.userId = user.id();
@@ -839,7 +843,7 @@ public class ContestService {
              */
             throw new BizException(403, "仅学生账号可以报名比赛");
         }
-        java.util.ArrayList<ContestRegistrationOptionVO> options = new java.util.ArrayList<>();
+        ArrayList<ContestRegistrationOptionVO> options = new ArrayList<>();
         boolean contestVisible = isContestVisibleToStudent(contest.id, user.id());
         boolean registrationOpen = !isRegistrationClosed(contest);
         String disabledReason = !registrationOpen
@@ -868,6 +872,7 @@ public class ContestService {
 
         QueryWrapper<User> wrapper = new QueryWrapper<User>()
             .eq("role", "STUDENT")
+            .eq("status", "NORMAL")
             .eq("is_deleted", false);
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
         if (!normalizedKeyword.isBlank()) {
@@ -910,6 +915,7 @@ public class ContestService {
         if (user == null) {
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "学生账号不存在或已停用");
         }
+        if (user.banned()) throw new BizException(403, "该学生账号已封禁，不能添加报名");
         ContestRegistration existing = registrationMapper.selectOne(
             new QueryWrapper<ContestRegistration>()
                 .eq("contest_id", contestId)
@@ -920,8 +926,16 @@ public class ContestService {
             throw new BizException(ErrorCode.CONFLICT.getCode(), "该学生已经报名");
         }
 
+        ContestRegistration registration = createManagedRegistration(contest, user, starred);
+        updateContestStats(contestId);
+        ContestRegistrationVO vo = toRegistrationVO(registration);
+        vo.studentNo = user.studentNo;
+        return vo;
+    }
+
+    private ContestRegistration createManagedRegistration(Contest contest, User user, Boolean starred) {
         ContestRegistration registration = new ContestRegistration();
-        registration.contestId = contestId;
+        registration.contestId = contest.id;
         registration.userId = user.id;
         registration.username = user.username;
         registration.displayName = user.displayName;
@@ -932,8 +946,66 @@ public class ContestService {
         registration.registeredAt = LocalDateTime.now();
         registrationMapper.insert(registration);
         upsertParticipant(contest, registration);
-        updateContestStats(contestId);
-        return toRegistrationVO(registration);
+        return registration;
+    }
+
+    public List<ContestRegistrationVO> adminRegistrations(long contestId) {
+        requireManageRegistrationContest(contestId);
+        List<ContestRegistration> registrations = registrationMapper.selectList(
+            new QueryWrapper<ContestRegistration>().eq("contest_id", contestId).eq("status", "APPROVED")
+                .orderByDesc("registered_at").orderByDesc("id")
+        );
+        Map<Long, User> users = new HashMap<>();
+        List<Long> ids = registrations.stream().map(row -> row.userId).distinct().toList();
+        for (int i = 0; i < ids.size(); i += 500) {
+            userMapper.selectBatchIds(ids.subList(i, Math.min(i + 500, ids.size()))).forEach(user -> users.put(user.id, user));
+        }
+        return registrations.stream().map(row -> {
+            ContestRegistrationVO vo = toRegistrationVO(row);
+            User user = users.get(row.userId);
+            vo.studentNo = user == null ? null : user.studentNo;
+            return vo;
+        }).toList();
+    }
+
+    @Transactional
+    public ContestRegistrationImportResultVO importRegistrations(long contestId, List<String> studentNos) {
+        // Lock before the first snapshot read so concurrent imports observe committed registrations.
+        Contest contest = requireManageRegistrationContest(contestMapper.selectByIdForUpdate(contestId));
+        if (studentNos == null || studentNos.isEmpty() || studentNos.size() > 5000) {
+            throw new BizException(400, "请提供 1 至 5000 条学号");
+        }
+        List<String> numbers = studentNos.stream().map(value -> value == null ? "" : value.trim()).toList();
+        if (numbers.stream().anyMatch(value -> value.length() > 80)) throw new BizException(400, "学号不能超过 80 个字符");
+        List<String> distinct = numbers.stream().filter(value -> !value.isBlank()).distinct().toList();
+        Map<String, List<User>> users = new HashMap<>();
+        for (int i = 0; i < distinct.size(); i += 500) {
+            userMapper.selectList(new QueryWrapper<User>().eq("role", "STUDENT").eq("is_deleted", false)
+                .in("student_no", distinct.subList(i, Math.min(i + 500, distinct.size()))))
+                .forEach(user -> users.computeIfAbsent(user.studentNo, key -> new ArrayList<>()).add(user));
+        }
+        Set<Long> registered = registrationMapper.selectList(new QueryWrapper<ContestRegistration>()
+            .select("user_id").eq("contest_id", contestId)).stream().map(row -> row.userId).collect(Collectors.toSet());
+        Set<String> seen = new HashSet<>();
+        List<ContestRegistrationImportResultVO.Row> rows = new ArrayList<>();
+        int added = 0, skipped = 0, failed = 0;
+        for (int i = 0; i < numbers.size(); i++) {
+            String number = numbers.get(i), status, message;
+            List<User> matches = users.getOrDefault(number, List.of());
+            if (number.isBlank()) { status = "INVALID"; message = "学号为空"; failed++; }
+            else if (!seen.add(number)) { status = "DUPLICATE"; message = "名单中学号重复，已跳过"; skipped++; }
+            else if (matches.isEmpty()) { status = "NOT_FOUND"; message = "未找到对应的学生账号"; failed++; }
+            else if (matches.get(0).banned()) { status = "BANNED"; message = "学生账号已封禁，不能报名"; failed++; }
+            else if (matches.size() > 1) { status = "AMBIGUOUS"; message = "学号对应多个账号，请先修正账号数据"; failed++; }
+            else if (!registered.add(matches.get(0).id)) { status = "ALREADY_REGISTERED"; message = "已报名，已跳过"; skipped++; }
+            else {
+                createManagedRegistration(contest, matches.get(0), false);
+                status = "ADDED"; message = "导入成功"; added++;
+            }
+            rows.add(new ContestRegistrationImportResultVO.Row(i + 1, number, status, message));
+        }
+        if (added > 0) updateContestStats(contestId);
+        return new ContestRegistrationImportResultVO(added, skipped, failed, rows);
     }
 
     /**
@@ -955,8 +1027,11 @@ public class ContestService {
         updateContestStats(contestId);
     }
 
-    private Contest requireManageRegistrationContest(long contestId) {
-        Contest contest = contestMapper.selectById(contestId);
+    public Contest requireManageRegistrationContest(long contestId) {
+        return requireManageRegistrationContest(contestMapper.selectById(contestId));
+    }
+
+    private Contest requireManageRegistrationContest(Contest contest) {
         if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
@@ -994,6 +1069,7 @@ public class ContestService {
              */
             throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
         }
+        requireInternalScoreboardAccess(id);
 
         // 使用Policy检查封榜状态下的查看权限
         AuthUser user = CurrentUser.get();
@@ -1019,16 +1095,6 @@ public class ContestService {
          * 构造或转换榜单。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
         return buildScoreboard(contest, null, true);
-    }
-
-    /**
-     * 构造或转换榜单。保持该职责的输入、输出和异常边界集中，便于调用方复用。
-     */
-    private ContestScoreboardVO buildScoreboard(Contest contest) {
-        /**
-         * 构造或转换榜单。保持该职责的输入、输出和异常边界集中，便于调用方复用。
-         */
-        return buildScoreboard(contest, null, false);
     }
 
     /**
@@ -1105,7 +1171,7 @@ public class ContestService {
         Map<Long, String> sourceTitleByProblemId = new HashMap<>();
         List<Long> sourceProblemIds = contestProblems.stream()
             .map(problem -> problem.problemId)
-            .filter(java.util.Objects::nonNull)
+            .filter(Objects::nonNull)
             .distinct()
             .toList();
         if (!sourceProblemIds.isEmpty()) {
@@ -1204,7 +1270,7 @@ public class ContestService {
         List<ContestProblem> oldContestProblems = contestProblemMapper.selectList(
             new QueryWrapper<ContestProblem>().eq("contest_id", contestId)
         );
-        Map<Long, Long> sourceToOldId = new java.util.LinkedHashMap<>();
+        Map<Long, Long> sourceToOldId = new LinkedHashMap<>();
         for (ContestProblem cp : oldContestProblems) {
             if (cp.problemId != null) {
                 sourceToOldId.put(cp.problemId, cp.id);
@@ -1213,7 +1279,7 @@ public class ContestService {
 
         List<Long> oldContestProblemIds = oldContestProblems.stream()
             .map(problem -> problem.id)
-            .filter(java.util.Objects::nonNull)
+            .filter(Objects::nonNull)
             .toList();
         if (!oldContestProblemIds.isEmpty()) {
             // Use MyBatis bound parameters instead of concatenating identifiers into SQL.
@@ -1229,7 +1295,7 @@ public class ContestService {
         }
 
         // sourceProblemId -> newContestProblemId 的映射
-        Map<Long, Long> sourceToNewId = new java.util.LinkedHashMap<>();
+        Map<Long, Long> sourceToNewId = new LinkedHashMap<>();
 
         for (ContestProblemRequest request : problems) {
             Problem sourceProblem = problemMapper.selectById(request.problemId());
@@ -1389,36 +1455,9 @@ public class ContestService {
         }
     }
 
-    private Contest requireOwnerOrSuperAdmin(long id) {
-        Contest contest = contestMapper.selectById(id);
-        if (contest == null) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(ErrorCode.NOT_FOUND.getCode(), "比赛不存在");
-        }
-        var user = CurrentUser.required();
-        if (!contestAccessPolicy.can(user, com.qoj.security.policy.Permission.UPDATE, contest)) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
-             */
-            throw new BizException(ErrorCode.FORBIDDEN.getCode(), "无访问权限");
-        }
-        return contest;
-    }
-
-    private boolean isOwner(Contest contest, com.qoj.security.AuthUser user) {
-        if (!contest.ownerId.equals(user.id())) {
-            return false;
-        }
-        String ownerType = contest.ownerAccountType == null ? "UNKNOWN" : contest.ownerAccountType;
-        return user.accountType().equals(ownerType);
-    }
-
     private RegistrationIdentity resolveRegistrationIdentity(
         Contest contest,
         IdentityType requestedType,
-        Long requestedId,
         Long userId
     ) {
         IdentityType type = requestedType == null ? IdentityType.PERSONAL : requestedType;
@@ -1448,6 +1487,7 @@ public class ContestService {
         if (isContestOwnerOrSuperAdmin(contest, user)) {
             return true;
         }
+        if (hasApprovedRegistration(contest, user)) return true;
         if (audienceAllows(contest.id, AudienceType.ALL, 0L)) {
             return true;
         }
@@ -1477,18 +1517,38 @@ public class ContestService {
         if (privileged) {
             return true;
         }
-        // 报名密码是密码赛的访问资格。赛后允许查看题目不能绕过报名密码，未报名用户仍不可查看。
-        if (hasRegistrationPassword(contest)
-            && (user == null || registrationForUser(contest.id, user.id()) == null)) {
+        return hasApprovedRegistration(contest, user);
+    }
+
+    public void requireInternalScoreboardAccess(long contestId) {
+        Contest contest = contestMapper.selectById(contestId);
+        if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
+            throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
+        }
+        contestIpAccessService.requireAllowed(contest);
+        AuthUser user = CurrentUser.get();
+        if (!isContestOwnerOrSuperAdmin(contest, user) && !hasApprovedRegistration(contest, user)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "请先报名比赛并通过审核");
+        }
+    }
+
+    public void requireUnfrozenScoreboardAccess(long contestId, boolean finalSnapshot) {
+        requireInternalScoreboardAccess(contestId);
+        Contest contest = contestMapper.selectById(contestId);
+        AuthUser viewer = CurrentUser.get();
+        if (isContestOwnerOrSuperAdmin(contest, viewer)) return;
+        if ((finalSnapshot && LocalDateTime.now().isBefore(contest.endTime))
+            || (isFreezeLocked(contest) && !contestAccessPolicy.canViewScoreboardDuringFreeze(viewer, contest))) {
+            throw new BizException(ErrorCode.FORBIDDEN, "封榜期间请使用比赛榜单，最终榜单尚未开放");
+        }
+    }
+
+    private boolean hasApprovedRegistration(Contest contest, AuthUser user) {
+        if (user == null || !"USER".equals(user.accountType()) || user.id() == null) {
             return false;
         }
-        if (audienceAllows(contest.id, AudienceType.ALL, 0L)) {
-            return true;
-        }
-        return user != null
-            && "USER".equals(user.accountType())
-            && user.id() != null
-            && isContestVisibleToStudent(contest.id, user.id());
+        ContestRegistration registration = registrationForUser(contest.id, user.id());
+        return registration != null && "APPROVED".equals(registration.status);
     }
 
     private boolean isContestOwnerOrSuperAdmin(Contest contest, AuthUser user) {
@@ -1554,6 +1614,7 @@ public class ContestService {
              */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
+        contestIpAccessService.requireAllowed(contest);
 
         // 2. 验证当前时间。比赛结束后是否允许继续提交由后台配置控制，赛后提交不计入排名。
         LocalDateTime now = LocalDateTime.now();
@@ -1581,11 +1642,11 @@ public class ContestService {
 
         // 4. 验证用户已报名
         ContestRegistration registration = registrationForUser(contestId, userId);
-        if (registration == null) {
+        if (registration == null || !"APPROVED".equals(registration.status)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
-            throw new BizException(ErrorCode.FORBIDDEN, "请先报名比赛");
+            throw new BizException(ErrorCode.FORBIDDEN, "请先报名比赛并通过审核");
         }
 
         // 5. 验证报名身份有效
@@ -1598,7 +1659,7 @@ public class ContestService {
              */
             throw new BizException(ErrorCode.BAD_REQUEST, "报名身份数据异常，请重新报名");
         }
-        resolveRegistrationIdentity(contest, type, registration.identityId, userId);
+        resolveRegistrationIdentity(contest, type, userId);
         ensureParticipant(contest, registration);
 
         return contestProblem;
@@ -1708,7 +1769,8 @@ public class ContestService {
         /**
          * 封装报名For用户相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
-        return registrationForUser(contestId, authUser.id());
+        ContestRegistration registration = registrationForUser(contestId, authUser.id());
+        return registration != null && "APPROVED".equals(registration.status) ? registration : null;
     }
 
     private Long registrationCount(Long contestId) {
@@ -1752,7 +1814,6 @@ public class ContestService {
             contest.startTime,
             contest.endTime,
             contest.type,
-            JudgeBackend.fromStored(contest.judgeMode, JudgeBackend.GO_JUDGE).name(),
             contest.ownerId,
             ownerName(contest.ownerId, contest.ownerAccountType),
             contest.audience,
@@ -1787,7 +1848,10 @@ public class ContestService {
             currentRegistration == null ? null : currentRegistration.identityId,
             currentRegistration == null ? null : identityName(currentRegistration.identityType, currentRegistration.identityId),
             currentRegistration != null && Boolean.TRUE.equals(currentRegistration.starred),
-            contest.sourceContestId
+            contest.sourceContestId,
+            contest.allowedIpRanges,
+            Boolean.TRUE.equals(contest.hidden),
+            submissionMapper.countContestActiveUsers(contest.id, problemStatsCutoff)
         );
     }
 
@@ -1814,8 +1878,8 @@ public class ContestService {
         LocalDateTime cutoff
     ) {
         // 批量查询每题的提交数和通过数
-        java.util.Map<Long, Long> submissionCountMap = new java.util.HashMap<>();
-        java.util.Map<Long, Long> acceptedCountMap;
+        Map<Long, Long> submissionCountMap = new HashMap<>();
+        Map<Long, Long> acceptedCountMap;
         if (!contestProblems.isEmpty()) {
             QueryWrapper<Submission> submissionQuery = new QueryWrapper<Submission>()
                 .eq("contest_id", contest.id)
@@ -1831,19 +1895,19 @@ public class ContestService {
                 submissionCountMap.merge(cpId, 1L, Long::sum);
             }
         } else {
-            acceptedCountMap = java.util.Map.of();
+            acceptedCountMap = Map.of();
         }
 
         // 动态引用原题：题目内容实时从原题读取，过滤已删除/不存在的原题（与题单行为一致）
         List<Long> sourceProblemIds = contestProblems.stream()
             .map(problem -> problem.problemId)
-            .filter(java.util.Objects::nonNull)
+            .filter(Objects::nonNull)
             .distinct()
             .toList();
-        java.util.Map<Long, Problem> sourceProblemById = sourceProblemIds.isEmpty()
-            ? java.util.Map.of()
+        Map<Long, Problem> sourceProblemById = sourceProblemIds.isEmpty()
+            ? Map.of()
             : problemMapper.selectBatchIds(sourceProblemIds).stream()
-                .collect(java.util.stream.Collectors.toMap(problem -> problem.id, problem -> problem));
+                .collect(Collectors.toMap(problem -> problem.id, problem -> problem));
 
         return contestProblems.stream()
             .filter(problem -> problem.problemId != null)
@@ -1863,22 +1927,7 @@ public class ContestService {
         return submissionMapper.selectCount(submissionQuery);
     }
 
-    private void ensureJudgeBackendConfigured(JudgeBackend backend) {
-        if (backend != JudgeBackend.CCPCOJ) {
-            return;
-        }
-        var settings = settingService.getJudgeRuntimeSettings();
-        if (!settings.hasCcpcojJudgePassword
-            || settings.ccpcojJudgeUsername == null
-            || settings.ccpcojJudgeUsername.isBlank()) {
-            /**
-             * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常；可能调用外部判题或网关服务。
-             */
-            throw new BizException(400, "请先在系统设置中配置 CCPCOJ 评测机账号和密码");
-        }
-    }
-
-    private ContestProblemVO toProblemVO(ContestProblem item, Problem sourceProblem, java.util.Map<Long, Long> submissionCountMap, java.util.Map<Long, Long> acceptedCountMap) {
+    private ContestProblemVO toProblemVO(ContestProblem item, Problem sourceProblem, Map<Long, Long> submissionCountMap, Map<Long, Long> acceptedCountMap) {
         List<ContestProblemCaseScoreVO> caseScores = caseScoreMapper
             .selectList(
                 new QueryWrapper<ContestProblemCaseScore>()
@@ -1954,7 +2003,7 @@ public class ContestService {
             if (problemId == null) {
                 continue;
             }
-            BoardIdentity identity = identityFromSubmission(contest.id, submission);
+            BoardIdentity identity = identityFromSubmission(submission);
             acceptedProblemsBeforeCutoff
                 .computeIfAbsent(identity, ignored -> new HashSet<>())
                 .add(problemId);
@@ -1969,7 +2018,7 @@ public class ContestService {
             if (problemId == null) {
                 continue;
             }
-            BoardIdentity identity = identityFromSubmission(contest.id, submission);
+            BoardIdentity identity = identityFromSubmission(submission);
             if (acceptedProblemsBeforeCutoff
                 .getOrDefault(identity, Set.of())
                 .contains(problemId)) {
@@ -2026,7 +2075,7 @@ public class ContestService {
             readTags(sourceProblem.tags),
             null,
             true,
-            java.math.BigDecimal.ZERO,
+            BigDecimal.ZERO,
             item.createdAt,
             item.updatedAt,
             samples,
@@ -2034,7 +2083,7 @@ public class ContestService {
             "比赛题库",
             null,
             sourceProblem.checkerSource != null && !sourceProblem.checkerSource.isBlank()
-        );
+        ).withCommunication(CommunicationConfig.info(sourceProblem.communicationConfig));
     }
 
     private List<String> readTags(String tags) {
@@ -2072,7 +2121,7 @@ public class ContestService {
     ) {
         Map<BoardIdentity, Map<Long, AcmCell>> cellsByIdentity = new LinkedHashMap<>();
         for (Submission submission : submissions) {
-            BoardIdentity identity = identityFromSubmission(contest.id, submission);
+            BoardIdentity identity = identityFromSubmission(submission);
             Map<Long, AcmCell> cells = cellsByIdentity.computeIfAbsent(identity, ignored -> new LinkedHashMap<>());
             AcmCell cell = cells.computeIfAbsent(contestProblemKey(submission), ignored -> new AcmCell());
             if (cell.accepted) {
@@ -2160,7 +2209,7 @@ public class ContestService {
     ) {
         Map<BoardIdentity, Map<Long, OiCell>> cellsByIdentity = new LinkedHashMap<>();
         for (Submission submission : submissions) {
-            BoardIdentity identity = identityFromSubmission(contest.id, submission);
+            BoardIdentity identity = identityFromSubmission(submission);
             Map<Long, OiCell> cells = cellsByIdentity.computeIfAbsent(identity, ignored -> new LinkedHashMap<>());
             OiCell cell = cells.computeIfAbsent(contestProblemKey(submission), ignored -> new OiCell());
             cell.attempts += 1;
@@ -2241,7 +2290,7 @@ public class ContestService {
     }
 
     private List<ContestScoreboardRowVO> rankRows(List<ContestScoreboardRowVO> rows) {
-        java.util.ArrayList<ContestScoreboardRowVO> ranked = new java.util.ArrayList<>();
+        ArrayList<ContestScoreboardRowVO> ranked = new ArrayList<>();
         int rank = 1;
         for (ContestScoreboardRowVO row : rows) {
             Integer rowRank = Boolean.TRUE.equals(row.starred()) ? null : rank++;
@@ -2489,43 +2538,13 @@ public class ContestService {
         return null;
     }
 
-    private StandingAccumulator emptyStanding(Long contestId, BoardIdentity identity) {
-        StandingAccumulator standing = new StandingAccumulator();
-        standing.contestId = contestId;
-        standing.identity = identity;
-        standing.solved = 0;
-        standing.penalty = 0;
-        standing.score = 0;
-        return standing;
-    }
-
-    private BoardIdentity identityFromSubmission(Long contestId, Submission submission) {
+    private BoardIdentity identityFromSubmission(Submission submission) {
         ContestParticipant participant = submission.participantId == null ? null : participantMapper.selectById(submission.participantId);
         Boolean starred = participant != null && Boolean.TRUE.equals(participant.starred);
         /**
          * 封装identityKey相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
         return identityKey(IdentityType.PERSONAL, submission.userId, starred);
-    }
-
-    private BoardIdentity identityKey(String type, Long id) {
-        IdentityType identityType;
-        try {
-            identityType = IdentityType.valueOf(type);
-        } catch (Exception ignored) {
-            identityType = IdentityType.PERSONAL;
-        }
-        /**
-         * 封装identityKey相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
-         */
-        return identityKey(identityType, id);
-    }
-
-    private BoardIdentity identityKey(IdentityType type, Long id) {
-        /**
-         * 封装identityKey相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
-         */
-        return identityKey(type, id, false);
     }
 
     private BoardIdentity identityKey(IdentityType type, Long id, Boolean starred) {
@@ -2582,14 +2601,7 @@ public class ContestService {
         if (contest.startTime == null || submittedAt == null) {
             return 0;
         }
-        return Math.max(0, (int) java.time.Duration.between(contest.startTime, submittedAt).toMinutes());
-    }
-
-    private boolean isRankedSubmission(Contest contest, Submission submission) {
-        /**
-         * 判断Ranked提交是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
-         */
-        return isRankedSubmission(contest, submission, null);
+        return Math.max(0, (int) Duration.between(contest.startTime, submittedAt).toMinutes());
     }
 
     private boolean isRankedSubmission(Contest contest, Submission submission, LocalDateTime cutoff) {
@@ -2630,7 +2642,7 @@ public class ContestService {
         if (startTime == null || endTime == null) {
             return 0;
         }
-        return Math.max(0, (int) java.time.Duration.between(startTime, endTime).toMinutes());
+        return Math.max(0, (int) Duration.between(startTime, endTime).toMinutes());
     }
 
     private BigDecimal normalizeRatio(BigDecimal ratio, BigDecimal fallback) {
@@ -2718,6 +2730,22 @@ public class ContestService {
         return contest != null && contest.endTime != null && LocalDateTime.now().isAfter(contest.endTime);
     }
 
+    private String normalizeAllowedIpRanges(String ranges) {
+        try {
+            String normalized = IpNetworkUtils.normalizeRanges(ranges);
+            // 归一化为空时返回空串而非 null：updateById 会跳过 null 字段，
+            // 若置 null 则清空网段的更新不会写库（表现为保存成功但限制仍在）。
+            return normalized == null ? "" : normalized;
+        } catch (IllegalArgumentException ex) {
+            throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "比赛 IP 网段格式无效：" + ex.getMessage());
+        }
+    }
+
+    /** Enforce the IP allowlist when a contest is accessed through a non-contest API. */
+    public void ensureClientIpAllowed(Contest contest) {
+        contestIpAccessService.requireAllowed(contest);
+    }
+
     private String encodeRegistrationPassword(String password) {
         if (password == null) {
             return null;
@@ -2772,7 +2800,7 @@ public class ContestService {
 
     private String contestDraftKey() {
         var user = CurrentUser.required();
-        return RedisKeys.contestDraft(user.accountType().toLowerCase(java.util.Locale.ROOT), user.id());
+        return RedisKeys.contestDraft(user.accountType().toLowerCase(Locale.ROOT), user.id());
     }
 
     /**
@@ -2818,20 +2846,6 @@ public class ContestService {
         String value() {
             return type.name() + ":" + id;
         }
-    }
-
-    /**
-     * StandingAccumulator领域类型。封装 contest.service 模块内的相关职责。
-     */
-    private static class StandingAccumulator {
-        Long contestId;
-        BoardIdentity identity;
-        int solved;
-        int penalty;
-        LocalDateTime lastAcTime;
-        int score;
-        Map<Long, Integer> attempts = new HashMap<>();
-        Map<Long, Boolean> acceptedProblems = new HashMap<>();
     }
 
     /**
@@ -2882,7 +2896,7 @@ public class ContestService {
     /**
      * 获取比赛公开榜单数据（无需登录）
      */
-    public com.qoj.module.contest.vo.PublicScoreboardVO getPublicScoreboard(long contestId) {
+    public PublicScoreboardVO getPublicScoreboard(long contestId) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
             /**
@@ -2896,6 +2910,7 @@ public class ContestService {
              */
             throw new BizException(ErrorCode.FORBIDDEN.getCode(), "公共榜单已关闭");
         }
+        contestIpAccessService.requireAllowed(contest);
 
         boolean rollingCandidate = isEnded(contest)
             && Boolean.TRUE.equals(contest.enableRollingScoreboard)
@@ -2911,9 +2926,9 @@ public class ContestService {
         Set<String> revealedKeys = Set.of();
         Map<String, Integer> frozenRanks = Map.of();
         Map<String, Integer> finalRanks = Map.of();
-        Map<String, List<com.qoj.module.contest.vo.PublicScoreboardVO.SubmissionHistory>> historyByUserProblem;
-        Map<String, List<com.qoj.module.contest.vo.PublicScoreboardVO.SubmissionHistory>> frozenHistoryByUserProblem = Map.of();
-        Map<String, List<com.qoj.module.contest.vo.PublicScoreboardVO.SubmissionHistory>> finalHistoryByUserProblem = Map.of();
+        Map<String, List<PublicScoreboardVO.SubmissionHistory>> historyByUserProblem;
+        Map<String, List<PublicScoreboardVO.SubmissionHistory>> frozenHistoryByUserProblem = Map.of();
+        Map<String, List<PublicScoreboardVO.SubmissionHistory>> finalHistoryByUserProblem = Map.of();
 
         if (waitingForRolling) {
             boardState = "ROLLING";
@@ -2945,7 +2960,7 @@ public class ContestService {
             historyByUserProblem = publicScoreboardHistory(contest, null);
         }
 
-        com.qoj.module.contest.vo.PublicScoreboardVO vo = new com.qoj.module.contest.vo.PublicScoreboardVO();
+        PublicScoreboardVO vo = new PublicScoreboardVO();
         vo.contestId = contest.id;
         vo.contestTitle = contest.title;
         vo.contestType = contest.type;
@@ -2958,14 +2973,14 @@ public class ContestService {
 
         // 问题列表
         vo.problems = scoreboard.problems().stream().map(p -> {
-            com.qoj.module.contest.vo.PublicScoreboardVO.ProblemInfo info = new com.qoj.module.contest.vo.PublicScoreboardVO.ProblemInfo();
+            PublicScoreboardVO.ProblemInfo info = new PublicScoreboardVO.ProblemInfo();
             info.label = p.label();
             info.title = p.title();
             info.score = p.score();
             info.submissionCount = p.submissionCount();
             info.acceptedCount = p.acceptedCount();
             return info;
-        }).collect(java.util.stream.Collectors.toList());
+        }).collect(Collectors.toList());
 
         vo.rows = toPublicRows(
             contest,
@@ -2982,12 +2997,12 @@ public class ContestService {
         return vo;
     }
 
-    private List<com.qoj.module.contest.vo.PublicScoreboardVO.UserRank> toPublicRows(
+    private List<PublicScoreboardVO.UserRank> toPublicRows(
         Contest contest,
         ContestScoreboardVO scoreboard,
-        Map<String, List<com.qoj.module.contest.vo.PublicScoreboardVO.SubmissionHistory>> historyByUserProblem,
-        Map<String, List<com.qoj.module.contest.vo.PublicScoreboardVO.SubmissionHistory>> frozenHistoryByUserProblem,
-        Map<String, List<com.qoj.module.contest.vo.PublicScoreboardVO.SubmissionHistory>> finalHistoryByUserProblem,
+        Map<String, List<PublicScoreboardVO.SubmissionHistory>> historyByUserProblem,
+        Map<String, List<PublicScoreboardVO.SubmissionHistory>> frozenHistoryByUserProblem,
+        Map<String, List<PublicScoreboardVO.SubmissionHistory>> finalHistoryByUserProblem,
         Set<String> revealedKeys,
         boolean rollingView,
         Map<String, Integer> frozenRanks,
@@ -2996,10 +3011,10 @@ public class ContestService {
         return scoreboard.rows().stream().map(row -> {
             String identityKey = scoreboardIdentityKey(row);
             boolean revealed = !rollingView || revealedKeys.contains(identityKey);
-            Map<String, List<com.qoj.module.contest.vo.PublicScoreboardVO.SubmissionHistory>> rowHistory = rollingView
+            Map<String, List<PublicScoreboardVO.SubmissionHistory>> rowHistory = rollingView
                 ? (revealed ? finalHistoryByUserProblem : frozenHistoryByUserProblem)
                 : historyByUserProblem;
-            com.qoj.module.contest.vo.PublicScoreboardVO.UserRank userRank = new com.qoj.module.contest.vo.PublicScoreboardVO.UserRank();
+            PublicScoreboardVO.UserRank userRank = new PublicScoreboardVO.UserRank();
             User user = userMapper.selectById(row.userId());
             userRank.rank = row.rank();
             userRank.userId = row.userId();
@@ -3007,6 +3022,7 @@ public class ContestService {
             userRank.displayName = row.displayName();
             userRank.classId = row.classId();
             userRank.className = row.className();
+            userRank.teamName = row.teamName();
             userRank.solved = row.solved();
             userRank.penalty = row.penalty();
             userRank.totalScore = row.score();
@@ -3016,14 +3032,14 @@ public class ContestService {
             userRank.starred = row.starred();
             userRank.frozenRank = frozenRanks.get(identityKey);
             userRank.finalRank = finalRanks.get(identityKey);
-            userRank.problems = new java.util.LinkedHashMap<>();
+            userRank.problems = new LinkedHashMap<>();
             for (ContestScoreboardCellVO cell : row.cells()) {
-                com.qoj.module.contest.vo.PublicScoreboardVO.ProblemStatus status = new com.qoj.module.contest.vo.PublicScoreboardVO.ProblemStatus();
+                PublicScoreboardVO.ProblemStatus status = new PublicScoreboardVO.ProblemStatus();
                 status.accepted = cell.accepted();
                 status.attempts = cell.attempts();
                 status.timeMinutes = cell.acceptedAt() == null || contest.startTime == null
                     ? null
-                    : Math.max(0, (int) java.time.Duration.between(contest.startTime, cell.acceptedAt()).toMinutes());
+                    : Math.max(0, (int) Duration.between(contest.startTime, cell.acceptedAt()).toMinutes());
                 status.acceptedAt = cell.acceptedAt();
                 status.score = cell.score();
                 status.history = rowHistory.getOrDefault(publicHistoryKey(row.userId(), cell.problemId()), List.of());
@@ -3032,7 +3048,7 @@ public class ContestService {
                 userRank.problems.put(cell.label(), status);
             }
             return userRank;
-        }).collect(java.util.stream.Collectors.toList());
+        }).collect(Collectors.toList());
     }
 
     private ContestScoreboardVO rollingCompositeScoreboard(
@@ -3126,8 +3142,8 @@ public class ContestService {
         return type + ":" + id;
     }
 
-    private Map<String, List<com.qoj.module.contest.vo.PublicScoreboardVO.SubmissionHistory>> publicScoreboardHistory(Contest contest, LocalDateTime cutoff) {
-        Map<String, List<com.qoj.module.contest.vo.PublicScoreboardVO.SubmissionHistory>> histories = new HashMap<>();
+    private Map<String, List<PublicScoreboardVO.SubmissionHistory>> publicScoreboardHistory(Contest contest, LocalDateTime cutoff) {
+        Map<String, List<PublicScoreboardVO.SubmissionHistory>> histories = new HashMap<>();
         List<Submission> submissions = submissionMapper.selectList(
             new QueryWrapper<Submission>()
                 .eq("contest_id", contest.id)
@@ -3138,13 +3154,13 @@ public class ContestService {
             .filter(submission -> isRankedSubmission(contest, submission, cutoff))
             .toList();
         for (Submission submission : submissions) {
-            com.qoj.module.contest.vo.PublicScoreboardVO.SubmissionHistory history =
-                new com.qoj.module.contest.vo.PublicScoreboardVO.SubmissionHistory();
+            PublicScoreboardVO.SubmissionHistory history =
+                new PublicScoreboardVO.SubmissionHistory();
             history.status = submission.status;
             history.submittedAt = submission.submitTime == null ? submission.createdAt : submission.submitTime;
             history.timeMinutes = history.submittedAt == null || contest.startTime == null
                 ? null
-                : Math.max(0, (int) java.time.Duration.between(contest.startTime, history.submittedAt).toMinutes());
+                : Math.max(0, (int) Duration.between(contest.startTime, history.submittedAt).toMinutes());
             histories.computeIfAbsent(publicHistoryKey(submission.userId, contestProblemKey(submission)), ignored -> new ArrayList<>())
                 .add(history);
         }

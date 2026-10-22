@@ -1,8 +1,13 @@
 package com.qoj.config;
 
 import com.qoj.security.WebSocketAuthInterceptor;
+import com.qoj.security.UserSocketSessions;
+import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration;
 import com.qoj.security.WebSocketSubscriptionInterceptor;
+import com.qoj.security.ClientIpHandshakeInterceptor;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
@@ -27,8 +32,10 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final WebSocketAuthInterceptor authInterceptor;
+    private final UserSocketSessions userSocketSessions;
     private final WebSocketSubscriptionInterceptor subscriptionInterceptor;
     private final QojProperties qojProperties;
+    private final ClientIpHandshakeInterceptor clientIpHandshakeInterceptor;
 
     /**
      * 构造 WebSocket配置 实例并保存其必要依赖或初始状态。在状态变化后发布异步消息。
@@ -36,19 +43,35 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public WebSocketConfig(
         WebSocketAuthInterceptor authInterceptor,
         WebSocketSubscriptionInterceptor subscriptionInterceptor,
-        QojProperties qojProperties
+        QojProperties qojProperties,
+        ClientIpHandshakeInterceptor clientIpHandshakeInterceptor,
+        UserSocketSessions userSocketSessions
     ) {
         this.authInterceptor = authInterceptor;
+        this.userSocketSessions = userSocketSessions;
         this.subscriptionInterceptor = subscriptionInterceptor;
         this.qojProperties = qojProperties;
+        this.clientIpHandshakeInterceptor = clientIpHandshakeInterceptor;
     }
 
     /** 消息代理拓扑：注册 /topic 广播 + /user 私信前缀，设置客户端发信路由 */
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker("/topic", "/user");
+        registry.enableSimpleBroker("/topic", "/queue")
+            .setTaskScheduler(webSocketHeartbeatScheduler())
+            .setHeartbeatValue(new long[] {10000, 10000});
+        registry.setPreservePublishOrder(true);
         registry.setApplicationDestinationPrefixes("/app");
         registry.setUserDestinationPrefix("/user");
+    }
+
+    @Bean
+    public ThreadPoolTaskScheduler webSocketHeartbeatScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("ws-heartbeat-");
+        scheduler.setRemoveOnCancelPolicy(true);
+        return scheduler;
     }
 
     /**
@@ -58,12 +81,20 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      */
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
+        registry.setPreserveReceiveOrder(true);
         String[] allowedOrigins = qojProperties.getCors().getAllowedOrigins().toArray(new String[0]);
         registry.addEndpoint("/ws")
-            .setAllowedOrigins(allowedOrigins);
+            .setAllowedOrigins(allowedOrigins)
+            .addInterceptors(clientIpHandshakeInterceptor);
         registry.addEndpoint("/ws-sockjs")
             .setAllowedOrigins(allowedOrigins)
+            .addInterceptors(clientIpHandshakeInterceptor)
             .withSockJS();
+    }
+
+    @Override
+    public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
+        registration.addDecoratorFactory(userSocketSessions);
     }
 
     /** 入站拦截器注册，authInterceptor 必须在 subscriptionInterceptor 之前执行 */

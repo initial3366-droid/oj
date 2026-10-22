@@ -44,10 +44,13 @@ export interface UserMe {
 /**
  * 用户登录
  */
-export async function login(username: string, password: string): Promise<AuthTokenResponse> {
+export async function login(username: string, password: string, rememberMe = false, captchaId?: string, captcha?: string): Promise<AuthTokenResponse> {
   const result = await apiPost<FrontendLoginResponse>("/api/v1/auth/login", {
     username,
     password,
+    rememberMe,
+    captchaId,
+    captcha,
   });
 
   if (result.portal === "TEACHER") {
@@ -55,7 +58,7 @@ export async function login(username: string, password: string): Promise<AuthTok
   }
 
   // 自动保存 token
-  setToken(result.accessToken, result.refreshToken);
+  setToken(result.accessToken, result.refreshToken, rememberMe);
 
   return result;
 }

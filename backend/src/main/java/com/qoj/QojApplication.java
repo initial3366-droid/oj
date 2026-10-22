@@ -14,7 +14,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @SpringBootApplication
 @EnableScheduling
-@MapperScan("com.qoj.module.*.mapper")
+@MapperScan({"com.qoj.module.*.mapper", "com.qoj.module.problem.solution.mapper"})
 public class QojApplication {
     private static final String DEFAULT_TIME_ZONE = "Asia/Shanghai";
 

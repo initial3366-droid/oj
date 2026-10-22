@@ -1,37 +1,44 @@
 package com.qoj.module.practice.service;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.qoj.common.redis.RedisKeys;
 import com.qoj.module.classroom.mapper.ClassMemberMapper;
 import com.qoj.module.classroom.mapper.ClassRoomMapper;
-import com.qoj.module.practice.entity.PracticePublication;
-import com.qoj.module.practice.entity.PracticePublicationClass;
+import com.qoj.module.practice.dto.PracticePublicationRequest;
 import com.qoj.module.practice.entity.Practice;
 import com.qoj.module.practice.entity.PracticeProblem;
-import com.qoj.module.practice.dto.PracticePublicationRequest;
+import com.qoj.module.practice.entity.PracticePublication;
+import com.qoj.module.practice.entity.PracticePublicationClass;
 import com.qoj.module.practice.mapper.PracticeMapper;
 import com.qoj.module.practice.mapper.PracticeProblemMapper;
 import com.qoj.module.practice.mapper.PracticePublicationClassMapper;
 import com.qoj.module.practice.mapper.PracticePublicationMapper;
 import com.qoj.module.practice.mapper.PracticePublicationProblemMapper;
+import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.service.ProblemService;
-import com.qoj.module.user.entity.User;
+import com.qoj.module.submission.entity.Submission;
+import com.qoj.module.submission.mapper.SubmissionMapper;
+import com.qoj.module.submission.service.UserProblemStatusService;
 import com.qoj.module.teacher.entity.Teacher;
+import com.qoj.module.user.entity.User;
+import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.security.AuthUser;
 import com.qoj.security.policy.ResourceAccessService;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -56,9 +63,9 @@ class PracticePublicationServiceTest {
     @Mock private ResourceAccessService resourceAccessService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private StringRedisTemplate redisTemplate;
-    @Mock private com.qoj.module.submission.mapper.SubmissionMapper submissionMapper;
-    @Mock private com.qoj.module.user.mapper.UserMapper userMapper;
-    @Mock private com.qoj.module.submission.service.UserProblemStatusService userProblemStatusService;
+    @Mock private SubmissionMapper submissionMapper;
+    @Mock private UserMapper userMapper;
+    @Mock private UserProblemStatusService userProblemStatusService;
     private PracticePublicationService service;
 
     @BeforeEach
@@ -164,7 +171,7 @@ class PracticePublicationServiceTest {
 
         service.publish(10L, request(visible(100L), hidden(101L)));
 
-        var copyCaptor = org.mockito.ArgumentCaptor.forClass(Practice.class);
+        var copyCaptor = ArgumentCaptor.forClass(Practice.class);
         verify(practiceMapper).insert(copyCaptor.capture());
         Practice copy = copyCaptor.getValue();
         assertEquals(20L, copy.ownerId);
@@ -217,26 +224,26 @@ class PracticePublicationServiceTest {
         verify(userProblemStatusService, times(1)).recompute(30L, 100L);
         verify(userProblemStatusService, times(1)).recompute(30L, 101L);
         verify(userProblemStatusService, times(1)).recompute(31L, 100L);
-        var acRateCaptor = org.mockito.ArgumentCaptor.forClass(com.qoj.module.problem.entity.Problem.class);
+        var acRateCaptor = ArgumentCaptor.forClass(Problem.class);
         verify(problemMapper).updateById(acRateCaptor.capture());
-        assertEquals(java.math.BigDecimal.valueOf(25), acRateCaptor.getValue().acRate);
-        verify(redisTemplate).delete(com.qoj.common.redis.RedisKeys.problem(100L));
+        assertEquals(BigDecimal.valueOf(25), acRateCaptor.getValue().acRate);
+        verify(redisTemplate).delete(RedisKeys.problem(100L));
         verify(publicationProblemMapper).delete(any(Wrapper.class));
         verify(publicationClassMapper).delete(any(Wrapper.class));
         verify(publicationMapper).deleteById(5L);
     }
 
-    private com.qoj.module.submission.entity.Submission submission(Long userId, Long problemId) {
-        com.qoj.module.submission.entity.Submission item = new com.qoj.module.submission.entity.Submission();
+    private Submission submission(Long userId, Long problemId) {
+        Submission item = new Submission();
         item.userId = userId;
         item.problemId = problemId;
         return item;
     }
 
-    private com.qoj.module.problem.entity.Problem problemWithAcRate(Long id) {
-        com.qoj.module.problem.entity.Problem problem = new com.qoj.module.problem.entity.Problem();
+    private Problem problemWithAcRate(Long id) {
+        Problem problem = new Problem();
         problem.id = id;
-        problem.acRate = java.math.BigDecimal.valueOf(80);
+        problem.acRate = BigDecimal.valueOf(80);
         return problem;
     }
 
@@ -270,7 +277,7 @@ class PracticePublicationServiceTest {
 
     private AtomicReference<PracticePublication> capturedPublication() {
         AtomicReference<PracticePublication> result = new AtomicReference<>();
-        var captor = org.mockito.ArgumentCaptor.forClass(PracticePublication.class);
+        var captor = ArgumentCaptor.forClass(PracticePublication.class);
         verify(publicationMapper).insert(captor.capture());
         result.set(captor.getValue());
         return result;
