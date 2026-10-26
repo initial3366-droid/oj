@@ -18,7 +18,9 @@ public interface AgentClient {
     String chat(AgentSettingsVO agent, String systemPrompt, String userPrompt);
 
     default String chat(AgentSettingsVO agent, String systemPrompt, String userPrompt, List<Media> media) {
-        if (!media.isEmpty()) throw new BizException(400, "当前 AI 客户端不支持图片");
+        if (!media.isEmpty()) {
+            throw new BizException(400, "当前 AI 客户端不支持图片");
+        }
         return chat(agent, systemPrompt, userPrompt);
     }
 
@@ -26,23 +28,24 @@ public interface AgentClient {
     void streamChat(AgentSettingsVO agent, List<Message> messages, Consumer<String> onDelta);
 
     default void streamChat(AgentSettingsVO agent, List<Message> messages, Consumer<String> onDelta,
-                            BooleanSupplier cancelled) {
+        BooleanSupplier cancelled) {
         streamChat(agent, messages, content -> {
-            if (cancelled.getAsBoolean()) throw new AgentRunStoppedException();
+            if (cancelled.getAsBoolean()) {
+                throw new AgentRunStoppedException();
+            }
             onDelta.accept(content);
         });
     }
 
     /** Native tool-call loop. Implementations must return each observation to the model. */
-    default void runAgent(AgentSettingsVO agent, List<Message> messages,
-                         List<ToolCallback> tools, Consumer<String> onDelta,
-                         Consumer<ToolEvent> onTool) {
+    default void runAgent(AgentSettingsVO agent, List<Message> messages, List<ToolCallback> tools,
+        Consumer<String> onDelta, Consumer<ToolEvent> onTool) {
         throw new BizException(503, "当前 AI 客户端不支持工具调用");
     }
 
-    default boolean runAgentSegment(AgentSettingsVO agent, List<Message> messages,
-                                    List<ToolCallback> tools, AgentRunState state,
-                                    Runnable checkpoint, BooleanSupplier cancelled, Consumer<String> onDelta, Consumer<ToolEvent> onTool) {
+    default boolean runAgentSegment(AgentSettingsVO agent, List<Message> messages, List<ToolCallback> tools,
+        AgentRunState state, Runnable checkpoint, BooleanSupplier cancelled, Consumer<String> onDelta,
+        Consumer<ToolEvent> onTool) {
         runAgent(agent, messages, tools, onDelta, onTool);
         state.complete = true;
         checkpoint.run();
@@ -56,6 +59,8 @@ public interface AgentClient {
     }
 
     record Message(String role, String content, List<Media> media) {
-        public Message(String role, String content) { this(role, content, List.of()); }
+        public Message(String role, String content) {
+            this(role, content, List.of());
+        }
     }
 }

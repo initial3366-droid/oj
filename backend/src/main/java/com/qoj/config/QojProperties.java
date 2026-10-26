@@ -274,7 +274,7 @@ public class QojProperties implements EnvironmentAware {
         private int requestTimeoutMs = 200000;
         private int compileTimeoutMs = 20000;
         private int maxSourceBytes = 65536;
-        private int maxInputBytes = MAX_SUPPORTED_INPUT_BYTES;
+        private int maxInputBytes = 8 * 1024 * 1024;
         private int maxOutputBytes = 2 * 1024 * 1024;
         private int maxProcesses = 32;
 

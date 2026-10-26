@@ -3,7 +3,6 @@ import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { Loading, UserFilled } from "@element-plus/icons-vue";
 import { fetchPublicUserProfile, type PublicUserProfile } from "../../../data/apiClient";
-import { formatDisplayDate } from "../../../lib/format";
 
 const route = useRoute();
 const id = computed(() => Number(route.params.userId));
@@ -36,15 +35,13 @@ watch(id, async (userId, _previous, onCleanup) => {
       <template v-else-if="profile">
         <div class="user-profile-heading">
           <el-avatar :size="56" class="user-profile-avatar"><template v-if="profile.displayName">{{ profile.displayName.charAt(0).toUpperCase() }}</template><el-icon v-else><UserFilled /></el-icon></el-avatar>
-          <div><h2>{{ profile.displayName }}</h2><span>@{{ profile.username }}</span></div>
-          <el-tag type="primary" effect="light">{{ profile.role }}</el-tag>
+          <div><h2>{{ profile.displayName }}</h2></div>
         </div>
         <div class="user-profile-stats">
           <div><span>非比赛 AC</span><strong>{{ profile.acCount }}</strong></div>
           <div><span>提交</span><strong>{{ profile.submitCount }}</strong></div>
           <div><span>总分</span><strong>{{ profile.totalScore }}</strong></div>
         </div>
-        <el-text type="info">加入时间：{{ formatDisplayDate(profile.createdAt) }}</el-text>
       </template>
       <el-empty v-else description="用户不存在" :image-size="72" />
     </el-card>

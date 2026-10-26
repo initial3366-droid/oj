@@ -1,5 +1,6 @@
 package com.qoj.module.contest.service;
 
+import com.qoj.module.contest.dto.ContestProblemCaseScoreRequest;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -356,6 +357,9 @@ public class ContestService {
         }
 
         Long userId = CurrentUser.required().id();
+        if (ContestFeedbackPolicy.isLanqiao(contest)) {
+            return List.of();
+        }
         return submissionMapper.selectList(
                 new QueryWrapper<Submission>()
                     .select("problem_id", "contest_problem_id")
@@ -445,6 +449,7 @@ public class ContestService {
         contest.startTime = request.startTime();
         contest.endTime = request.endTime();
         contest.type = request.type().name();
+        contest.scoringMode = ContestFeedbackPolicy.usesScores(contest) ? "OI" : "ACM";
         contest.allowedIpRanges = normalizeAllowedIpRanges(request.allowedIpRanges());
         contest.hidden = Boolean.TRUE.equals(request.hidden());
         contest.ownerId = authUser.id();
@@ -464,6 +469,9 @@ public class ContestService {
         contest.allowAfterEndViewCode = Boolean.TRUE.equals(request.allowAfterEndViewCode());
         contest.enableCodeTemplates = Boolean.TRUE.equals(request.enableCodeTemplates());
         contest.publicScoreboardEnabled = Boolean.TRUE.equals(request.publicScoreboardEnabled());
+        contest.scoreboardEnabled = request.scoreboardEnabled() == null
+            ? !ContestFeedbackPolicy.isLanqiao(contest) : request.scoreboardEnabled();
+        contest.resultsPublished = false;
         contest.showClassOnScoreboard = Boolean.TRUE.equals(request.showClassOnScoreboard());
         contest.allowStarRegistration = Boolean.TRUE.equals(request.allowStarRegistration());
         contest.allowViewAllSubmissions = request.allowViewAllSubmissions() == null || Boolean.TRUE.equals(request.allowViewAllSubmissions());
@@ -520,6 +528,7 @@ public class ContestService {
         }
         if (request.type() != null) {
             contest.type = request.type().name();
+            contest.scoringMode = ContestFeedbackPolicy.usesScores(contest) ? "OI" : "ACM";
         }
         if (request.hidden() != null) contest.hidden = request.hidden();
         if (request.allowedIpRanges() != null) {
@@ -563,6 +572,15 @@ public class ContestService {
         }
         if (request.enableCodeTemplates() != null) {
             contest.enableCodeTemplates = request.enableCodeTemplates();
+        }
+        if (request.scoreboardEnabled() != null) {
+            contest.scoreboardEnabled = request.scoreboardEnabled();
+        }
+        if (request.resultsPublished() != null) {
+            if (request.resultsPublished() && LocalDateTime.now().isBefore(contest.endTime)) {
+                throw new BizException(ErrorCode.BAD_REQUEST, "比赛结束后才可发布榜单");
+            }
+            contest.resultsPublished = request.resultsPublished();
         }
         if (request.publicScoreboardEnabled() != null) {
             contest.publicScoreboardEnabled = request.publicScoreboardEnabled();
@@ -665,6 +683,9 @@ public class ContestService {
         replay.allowAfterEndViewCode = source.allowAfterEndViewCode;
         replay.enableCodeTemplates = source.enableCodeTemplates;
         replay.publicScoreboardEnabled = source.publicScoreboardEnabled;
+        replay.scoreboardEnabled = source.scoreboardEnabled;
+        replay.resultsPublished = false;
+        replay.scoringMode = source.scoringMode;
         replay.showClassOnScoreboard = source.showClassOnScoreboard;
         replay.allowStarRegistration = source.allowStarRegistration;
         replay.allowViewAllSubmissions = source.allowViewAllSubmissions;
@@ -1080,9 +1101,50 @@ public class ContestService {
         return buildScoreboard(contest, frozenForViewer ? contest.freezeTime : null, !frozenForViewer && isEnded(contest));
     }
 
-    /**
-     * 封装榜单For管理员导出相关逻辑。不满足业务约束时直接抛出明确异常；从持久化层读取数据。
-     */
+    /** Returns the complete, unfrozen management board, including approved users without submissions. */
+    public ContestScoreboardVO managementScoreboard(long id) {
+        Contest contest = contestMapper.selectById(id);
+        if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
+            throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
+        }
+        if (!contestAccessPolicy.can(CurrentUser.required(), Permission.MANAGE_SCOREBOARD, contest)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权查看该比赛完整榜单");
+        }
+        ContestScoreboardVO board = buildScoreboard(contest, null, false);
+        List<ContestScoreboardRowVO> rows = new ArrayList<>(board.rows());
+        Set<Long> includedUsers = rows.stream().map(ContestScoreboardRowVO::userId)
+            .collect(Collectors.toSet());
+        List<ContestProblem> problems = contestProblemMapper.selectList(
+            new QueryWrapper<ContestProblem>().eq("contest_id", id).orderByAsc("display_order"));
+        List<ContestScoreboardRowVO> emptyRows = new ArrayList<>();
+        for (ContestRegistration registration : registrationMapper.selectList(
+            new QueryWrapper<ContestRegistration>().eq("contest_id", id).eq("status", "APPROVED"))) {
+            if (includedUsers.add(registration.userId)) {
+                BoardIdentity identity = identityKey(IdentityType.PERSONAL,
+                    registration.userId, registration.starred);
+                emptyRows.add(oiScoreboardRow(problems, identity, Map.of(), Map.of()));
+            }
+        }
+        rows.addAll(enrichScoreboardUserInfo(enrichScoreboardClassInfo(contest, emptyRows)));
+        rows.sort(Comparator.comparing(ContestScoreboardRowVO::score, Comparator.reverseOrder())
+            .thenComparing(ContestScoreboardRowVO::penalty)
+            .thenComparing(ContestScoreboardRowVO::userId));
+        return new ContestScoreboardVO(board.contestId(), board.title(), board.type(), board.status(),
+            board.startTime(), board.endTime(), board.durationMinutes(), board.problems(), rankRows(rows),
+            board.showClassOnScoreboard(), board.boardState());
+    }
+
+    /** Includes class information for authorized managers' private ranking filters. */
+    public ContestScoreboardVO independentManagementScoreboard(long id) {
+        ContestScoreboardVO board = managementScoreboard(id);
+        Contest contest = contestMapper.selectById(id);
+        contest.showClassOnScoreboard = true;
+        return new ContestScoreboardVO(board.contestId(), board.title(), board.type(), board.status(),
+            board.startTime(), board.endTime(), board.durationMinutes(), board.problems(),
+            enrichScoreboardClassInfo(contest, board.rows()), true, board.boardState());
+    }
+
+    /** Builds the unfrozen scoreboard used by authorized management exports. */
     public ContestScoreboardVO scoreboardForAdminExport(long id) {
         Contest contest = contestMapper.selectById(id);
         if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
@@ -1154,7 +1216,7 @@ public class ContestService {
         List<Submission> allSubmissions = submissionMapper.selectList(
             new QueryWrapper<Submission>()
                 .eq("contest_id", contest.id)
-                .orderByAsc("created_at")
+                .orderByAsc("submit_time")
                 .orderByAsc("id")
         );
         List<Submission> submissions = allSubmissions.stream()
@@ -1197,7 +1259,7 @@ public class ContestService {
                 );
             })
             .toList();
-        List<ContestScoreboardRowVO> rows = ContestType.OI.name().equals(contest.type)
+        List<ContestScoreboardRowVO> rows = ContestFeedbackPolicy.usesScores(contest)
             ? oiScoreboardRows(contest, contestProblems, submissions, hiddenAttemptsByIdentity)
             : acmScoreboardRows(contest, contestProblems, submissions, hiddenAttemptsByIdentity);
         rows = applyMedals(rows, contest, showMedals);
@@ -1297,6 +1359,8 @@ public class ContestService {
         // sourceProblemId -> newContestProblemId 的映射
         Map<Long, Long> sourceToNewId = new LinkedHashMap<>();
 
+        Contest scoringContest = contestMapper.selectById(contestId);
+        int problemIndex = 0;
         for (ContestProblemRequest request : problems) {
             Problem sourceProblem = problemMapper.selectById(request.problemId());
             if (sourceProblem == null) {
@@ -1310,6 +1374,14 @@ public class ContestService {
             contestProblem.problemId = request.problemId();
             contestProblem.label = request.label();
             contestProblem.score = request.score();
+            if (contestProblem.score == null && ContestFeedbackPolicy.usesScores(scoringContest)) {
+                contestProblem.score = 100 / problems.size();
+                if (problemIndex < 100 % problems.size()) {
+                    contestProblem.score++;
+                }
+            }
+            contestProblem.fullScore = contestProblem.score;
+            problemIndex++;
             contestProblem.displayOrder = request.displayOrder() == null ? 0 : request.displayOrder();
             // 快照源题目信息（contest_problems 的 title/statement/time_limit/memory_limit 为 NOT NULL 列）
             contestProblem.title = sourceProblem.title == null
@@ -1326,9 +1398,22 @@ public class ContestService {
             contestProblem.tags = sourceProblem.tags;
             contestProblemMapper.insert(contestProblem);
             sourceToNewId.put(request.problemId(), contestProblem.id);
-            if (request.caseScores() != null) {
+            List<ContestProblemCaseScoreRequest> allocatedCases = request.caseScores();
+            if (ContestFeedbackPolicy.usesScores(scoringContest)
+                && (allocatedCases == null || allocatedCases.isEmpty())) {
+                List<ProblemTestCase> tests = problemTestCaseMapper.selectList(
+                    new QueryWrapper<ProblemTestCase>().eq("problem_id", request.problemId())
+                        .eq("sample", false).orderByAsc("case_no"));
+                allocatedCases = new ArrayList<>();
+                int points = contestProblem.score == null ? 0 : contestProblem.score;
+                for (int index = 0; index < tests.size(); index++) {
+                    allocatedCases.add(new ContestProblemCaseScoreRequest(
+                        tests.get(index).caseNo, points / tests.size() + (index < points % tests.size() ? 1 : 0)));
+                }
+            }
+            if (allocatedCases != null) {
                 Map<Integer, Integer> caseScores = new LinkedHashMap<>();
-                for (var caseScoreRequest : request.caseScores()) {
+                for (var caseScoreRequest : allocatedCases) {
                     if (caseScoreRequest.caseNo() == null) {
                         continue;
                     }
@@ -1520,13 +1605,28 @@ public class ContestService {
         return hasApprovedRegistration(contest, user);
     }
 
+    /** Public boards never bypass the manual release, including external and snapshot routes. */
+    private void requireScoreboardPublished(Contest contest) {
+        if (isContestOwnerOrSuperAdmin(contest, CurrentUser.get())) {
+            return;
+        }
+        if (ContestFeedbackPolicy.isLanqiao(contest)
+            && (LocalDateTime.now().isBefore(contest.endTime) || !Boolean.TRUE.equals(contest.resultsPublished))) {
+            throw new BizException(ErrorCode.FORBIDDEN, "比赛成绩尚未发布");
+        }
+    }
+
     public void requireInternalScoreboardAccess(long contestId) {
         Contest contest = contestMapper.selectById(contestId);
         if (contest == null || Boolean.TRUE.equals(contest.isDeleted)) {
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
         contestIpAccessService.requireAllowed(contest);
+        requireScoreboardPublished(contest);
         AuthUser user = CurrentUser.get();
+        if (Boolean.FALSE.equals(contest.scoreboardEnabled) && !isContestOwnerOrSuperAdmin(contest, user)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "比赛榜单已关闭");
+        }
         if (!isContestOwnerOrSuperAdmin(contest, user) && !hasApprovedRegistration(contest, user)) {
             throw new BizException(ErrorCode.FORBIDDEN, "请先报名比赛并通过审核");
         }
@@ -1851,7 +1951,9 @@ public class ContestService {
             contest.sourceContestId,
             contest.allowedIpRanges,
             Boolean.TRUE.equals(contest.hidden),
-            submissionMapper.countContestActiveUsers(contest.id, problemStatsCutoff)
+            submissionMapper.countContestActiveUsers(contest.id, problemStatsCutoff),
+            !Boolean.FALSE.equals(contest.scoreboardEnabled),
+            Boolean.TRUE.equals(contest.resultsPublished)
         );
     }
 
@@ -1888,7 +1990,9 @@ public class ContestService {
                 submissionQuery.le("submit_time", cutoff);
             }
             List<Submission> allSubmissions = submissionMapper.selectList(submissionQuery);
-            acceptedCountMap = distinctAcceptedCountByProblem(allSubmissions);
+            acceptedCountMap = ContestFeedbackPolicy.isLanqiao(contest)
+                && !isContestOwnerOrSuperAdmin(contest, CurrentUser.get())
+                ? Map.of() : distinctAcceptedCountByProblem(allSubmissions);
             for (Submission s : allSubmissions) {
                 Long cpId = s.contestProblemId;
                 if (cpId == null) continue;
@@ -2214,10 +2318,10 @@ public class ContestService {
             OiCell cell = cells.computeIfAbsent(contestProblemKey(submission), ignored -> new OiCell());
             cell.attempts += 1;
             int score = oiSubmissionScore(contest.id, submission);
-            if (score >= cell.score) {
+            if (ContestFeedbackPolicy.isLanqiao(contest) || score >= cell.score) {
                 cell.score = score;
                 cell.accepted = "AC".equals(submission.status);
-                cell.acceptedAt = cell.accepted ? submissionTime(submission) : cell.acceptedAt;
+                cell.acceptedAt = cell.accepted ? submissionTime(submission) : null;
             }
         }
         hiddenAttemptsByIdentity.keySet().forEach(identity -> cellsByIdentity.computeIfAbsent(identity, ignored -> new LinkedHashMap<>()));
@@ -2904,6 +3008,7 @@ public class ContestService {
              */
             throw new BizException(ErrorCode.NOT_FOUND, "比赛不存在");
         }
+        requireScoreboardPublished(contest);
         if (!Boolean.TRUE.equals(contest.publicScoreboardEnabled)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
@@ -3147,7 +3252,7 @@ public class ContestService {
         List<Submission> submissions = submissionMapper.selectList(
             new QueryWrapper<Submission>()
                 .eq("contest_id", contest.id)
-                .orderByAsc("created_at")
+                .orderByAsc("submit_time")
                 .orderByAsc("id")
         )
             .stream()

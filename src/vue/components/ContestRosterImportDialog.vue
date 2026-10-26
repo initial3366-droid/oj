@@ -2,9 +2,10 @@
 import { computed, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { adminPost } from "../../admin/api/adminClient";
+import { teacherPost } from "../../teacher/teacherApi";
 import { adminPath } from "../../utils/adminPath";
 type Result = { addedCount: number; skippedCount: number; failedCount: number; rows: Array<{ rowNumber: number; studentNo: string; status: string; message: string }> };
-const props = defineProps<{ modelValue: boolean; contestId: number; contestTitle: string }>();
+const props = defineProps<{ modelValue: boolean; contestId: number; contestTitle: string; teacher?: boolean }>();
 const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void; (event: "imported"): void }>();
 const mode = ref<"paste" | "file">("paste"); const text = ref(""); const file = ref<File | null>(null); const busy = ref(false); const error = ref(""); const result = ref<Result | null>(null);
 const numbers = computed(() => text.value.replace(/\uFEFF/g, "").split(/[\s,，;；]+/).filter(Boolean));
@@ -18,7 +19,9 @@ async function importRoster() {
   try {
     let body: FormData | { studentNos: string[] };
     if (mode.value === "file") { body = new FormData(); body.append("file", file.value!); } else body = { studentNos: numbers.value };
-    result.value = await adminPost<Result>(adminPath(`/api/admin/v1/contests/${props.contestId}/registrations/${mode.value === "file" ? "import-file" : "import"}`), body, true, 120000);
+    const path = `/api/admin/v1/contests/${props.contestId}/registrations/${mode.value === "file" ? "import-file" : "import"}`;
+    result.value = props.teacher ? await teacherPost<Result>(path, body, 120000)
+      : await adminPost<Result>(adminPath(path), body, true, 120000);
     ElMessage.success("名单处理完成"); emit("imported");
   } catch (cause) { error.value = cause instanceof Error ? cause.message : "导入失败，请重试"; }
   finally { busy.value = false; }

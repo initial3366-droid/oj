@@ -10,7 +10,7 @@ services:
       context: .
       args:
         GO_JUDGE_VERSION: "1.12.1"
-    image: qoj-go-judge:1.12.1
+    image: qoj-go-judge:seccomp-1.12.1
     container_name: qoj-go-judge
     # go-judge 需要特权能力创建受限执行环境；因此该容器必须与公网隔离。
     privileged: true

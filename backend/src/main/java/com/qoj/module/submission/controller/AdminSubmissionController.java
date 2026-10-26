@@ -60,7 +60,9 @@ public class AdminSubmissionController {
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
         @RequestParam(required = false) String sortBy,
-        @RequestParam(required = false) String sortOrder
+        @RequestParam(required = false) String sortOrder,
+        @RequestParam(required = false) String keyword,
+        @RequestParam(defaultValue = "false") boolean practiceOnly
     ) {
         return ApiResponse.ok(submissionService.adminList(
             page,
@@ -79,7 +81,9 @@ public class AdminSubmissionController {
             from,
             to,
             sortBy,
-            sortOrder
+            sortOrder,
+            keyword,
+            practiceOnly
         ));
     }
 
@@ -103,12 +107,14 @@ public class AdminSubmissionController {
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
         @RequestParam(required = false) String sortBy,
-        @RequestParam(required = false) String sortOrder
+        @RequestParam(required = false) String sortOrder,
+        @RequestParam(required = false) String keyword,
+        @RequestParam(defaultValue = "false") boolean practiceOnly
     ) {
         AuthUser authUser = CurrentUser.required();
         byte[] csv = submissionExportService.exportSubmissionsCsv(
             id, userId, classId, problemId, contestId, contestProblemId, practiceId,
-            language, status, judgeServer, identityType, from, to, sortBy, sortOrder, authUser
+            language, status, judgeServer, identityType, from, to, sortBy, sortOrder, authUser, keyword, practiceOnly
         );
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_DISPOSITION,

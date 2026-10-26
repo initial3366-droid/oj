@@ -84,7 +84,7 @@ const submissionTimeLimit = ref(0);
 const submissionMetrics = ref<{ time: number | null; memory: number | null }>({ time: null, memory: null });
 const submissionColor = computed(() => {
   const status = submissionStatus.value.toUpperCase();
-  if (["AC", "ACCEPTED"].includes(status)) return "#16a34a";
+  if (["SUBMITTED", "AC", "ACCEPTED"].includes(status)) return "#16a34a";
   if (["WA", "WRONG_ANSWER"].includes(status)) return "#dc2626";
   if (["TLE", "TIME_LIMIT_EXCEEDED"].includes(status)) return "#d97706";
   if (["MLE", "MEMORY_LIMIT_EXCEEDED"].includes(status)) return "#9333ea";
@@ -145,16 +145,17 @@ function switchLanguage(value: string | number) {
   language.value = next;
 }
 function normalizeOutput(value: string) { return value.replace(/\r\n/g, "\n").replace(/[ \t]+(?=\n|$)/g, "").replace(/\n+$/, ""); }
-function finalStatus(value?: string | null) { return ["AC", "ACCEPTED", "WA", "WRONG_ANSWER", "TLE", "TIME_LIMIT_EXCEEDED", "MLE", "MEMORY_LIMIT_EXCEEDED", "RE", "RUNTIME_ERROR", "CE", "COMPILE_ERROR", "NOO", "NO_OUTPUT", "SE", "SYSTEM_ERROR", "FAILED"].includes(String(value || "").toUpperCase().replace(/\s+/g, "_")); }
+function finalStatus(value?: string | null) { return ["SUBMITTED", "AC", "ACCEPTED", "WA", "WRONG_ANSWER", "TLE", "TIME_LIMIT_EXCEEDED", "MLE", "MEMORY_LIMIT_EXCEEDED", "RE", "RUNTIME_ERROR", "CE", "COMPILE_ERROR", "NOO", "NO_OUTPUT", "SE", "SYSTEM_ERROR", "FAILED"].includes(String(value || "").toUpperCase().replace(/\s+/g, "_")); }
 function runningStatus(value?: string | null) { return ["WAITING", "PENDING", "QUEUED", "REJUDGE_PENDING", "JUDGING", "COMPILING", "RUNNING"].includes(String(value || "").toUpperCase()); }
 function verdictGuide(value?: string | null) {
   const key = String(value || "PENDING").trim().toUpperCase().replace(/\s+/g, "_");
   const aliases: Record<string, string> = { ACCEPTED: "AC", WRONG_ANSWER: "WA", TIME_LIMIT_EXCEEDED: "TLE", MEMORY_LIMIT_EXCEEDED: "MLE", RUNTIME_ERROR: "RE", COMPILE_ERROR: "CE", NO_OUTPUT: "NOO", SYSTEM_ERROR: "SE", QUEUED: "PENDING" };
   return VERDICT_GUIDES.find(item => item.code === (aliases[key] ?? key));
 }
-function statusLabel(value?: string | null) { return verdictGuide(value)?.chinese ?? String(value || "PENDING"); }
+function statusLabel(value?: string | null) { if (value === "SUBMITTED") return "提交成功"; if (value === "FAILED") return "提交失败"; return verdictGuide(value)?.chinese ?? String(value || "PENDING"); }
 /** 提交结果提示；比赛未结束时省略测试点通过数量。 */
 function submissionResultText(status?: string | null, passed?: number | null, total?: number | null) {
+  if (status === "SUBMITTED") return "提交成功";
   const base = `提交结果：${statusLabel(status)}`;
   if (runningStatus(status) || (contestMode.value && contestRunning.value)) return base;
   return `${base} · ${passed ?? 0}/${total ?? 0} 通过`;
@@ -443,7 +444,7 @@ usePageTitle(computed(() => problem.value ? `${contestMode.value ? `${contestLab
           <div v-if="debugMetrics && !submissionPanel" class="debug-metrics">运行时间：{{ debugMetrics.time }} · 运行内存：{{ debugMetrics.memory }}</div>
           <div v-if="submissionPanel" class="submission-result" role="status" aria-live="polite" :style="{ color: submissionColor }">
             <strong>{{ statusLabel(submissionStatus) }}</strong>
-            <div class="submission-resources"><span>耗时：{{ submissionMetrics.time == null ? '—' : `${submissionMetrics.time} ms` }}</span><span>内存：{{ submissionMetrics.memory == null ? '—' : `${submissionMetrics.memory} KB` }}</span></div>
+            <div v-if="submissionStatus !== 'SUBMITTED'" class="submission-resources"><span>耗时：{{ submissionMetrics.time == null ? '—' : `${submissionMetrics.time} ms` }}</span><span>内存：{{ submissionMetrics.memory == null ? '—' : `${submissionMetrics.memory} KB` }}</span></div>
             <p v-if="submissionStatus === 'FAILED'">{{ debugAlert }}</p>
           </div>
           <div v-else class="debug-fields"><label>输入<textarea v-model="debugInput" aria-label="调试输入" placeholder="在这里输入自定义数据，支持换行" spellcheck="false" @input="sampleIndex = 'custom'; debugOutput = ''; debugAlert = ''; debugMetrics = null"/></label><label>输出<textarea :value="debugOutput" aria-label="调试输出" readonly spellcheck="false"/></label></div>

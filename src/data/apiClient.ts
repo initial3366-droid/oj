@@ -137,7 +137,7 @@ export interface AdminDashboard {
     title: string;
     startTime: string;
     endTime: string;
-    type: "ACM" | "OI";
+    type: "ACM" | "OI" | "LANQIAO";
     audience: "ALL" | "CLASS";
     status: "NOT_STARTED" | "RUNNING" | "ENDED";
   }>;
@@ -336,7 +336,7 @@ export interface ContestDraftPayload {
   startTime?: string;
   endTime?: string;
   description?: string;
-  type?: "ACM" | "OI";
+  type?: "ACM" | "OI" | "LANQIAO";
   audience?: "ALL" | "CLASS";
   audienceTypes?: Array<"ALL" | "CLASS">;
   classIds?: number[];
@@ -350,6 +350,8 @@ export interface ContestDraftPayload {
   allowAfterEndViewProblem?: boolean;
   allowAfterEndViewCode?: boolean;
   enableCodeTemplates?: boolean;
+  scoreboardEnabled?: boolean;
+  resultsPublished?: boolean;
   publicScoreboardEnabled?: boolean;
   showClassOnScoreboard?: boolean;
   allowStarRegistration?: boolean;
@@ -370,7 +372,7 @@ export interface ContestPayload {
   durationMinutes: number;
   startTime: string;
   endTime: string;
-  type: "ACM" | "OI";
+  type: "ACM" | "OI" | "LANQIAO";
   audience: "ALL" | "CLASS";
   audienceId?: number | null;
   audiences?: Array<{ audienceType: "ALL" | "CLASS"; audienceId?: number | null }>;
@@ -384,6 +386,8 @@ export interface ContestPayload {
   allowAfterEndViewProblem?: boolean;
   allowAfterEndViewCode?: boolean;
   enableCodeTemplates?: boolean;
+  scoreboardEnabled?: boolean;
+  resultsPublished?: boolean;
   publicScoreboardEnabled?: boolean;
   showClassOnScoreboard?: boolean;
   allowStarRegistration?: boolean;
@@ -405,7 +409,7 @@ export interface AdminContest {
   durationMinutes: number;
   startTime: string;
   endTime: string;
-  type: "ACM" | "OI";
+  type: "ACM" | "OI" | "LANQIAO";
   ownerId: number;
   ownerName: string;
   audience: "ALL" | "CLASS";
@@ -421,6 +425,8 @@ export interface AdminContest {
   allowAfterEndViewProblem: boolean;
   allowAfterEndViewCode: boolean;
   enableCodeTemplates: boolean;
+  scoreboardEnabled?: boolean;
+  resultsPublished?: boolean;
   publicScoreboardEnabled: boolean;
   showClassOnScoreboard: boolean;
   allowStarRegistration: boolean;
@@ -457,7 +463,7 @@ export interface PublicContest {
   durationMinutes: number;
   startTime: string;
   endTime: string;
-  type: "ACM" | "OI";
+  type: "ACM" | "OI" | "LANQIAO";
   audience: "ALL" | "CLASS";
   audiences: Array<{ audienceType: "ALL" | "CLASS"; audienceId: number; name: string }>;
   frozen: boolean;
@@ -470,6 +476,8 @@ export interface PublicContest {
   allowAfterEndViewProblem: boolean;
   allowAfterEndViewCode: boolean;
   enableCodeTemplates: boolean;
+  scoreboardEnabled?: boolean;
+  resultsPublished?: boolean;
   publicScoreboardEnabled: boolean;
   showClassOnScoreboard: boolean;
   allowStarRegistration: boolean;
@@ -585,7 +593,7 @@ export interface ContestScoreboardRow {
 export interface ContestScoreboard {
   contestId: number;
   title: string;
-  type: "ACM" | "OI";
+  type: "ACM" | "OI" | "LANQIAO";
   status: "NOT_STARTED" | "RUNNING" | "ENDED";
   startTime: string;
   endTime: string;
@@ -672,7 +680,7 @@ export interface ContestPublicScoreboardRow {
 export interface ContestPublicScoreboard {
   contestId: number;
   contestTitle: string;
-  contestType: "ACM" | "OI";
+  contestType: "ACM" | "OI" | "LANQIAO";
   startTime: string;
   endTime: string;
   frozen: boolean;
@@ -721,13 +729,11 @@ export interface ContestRollingState {
  */
 export interface PublicUserProfile {
   id: number;
-  username: string;
   displayName: string;
-  role: string;
   acCount: number;
   submitCount: number;
   totalScore: number;
-  createdAt: string;
+  avatarUrl?: string | null;
 }
 
 /**
@@ -844,7 +850,7 @@ interface BackendContest {
   durationMinutes?: number;
   startTime: string;
   endTime: string;
-  type: "ACM" | "OI";
+  type: "ACM" | "OI" | "LANQIAO";
   ownerId?: number;
   ownerName?: string;
   audience: "ALL" | "CLASS";
@@ -860,6 +866,8 @@ interface BackendContest {
   allowAfterEndViewProblem?: boolean;
   allowAfterEndViewCode?: boolean;
   enableCodeTemplates?: boolean;
+  scoreboardEnabled?: boolean;
+  resultsPublished?: boolean;
   publicScoreboardEnabled?: boolean;
   showClassOnScoreboard?: boolean;
   allowStarRegistration?: boolean;
@@ -1087,6 +1095,8 @@ function mapAdminContest(contest: BackendContest): AdminContest {
     allowAfterEndViewProblem: contest.allowAfterEndViewProblem ?? true,
     allowAfterEndViewCode: Boolean(contest.allowAfterEndViewCode),
     enableCodeTemplates: Boolean(contest.enableCodeTemplates),
+    scoreboardEnabled: contest.scoreboardEnabled ?? contest.type !== "LANQIAO",
+    resultsPublished: Boolean(contest.resultsPublished),
     publicScoreboardEnabled: Boolean(contest.publicScoreboardEnabled),
     showClassOnScoreboard: Boolean(contest.showClassOnScoreboard),
     allowViewAllSubmissions: contest.allowViewAllSubmissions ?? true,
@@ -1138,6 +1148,8 @@ function mapPublicContest(contest: BackendContest): PublicContest {
     allowAfterEndViewProblem: contest.allowAfterEndViewProblem ?? true,
     allowAfterEndViewCode: Boolean(contest.allowAfterEndViewCode),
     enableCodeTemplates: Boolean(contest.enableCodeTemplates),
+    scoreboardEnabled: contest.scoreboardEnabled ?? contest.type !== "LANQIAO",
+    resultsPublished: Boolean(contest.resultsPublished),
     publicScoreboardEnabled: Boolean(contest.publicScoreboardEnabled),
     showClassOnScoreboard: Boolean(contest.showClassOnScoreboard),
     allowViewAllSubmissions: contest.allowViewAllSubmissions ?? true,

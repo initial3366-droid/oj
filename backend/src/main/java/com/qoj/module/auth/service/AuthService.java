@@ -115,28 +115,25 @@ public class AuthService {
     @Transactional
     public FrontendLoginResponse loginUser(LoginRequest request) {
         String username = normalizeLoginName(request.username());
-        assertLoginNotLocked("front", username);
+        assertLoginNotLocked(username);
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", request.username()));
         if (user != null && passwordEncoder.matches(request.password(), user.passwordHash)) {
-            if (user.studentNo != null && request.password().equals(legacyStudentPassword(user.studentNo))) {
-                throw new BizException(403, "学号末六位密码已停用，请通过邮箱找回或联系教师重置密码");
-            }
             if (user.banned()) throw new BizException(403, "账号已封禁，无法进行任何操作");
             if (!UserRole.isActiveFrontendRole(user.role)) {
-                recordLoginFailure("front", username);
+                recordLoginFailure(username);
                 /**
                  * 封装BadCredentialsException相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
                  */
                 throw new BadCredentialsException("bad credentials");
             }
-            resetLoginFailures("front", username);
+            resetLoginFailures(username);
             /**
              * 判断sueFrontendTokens是否成立。保持该职责的输入、输出和异常边界集中，便于调用方复用。
              */
             return FrontendLoginResponse.user(issueFrontendTokens(user, Boolean.TRUE.equals(request.rememberMe())));
         }
 
-        recordLoginFailure("front", username);
+        recordLoginFailure(username);
         /**
          * 封装BadCredentialsException相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
@@ -163,15 +160,15 @@ public class AuthService {
 
     public AuthTokenResponse loginTeacher(LoginRequest request) {
         String username = normalizeLoginName(request.username());
-        assertLoginNotLocked("teacher", username);
+        assertLoginNotLocked(username);
         Teacher teacher = teacherMapper.selectOne(
             new QueryWrapper<Teacher>().eq("username", request.username()).eq("status", "ACTIVE")
         );
         if (teacher == null || !passwordEncoder.matches(request.password(), teacher.passwordHash)) {
-            recordLoginFailure("teacher", username);
+            recordLoginFailure(username);
             throw new BadCredentialsException("bad credentials");
         }
-        resetLoginFailures("teacher", username);
+        resetLoginFailures(username);
         return issueAccountTokens(new AuthUser(teacher), true);
     }
 
@@ -196,20 +193,22 @@ public class AuthService {
         return username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
     }
 
-    private String loginFailureKey(String scope, String username) {
+    /** All login portals share a source/name budget; never add an entry-point scope. */
+    private String loginFailureKey(String username) {
         return "oj:auth:login-fail:source:" + IpNetworkUtils.currentClientIp() + ":" + username;
     }
 
-    private void assertLoginNotLocked(String scope, String username) {
-        String key = loginFailureKey(scope, username);
+    private void assertLoginNotLocked(String username) {
+        String key = loginFailureKey(username);
         String value = redisTemplate.opsForValue().get(key);
         int failures = parseInt(value, 0);
-        if (value != null && redisTemplate.getExpire(key) != null && redisTemplate.getExpire(key) < 0) {
-            redisTemplate.delete(key);
-            return;
+        Long ttl = value == null ? null : redisTemplate.getExpire(key);
+        if (value != null && ttl != null && ttl < 0) {
+            // Repair an interrupted INCR/EXPIRE without forgiving accumulated failures.
+            redisTemplate.expire(key, LOGIN_LOCK_TTL);
+            ttl = LOGIN_LOCK_TTL.toSeconds();
         }
         if (failures >= MAX_LOGIN_FAILURES) {
-            Long ttl = redisTemplate.getExpire(key);
             long seconds = ttl == null || ttl < 0 ? LOGIN_LOCK_TTL.toSeconds() : ttl;
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
@@ -218,16 +217,16 @@ public class AuthService {
         }
     }
 
-    private void recordLoginFailure(String scope, String username) {
-        String key = loginFailureKey(scope, username);
+    private void recordLoginFailure(String username) {
+        String key = loginFailureKey(username);
         Long failures = redisTemplate.opsForValue().increment(key);
         if (failures != null && failures == 1L) {
             redisTemplate.expire(key, LOGIN_LOCK_TTL);
         }
     }
 
-    private void resetLoginFailures(String scope, String username) {
-        redisTemplate.delete(loginFailureKey(scope, username));
+    private void resetLoginFailures(String username) {
+        redisTemplate.delete(loginFailureKey(username));
     }
 
     private int parseInt(String value, int fallback) {
@@ -241,16 +240,16 @@ public class AuthService {
     //后台登录验证
     public AuthTokenResponse loginAdmin(LoginRequest request) {
         String username = normalizeLoginName(request.username());
-        assertLoginNotLocked("admin", username);
+        assertLoginNotLocked(username);
         AdminUser adminUser = adminUserMapper.selectOne(new QueryWrapper<AdminUser>().eq("username", request.username()));
         if (adminUser != null && passwordEncoder.matches(request.password(), adminUser.passwordHash)) {
-            resetLoginFailures("admin", username);
+            resetLoginFailures(username);
             return issueAccountTokens(new AuthUser(adminUser), false, Boolean.TRUE.equals(request.rememberMe()));
         }
 
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", request.username()));
         if (user != null && passwordEncoder.matches(request.password(), user.passwordHash)) {
-            recordLoginFailure("admin", username);
+            recordLoginFailure(username);
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */
@@ -258,11 +257,11 @@ public class AuthService {
         }
         Teacher teacher = teacherMapper.selectOne(new QueryWrapper<Teacher>().eq("username", request.username()));
         if (teacher != null && passwordEncoder.matches(request.password(), teacher.passwordHash)) {
-            recordLoginFailure("admin", username);
+            recordLoginFailure(username);
             throw new BizException(403, "用户名或密码错误");
         }
 
-        recordLoginFailure("admin", username);
+        recordLoginFailure(username);
         /**
          * 封装BadCredentialsException相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
          */
@@ -761,8 +760,4 @@ public class AuthService {
 
     }
 
-    private String legacyStudentPassword(String studentNo) {
-        String value = studentNo.trim();
-        return value.length() <= 6 ? value : value.substring(value.length() - 6);
-    }
 }

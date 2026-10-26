@@ -10,6 +10,7 @@ import "animate.css";
 import "./template-adapter/theme.css";
 import "./styles/management.css";
 import "./styles/content.css";
+import "./styles/management-spacing.css";
 import { setupI18n } from "../../vendor/vue3-element-admin/src/lang";
 import * as ElementPlusIcons from "@element-plus/icons-vue";
 import App from "./App.vue";

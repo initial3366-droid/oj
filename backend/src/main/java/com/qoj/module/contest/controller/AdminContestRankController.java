@@ -73,7 +73,7 @@ public class AdminContestRankController {
 
         if ("ACM".equalsIgnoreCase(mode)) {
             acmRankService.rebuildRank(contestId);
-        } else if ("OI".equalsIgnoreCase(mode)) {
+        } else if (("OI".equalsIgnoreCase(mode) || "LANQIAO".equalsIgnoreCase(mode))) {
             oiRankService.rebuildRank(contestId);
         } else {
             /**

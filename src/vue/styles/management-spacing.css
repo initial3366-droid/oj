@@ -1,0 +1,365 @@
+/* QOJ content spacing. Keep the upstream shell and compound Element Plus controls intact. */
+.qoj-management {
+  --management-gap: 24px;
+  --management-padding: 24px;
+}
+
+.qoj-management .page-container:not(.chat-screen) {
+  row-gap: var(--management-gap);
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) :is(
+  .toolbar, .table-toolbar, .course-toolbar, .picker-toolbar, .candidate-toolbar,
+  .candidate-search, .management-inline-toolbar, .selection-toolbar, .selection-row,
+  .batch-toolbar, .testcase-toolbar, .card-heading, .card-header, .team-header,
+  .section-header, .management-card-heading
+) {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) :is(
+  .actions, .heading-actions, .row-actions, .batch-buttons, .batch-menu-actions,
+  .editor-actions, .detail-actions, .tab-actions, .settings-actions, .generator-actions,
+  .report-actions, .card-heading > div, .team-header > div, .section-header > div
+) {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) :is(
+  .toolbar, .table-toolbar, .course-toolbar, .picker-toolbar, .candidate-toolbar,
+  .candidate-search, .management-inline-toolbar, .selection-toolbar, .selection-row,
+  .batch-toolbar, .testcase-toolbar, .actions, .heading-actions, .row-actions,
+  .batch-buttons, .batch-menu-actions, .editor-actions, .detail-actions, .tab-actions,
+  .settings-actions, .generator-actions, .report-actions, .management-card-actions,
+  .card-heading > div, .team-header > div, .section-header > div
+) > .el-button {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.qoj-management .page-container .management-card-actions :is(.heading-actions, .actions) {
+  gap: 12px;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) :is(
+  .toolbar, .table-toolbar, .course-toolbar, .picker-toolbar, .candidate-toolbar,
+  .candidate-search, .management-inline-toolbar
+) > :is(.el-input, .el-select, .el-date-editor) {
+  min-width: 0;
+  flex: 1 1 200px;
+  width: auto;
+  max-width: 320px;
+}
+
+.qoj-management .page-container :is(.filters, .filter-row) {
+  gap: 16px;
+}
+
+.qoj-management .page-container .el-card:not(.chat-card) > .el-card__body {
+  padding: 24px;
+}
+
+.qoj-management .page-container .el-card:not(.chat-card) > .el-card__header {
+  padding: 16px 24px;
+}
+
+.qoj-management .page-container :is(.editor-panel, .settings-note) {
+  margin-top: 24px;
+}
+
+.qoj-management .page-container .editor-panel {
+  padding: 24px;
+}
+
+.qoj-management .page-container :is(
+  .editor-grid, .generator-grid, .two-col, .two-column, .form-two-col, .field-grid,
+  .form-grid, .chart-grid, .summary-grid, .metric-grid, .today-grid, .queue-stats,
+  .detail-summary
+) {
+  min-width: 0;
+  column-gap: 24px;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) :is(
+  .two-col, .two-column, .form-two-col, .field-grid, .form-grid, .ratio-grid
+) > * {
+  min-width: 0;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) .el-form-item {
+  margin-bottom: 24px;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) .el-form-item__content {
+  min-width: 0;
+  column-gap: 12px;
+  row-gap: 8px;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) .el-form--label-top .el-form-item__label {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  margin-bottom: 12px;
+  line-height: 24px;
+  white-space: normal;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) .el-form-item__content > :is(small, p, .el-alert) {
+  flex-basis: 100%;
+  width: 100%;
+  margin: 0;
+  line-height: 20px;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog))
+  .el-form-item__content:has(> .el-input):has(> .el-button) > .el-input {
+  flex: 1 1 200px;
+  width: auto;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) .el-form-item__error {
+  position: static;
+  flex-basis: 100%;
+  padding-top: 0;
+  line-height: 20px;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) :is(.el-radio-group, .el-checkbox-group) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  max-width: 100%;
+}
+
+/* Segmented radio buttons remain one compound control, wrapping as complete buttons. */
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) .el-radio-group:has(> .el-radio-button) {
+  gap: 8px 0;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) :is(.el-radio, .el-checkbox) {
+  min-width: 0;
+  max-width: 100%;
+  margin-right: 0;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) .el-switch {
+  max-width: 100%;
+  height: auto;
+  min-height: 32px;
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.qoj-management .page-container .el-table td .cell:has(> .el-button) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+}
+
+.qoj-management .page-container .el-table td .cell > .el-button + .el-button {
+  margin-left: 0;
+}
+
+.qoj-management .page-container :is(.selection-toolbar, .batch-toolbar, .tag-row, .candidate-search) {
+  margin-bottom: 24px;
+}
+
+.qoj-management .page-container .el-card__body > :is(.toolbar, .table-toolbar, .course-toolbar, .management-inline-toolbar) {
+  margin-bottom: 24px;
+}
+
+.qoj-management .page-container :is(.editor-actions, .detail-actions, .settings-actions, .table-footer, .pagination, .course-pagination) {
+  margin-top: 24px;
+}
+
+.qoj-management .page-container .el-tab-pane > .el-card + .el-card {
+  margin-top: 24px;
+}
+
+:is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog) .el-dialog__body {
+  padding-block: 16px;
+}
+
+:is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog) .el-dialog__body > :is(.el-alert, .el-table, .el-form, p, .el-descriptions) + :is(.el-alert, .el-table, .el-form, p, .el-form-item, .el-descriptions) {
+  margin-top: 24px;
+}
+
+:is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog) .el-dialog__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+:is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog) .el-dialog__footer > .el-button {
+  margin: 0;
+}
+
+@media (max-width: 1100px) {
+  .qoj-management .page-container :is(.editor-grid, .generator-grid) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 800px) {
+  .qoj-management {
+    --management-padding: 16px;
+  }
+
+  :is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) :is(
+    .two-col, .two-column, .form-two-col, .field-grid, .form-grid
+  ) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qoj-management .page-container :is(.el-card:not(.chat-card) > .el-card__body, .editor-panel) {
+    padding: 16px;
+  }
+
+  .qoj-management .page-container .el-card:not(.chat-card) > .el-card__header {
+    padding: 16px;
+  }
+
+  :is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) :is(
+    .toolbar, .table-toolbar, .course-toolbar, .picker-toolbar, .candidate-toolbar,
+    .candidate-search, .management-inline-toolbar
+  ) > :is(.el-input, .el-select, .el-date-editor) {
+    max-width: none;
+    flex-basis: 100%;
+  }
+
+  .qoj-management .page-container .management-inline-toolbar > .management-card-actions {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  .qoj-management .page-container .management-card-actions :is(.heading-actions, .actions) {
+    justify-content: flex-start;
+  }
+
+  :is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) .el-form-item__label {
+    white-space: normal;
+  }
+}
+
+/* The editor's format picker is compact; ordinary filter sizing must not stretch it. */
+.qoj-management .page-container .html-math-editor .toolbar > .format-select {
+  flex: 0 0 112px;
+  width: 112px;
+  max-width: 112px;
+}
+
+/* Conversations retain their own viewport rather than inheriting card/form spacing. */
+.qoj-management .chat-screen .chat-card > .el-card__body {
+  padding: 0;
+}
+
+.qoj-management .chat-screen .chat-layout {
+  grid-template-columns: 208px minmax(0, 1fr);
+}
+
+.qoj-management .chat-screen .chat-sessions {
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  padding: 16px 12px;
+  border: 0;
+}
+
+.qoj-management .chat-screen .session-row > button:first-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 920px) {
+  .qoj-management .chat-screen .chat-layout {
+    grid-template-columns: 168px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .qoj-management .chat-screen .chat-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 72px minmax(0, 1fr);
+  }
+
+  .qoj-management .chat-screen .chat-sessions {
+    padding: 8px 12px;
+  }
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) :is(.tag-row, .audience-options, .candidate, .image-upload) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) .tag-row > .el-button {
+  margin: 0;
+}
+
+.qoj-management .page-container .el-row {
+  row-gap: 24px;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) .switch-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) :is(.el-descriptions__table, .el-descriptions__body) {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+:is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog) .formula-group > div {
+  gap: 12px;
+}
+
+:is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog) .formula-compose {
+  gap: 16px;
+}
+
+@media (max-width: 800px) {
+  :is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) .switch-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.qoj-management .page-container :is(.selection-toolbar, .selection-row, .batch-toolbar) > div:has(> .el-button) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+}
+
+.qoj-management .page-container :is(.selection-toolbar, .selection-row, .batch-toolbar) > div > .el-button {
+  margin: 0;
+}
+
+/* Notices inside forms need separation from the next field, not just wrapped text. */
+:is(.qoj-management .page-container, :is(.qoj-management-dialog, body:is([data-qoj-portal="admin"], [data-qoj-portal="teacher"]) .el-dialog)) .el-form > .el-alert {
+  margin-bottom: 24px;
+}
+
+.qoj-management .page-container .el-card__body > .el-alert + :is(.el-form, .el-table, p, .el-form-item) {
+  margin-top: 24px;
+}

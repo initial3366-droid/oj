@@ -1,6 +1,7 @@
+import { teacherGet } from "../teacher/teacherApi";
 import { apiGet, apiPost } from './client';
 import { adminGet } from '../admin/api/adminClient';
-import { wsClient, adminWsClient } from '../utils/websocket';
+import { wsClient, adminWsClient, teacherWsClient } from '../utils/websocket';
 import { adminPath } from '../utils/adminPath';
 
 export interface ContestMessage {
@@ -18,13 +19,14 @@ export interface ContestMessageFeed {
   messages: ContestMessage[];
   hasMore: boolean;
 }
-export function getContestMessages(id: number, afterId: number, management = false) {
+export function getContestMessages(id: number, afterId: number, management = false, teacher = false) {
   const canonicalPath = `/api/${management ? 'admin/' : ''}v1/contests/${id}/messages?afterId=${afterId}`;
   const path = management ? adminPath(canonicalPath) : canonicalPath;
+  if (management && teacher) return teacherGet<ContestMessageFeed>(path);
   return management ? adminGet<ContestMessageFeed>(path) : apiGet<ContestMessageFeed>(path, true);
 }
-export function sendContestMessage(id: number, content: string, requestId: string, kind: 'QUESTION' | 'REPLY' | 'BROADCAST', participantId?: number) {
-  return (kind === 'QUESTION' ? wsClient : adminWsClient).sendContestMessage(id, kind, content, requestId, participantId);
+export function sendContestMessage(id: number, content: string, requestId: string, kind: 'QUESTION' | 'REPLY' | 'BROADCAST', participantId?: number, teacher = false) {
+  return (kind === 'QUESTION' ? wsClient : teacher ? teacherWsClient : adminWsClient).sendContestMessage(id, kind, content, requestId, participantId);
 }
 export function readContestMessages(id: number, throughId: number) {
   return apiPost(`/api/v1/contests/${id}/messages/read`, { throughId }, true);

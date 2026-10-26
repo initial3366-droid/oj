@@ -1,6 +1,8 @@
 package com.qoj.module.user.service;
 
 import com.qoj.common.ErrorCode;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.qoj.security.CurrentUser;
 import com.qoj.common.enums.UserRole;
 import com.qoj.common.exception.BizException;
 import com.qoj.module.user.entity.User;
@@ -30,7 +32,11 @@ public class UserPublicService {
      * 封装资料相关逻辑。不满足业务约束时直接抛出明确异常；从持久化层读取数据。
      */
     public PublicUserProfileVO profile(long userId) {
-        User user = userMapper.selectById(userId);
+        CurrentUser.required();
+        // Public profiles must never load login identifiers or credentials.
+        User user = userMapper.selectOne(new QueryWrapper<User>()
+            .select("id", "display_name", "avatar_url", "role")
+            .eq("id", userId));
         if (user == null || !UserRole.isActiveFrontendRole(user.role)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
@@ -43,14 +49,11 @@ public class UserPublicService {
          */
         return new PublicUserProfileVO(
             user.id,
-            user.username,
-            user.displayName,
+            user.displayName == null || user.displayName.isBlank() ? "用户" : user.displayName,
             user.avatarUrl,
-            user.role,
             score == null ? 0 : score.acCount,
             score == null ? 0 : score.submitCount,
-            score == null ? 0 : score.totalScore,
-            user.createdAt
+            score == null ? 0 : score.totalScore
         );
     }
 }

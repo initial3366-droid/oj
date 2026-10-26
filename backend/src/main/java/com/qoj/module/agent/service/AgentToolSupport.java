@@ -18,8 +18,7 @@ import java.util.Map;
 
 /** Shared argument contract for both direct callbacks and the approval-aware tool loop. */
 final class AgentToolSupport {
-    private static final ObjectMapper JSON = new ObjectMapper()
-        .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+    private static final ObjectMapper JSON = new ObjectMapper().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
         .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
     private static final JsonSchemaFactory FACTORY = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
     private static final Cache<String, JsonSchema> SCHEMAS = Caffeine.newBuilder().maximumSize(256).build();
@@ -29,7 +28,9 @@ final class AgentToolSupport {
 
     static String schema(String name, String fallback) {
         JsonNode selected = CATALOG.path("tools").path(name);
-        if (selected.isMissingNode()) return fallback;
+        if (selected.isMissingNode()) {
+            return fallback;
+        }
         ObjectNode schema = selected.deepCopy();
         schema.set("$defs", CATALOG.path("$defs"));
         return schema.toString();
@@ -38,7 +39,9 @@ final class AgentToolSupport {
     static JsonNode validate(String schema, String arguments) {
         JsonNode value;
         try {
-            if (arguments == null || arguments.length() > 100000) throw new IllegalArgumentException();
+            if (arguments == null || arguments.length() > 100000) {
+                throw new IllegalArgumentException();
+            }
             value = JSON.readTree(arguments);
         } catch (Exception e) {
             throw new InvalidArguments(List.of(new Violation("$", "参数必须是有效的单个 JSON 对象，不允许重复字段，且不能超过 100000 字符")));
@@ -51,15 +54,21 @@ final class AgentToolSupport {
             .sorted(Comparator.comparing((ValidationMessage error) -> error.getInstanceLocation().toString())
                 .thenComparing(ValidationMessage::getType))
             .limit(20).map(AgentToolSupport::violation).toList();
-        if (!errors.isEmpty()) throw new InvalidArguments(errors);
+        if (!errors.isEmpty()) {
+            throw new InvalidArguments(errors);
+        }
         return value;
     }
 
     private static Violation violation(ValidationMessage error) {
         String field = error.getInstanceLocation().toString();
         String property = error.getProperty();
-        if (property != null && !property.isBlank() && !field.endsWith("." + property)) field += "." + property;
-        if (field.startsWith("$.")) field = field.substring(2);
+        if (property != null && !property.isBlank() && !field.endsWith("." + property)) {
+            field += "." + property;
+        }
+        if (field.startsWith("$.")) {
+            field = field.substring(2);
+        }
         String message = error.getMessage();
         Object[] arguments = error.getArguments();
         String expected = arguments != null && arguments.length > 0 ? String.valueOf(arguments[0]) : "Schema 约束";
@@ -81,7 +90,8 @@ final class AgentToolSupport {
             var result = JSON.createObjectNode();
             result.put("ok", true);
             result.set("data", data == null ? JSON.nullNode() : data);
-            result.set("warnings", data != null && data.path("warnings").isArray() ? data.path("warnings") : JSON.createArrayNode());
+            result.set("warnings",
+                data != null && data.path("warnings").isArray() ? data.path("warnings") : JSON.createArrayNode());
             result.put("requestId", requestId);
             return new AgentRunState.Outcome(result.toString(), true);
         } catch (Exception e) {
@@ -94,9 +104,10 @@ final class AgentToolSupport {
             var first = invalid.violations.get(0);
             var result = JSON.createObjectNode();
             result.put("ok", false);
-            result.set("error", JSON.valueToTree(Map.of("code", "INVALID_ARGUMENT", "field", first.field(),
-                "message", first.message(), "violations", invalid.violations)));
-            result.set("warnings", JSON.createArrayNode()); result.put("requestId", requestId);
+            result.set("error", JSON.valueToTree(Map.of("code", "INVALID_ARGUMENT", "field", first.field(), "message",
+                first.message(), "violations", invalid.violations)));
+            result.set("warnings", JSON.createArrayNode());
+            result.put("requestId", requestId);
             return new AgentRunState.Outcome(result.toString(), false);
         }
         String code = exception instanceof BizException biz ? switch (biz.getCode()) {
@@ -106,18 +117,20 @@ final class AgentToolSupport {
             case 409 -> "CONFLICT";
             default -> "BUSINESS_ERROR";
         } : "TOOL_EXECUTION_FAILED";
-        return failure(code, "$", exception instanceof BizException ? exception.getMessage() : "工具执行失败，请核实操作结果后重试", requestId);
+        return failure(code, "$", exception instanceof BizException ? exception.getMessage() : "工具执行失败，请核实操作结果后重试",
+            requestId);
     }
 
     static AgentRunState.Outcome failure(String code, String field, String message, String requestId) {
-        return new AgentRunState.Outcome(JSON.valueToTree(Map.of("ok", false,
-            "error", Map.of("code", code, "field", field, "message", message),
-            "warnings", List.of(), "requestId", requestId)).toString(), false);
+        return new AgentRunState.Outcome(
+            JSON.valueToTree(Map.of("ok", false, "error", Map.of("code", code, "field", field, "message", message),
+                "warnings", List.of(), "requestId", requestId)).toString(),
+            false);
     }
 
     static AgentRunState.Outcome withRequestId(AgentRunState.Outcome outcome, String requestId) {
         try {
-            ObjectNode result = (ObjectNode) JSON.readTree(outcome.data());
+            ObjectNode result = (ObjectNode)JSON.readTree(outcome.data());
             result.put("requestId", requestId);
             return new AgentRunState.Outcome(result.toString(), outcome.success());
         } catch (Exception e) {
@@ -127,14 +140,24 @@ final class AgentToolSupport {
 
     private static JsonNode loadCatalog() {
         try (var input = AgentToolSupport.class.getResourceAsStream("/agent/tool-schemas.json")) {
-            if (input == null) throw new IllegalStateException("Missing Agent tool schemas");
+            if (input == null) {
+                throw new IllegalStateException("Missing Agent tool schemas");
+            }
             return JSON.readTree(input);
-        } catch (Exception e) { throw new ExceptionInInitializerError(e); }
+        } catch (Exception e) {
+            throw new ExceptionInInitializerError(e);
+        }
     }
 
-    record Violation(String field, String message) {}
+    record Violation(String field, String message) {
+    }
+
     static final class InvalidArguments extends BizException {
         final List<Violation> violations;
-        InvalidArguments(List<Violation> violations) { super(400, violations.get(0).message()); this.violations = violations; }
+
+        InvalidArguments(List<Violation> violations) {
+            super(400, violations.get(0).message());
+            this.violations = violations;
+        }
     }
 }

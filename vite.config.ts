@@ -50,12 +50,13 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
-      // Keep route component CSS lazy with its JavaScript chunk.
-      cssCodeSplit: true,
+      // Produce one stylesheet and one script for deployment.
+      cssCodeSplit: false,
       assetsInlineLimit: Infinity,
       modulePreload: false,
       rollupOptions: {
         output: {
+          inlineDynamicImports: true,
           entryFileNames: "assets/app-[hash].js",
           assetFileNames: "assets/app-[hash][extname]",
         },

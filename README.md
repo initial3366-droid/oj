@@ -1,6 +1,6 @@
-# QOJ 校园在线评测系统
+# HEVTTCOJ 校园在线评测系统
 
-QOJ (Quan Online Judge) 是一个面向大学生的校园在线评测平台，支持题库、练习集、比赛（ACM/OI 双赛制）、排行榜等功能。
+HEVTTCOJ (HEVTTC Online Judge) 是一个面向大学生的校园在线评测平台，支持题库、练习集、比赛（ACM/OI 双赛制）、排行榜等功能。
 
 ## 快速开始
 
@@ -202,4 +202,4 @@ MIT License
 ## 联系方式
 
 - 问题反馈: 提交 GitHub Issue
-- 开发团队: 人生若只入初见
+- 开发人员: ZXQ

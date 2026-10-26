@@ -13,6 +13,7 @@ import com.qoj.common.exception.BizException;
 import com.qoj.common.redis.RedisKeys;
 import com.qoj.module.problem.dto.CommunicationConfig;
 import com.qoj.module.problem.dto.ProblemSampleCaseRequest;
+import com.qoj.module.problem.dto.ProblemTestCaseChangesRequest;
 import com.qoj.module.problem.dto.ProblemTestCaseRequest;
 import com.qoj.module.problem.dto.ProblemUpdateRequest;
 import com.qoj.module.problem.dto.TestCaseImportProgress;
@@ -24,6 +25,7 @@ import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.mapper.ProblemTestCaseMapper;
 import com.qoj.module.problem.vo.AdminProblemVO;
 import com.qoj.module.problem.vo.ProblemSampleCaseVO;
+import com.qoj.module.problem.vo.ProblemTestCaseSummaryVO;
 import com.qoj.module.problem.vo.ProblemTestCaseVO;
 import com.qoj.module.problem.vo.ProblemVO;
 import com.qoj.module.problem.vo.PublicProblemVO;
@@ -339,20 +341,19 @@ public class ProblemService {
         problem.statement = request.statement();
         problem.inputFormat = request.inputFormat();
         problem.outputFormat = request.outputFormat();
+        boolean previouslySpecial = isSpecialJudge(effectiveChecker(problem));
         boolean clearCommunication = request.communication() != null && !Boolean.TRUE.equals(request.communication().enabled());
         if (request.communication() != null) {
             problem.communicationConfig = CommunicationConfig.encode(request.communication());
-            if (clearCommunication) {
-                String finalChecker = request.checkerSource() == null ? problem.checkerSource : request.checkerSource();
-                ensureHiddenTestCasesHaveExpectedOutput(problem, finalChecker);
-            }
         }
         boolean clearCheckerSource = false;
         if (request.checkerSource() != null) {
             String checkerSource = normalizeCheckerSource(request.checkerSource());
-            if (problem.communicationConfig == null) ensureHiddenTestCasesHaveExpectedOutput(problem, checkerSource);
             problem.checkerSource = checkerSource;
             clearCheckerSource = checkerSource == null;
+        }
+        if (previouslySpecial && !isSpecialJudge(effectiveChecker(problem))) {
+            ensureHiddenTestCasesHaveExpectedOutput(problem, problem.checkerSource);
         }
         problem.sampleCases = writeSampleCases(samples);
         problem.timeLimit = request.timeLimit();
@@ -619,6 +620,95 @@ public class ProblemService {
             .stream()
             .map(this::toTestCaseVO)
             .toList();
+    }
+
+    public List<ProblemTestCaseSummaryVO> testCaseSummaries(long problemId) {
+        requireHiddenCaseAccess(problemId);
+        return problemTestCaseMapper.selectSummaries(problemId);
+    }
+
+    public ProblemTestCaseVO testCase(long problemId, long caseId) {
+        requireHiddenCaseAccess(problemId);
+        ProblemTestCase item = problemTestCaseMapper.selectOne(new QueryWrapper<ProblemTestCase>()
+            .eq("id", caseId).eq("problem_id", problemId).eq("sample", false));
+        if (item == null) {
+            throw new BizException(404, "测试点不存在");
+        }
+        return toTestCaseVO(item);
+    }
+
+    private void requireHiddenCaseAccess(long problemId) {
+        Problem problem = problemMapper.selectById(problemId);
+        if (problem == null) {
+            throw new BizException(404, "题目不存在");
+        }
+        if (!problemAccessPolicy.can(CurrentUser.required(), Permission.VIEW_HIDDEN_CASE, problem)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权查看该题目测试点");
+        }
+    }
+
+    /** Validate the final numbering before writing; the transaction also covers swaps and deletions. */
+    @Transactional
+    public List<ProblemTestCaseSummaryVO> changeTestCases(long problemId, ProblemTestCaseChangesRequest request) {
+        Problem problem = requireOwnerOrSuperAdmin(problemId);
+        problemMapper.selectOne(new QueryWrapper<Problem>().eq("id", problemId).last("FOR UPDATE"));
+        List<ProblemTestCaseSummaryVO> current = problemTestCaseMapper.selectSummaries(problemId);
+        Set<Long> existing = current.stream().map(ProblemTestCaseSummaryVO::id).collect(Collectors.toSet());
+        Set<Long> removed = new HashSet<>(request.deletedIds());
+        Set<Long> changed = new HashSet<>();
+        if (!existing.containsAll(removed)) {
+            throw new BizException(404, "测试点不存在，请刷新后重试");
+        }
+        Set<Integer> numbers = new HashSet<>();
+        for (var item : request.changes()) {
+            if (item.id() != null && (!existing.contains(item.id()) || removed.contains(item.id())
+                || !changed.add(item.id()))) {
+                throw new BizException(400, "测试点不存在或重复修改");
+            }
+            if (!numbers.add(item.caseNo())) {
+                throw new BizException(400, "测试点编号重复");
+            }
+            validateExpectedOutput(false, effectiveChecker(problem), item.output(), item.caseNo());
+        }
+        for (var item : current) {
+            if (!removed.contains(item.id()) && !changed.contains(item.id()) && !numbers.add(item.caseNo())) {
+                throw new BizException(400, "测试点编号重复");
+            }
+        }
+        if (numbers.isEmpty()) {
+            throw new BizException(400, "至少添加一个测试点");
+        }
+        if (!removed.isEmpty()) {
+            problemTestCaseMapper.delete(new QueryWrapper<ProblemTestCase>().in("id", removed)
+                .eq("problem_id", problemId).eq("sample", false));
+        }
+        // Free positive numbers first, so swapping case numbers is atomic and preserves identities.
+        int temporaryNo = -1;
+        for (Long id : changed) {
+            problemTestCaseMapper.update(null, new UpdateWrapper<ProblemTestCase>()
+                .eq("id", id).set("case_no", temporaryNo--));
+        }
+        for (var item : request.changes()) {
+            ProblemTestCase entity = new ProblemTestCase();
+            entity.problemId = problemId;
+            entity.sample = false;
+            entity.caseNo = item.caseNo();
+            entity.inputData = item.input();
+            entity.outputData = item.output() == null ? "" : item.output();
+            entity.publicInput = item.publicInput() == null ? "" : item.publicInput();
+            if (item.id() == null) {
+                problemTestCaseMapper.insert(entity);
+            } else {
+                entity.id = item.id();
+                problemTestCaseMapper.updateById(entity);
+            }
+        }
+        if (!request.changes().isEmpty() || !removed.isEmpty()) {
+            problemMapper.update(null, new UpdateWrapper<Problem>().eq("id", problemId)
+                .set("updated_at", LocalDateTime.now()));
+            redisTemplate.delete(RedisKeys.problem(problemId));
+        }
+        return problemTestCaseMapper.selectSummaries(problemId);
     }
 
     @Transactional
@@ -1245,11 +1335,10 @@ public class ProblemService {
         if (!requiresExpectedOutput(false, checkerSource)) {
             return;
         }
-        boolean hasBlankOutput = problemTestCaseMapper.selectList(
-            new QueryWrapper<ProblemTestCase>()
-                .eq("problem_id", problem.id)
-                .eq("sample", false)
-        ).stream().anyMatch(item -> item.outputData == null || item.outputData.isBlank());
+        // Java whitespace differs from ICU whitespace (notably NBSP); enumerate the same code points.
+        boolean hasBlankOutput = problemTestCaseMapper.hasBlankOutput(problem.id,
+            "^[\\x{0009}-\\x{000D}\\x{001C}-\\x{0020}\\x{1680}\\x{2000}-\\x{2006}"
+            + "\\x{2008}-\\x{200A}\\x{2028}\\x{2029}\\x{205F}\\x{3000}]*$");
         if (hasBlankOutput) {
             throw new BizException(400, "当前存在空输出测试点，不能关闭 SPJ");
         }

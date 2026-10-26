@@ -51,12 +51,17 @@ public class UserSocketSessions implements WebSocketHandlerDecoratorFactory {
     }
 
     public void reject(String sessionId) {
+        reject(sessionId, "Account banned");
+    }
+
+    /** Closes both native and SockJS sessions after an inbound policy violation. */
+    public void reject(String sessionId, String reason) {
         WebSocketSession session = sessions.get(sessionId);
         if (session == null) return;
         try {
-            session.close(CloseStatus.POLICY_VIOLATION.withReason("Account banned"));
+            session.close(CloseStatus.POLICY_VIOLATION.withReason(reason));
         } catch (IOException error) {
-            log.warn("Failed to close banned user's socket {}", sessionId, error);
+            log.warn("Failed to close rejected socket {}", sessionId, error);
         }
     }
 

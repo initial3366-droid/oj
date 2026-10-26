@@ -39,7 +39,9 @@ public record ContestCreateRequest(
     String registrationPassword,
     List<ContestProblemRequest> problems,
     String allowedIpRanges,
-    Boolean hidden
+    Boolean hidden,
+    Boolean scoreboardEnabled,
+    Boolean resultsPublished
 ) {
     public ContestCreateRequest(
     String title,
@@ -71,5 +73,42 @@ public record ContestCreateRequest(
     String allowedIpRanges
     ) {
         this(title, description, durationMinutes, startTime, endTime, type, audience, audienceId, audiences, frozen, freezeTime, enableRollingScoreboard, goldRatio, silverRatio, bronzeRatio, allowAfterEndSubmit, allowAfterEndViewProblem, allowAfterEndViewCode, enableCodeTemplates, publicScoreboardEnabled, showClassOnScoreboard, allowStarRegistration, allowViewAllSubmissions, registrationType, registrationPassword, problems, allowedIpRanges, null);
+    }
+
+    public ContestCreateRequest(
+        String title,
+        String description,
+        Integer durationMinutes,
+        LocalDateTime startTime,
+        LocalDateTime endTime,
+        ContestType type,
+        AudienceType audience,
+        Long audienceId,
+        List<ContestAudienceRequest> audiences,
+        Boolean frozen,
+        LocalDateTime freezeTime,
+        Boolean enableRollingScoreboard,
+        BigDecimal goldRatio,
+        BigDecimal silverRatio,
+        BigDecimal bronzeRatio,
+        Boolean allowAfterEndSubmit,
+        Boolean allowAfterEndViewProblem,
+        Boolean allowAfterEndViewCode,
+        Boolean enableCodeTemplates,
+        Boolean publicScoreboardEnabled,
+        Boolean showClassOnScoreboard,
+        Boolean allowStarRegistration,
+        Boolean allowViewAllSubmissions,
+        String registrationType,
+        String registrationPassword,
+        List<ContestProblemRequest> problems,
+        String allowedIpRanges,
+        Boolean hidden
+    ) {
+        this(title, description, durationMinutes, startTime, endTime, type, audience, audienceId, audiences,
+            frozen, freezeTime, enableRollingScoreboard, goldRatio, silverRatio, bronzeRatio,
+            allowAfterEndSubmit, allowAfterEndViewProblem, allowAfterEndViewCode, enableCodeTemplates,
+            publicScoreboardEnabled, showClassOnScoreboard, allowStarRegistration, allowViewAllSubmissions,
+            registrationType, registrationPassword, problems, allowedIpRanges, hidden, null, null);
     }
 }

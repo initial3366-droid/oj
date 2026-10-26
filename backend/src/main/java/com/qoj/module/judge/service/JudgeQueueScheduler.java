@@ -192,6 +192,10 @@ public class JudgeQueueScheduler {
             JudgeResult result = task == null
                 ? JudgeResult.systemError("题目未配置可用的隐藏测试点")
                 : goJudgeService.judge(task);
+            if (task != null && (result.status() == SubmissionStatus.SE || result.status() == SubmissionStatus.FAILED)
+                && retryFailure(submission, result.compileOutput())) {
+                return;
+            }
             complete(submission, result);
         } catch (JudgeExecutionBudget.Exceeded ex) {
             if (task != null) complete(submission, JudgeExecutionBudget.exceeded(task, List.of()));
@@ -200,7 +204,9 @@ public class JudgeQueueScheduler {
             log.info("go-judge claim lost for submission {}", submission.id);
         } catch (Exception ex) {
             log.error("go-judge execution failed for submission {}", submission.id, ex);
-            failDirectly(submission, "go-judge 判题异常");
+            if (!retryFailure(submission, "go-judge 判题异常")) {
+                failDirectly(submission, "go-judge 判题异常");
+            }
         } finally {
             activeClaims.remove(submission.id, submission);
             submissionMapper.releaseWorker(submission.id, submission.judgeWorkerId, LocalDateTime.now());
@@ -291,9 +297,13 @@ public class JudgeQueueScheduler {
             return total == 0 ? 0 : (int) Math.round(100.0 * passed / total);
         }
         ContestProblem problem = contestProblemMapper.selectById(submission.contestProblemId);
-        int fullScore = problem == null
-            ? 100
-            : positive(problem.score, positive(problem.fullScore, 100));
+        int fullScore = 100;
+        if (problem != null) {
+            fullScore = positive(problem.fullScore, 100);
+            if (problem.score != null) {
+                fullScore = Math.max(0, problem.score);
+            }
+        }
         Map<Integer, Integer> configuredScores = caseScores(submission);
         if (!configuredScores.isEmpty()) {
             int earned = result.caseResults() == null ? 0 : result.caseResults().stream()
@@ -418,6 +428,23 @@ public class JudgeQueueScheduler {
         problem.acRate = BigDecimal.valueOf(rate);
         problemMapper.updateById(problem);
         redisTemplate.delete(RedisKeys.problem(problemId));
+    }
+
+    /** Returns infrastructure failures to the queue with a bounded 1/2/4 second backoff. */
+    private boolean retryFailure(Submission submission, String message) {
+        int retries = submission.retryCount == null ? 0 : submission.retryCount;
+        LocalDateTime now = LocalDateTime.now();
+        String reason = Utf8TextLimiter.fitMysqlText(
+            message == null || message.isBlank() ? "go-judge 系统错误，等待自动重试" : message);
+        int updated = submissionMapper.retryGoJudgeFailure(submission.id, submission.judgeWorkerId,
+            now.plusSeconds(1L << Math.min(2, Math.max(0, retries))), reason, now);
+        if (updated == 0) {
+            return false;
+        }
+        log.warn("Requeued failed go-judge attempt for submission {} (retry {})", submission.id, retries + 1);
+        messagePublisher.submissionChanged(submission.id, SubmissionStatus.WAITING.name(), null, null);
+        messagePublisher.submissionQueueUpdated();
+        return true;
     }
 
     private void failDirectly(Submission submission, String message) {

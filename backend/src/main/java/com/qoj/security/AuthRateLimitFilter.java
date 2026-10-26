@@ -32,6 +32,8 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
     private int sourceLimitPerMinute = 120;
     @Value("${qoj.auth.email-source-limit-per-minute:20}")
     private int emailSourceLimitPerMinute = 20;
+    @Value("${qoj.auth.recovery-source-limit-per-minute:20}")
+    private int recoverySourceLimitPerMinute = 20;
     @Value("${qoj.auth.global-limit-per-minute:1200}")
     private int globalLimitPerMinute = 1200;
 
@@ -47,7 +49,14 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
         boolean reset = path.equals("/api/v1/auth/reset-password") || path.equals("/api/v1/auth/register");
         if (!login && !captcha && !email && !reset) { chain.doFilter(request, response); return; }
         String scope = login ? "login" : captcha ? "captcha" : email ? "email" : "recovery";
-        int sourceLimit = Math.max(1, email ? emailSourceLimitPerMinute : sourceLimitPerMinute);
+        int sourceLimit = sourceLimitPerMinute;
+        if (email) {
+            sourceLimit = emailSourceLimitPerMinute;
+        } else if (reset) {
+            // 注册与重置共享来源预算，避免交替调用扩大猜测次数。
+            sourceLimit = recoverySourceLimitPerMinute;
+        }
+        sourceLimit = Math.max(1, sourceLimit);
         Long allowed;
         try {
             allowed = redis.execute(LIMIT, List.of("oj:auth:budget:" + scope + ":source:" + IpNetworkUtils.clientIp(request),

@@ -138,7 +138,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/v1/clics/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/contests/*/rank").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/contests/*/scoreboard/snapshot/*").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/users/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/users/**").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/v1/leaderboard/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/announcements/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/settings/**").permitAll()

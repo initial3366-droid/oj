@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QOJ · 首页 — 天蓝二次元设计稿</title>
+<!--
+  ─────────────────────────────────────────────────────────────
+  QOJ 前台首页 · 设计稿（单文件模板）
+  · 风格：天蓝色 / 二次元 / 简约，全部插画与图标为手绘 SVG，无外部资源
+  · 约束：顶部导航保持 6 项（首页/题库/课程/比赛/排行榜/关于）；
+          保留首页轮播图；不含题目数量 / 题库统计类卡片
+  · 对接说明：
+      - 轮播图：.carousel 内每个 .slide 对应后端 carouselSlides 的一条
+        （slide.imageUrl / slide.title）。接入真实图片时，把 .slide-art
+        里的手绘 SVG 换成 <img> 即可，文案块结构不变；
+      - 导航 href 与现有路由一致（/ /problems /courses /contests
+        /leaderboard /about）；
+      - 即将开始的比赛 / 公告 / AC 榜数据均为示例，按现有接口字段替换。
+  ─────────────────────────────────────────────────────────────
+-->
+<style>
+  :root{
+    /* 天蓝色系（后续可映射到 src/styles/tokens.css 的 --qoj-* 令牌） */
+    --sky-50:#f4faff; --sky-100:#e9f6ff; --sky-200:#d3ecfd;
+    --sky-300:#b9e2fb; --sky-400:#8ed0ff; --sky-500:#5bc0ff;
+    --sky-600:#2e97e8; --sky-700:#1f7ec4;
+    --ink:#274b6d; --ink-soft:#5f7f9e; --ink-faint:#8aa7c0;
+    --line:#d9edfb; --gold:#ffd166; --pink:#ffb7c9; --green:#3ecf9a;
+    --card-radius:20px;
+    --card-shadow:0 12px 32px rgba(46,151,232,.10);
+    --font:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:var(--font);color:var(--ink);font-size:15px;line-height:1.65;
+    background:linear-gradient(180deg,#e6f4ff 0%,#f4faff 34%,#fbfdff 100%);
+    min-height:100vh;overflow-x:hidden;
+  }
+  a{color:var(--sky-700);text-decoration:none}
+  a:focus-visible,button:focus-visible{outline:2.5px solid var(--sky-500);outline-offset:3px;border-radius:8px}
+  button{font-family:inherit;border:0;background:none;cursor:pointer;color:inherit}
+  svg{display:block}
+  .container{max-width:1200px;margin:0 auto;padding:0 24px}
+
+  /* ── 页面漂浮装饰（云 / 星星） ─────────────────────── */
+  .sky-decor{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .sky-decor .cloud{position:absolute;color:#fff;opacity:.75}
+  .sky-decor .spark{position:absolute;color:var(--gold);opacity:.55}
+  .c1{top:9%;left:-40px;width:150px;animation:drift 9s ease-in-out infinite alternate}
+  .c2{top:26%;right:-30px;width:120px;opacity:.55;animation:drift 11s ease-in-out infinite alternate-reverse}
+  .c3{top:58%;left:2%;width:90px;opacity:.4;animation:drift 13s ease-in-out infinite alternate}
+  .s1{top:15%;left:44%;width:16px;animation:twinkle 3.2s ease-in-out infinite}
+  .s2{top:40%;right:12%;width:12px;animation:twinkle 4.1s ease-in-out .8s infinite}
+  .s3{top:70%;left:16%;width:13px;color:var(--sky-400);animation:twinkle 3.7s ease-in-out .4s infinite}
+  @keyframes drift{from{transform:translateX(0)}to{transform:translateX(26px)}}
+  @keyframes twinkle{0%,100%{transform:scale(1);opacity:.55}50%{transform:scale(.6);opacity:.2}}
+
+  /* ── 顶部导航（6 项，个数与线上一致） ───────────────── */
+  .topbar{
+    position:sticky;top:14px;z-index:50;
+    max-width:1200px;margin:14px auto 0;width:calc(100% - 32px);
+    display:flex;align-items:center;gap:26px;
+    padding:10px 18px;border-radius:18px;
+    background:rgba(255,255,255,.85);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(217,237,251,.9);box-shadow:0 10px 30px rgba(46,151,232,.12);
+  }
+  .brand{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .brand-word{font-size:21px;font-weight:800;letter-spacing:1px;
+    background:linear-gradient(120deg,#2e97e8,#1f7ec4);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .brand-cap{font-size:10.5px;color:var(--ink-faint);letter-spacing:2px;margin-top:1px}
+  .nav{display:flex;align-items:center;gap:4px;flex:1;justify-content:center}
+  .nav-link{
+    display:inline-flex;align-items:center;gap:7px;
+    padding:8px 16px;border-radius:12px;font-size:14.5px;font-weight:600;color:var(--ink-soft);
+    transition:.22s;
+  }
+  .nav-link svg{width:16px;height:16px}
+  .nav-link:hover{background:var(--sky-100);color:var(--sky-700)}
+  .nav-link.is-active{background:linear-gradient(135deg,var(--sky-500),var(--sky-600));color:#fff;
+    box-shadow:0 6px 14px rgba(46,151,232,.35)}
+  .nav-link.is-active svg{color:#fff}
+  .top-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;justify-content:center;
+    padding:10px 22px;border-radius:999px;font-weight:700;font-size:14.5px;transition:.25s;
+  }
+  .btn-primary{background:linear-gradient(135deg,#5bc0ff,#2e97e8);color:#fff;
+    box-shadow:0 8px 20px rgba(46,151,232,.35)}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 26px rgba(46,151,232,.45)}
+  .btn-ghost{background:rgba(255,255,255,.8);color:var(--sky-700);border:1.5px solid var(--sky-300)}
+  .btn-ghost:hover{background:#fff;border-color:var(--sky-500)}
+  .btn-sm{padding:8px 18px;font-size:13.5px}
+  .menu-toggle{display:none;width:40px;height:40px;border-radius:12px;background:var(--sky-100);color:var(--sky-700)}
+  .mobile-nav{
+    position:sticky;top:76px;z-index:49;max-width:1200px;margin:10px auto 0;width:calc(100% - 32px);
+    background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:16px;padding:10px;
+    display:none;flex-direction:column;gap:4px;box-shadow:var(--card-shadow);
+  }
+  .mobile-nav.open{display:flex}
+  .mobile-nav .nav-link{justify-content:flex-start}
+
+  main{position:relative;z-index:1}
+
+  /* ── 置顶公告条 ────────────────────────────────────── */
+  .notice-strip{
+    margin:26px 0 18px;display:flex;align-items:center;gap:12px;
+    padding:10px 10px 10px 18px;border-radius:999px;
+    background:linear-gradient(90deg,#e3f3ff,#f4faff);border:1px solid var(--sky-200);
+    color:var(--ink-soft);font-size:14px;
+  }
+  .notice-strip .tag{flex-shrink:0;background:var(--sky-600);color:#fff;font-size:11.5px;font-weight:700;
+    padding:3px 10px;border-radius:999px;letter-spacing:1px}
+  .notice-strip .txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .notice-strip .go{flex-shrink:0;font-weight:700}
+  .notice-strip .close{flex-shrink:0;width:28px;height:28px;border-radius:50%;color:var(--ink-faint);font-size:15px}
+  .notice-strip .close:hover{background:var(--sky-100);color:var(--sky-700)}
+
+  /* ── 首屏：轮播 + 即将开始的比赛 ───────────────────── */
+  .hero{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:20px;align-items:stretch;margin-bottom:44px}
+
+  .carousel{
+    position:relative;border-radius:var(--card-radius);overflow:hidden;
+    box-shadow:var(--card-shadow);border:1px solid rgba(217,237,251,.8);
+    height:clamp(420px,56vh,540px);touch-action:pan-y;user-select:none;
+  }
+  .car-track{display:flex;height:100%;transition:transform .65s cubic-bezier(.22,.9,.28,1)}
+  .slide{flex:0 0 100%;display:flex;align-items:center;justify-content:space-between;gap:20px;
+    padding:0 clamp(28px,5vw,60px);position:relative;overflow:hidden}
+  .slide::before{content:"";position:absolute;inset:0;
+    background:radial-gradient(420px 220px at 85% 12%,rgba(255,255,255,.55),transparent 70%),
+               radial-gradient(300px 200px at 8% 92%,rgba(255,255,255,.4),transparent 70%)}
+  .slide-1{background:linear-gradient(125deg,#dcf1ff 0%,#bfe6fd 55%,#a9dbfb 100%)}
+  .slide-2{background:linear-gradient(125deg,#e2f3ff 0%,#c6e7fd 50%,#b3ddfb 100%)}
+  .slide-3{background:linear-gradient(125deg,#e6f5ff 0%,#cdebfe 55%,#b8e2fc 100%)}
+  .slide-cloud{position:absolute;color:#fff;opacity:.6;pointer-events:none}
+  .slide-copy{position:relative;max-width:54%}
+  .slide-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;
+    letter-spacing:2.5px;color:var(--sky-700);background:rgba(255,255,255,.72);
+    border:1px solid rgba(255,255,255,.9);border-radius:999px;padding:5px 14px;margin-bottom:16px}
+  .slide-eyebrow svg{width:13px;height:13px;color:var(--gold)}
+  .slide-copy h2{font-size:clamp(24px,3vw,34px);line-height:1.32;font-weight:800;letter-spacing:.5px;color:#1b5e93}
+  .slide-copy h2 em{font-style:normal;background:linear-gradient(120deg,#2e97e8,#5bc0ff);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .slide-sub{margin:12px 0 22px;font-size:15px;color:#4d78a0;letter-spacing:.5px}
+  .slide-cta{display:flex;gap:12px;flex-wrap:wrap}
+  .slide-art{position:relative;width:clamp(240px,36%,400px);flex-shrink:0}
+  .slide-art svg{width:100%;height:auto}
+  .car-arrow{
+    position:absolute;top:50%;transform:translateY(-50%);z-index:5;
+    width:42px;height:42px;border-radius:50%;display:grid;place-items:center;
+    background:rgba(255,255,255,.85);color:var(--sky-700);
+    box-shadow:0 6px 16px rgba(31,126,196,.25);opacity:0;transition:.25s;
+  }
+  .car-arrow svg{width:18px;height:18px}
+  .carousel:hover .car-arrow,.car-arrow:focus-visible{opacity:1}
+  .car-arrow:hover{background:#fff;transform:translateY(-50%) scale(1.08)}
+  .car-prev{left:16px}.car-next{right:16px}
+  .car-dots{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:5;
+    display:flex;gap:7px;padding:7px 11px;border-radius:999px;background:rgba(255,255,255,.55)}
+  .car-dot{width:18px;height:6px;border-radius:999px;background:rgba(31,126,196,.28);transition:.3s}
+  .car-dot:hover{background:rgba(31,126,196,.5)}
+  .car-dot.is-active{width:30px;background:var(--sky-600)}
+
+  /* 右栏：即将开始的比赛 */
+  .side-card{
+    background:rgba(255,255,255,.88);border:1px solid var(--line);border-radius:var(--card-radius);
+    box-shadow:var(--card-shadow);padding:22px;display:flex;flex-direction:column;
+  }
+  .side-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .side-head .ic{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;
+    background:linear-gradient(135deg,#e9f6ff,#d3ecfd);color:var(--sky-700)}
+  .side-head .ic svg{width:20px;height:20px}
+  .side-head h3{font-size:16.5px;font-weight:800}
+  .side-head p{font-size:12px;color:var(--ink-faint)}
+  .contest-item{display:flex;align-items:center;gap:12px;padding:14px 2px;border-bottom:1.5px dashed var(--sky-200)}
+  .contest-item:last-of-type{border-bottom:0}
+  .contest-flag{flex-shrink:0;width:40px;height:40px;border-radius:13px;display:grid;place-items:center;font-weight:800;font-size:15px}
+  .f-blue{background:#e3f3ff;color:#2e97e8}
+  .f-pink{background:#ffeef4;color:#e0708f}
+  .f-gold{background:#fff6de;color:#d9a428}
+  .contest-info{flex:1;min-width:0}
+  .contest-name{font-weight:700;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .contest-meta{display:flex;align-items:center;gap:8px;margin-top:3px;font-size:12px;color:var(--ink-faint)}
+  .chip{font-size:11px;font-weight:700;padding:1.5px 9px;border-radius:999px;
+    background:var(--sky-100);color:var(--sky-700)}
+  .countdown{font-family:var(--mono);font-size:12px;color:var(--sky-700);font-weight:700;flex-shrink:0}
+  .side-more{margin-top:auto;padding-top:14px;display:flex;justify-content:flex-end}
+  .link-arrow{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;font-weight:700}
+  .link-arrow svg{width:14px;height:14px;transition:.2s}
+  .link-arrow:hover svg{transform:translateX(3px)}
+
+  /* ── 通用小节 ──────────────────────────────────────── */
+  section.block{margin-bottom:46px}
+  .sec-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:18px}
+  .sec-title{display:flex;align-items:center;gap:10px;font-size:21px;font-weight:800;letter-spacing:1px}
+  .sec-title .spark{color:var(--gold);width:19px;height:19px}
+  .sec-sub{font-size:12.5px;color:var(--ink-faint);margin-left:2px}
+
+  /* 公告 */
+  .announce-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  .announce-item{
+    display:flex;align-items:center;gap:14px;padding:16px 18px;
+    background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:16px;
+    transition:.25s;box-shadow:0 6px 18px rgba(46,151,232,.06);
+  }
+  .announce-item:hover{transform:translateY(-3px);box-shadow:0 14px 28px rgba(46,151,232,.14);border-color:var(--sky-300)}
+  .ann-ic{flex-shrink:0;width:42px;height:42px;border-radius:14px;display:grid;place-items:center}
+  .ann-ic svg{width:20px;height:20px}
+  .ic-sky{background:#e6f4ff;color:#2e97e8}
+  .ic-gold{background:#fff6de;color:#d9a428}
+  .ic-pink{background:#ffeef4;color:#e0708f}
+  .ic-green{background:#e7fbf3;color:#1fa87c}
+  .ann-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .ann-title{font-weight:700;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ann-title .pin{font-size:11px;color:#e0708f;font-weight:800;margin-right:6px}
+  .ann-date{font-size:12px;color:var(--ink-faint);margin-top:2px}
+
+  /* AC 榜 */
+  .rank-card{background:rgba(255,255,255,.9);border:1px solid var(--line);
+    border-radius:var(--card-radius);box-shadow:var(--card-shadow);padding:28px clamp(18px,3vw,34px)}
+  .podium{display:flex;align-items:flex-end;justify-content:center;gap:clamp(14px,3vw,30px);
+    padding:10px 0 26px;border-bottom:1.5px dashed var(--sky-200);margin-bottom:10px}
+  .pod{display:flex;flex-direction:column;align-items:center;gap:8px;width:130px}
+  .pod .avatar{position:relative;width:62px;height:62px;border-radius:50%;display:grid;place-items:center;
+    font-weight:800;font-size:22px;color:#fff;border:3.5px solid #fff;box-shadow:0 8px 18px rgba(46,151,232,.2)}
+  .pod .crown{position:absolute;top:-26px;left:50%;transform:translateX(-50%) rotate(-8deg);width:30px;color:var(--gold);
+    animation:bob 2.6s ease-in-out infinite}
+  .pod .name{font-weight:700;font-size:14px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pod .solved{font-size:12px;color:var(--ink-faint)}
+  .pod .base{width:100%;border-radius:14px 14px 0 0;display:grid;place-items:center;
+    font-weight:800;font-size:22px;font-family:var(--mono)}
+  .pod-1 .base{height:86px;background:linear-gradient(180deg,#ffe9b0,#ffd97e);color:#b07800}
+  .pod-2 .base{height:60px;background:linear-gradient(180deg,#eef5fc,#d8e6f2);color:#7b93a8}
+  .pod-3 .base{height:44px;background:linear-gradient(180deg,#ffe4d3,#f7c9ab);color:#b06a3b}
+  .rank-row{display:flex;align-items:center;gap:14px;padding:11px 6px;border-radius:12px;transition:.2s}
+  .rank-row:hover{background:var(--sky-50)}
+  .rank-no{width:30px;text-align:center;font-family:var(--mono);font-weight:800;color:var(--ink-faint)}
+  .rank-row .avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;
+    font-size:14px;font-weight:800;color:#fff;flex-shrink:0}
+  .rank-name{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rank-rating{font-family:var(--mono);font-size:13px;color:var(--sky-700);font-weight:700}
+  .rank-solved{width:88px;text-align:right;font-family:var(--mono);font-size:13px;color:var(--ink-faint)}
+  .rank-solved b{color:var(--green);font-size:14px}
+
+  /* ── 页脚 ──────────────────────────────────────────── */
+  footer{position:relative;z-index:1;margin-top:30px;padding:34px 0 40px;text-align:center;color:var(--ink-faint)}
+  footer .mascot{width:64px;margin:0 auto 8px;animation:bob 3s ease-in-out infinite}
+  footer .ft-title{font-weight:800;color:var(--ink-soft);letter-spacing:1px}
+  footer .ft-sub{font-size:12.5px;margin-top:3px}
+  footer .ft-links{margin-top:10px;display:flex;justify-content:center;gap:18px;font-size:13px}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+
+  /* 进场动画 */
+  .reveal{opacity:0;transform:translateY(18px);transition:.7s cubic-bezier(.22,.9,.28,1)}
+  .reveal.in{opacity:1;transform:none}
+
+  /* ── 响应式 ────────────────────────────────────────── */
+  @media(max-width:1024px){
+    .hero{grid-template-columns:1fr}
+    .side-card{flex-direction:row;flex-wrap:wrap;gap:6px 22px}
+    .side-head{width:100%}
+    .contest-item{flex:1 1 260px;border-bottom:0}
+  }
+  @media(max-width:880px){
+    .nav,.top-actions .btn-ghost{display:none}
+    .menu-toggle{display:grid}
+    .announce-grid{grid-template-columns:1fr}
+    .slide-copy{max-width:100%}
+    .slide-art{width:210px}
+    .slide{padding:0 22px}
+  }
+  @media(max-width:560px){
+    .carousel{height:500px}
+    .slide{flex-direction:column;justify-content:center;gap:10px;padding-top:34px}
+    .slide-art{width:min(66%,250px)}
+    .topbar{gap:12px}
+    .brand-cap{display:none}
+    .rank-solved{width:auto}
+    .rank-rating{display:none}
+    .podium{gap:10px}
+    .pod{width:96px}
+    .pod .base{font-size:17px}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation:none!important;transition:none!important}
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ 公共手绘素材（吉祥物 / 云 / 星光） ═══ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- 云朵 -->
+    <symbol id="i-cloud" viewBox="0 0 120 60">
+      <g fill="currentColor">
+        <ellipse cx="30" cy="40" rx="22" ry="16"/>
+        <ellipse cx="60" cy="30" rx="27" ry="21"/>
+        <ellipse cx="90" cy="40" rx="22" ry="16"/>
+        <rect x="8" y="37" width="104" height="19" rx="9.5"/>
+      </g>
+    </symbol>
+    <!-- 四角星光 -->
+    <symbol id="i-sparkle" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 1.5l2.5 8 8 2.5-8 2.5-2.5 8-2.5-8-8-2.5 8-2.5z"/>
+    </symbol>
+    <!-- 双马尾看板娘 · 全身（坐姿，适合放云上） -->
+    <symbol id="i-mascot" viewBox="0 0 200 212">
+      <!-- 双马尾（后层） -->
+      <ellipse cx="42" cy="120" rx="24" ry="43" fill="#6fc3ff" transform="rotate(16 42 120)"/>
+      <ellipse cx="158" cy="120" rx="24" ry="43" fill="#6fc3ff" transform="rotate(-16 158 120)"/>
+      <circle cx="34" cy="157" r="13" fill="#9fd9ff"/>
+      <circle cx="166" cy="157" r="13" fill="#9fd9ff"/>
+      <circle cx="47" cy="84" r="5" fill="#ffd166"/>
+      <circle cx="153" cy="84" r="5" fill="#ffd166"/>
+      <!-- 身体：水手服 -->
+      <rect x="73" y="142" width="54" height="48" rx="21" fill="#fff"/>
+      <path d="M76 145 L100 159 L124 145 L124 154 L100 168 L76 154 Z" fill="#4fb0f7"/>
+      <path d="M100 164 l-11 -6.5 v13 z M100 164 l11 -6.5 v13 z" fill="#ff9fb8"/>
+      <circle cx="100" cy="164" r="3.4" fill="#ff7fa2"/>
+      <!-- 手臂（向前抱着笔记本的姿势） -->
+      <path d="M80 150 Q66 148 60 158" stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none"/>
+      <path d="M120 150 Q134 148 140 158" stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none"/>
+      <circle cx="60" cy="160" r="6.4" fill="#ffe9d8"/>
+      <circle cx="140" cy="160" r="6.4" fill="#ffe9d8"/>
+      <!-- 头 -->
+      <circle cx="100" cy="92" r="60" fill="#6fc3ff"/>
+      <ellipse cx="100" cy="100" rx="50" ry="46" fill="#ffe9d8"/>
+      <!-- 呆毛 -->
+      <path d="M100 33 C95 18 106 9 119 13 C108 15 102 22 104 33 Z" fill="#6fc3ff"/>
+      <!-- 刘海 -->
+      <path d="M50 96 C48 54 72 32 100 32 C128 32 152 54 150 96 C141 76 132 72 124 83 C119 66 106 64 100 77 C94 64 81 66 76 83 C68 72 59 76 50 96 Z" fill="#6fc3ff"/>
+      <path d="M63 62 C72 45 91 37 107 39 C93 42 78 51 71 66 Z" fill="#a5dcff"/>
+      <!-- 星星发夹 -->
+      <path d="M66 70 l2 4.4 4.6 2 -4.6 2 -2 4.4 -2 -4.4 -4.6 -2 4.6 -2 z" fill="#ffd166"/>
+      <!-- 眉眼 -->
+      <path d="M70 86 Q79 82 88 86" stroke="#4aa3e0" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+      <path d="M112 86 Q121 82 130 86" stroke="#4aa3e0" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+      <path d="M69 96 Q79 89 89 96" stroke="#23486b" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+      <ellipse cx="79" cy="104" rx="9.6" ry="12.6" fill="#23486b"/>
+      <circle cx="75.6" cy="99" r="3.5" fill="#fff"/>
+      <circle cx="82.4" cy="108" r="1.9" fill="#fff" opacity=".9"/>
+      <path d="M111 96 Q121 89 131 96" stroke="#23486b" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+      <ellipse cx="121" cy="104" rx="9.6" ry="12.6" fill="#23486b"/>
+      <circle cx="117.6" cy="99" r="3.5" fill="#fff"/>
+      <circle cx="124.4" cy="108" r="1.9" fill="#fff" opacity=".9"/>
+      <!-- 腮红 & 微笑 -->
+      <ellipse cx="63" cy="115" rx="6.6" ry="3.8" fill="#ffb7c9" opacity=".75"/>
+      <ellipse cx="137" cy="115" rx="6.6" ry="3.8" fill="#ffb7c9" opacity=".75"/>
+      <path d="M94 119 Q100 125.5 106 119" stroke="#d96a86" stroke-width="3" stroke-linecap="round" fill="none"/>
+    </symbol>
+    <!-- 导航 & 通用线性图标 -->
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11.2 12 4.5l8 6.7M6.2 10v9.3h11.6V10M10.2 19.3v-4.6h3.6v4.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 6.3C10 4.9 7.1 4.4 4.2 4.4v13.9c2.9 0 5.8.5 7.8 1.9 2-1.4 4.9-1.9 7.8-1.9V4.4c-2.9 0-5.8.5-7.8 1.9zM12 6.3v13.9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-cap" viewBox="0 0 24 24"><path d="M2.5 9.4 12 5l9.5 4.4L12 13.8zM6.3 11.7v4.1c0 1.5 2.6 2.9 5.7 2.9s5.7-1.4 5.7-2.9v-4.1M19 10.4v4.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 4h8v5.2a4 4 0 0 1-8 0zM8 5.2H4.8v1.8a3.2 3.2 0 0 0 3.2 3.2M16 5.2h3.2v1.8a3.2 3.2 0 0 1-3.2 3.2M12 13.2v3M8.8 19.6h6.4l-.8-3.4H9.6zM6.8 19.6h10.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-podium" viewBox="0 0 24 24"><path d="M3.5 20v-5.6h4.7V20M9.7 20V8.6h4.6V20M15.8 20v-8.8h4.7V20M2.5 20h19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M12 11v5.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="7.4" r="1.3" fill="currentColor"/></symbol>
+    <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M3.5 10.6v2.8l11 3.9V6.7zM14.5 8.8a3.4 3.4 0 0 1 0 6.4M6.4 13.6 7.5 19h2.3l-.8-4.7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.6l2.5 5 5.6.8-4 3.9.9 5.5-5-2.6-5 2.6.9-5.5-4-3.9 5.6-.8z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24"><rect x="4" y="5.4" width="16" height="14.6" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M4 10h16M8.4 3.6v3.4M15.6 3.6v3.4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 3.6V20.4M6 4.8h11.6l-2.6 3.6 2.6 3.6H6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="M9.5 5.5 16 12l-6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-arrow-r" viewBox="0 0 24 24"><path d="M4.5 12h15M13.5 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-crown" viewBox="0 0 32 22"><path d="M3 18 1.6 6.4 9 11.2 16 2.4l7 8.8 7.4-4.8L29 18z" fill="currentColor"/><rect x="3.6" y="19" width="24.8" height="2.6" rx="1.3" fill="currentColor"/></symbol>
+  </defs>
+</svg>
+
+<!-- 背景漂浮装饰 -->
+<div class="sky-decor" aria-hidden="true">
+  <svg class="cloud c1"><use href="#i-cloud"/></svg>
+  <svg class="cloud c2"><use href="#i-cloud"/></svg>
+  <svg class="cloud c3"><use href="#i-cloud"/></svg>
+  <svg class="spark s1"><use href="#i-sparkle"/></svg>
+  <svg class="spark s2"><use href="#i-sparkle"/></svg>
+  <svg class="spark s3"><use href="#i-sparkle"/></svg>
+</div>
+
+<!-- ═══ 顶部导航（6 项不变） ═══ -->
+<header class="topbar">
+  <a class="brand" href="/" aria-label="QOJ 首页">
+    <svg width="40" height="40" viewBox="0 0 44 44" aria-hidden="true">
+      <defs><linearGradient id="lg-brand" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#5bc0ff"/><stop offset="1" stop-color="#2e97e8"/>
+      </linearGradient></defs>
+      <rect width="44" height="44" rx="13" fill="url(#lg-brand)"/>
+      <g fill="#fff"><ellipse cx="15" cy="24" rx="8" ry="6"/><ellipse cx="26" cy="20" rx="10" ry="8"/><ellipse cx="35" cy="25" rx="7" ry="5"/><rect x="7" y="23" width="36" height="7" rx="3.5"/></g>
+      <text x="22" y="29.5" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5" font-weight="800" fill="#1f7ec4">&lt;/&gt;</text>
+    </svg>
+    <span><span class="brand-word">QOJ</span><span class="brand-cap" style="display:block">云端评测乐园</span></span>
+  </a>
+  <nav class="nav" aria-label="前台导航">
+    <a class="nav-link is-active" href="/"><svg><use href="#i-home"/></svg>首页</a>
+    <a class="nav-link" href="/problems"><svg><use href="#i-book"/></svg>题库</a>
+    <a class="nav-link" href="/courses"><svg><use href="#i-cap"/></svg>课程</a>
+    <a class="nav-link" href="/contests"><svg><use href="#i-trophy"/></svg>比赛</a>
+    <a class="nav-link" href="/leaderboard"><svg><use href="#i-podium"/></svg>排行榜</a>
+    <a class="nav-link" href="/about"><svg><use href="#i-info"/></svg>关于</a>
+  </nav>
+  <div class="top-actions">
+    <a class="btn btn-ghost btn-sm" href="/login">登录</a>
+    <a class="btn btn-primary btn-sm" href="/register">注册</a>
+    <button class="menu-toggle" id="menuToggle" aria-label="打开导航" aria-expanded="false">
+      <svg width="20" height="20" viewBox="0 0 24 24"><path d="M4 6.5h16M4 12h16M4 17.5h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+</header>
+<nav class="mobile-nav" id="mobileNav" aria-label="手机导航">
+  <a class="nav-link" href="/"><svg><use href="#i-home"/></svg>首页</a>
+  <a class="nav-link" href="/problems"><svg><use href="#i-book"/></svg>题库</a>
+  <a class="nav-link" href="/courses"><svg><use href="#i-cap"/></svg>课程</a>
+  <a class="nav-link" href="/contests"><svg><use href="#i-trophy"/></svg>比赛</a>
+  <a class="nav-link" href="/leaderboard"><svg><use href="#i-podium"/></svg>排行榜</a>
+  <a class="nav-link" href="/about"><svg><use href="#i-info"/></svg>关于</a>
+</nav>
+
+<main class="container">
+
+  <!-- 置顶公告条（对应 PinnedAnnouncementCard） -->
+  <div class="notice-strip reveal" id="noticeStrip">
+    <span class="tag">置顶</span>
+    <svg width="17" height="17" style="color:#2e97e8;flex-shrink:0"><use href="#i-megaphone"/></svg>
+    <span class="txt">「十月月赛 · 云端嘉年华」报名开启，快来和伙伴们一决高下！</span>
+    <a class="go link-arrow" href="/contests">去看看<svg><use href="#i-arrow-r"/></svg></a>
+    <button class="close" id="noticeClose" aria-label="关闭置顶公告">✕</button>
+  </div>
+
+  <!-- ═══ 首屏：轮播图 + 即将开始的比赛 ═══ -->
+  <section class="hero">
+    <div class="carousel reveal" id="carousel" aria-roledescription="轮播图" aria-label="首页轮播">
+      <div class="car-track">
+
+        <!-- 轮播 1：看板娘坐云写代码 -->
+        <article class="slide slide-1">
+          <svg class="slide-cloud" style="top:8%;right:34%;width:90px"><use href="#i-cloud"/></svg>
+          <svg class="slide-cloud" style="bottom:10%;left:2%;width:70px;opacity:.45"><use href="#i-cloud"/></svg>
+          <div class="slide-copy">
+            <p class="slide-eyebrow"><svg><use href="#i-sparkle"/></svg>QOJ · 在线评测平台</p>
+            <h2>在云端，写下你的<br/><em>第一行代码</em></h2>
+            <p class="slide-sub">干净的题面 · 飞快的评测 · 可爱的伙伴</p>
+            <div class="slide-cta">
+              <a class="btn btn-primary" href="/problems">开始练习</a>
+              <a class="btn btn-ghost" href="/contests">看看比赛</a>
+            </div>
+          </div>
+          <div class="slide-art">
+            <svg viewBox="0 0 360 300" aria-hidden="true">
+              <!-- 漂浮代码便签 -->
+              <g font-family="ui-monospace,monospace" font-weight="700" text-anchor="middle">
+                <g transform="rotate(-8 58 70)"><rect x="24" y="54" width="68" height="30" rx="9" fill="#fff" opacity=".92"/><text x="58" y="74" font-size="13" fill="#1fa87c">AC +100</text></g>
+                <g transform="rotate(7 296 62)"><rect x="262" y="46" width="76" height="30" rx="9" fill="#fff" opacity=".92"/><text x="300" y="66" font-size="13" fill="#2e97e8">rating+16</text></g>
+                <g transform="rotate(-6 300 190)"><rect x="268" y="176" width="72" height="28" rx="9" fill="#fff" opacity=".9"/><text x="304" y="195" font-size="12" fill="#8aa7c0">O(nlogn)</text></g>
+              </g>
+              <g fill="#ffd166"><path d="M40 160 l3 6 6.5 3 -6.5 3 -3 6 -3 -6 -6.5 -3 6.5 -3z"/><path d="M320 130 l2.4 4.8 5 2.4 -5 2.4 -2.4 4.8 -2.4 -4.8 -5 -2.4 5 -2.4z" opacity=".8"/></g>
+              <g fill="#8ed0ff" opacity=".7"><path d="M84 24 l2.2 4.4 4.6 2.2 -4.6 2.2 -2.2 4.4 -2.2 -4.4 -4.6 -2.2 4.6 -2.2z"/><path d="M258 236 l2.6 5.2 5.4 2.6 -5.4 2.6 -2.6 5.2 -2.6 -5.2 -5.4 -2.6 5.4 -2.6z"/></g>
+              <!-- 云朵底座 -->
+              <ellipse cx="180" cy="268" rx="104" ry="16" fill="#bfe0f7" opacity=".55"/>
+              <g fill="#fff">
+                <ellipse cx="118" cy="248" rx="30" ry="22"/>
+                <ellipse cx="180" cy="238" rx="40" ry="27"/>
+                <ellipse cx="243" cy="248" rx="30" ry="21"/>
+                <rect x="88" y="242" width="184" height="26" rx="13"/>
+              </g>
+              <!-- 看板娘 -->
+              <use href="#i-mascot" x="80" y="26" width="200" height="212"/>
+              <!-- 笔记本电脑（捧在手前） -->
+              <rect x="148" y="174" width="64" height="42" rx="6" fill="#fff" stroke="#2e97e8" stroke-width="3"/>
+              <rect x="154" y="180" width="52" height="30" rx="3" fill="#e9f6ff"/>
+              <text x="180" y="201" text-anchor="middle" font-family="ui-monospace,monospace" font-size="15" font-weight="800" fill="#2e97e8">&lt;/&gt;</text>
+              <rect x="142" y="216" width="76" height="9" rx="4.5" fill="#8ed0ff"/>
+            </svg>
+          </div>
+        </article>
+
+        <!-- 轮播 2：奖杯与领奖台 -->
+        <article class="slide slide-2">
+          <svg class="slide-cloud" style="top:10%;left:40%;width:80px"><use href="#i-cloud"/></svg>
+          <div class="slide-copy">
+            <p class="slide-eyebrow"><svg><use href="#i-sparkle"/></svg>WEEKLY CONTEST</p>
+            <h2>每周训练赛<br/>和伙伴<em>一起变强</em></h2>
+            <p class="slide-sub">个人赛 · 团队赛 · 模拟赛，总有一场适合你</p>
+            <div class="slide-cta">
+              <a class="btn btn-primary" href="/contests">查看比赛</a>
+              <a class="btn btn-ghost" href="/leaderboard">看看榜单</a>
+            </div>
+          </div>
+          <div class="slide-art">
+            <svg viewBox="0 0 360 300" aria-hidden="true">
+              <!-- 彩带纸屑 -->
+              <g>
+                <circle cx="52" cy="52" r="5" fill="#8ed0ff"/><circle cx="96" cy="30" r="4" fill="#ffb7c9"/>
+                <circle cx="272" cy="40" r="5" fill="#ffd166"/><circle cx="316" cy="84" r="4" fill="#3ecf9a"/>
+                <circle cx="36" cy="140" r="4" fill="#ffd166"/><circle cx="322" cy="176" r="4.5" fill="#8ed0ff"/>
+                <rect x="140" y="26" width="10" height="10" rx="3" fill="#ffb7c9" transform="rotate(20 145 31)"/>
+                <rect x="228" y="44" width="9" height="9" rx="3" fill="#8ed0ff" transform="rotate(-18 232 48)"/>
+                <rect x="60" y="96" width="9" height="9" rx="3" fill="#3ecf9a" transform="rotate(30 64 100)"/>
+              </g>
+              <!-- 小旗子 -->
+              <path d="M52 96 L52 240" stroke="#7b93a8" stroke-width="4" stroke-linecap="round"/>
+              <path d="M52 100 L104 112 L52 124 Z" fill="#5bc0ff"/>
+              <!-- 领奖台 -->
+              <rect x="150" y="158" width="80" height="104" rx="12" fill="#fff" stroke="#cfe8fb" stroke-width="2.5"/>
+              <text x="190" y="192" text-anchor="middle" font-family="ui-monospace,monospace" font-size="24" font-weight="800" fill="#b07800">1</text>
+              <rect x="66" y="192" width="66" height="70" rx="12" fill="#e3f3ff" stroke="#cfe8fb" stroke-width="2.5"/>
+              <text x="99" y="220" text-anchor="middle" font-family="ui-monospace,monospace" font-size="19" font-weight="800" fill="#6d8aa4">2</text>
+              <rect x="228" y="206" width="66" height="56" rx="12" fill="#f0f8ff" stroke="#cfe8fb" stroke-width="2.5"/>
+              <text x="261" y="230" text-anchor="middle" font-family="ui-monospace,monospace" font-size="19" font-weight="800" fill="#6d8aa4">3</text>
+              <!-- 奖杯 -->
+              <g>
+                <path d="M166 52 L214 52 L209 84 A23 23 0 0 1 171 84 Z" fill="#ffd166"/>
+                <path d="M166 58 C150 58 150 80 166 80" fill="none" stroke="#ffd166" stroke-width="6" stroke-linecap="round"/>
+                <path d="M214 58 C230 58 230 80 214 80" fill="none" stroke="#ffd166" stroke-width="6" stroke-linecap="round"/>
+                <rect x="185" y="106" width="10" height="16" fill="#ffca4d"/>
+                <rect x="172" y="122" width="36" height="11" rx="5" fill="#ffca4d"/>
+                <rect x="172" y="106" width="36" height="6" rx="3" fill="#ffe4a0"/>
+                <path d="M190 62 l3 6.5 7 1.5 -5 5 1 7 -6 -3.4 -6 3.4 1 -7 -5 -5 7 -1.5z" fill="#fff" opacity=".95"/>
+              </g>
+              <path d="M240 66 l2.4 4.8 5 2.4 -5 2.4 -2.4 4.8 -2.4 -4.8 -5 -2.4 5 -2.4z" fill="#ffd166"/>
+              <path d="M134 96 l2 4 4.2 2 -4.2 2 -2 4 -2 -4 -4.2 -2 4.2 -2z" fill="#ffd166" opacity=".8"/>
+            </svg>
+          </div>
+        </article>
+
+        <!-- 轮播 3：纸飞机启航 -->
+        <article class="slide slide-3">
+          <svg class="slide-cloud" style="top:12%;right:6%;width:86px"><use href="#i-cloud"/></svg>
+          <div class="slide-copy">
+            <p class="slide-eyebrow"><svg><use href="#i-sparkle"/></svg>RATING UP!</p>
+            <h2>从萌新到大师<br/><em>收集你的色彩</em></h2>
+            <p class="slide-sub">每一次 AC，都是向上飞行的一小步</p>
+            <div class="slide-cta">
+              <a class="btn btn-primary" href="/leaderboard">进入排行榜</a>
+              <a class="btn btn-ghost" href="/about">了解 QOJ</a>
+            </div>
+          </div>
+          <div class="slide-art">
+            <svg viewBox="0 0 360 300" aria-hidden="true">
+              <!-- 太阳 -->
+              <circle cx="66" cy="70" r="36" fill="#ffe9a8" opacity=".5"/>
+              <circle cx="66" cy="70" r="26" fill="#ffe9a8"/>
+              <!-- 虚线航迹 -->
+              <path d="M46 252 C108 252 128 208 168 178 C210 146 246 150 288 122" fill="none" stroke="#5bc0ff" stroke-width="4.5" stroke-linecap="round" stroke-dasharray="1 13"/>
+              <!-- 小云 -->
+              <g fill="#fff" opacity=".85">
+                <ellipse cx="150" cy="66" rx="26" ry="15"/><ellipse cx="176" cy="58" rx="18" ry="13"/><rect x="124" y="60" width="76" height="16" rx="8"/>
+                <ellipse cx="286" cy="222" rx="30" ry="17"/><ellipse cx="314" cy="214" rx="18" ry="12"/><rect x="256" y="218" width="82" height="17" rx="8.5"/>
+              </g>
+              <!-- 纸飞机 -->
+              <g transform="translate(216,96) rotate(-16)">
+                <path d="M0 0 L88 30 L24 48 Z" fill="#fff" stroke="#2e97e8" stroke-width="3" stroke-linejoin="round"/>
+                <path d="M0 0 L88 30 L24 22 Z" fill="#cfe8ff" stroke="#2e97e8" stroke-width="3" stroke-linejoin="round"/>
+              </g>
+              <g fill="#ffd166"><path d="M120 150 l2.6 5.2 5.4 2.6 -5.4 2.6 -2.6 5.2 -2.6 -5.2 -5.4 -2.6 5.4 -2.6z"/><path d="M322 152 l2.2 4.4 4.6 2.2 -4.6 2.2 -2.2 4.4 -2.2 -4.4 -4.6 -2.2 4.6 -2.2z" opacity=".85"/></g>
+              <g fill="#8ed0ff" opacity=".7"><path d="M62 178 l2 4 4.2 2 -4.2 2 -2 4 -2 -4 -4.2 -2 4.2 -2z"/><path d="M262 66 l2.2 4.4 4.6 2.2 -4.6 2.2 -2.2 4.4 -2.2 -4.4 -4.6 -2.2 4.6 -2.2z"/></g>
+            </svg>
+          </div>
+        </article>
+      </div>
+
+      <button class="car-arrow car-prev" aria-label="上一张"><svg><use href="#i-chev-l"/></svg></button>
+      <button class="car-arrow car-next" aria-label="下一张"><svg><use href="#i-chev-r"/></svg></button>
+      <div class="car-dots" role="tablist" aria-label="轮播指示器">
+        <button class="car-dot is-active" aria-label="第 1 张"></button>
+        <button class="car-dot" aria-label="第 2 张"></button>
+        <button class="car-dot" aria-label="第 3 张"></button>
+      </div>
+    </div>
+
+    <!-- 即将开始的比赛 -->
+    <aside class="side-card reveal">
+      <div class="side-head">
+        <span class="ic"><svg><use href="#i-cal"/></svg></span>
+        <div><h3>即将开始的比赛</h3><p>UPCOMING CONTESTS</p></div>
+      </div>
+      <div class="contest-item">
+        <span class="contest-flag f-blue">月</span>
+        <div class="contest-info">
+          <div class="contest-name">十月月赛 · 云端嘉年华</div>
+          <div class="contest-meta"><span class="chip">个人赛</span><span>10-31 14:00</span></div>
+        </div>
+        <span class="countdown" data-at="2026-10-31T14:00:00+08:00">--</span>
+      </div>
+      <div class="contest-item">
+        <span class="contest-flag f-pink">友</span>
+        <div class="contest-info">
+          <div class="contest-name">新生友谊赛 #4</div>
+          <div class="contest-meta"><span class="chip">趣味赛</span><span>11-02 18:30</span></div>
+        </div>
+        <span class="countdown" data-at="2026-11-02T18:30:00+08:00">--</span>
+      </div>
+      <div class="contest-item">
+        <span class="contest-flag f-gold">队</span>
+        <div class="contest-info">
+          <div class="contest-name">算法组队训练赛</div>
+          <div class="contest-meta"><span class="chip">团队赛</span><span>11-08 13:00</span></div>
+        </div>
+        <span class="countdown" data-at="2026-11-08T13:00:00+08:00">--</span>
+      </div>
+      <div class="side-more"><a class="link-arrow" href="/contests">全部比赛<svg><use href="#i-arrow-r"/></svg></a></div>
+    </aside>
+  </section>
+
+  <!-- ═══ 公告 ═══ -->
+  <section class="block reveal">
+    <div class="sec-head">
+      <div class="sec-title"><svg class="spark"><use href="#i-sparkle"/></svg>公告<span class="sec-sub">ANNOUNCEMENTS</span></div>
+      <a class="link-arrow" href="/about">查看全部<svg><use href="#i-arrow-r"/></svg></a>
+    </div>
+    <div class="announce-grid">
+      <a class="announce-item" href="#">
+        <span class="ann-ic ic-sky"><svg><use href="#i-megaphone"/></svg></span>
+        <span class="ann-body"><span class="ann-title"><span class="pin">置顶</span>「十月月赛」报名开启，快来云端一决高下</span><span class="ann-date">2026-10-24</span></span>
+      </a>
+      <a class="announce-item" href="#">
+        <span class="ann-ic ic-gold"><svg><use href="#i-star"/></svg></span>
+        <span class="ann-body"><span class="ann-title">全新首页改版上线，看看有哪些变化</span><span class="ann-date">2026-10-21</span></span>
+      </a>
+      <a class="announce-item" href="#">
+        <span class="ann-ic ic-pink"><svg><use href="#i-cal"/></svg></span>
+        <span class="ann-body"><span class="ann-title">周末模拟赛时间调整至 14:00 开始</span><span class="ann-date">2026-10-15</span></span>
+      </a>
+      <a class="announce-item" href="#">
+        <span class="ann-ic ic-green"><svg><use href="#i-flag"/></svg></span>
+        <span class="ann-body"><span class="ann-title">题解上传规范更新，请老师同学们留意</span><span class="ann-date">2026-10-08</span></span>
+      </a>
+    </div>
+  </section>
+
+  <!-- ═══ 全站 AC 榜 ═══ -->
+  <section class="block reveal">
+    <div class="sec-head">
+      <div class="sec-title"><svg class="spark"><use href="#i-sparkle"/></svg>全站 AC 榜<span class="sec-sub">每日 00:00 刷新前十名</span></div>
+      <a class="link-arrow" href="/leaderboard">完整榜单<svg><use href="#i-arrow-r"/></svg></a>
+    </div>
+    <div class="rank-card">
+      <div class="podium">
+        <div class="pod pod-2">
+          <span class="avatar" style="background:linear-gradient(135deg,#9db8cf,#7b93a8)">雪</span>
+          <span class="name">snow_dpx</span>
+          <span class="solved">AC 987</span>
+          <span class="base">2</span>
+        </div>
+        <div class="pod pod-1">
+          <span class="avatar" style="background:linear-gradient(135deg,#ffd97e,#f4b942)">
+            <svg class="crown"><use href="#i-crown"/></svg>星</span>
+          <span class="name">星野璃奈</span>
+          <span class="solved">AC 1024</span>
+          <span class="base">1</span>
+        </div>
+        <div class="pod pod-3">
+          <span class="avatar" style="background:linear-gradient(135deg,#f7c9ab,#e0986a)">枫</span>
+          <span class="name">maple_47</span>
+          <span class="solved">AC 952</span>
+          <span class="base">3</span>
+        </div>
+      </div>
+      <div class="rank-row">
+        <span class="rank-no">4</span>
+        <span class="avatar" style="background:linear-gradient(135deg,#8ed0ff,#4fb0f7)">千</span>
+        <span class="rank-name">千寻 Chihiro</span>
+        <span class="rank-rating">R 2660</span>
+        <span class="rank-solved"><b>903</b> AC</span>
+      </div>
+      <div class="rank-row">
+        <span class="rank-no">5</span>
+        <span class="avatar" style="background:linear-gradient(135deg,#ffb7c9,#f78fae)">风</span>
+        <span class="rank-name">wind_class</span>
+        <span class="rank-rating">R 2592</span>
+        <span class="rank-solved"><b>871</b> AC</span>
+      </div>
+      <div class="rank-row">
+        <span class="rank-no">6</span>
+        <span class="avatar" style="background:linear-gradient(135deg,#3ecf9a,#1fa87c)">A</span>
+        <span class="rank-name">AzureOrange</span>
+        <span class="rank-rating">R 2531</span>
+        <span class="rank-solved"><b>844</b> AC</span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ═══ 页脚 ═══ -->
+<footer>
+  <svg class="mascot" viewBox="0 0 200 212"><use href="#i-mascot"/></svg>
+  <p class="ft-title">QOJ · 云端评测乐园</p>
+  <p class="ft-sub">© 2026 QOJ Online Judge · 保持热爱，奔赴云端</p>
+  <div class="ft-links"><a href="/about">关于</a><a href="/about">帮助</a><a href="/contests">比赛</a></div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── 轮播图：自动播放 / 指示器 / 前后切换 / 触摸滑动 ── */
+  var root = document.getElementById('carousel');
+  var track = root.querySelector('.car-track');
+  var slides = Array.prototype.slice.call(track.children);
+  var dots = Array.prototype.slice.call(root.querySelectorAll('.car-dot'));
+  var index = 0, timer = null, paused = false;
+
+  function render() {
+    track.style.transform = 'translateX(' + (-index * 100) + '%)';
+    slides.forEach(function (s, i) { s.classList.toggle('is-active', i === index); });
+    dots.forEach(function (d, i) { d.classList.toggle('is-active', i === index); });
+  }
+  function go(i) { index = (i + slides.length) % slides.length; render(); }
+  function play() { stop(); timer = setInterval(function () { if (!paused) { go(index + 1); } }, 5200); }
+  function stop() { if (timer) { clearInterval(timer); timer = null; } }
+
+  root.addEventListener('mouseenter', function () { paused = true; });
+  root.addEventListener('mouseleave', function () { paused = false; });
+  root.querySelector('.car-next').addEventListener('click', function () { go(index + 1); play(); });
+  root.querySelector('.car-prev').addEventListener('click', function () { go(index - 1); play(); });
+  dots.forEach(function (d, i) { d.addEventListener('click', function () { go(i); play(); }); });
+
+  var startX = null;
+  root.addEventListener('pointerdown', function (e) { startX = e.clientX; });
+  root.addEventListener('pointerup', function (e) {
+    if (startX === null) { return; }
+    var dx = e.clientX - startX;
+    startX = null;
+    if (Math.abs(dx) > 40) { go(index + (dx < 0 ? 1 : -1)); play(); }
+  });
+  render(); play();
+
+  /* ── 比赛倒计时（data-at 为开始时间） ── */
+  var counters = document.querySelectorAll('[data-at]');
+  function tick() {
+    counters.forEach(function (n) {
+      var diff = Math.max(0, new Date(n.dataset.at).getTime() - Date.now());
+      var d = Math.floor(diff / 864e5);
+      var h = Math.floor(diff % 864e5 / 36e5);
+      var m = Math.floor(diff % 36e5 / 6e4);
+      n.textContent = d > 0 ? (d + ' 天 ' + h + ' 时') : (h > 0 ? (h + ' 时 ' + m + ' 分') : (m > 0 ? (m + ' 分') : '即将开始'));
+    });
+  }
+  tick(); setInterval(tick, 30000);
+
+  /* ── 滚动进场 ── */
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+  } else {
+    document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('in'); });
+  }
+
+  /* ── 导航高亮 & 移动端菜单（预览用；接入 Vue 后删掉） ── */
+  var menu = document.getElementById('mobileNav');
+  var toggle = document.getElementById('menuToggle');
+  toggle.addEventListener('click', function () {
+    var open = menu.classList.toggle('open');
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  document.querySelectorAll('.nav-link').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      var href = a.getAttribute('href');
+      document.querySelectorAll('.nav-link').forEach(function (x) {
+        x.classList.toggle('is-active', x.getAttribute('href') === href);
+      });
+      menu.classList.remove('open');
+    });
+  });
+
+  /* ── 置顶公告关闭 ── */
+  var strip = document.getElementById('noticeStrip');
+  document.getElementById('noticeClose').addEventListener('click', function () { strip.remove(); });
+})();
+</script>
+</body>
+</html>

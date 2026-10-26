@@ -55,3 +55,7 @@ __pycache__/
 output/
 tmp/
 agent-java/target/
+
+# 本地 E2E 产物与 Java 格式工具构建缓存
+artifacts/
+tools/java-style/target/

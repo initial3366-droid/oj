@@ -18,7 +18,6 @@ const redirectPath = computed(() => safeSameOriginPath(typeof route.query.redire
 const redirectQuery = computed(() => redirectPath.value === "/user-center" ? "" : `?redirect=${encodeURIComponent(redirectPath.value)}`);
 const message = ref("");
 const submitting = ref(false);
-const rememberMe = ref(false);
 const pendingRememberMe = ref(false);
 const captchaImage = ref("");
 const captchaId = ref("");
@@ -170,7 +169,7 @@ async function submit() {
       const auth = await register({ username: form.username, studentNo: form.studentNo, email: form.email, password: form.password, emailVerificationCode: form.emailVerificationCode });
       saveFrontendAuthTokens(auth, false);
     } else {
-      const auth = await loginWithoutPersist(form.username, form.password, rememberMe.value, captchaId.value, form.captcha);
+      const auth = await loginWithoutPersist(form.username, form.password, true, captchaId.value, form.captcha);
       if (auth.portal === "TEACHER") {
         ElMessage.info("已切换到教师端登录");
         await router.replace(`/teacher/login?username=${encodeURIComponent(form.username.trim())}`);
@@ -181,14 +180,14 @@ async function submit() {
         clearFrontendTokens();
         pendingToken.value = auth.accessToken;
         pendingAuth.value = auth;
-        pendingRememberMe.value = rememberMe.value;
+        pendingRememberMe.value = true;
         Object.assign(bindForm, { email: "", captcha: "", emailVerificationCode: "" });
         bindMessage.value = "";
         bindModalVisible.value = true;
         await fetchBindCaptcha();
         return;
       }
-      saveFrontendAuthTokens(auth, rememberMe.value);
+      saveFrontendAuthTokens(auth, true);
     }
     ElMessage({ type: "success", message: isRegister.value ? "注册成功" : "登录成功", duration: 2000 });
     window.setTimeout(() => window.location.assign(redirectPath.value), 1200);
@@ -252,7 +251,6 @@ onMounted(() => { void fetchCaptcha(); if (isRegister.value) void checkEmailRema
             </div>
           </div>
           <el-alert v-if="message" class="auth-message" :title="message" :type="message.includes('已发送') ? 'success' : 'error'" show-icon :closable="false" />
-          <el-checkbox v-if="!isRegister" v-model="rememberMe">记住密码</el-checkbox>
           <el-button type="primary" native-type="submit" class="auth-btn-primary" :loading="submitting">{{ title }}</el-button>
           <div v-if="!isRegister" class="auth-recovery-action"><el-button text class="auth-forgot-password" @click="openResetModal">找回密码</el-button></div>
           <el-button class="auth-btn-toggle" @click="toggleMode">{{ isRegister ? "已有账号，去登录" : "没有账号，去注册" }}</el-button>

@@ -16,6 +16,8 @@ const items = [
   { title: "学生列表", path: "/teacher/students", group: "学生与班级" },
   { title: "导入学生", path: "/teacher/import", group: "学生与班级" },
   { title: "加入申请", path: "/teacher/applications", group: "学生与班级" },
+  { title: "提交统计", path: "/teacher/submissions/statistics", group: "学生与班级" },
+  { title: "判题队列", path: "/teacher/judge/queue", group: "竞赛" },
   { title: "提交记录", path: "/teacher/submissions", group: "学生与班级" },
   { title: "练习统计", path: "/teacher/stats", group: "学生与班级" },
   { title: "练习提交", path: "/teacher/practices/submissions", group: "题库与教学" },

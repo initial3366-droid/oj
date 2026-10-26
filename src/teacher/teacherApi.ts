@@ -223,7 +223,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = API_
 /**
  * 封装refresh教师访问令牌相关逻辑。包含异步流程并由调用方处理完成或失败状态；会访问后端接口失败时向调用方传播异常。
  */
-async function refreshTeacherAccessToken() {
+export async function refreshTeacherAccessToken() {
   const refreshToken = getTeacherRefreshToken();
   if (!refreshToken) return null;
 

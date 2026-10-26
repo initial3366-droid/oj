@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
+import { ElMessage } from 'element-plus';
 import type { RouteRecordRaw } from 'vue-router';
 import { store } from './store';
 import { login as loginWithQoj } from './auth';
@@ -26,7 +27,13 @@ export const useUserStore = defineStore('qoj-template-user', () => {
   }
   async function logout() { await logoutHandler(); }
   async function login(data: import('./auth').LoginRequest) {
-    try { await loginWithQoj(data); } catch (error) { const { ElMessage } = await import('element-plus'); ElMessage.error(error instanceof Error ? error.message : '登录失败'); throw error; }
+    try {
+      await loginWithQoj(data);
+    } catch (error) {
+      ElMessage.error(error instanceof Error ? error.message : '登录失败');
+      throw error;
+    }
+    ElMessage({ type: 'success', message: '登录成功', duration: 2000 });
   }
   async function loginByQrCode(_ticket: string) { throw new Error('QOJ 尚未提供扫码登录接口'); }
   return { userInfo, profilePath, loginPath, configure, logout, login, loginByQrCode };

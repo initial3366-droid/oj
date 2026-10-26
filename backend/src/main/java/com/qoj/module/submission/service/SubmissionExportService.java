@@ -51,10 +51,36 @@ public class SubmissionExportService {
         String sortOrder,
         AuthUser authUser
     ) {
+        return exportSubmissionsCsv(
+            id, userId, classId, problemId, contestId, contestProblemId, practiceId, language,
+            status, judgeServer, identityType, from, to, sortBy, sortOrder, authUser, null, false
+        );
+    }
+
+    public byte[] exportSubmissionsCsv(
+        Long id,
+        Long userId,
+        Long classId,
+        Long problemId,
+        Long contestId,
+        Long contestProblemId,
+        Long practiceId,
+        String language,
+        String status,
+        String judgeServer,
+        String identityType,
+        LocalDateTime from,
+        LocalDateTime to,
+        String sortBy,
+        String sortOrder,
+        AuthUser authUser,
+        String keyword,
+        boolean practiceOnly
+    ) {
         List<AdminSubmissionVO> rows = submissionService.adminExportList(
             EXPORT_LIMIT,
             id, userId, classId, problemId, contestId, contestProblemId, practiceId,
-            language, status, judgeServer, identityType, from, to, sortBy, sortOrder
+            language, status, judgeServer, identityType, from, to, sortBy, sortOrder, keyword, practiceOnly
         );
 
         StringBuilder builder = new StringBuilder();

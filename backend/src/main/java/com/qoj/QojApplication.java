@@ -19,7 +19,7 @@ public class QojApplication {
     private static final String DEFAULT_TIME_ZONE = "Asia/Shanghai";
 
     /**
-     * 启动 QOJ 应用，应用进程级时区配置后交由 Spring Boot 创建运行上下文。保持该职责的输入、输出和异常边界集中，便于调用方复用。
+     * 启动应用，应用进程级时区配置后交由 Spring Boot 创建运行上下文。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
     public static void main(String[] args) {
         String timeZone = System.getenv().getOrDefault("QOJ_TIME_ZONE", DEFAULT_TIME_ZONE);

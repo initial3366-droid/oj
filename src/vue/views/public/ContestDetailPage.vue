@@ -42,6 +42,7 @@ const submissions = ref<SubmissionRecord[]>([]);
 const submissionsTotal = ref(0);
 const submissionsLoading = ref(false);
 const acceptedIds = ref(new Set<number>());
+const submittedIds = ref(new Set<number>());
 const submissionPage = ref(1);
 const submissionPageSize = ref(20);
 const codeDialog = ref(false);
@@ -53,6 +54,7 @@ let clockTimer = 0;
 const activeTab = computed<TabKey>(() => {
   const candidate = String(route.query.tab ?? "problems") as TabKey;
   if (!canViewContestTabs.value) return "intro";
+  if (contest.value?.type === "LANQIAO" && candidate === "submissions") return "problems";
   return validTabs.includes(candidate) ? candidate : "problems";
 });
 const isLoggedIn = computed(() => Boolean(readAuthToken("frontend")));
@@ -152,7 +154,7 @@ async function loadMySubmissions() {
   finally { if (requestId === myRequest) mySubmissionsLoading.value = false; }
 }
 async function loadSubmissions() {
-  if (!contest.value?.registered) return;
+  if (!contest.value?.registered || contest.value.type === "LANQIAO") return;
   submissionsLoading.value = true;
   try {
     const result = await fetchContestSubmissions(contestId.value, submissionPage.value, submissionPageSize.value);
@@ -164,6 +166,23 @@ async function loadSubmissions() {
 async function loadAcceptedProblems() {
   if (!contest.value?.registered) return;
   try {
+    if (contest.value.type === "LANQIAO") {
+      const id = contestId.value;
+      const ids = new Set<number>();
+      let page = 1;
+      let loaded = 0;
+      while (true) {
+        const result = await fetchMyContestSubmissions(id, page, 100);
+        for (const row of result.list) {
+          if (row.problemId != null) ids.add(row.problemId);
+        }
+        loaded += result.list.length;
+        if (!result.list.length || loaded >= result.total) break;
+        page += 1;
+      }
+      if (contestId.value === id) submittedIds.value = ids;
+      return;
+    }
     const rows = await fetchMyContestAcceptedProblems(contestId.value);
     acceptedIds.value = new Set(rows.flatMap((row) => [row.problemId, row.contestProblemId].filter((id): id is number => id != null)));
   } catch { /* Preserve the last successfully loaded accepted problem list. */ }
@@ -215,11 +234,12 @@ function statusTag(status: string) {
   return "info";
 }
 function statusText(status: string) {
+  if (status === "SUBMITTED") return "提交成功";
   const values: Record<string, string> = { AC: "Accepted", ACCEPTED: "Accepted", WA: "Wrong Answer", WRONG_ANSWER: "Wrong Answer", TLE: "Time Limit Exceeded", TIME_LIMIT_EXCEEDED: "Time Limit Exceeded", MLE: "Memory Limit Exceeded", MEMORY_LIMIT_EXCEEDED: "Memory Limit Exceeded", RE: "Runtime Error", RUNTIME_ERROR: "Runtime Error", CE: "Compile Error", COMPILE_ERROR: "Compile Error", WAITING: "Waiting", PENDING: "Pending", QUEUED: "Pending", JUDGING: "Judging", COMPILING: "Compiling", RUNNING: "Running", NOO: "No Output", SE: "System Error", FAILED: "Failed" };
   return values[status.toUpperCase()] || status;
 }
 function cellFor(row: ContestScoreboard["rows"][number], problem: ContestScoreboard["problems"][number]) { return row.cells.find((cell) => (cell.contestProblemId ?? cell.problemId) === (problem.contestProblemId ?? problem.problemId)); }
-function scoreboardCellClass(item?: ContestScoreboard["rows"][number]["cells"][number]) { return item?.hasHiddenSubmissions ? "hidden" : item?.accepted ? "accepted" : scoreboard.value?.type === "OI" && (item?.score ?? 0) > 0 ? "partial" : (item?.attempts ?? 0) ? "failed" : "empty"; }
+function scoreboardCellClass(item?: ContestScoreboard["rows"][number]["cells"][number]) { return item?.hasHiddenSubmissions ? "hidden" : item?.accepted ? "accepted" : scoreboard.value?.type !== "ACM" && (item?.score ?? 0) > 0 ? "partial" : (item?.attempts ?? 0) ? "failed" : "empty"; }
 function cellAcceptedMinute(item?: ContestScoreboard["rows"][number]["cells"][number]) {
   if (!item?.accepted || !item.acceptedAt || !scoreboard.value?.startTime) return null;
   const started = new Date(scoreboard.value.startTime).getTime();
@@ -231,18 +251,18 @@ function attemptText(attempts = 0) { return attempts === 1 ? "1 try" : `${attemp
 function scoreboardCellMain(item?: ContestScoreboard["rows"][number]["cells"][number]) {
   if (!item) return "-";
   if (item.hasHiddenSubmissions) return "+";
+  if (scoreboard.value?.type !== "ACM") return item.attempts ? String(item.score) : "-";
   const minute = cellAcceptedMinute(item);
   if (minute != null) return `${minute}`;
-  if (scoreboard.value?.type === "OI") return item.attempts ? String(item.score) : "-";
   return "-";
 }
-function scoreboardCellUnit(item?: ContestScoreboard["rows"][number]["cells"][number]) { return cellAcceptedMinute(item) != null ? "min" : scoreboard.value?.type === "OI" && item?.attempts ? "pts" : ""; }
+function scoreboardCellUnit(item?: ContestScoreboard["rows"][number]["cells"][number]) { return scoreboard.value?.type !== "ACM" ? (item?.attempts ? "pts" : "") : cellAcceptedMinute(item) != null ? "min" : ""; }
 function scoreboardCellSub(item?: ContestScoreboard["rows"][number]["cells"][number]) { return attemptText(item?.hasHiddenSubmissions ? item.hiddenAttempts : item?.attempts); }
 function scoreboardCellTitle(item?: ContestScoreboard["rows"][number]["cells"][number]) { return item?.hasHiddenSubmissions ? "封榜后有提交" : item?.accepted ? "已通过" : (item?.attempts ?? 0) > 0 ? "未通过" : "暂无提交"; }
 function medalType(medal?: ContestScoreboard["rows"][number]["medal"]) { return medal === "GOLD" ? "warning" : medal === "SILVER" ? "info" : medal === "BRONZE" ? "success" : "info"; }
 function medalText(medal?: ContestScoreboard["rows"][number]["medal"]) { return medal === "GOLD" ? "金" : medal === "SILVER" ? "银" : medal === "BRONZE" ? "铜" : ""; }
 
-watch(contestId, () => { contest.value = null; scoreboard.value = null; scoreboardMessage.value = ""; void loadContest(); });
+watch(contestId, () => { contest.value = null; acceptedIds.value = new Set(); submittedIds.value = new Set(); scoreboard.value = null; scoreboardMessage.value = ""; void loadContest(); });
 watch(() => [contest.value?.id, contest.value?.registered, registrationClosed.value], () => { void loadRegistrationOptions(); });
 watch([activeTab, () => contest.value?.registered], ([tab]) => {
   if (tab === "submissions") void loadSubmissions();
@@ -270,7 +290,7 @@ usePageTitle(computed(() => contest.value?.title ?? null));
           <div class="information-label"><span />比赛信息</div>
           <div class="contest-title-row"><h1>{{ contest.title }}</h1><span class="contest-status" :class="contest.status.toLowerCase()"><i />{{ contestStatusLabel }}</span></div>
           <div class="contest-metadata">
-            <span><el-icon><Trophy /></el-icon>{{ contest.type === 'ACM' ? 'ACM / ICPC 赛制' : 'OI 赛制' }}</span>
+            <span><el-icon><Trophy /></el-icon>{{ contest.type === 'ACM' ? 'ACM / ICPC 赛制' : contest.type === 'LANQIAO' ? '蓝桥杯赛制' : 'OI 赛制' }}</span>
             <span><el-icon><UserFilled /></el-icon>{{ audienceLabel }}</span>
             <span><el-icon><User /></el-icon>{{ contest.registrationType === 'PASSWORD' ? '密码报名' : '公开报名' }}</span>
           </div>
@@ -302,10 +322,11 @@ usePageTitle(computed(() => contest.value?.title ?? null));
       <el-tab-pane v-if="canViewProblems" label="题目列表" name="problems"><el-empty v-if="!contest.problems?.length" :description="contest.status === 'NOT_STARTED' ? '比赛尚未开始，题目列表暂未公开' : '暂无题目'" /><el-table v-else class="contest-problems-table" :data="contest.problems" :row-key="(problem: NonNullable<PublicContest['problems']>[number]) => problem.contestProblemId ?? problem.problemId" stripe>
         <el-table-column prop="label" label="编号" width="90" align="center"/>
         <el-table-column prop="title" label="题目" min-width="220" align="center" show-overflow-tooltip><template #default="{ row }"><button class="problem-title" type="button" @click="openProblem(row)">{{ row.title }}</button></template></el-table-column>
-        <el-table-column label="提交数" min-width="110" align="center"><template #default="{ row }">{{ row.submissionCount ?? 0 }}</template></el-table-column>
-        <el-table-column label="通过数" min-width="110" align="center"><template #default="{ row }">{{ row.acceptedCount ?? 0 }}</template></el-table-column>
-        <el-table-column v-if="contest.type === 'OI'" label="分值" min-width="100" align="center"><template #default="{ row }">{{ row.score ?? 100 }}</template></el-table-column>
-        <el-table-column label="我的状态" min-width="120" align="center"><template #default="{ row }"><el-tag :type="acceptedIds.has(row.problemId) || acceptedIds.has(row.contestProblemId ?? -1) ? 'success' : 'info'">{{ acceptedIds.has(row.problemId) || acceptedIds.has(row.contestProblemId ?? -1) ? '已通过' : '—' }}</el-tag></template></el-table-column>
+        <el-table-column v-if="contest.type !== 'LANQIAO'" label="提交数" min-width="110" align="center"><template #default="{ row }">{{ row.submissionCount ?? 0 }}</template></el-table-column>
+        <el-table-column v-if="contest.type !== 'LANQIAO'" label="通过数" min-width="110" align="center"><template #default="{ row }">{{ row.acceptedCount ?? 0 }}</template></el-table-column>
+        <el-table-column v-if="contest.type !== 'ACM'" label="分值" min-width="100" align="center"><template #default="{ row }">{{ row.score ?? 100 }}</template></el-table-column>
+        <el-table-column v-if="contest.type === 'LANQIAO'" label="我的状态" min-width="120" align="center"><template #default="{ row }"><el-tag :type="submittedIds.has(row.problemId) ? 'success' : 'info'">{{ submittedIds.has(row.problemId) ? '已提交' : '—' }}</el-tag></template></el-table-column>
+        <el-table-column v-else label="我的状态" min-width="120" align="center"><template #default="{ row }"><el-tag :type="acceptedIds.has(row.problemId) || acceptedIds.has(row.contestProblemId ?? -1) ? 'success' : 'info'">{{ acceptedIds.has(row.problemId) || acceptedIds.has(row.contestProblemId ?? -1) ? '已通过' : '—' }}</el-tag></template></el-table-column>
       </el-table></el-tab-pane>
       <el-tab-pane v-if="canViewContestTabs" label="我的提交" name="my-submissions">
         <div class="filters my-submission-filters"><el-select v-model="myProblemFilter" clearable placeholder="全部题目" aria-label="筛选我的提交题目"><el-option v-for="problem in contest.problems" :key="problem.problemId" :label="problem.label" :value="problem.problemId"/></el-select><el-select v-model="myStatusFilter" clearable placeholder="全部状态" aria-label="筛选我的提交状态"><el-option v-for="status in myStatusOptions" :key="status" :label="statusText(status)" :value="status"/></el-select><el-button @click="myProblemFilter=undefined;myStatusFilter=''">重置筛选</el-button><el-button :loading="mySubmissionsLoading" @click="loadMySubmissions"><el-icon><Refresh /></el-icon>刷新</el-button></div>
@@ -321,7 +342,7 @@ usePageTitle(computed(() => contest.value?.title ?? null));
         </el-table>
         <div class="pagination"><Pagination v-model:page="myPage" v-model:limit="myPageSize" :page-sizes="[10,20,50]" :total="mySubmissionsTotal" /></div>
       </el-tab-pane>
-      <el-tab-pane v-if="canViewContestTabs" label="实时榜单" name="scoreboard">
+      <el-tab-pane v-if="canViewContestTabs && contest.scoreboardEnabled !== false && (contest.type !== 'LANQIAO' || (contest.status === 'ENDED' && contest.resultsPublished))" label="比赛榜单" name="scoreboard">
         <el-skeleton v-if="scoreboardLoading" :rows="5" animated />
         <el-empty v-else-if="!scoreboard" :description="scoreboardMessage || '排行榜暂不可用'"/>
         <template v-else>
@@ -330,13 +351,13 @@ usePageTitle(computed(() => contest.value?.title ?? null));
             <el-table-column label="Rank" width="76" align="center"><template #default="{ row }">{{ row.starred ? '打星' : row.rank ?? '-' }}</template></el-table-column>
             <el-table-column label="用户" min-width="190"><template #default="{ row }"><div class="scoreboard-user"><span class="scoreboard-user-name">{{ row.displayName || row.userId }}</span><el-tag v-if="row.medal" :type="medalType(row.medal)" size="small" class="medal-badge">{{ medalText(row.medal) }}</el-tag><el-tag v-if="row.teamName" type="info" size="small" effect="plain" class="team-badge">{{ row.teamName }}</el-tag></div></template></el-table-column>
             <el-table-column prop="solved" label="Solved" width="80" align="center"/>
-            <el-table-column :label="scoreboard.type === 'OI' ? 'Score' : 'Penalty'" width="100" align="center"><template #default="{ row }">{{ scoreboard.type === 'OI' ? row.score : row.penalty }}</template></el-table-column>
+            <el-table-column :label="scoreboard.type !== 'ACM' ? 'Score' : 'Penalty'" width="100" align="center"><template #default="{ row }">{{ scoreboard.type !== 'ACM' ? row.score : row.penalty }}</template></el-table-column>
             <el-table-column v-for="problem in scoreboard.problems" :key="problem.contestProblemId ?? problem.problemId" :label="problem.label" min-width="78" align="center" class-name="score-column"><template #default="{ row }"><span class="score-cell" :class="scoreboardCellClass(cellFor(row, problem))" :title="scoreboardCellTitle(cellFor(row, problem))"><span class="score-cell-main">{{ scoreboardCellMain(cellFor(row, problem)) }}<small v-if="scoreboardCellUnit(cellFor(row, problem))">{{ scoreboardCellUnit(cellFor(row, problem)) }}</small></span><small class="score-cell-tries">{{ scoreboardCellSub(cellFor(row, problem)) }}</small></span></template></el-table-column>
           </el-table></div>
-          <el-button class="public-scoreboard-link" text type="primary" @click="router.push(`/contests/${contestId}/public-scoreboard`)">打开公开外榜</el-button>
+          <el-button v-if="contest.publicScoreboardEnabled" class="public-scoreboard-link" text type="primary" @click="router.push(`/contests/${contestId}/public-scoreboard`)">打开公开外榜</el-button>
         </template>
       </el-tab-pane>
-      <el-tab-pane v-if="canViewContestTabs" label="提交列表" name="submissions"><div class="filters"><el-select v-model="submissionProblemFilter" clearable placeholder="全部题目" @change="submissionPage = 1"><el-option label="全部题目" value="ALL"/><el-option v-for="problem in contest.problems" :key="problem.problemId" :label="problem.label" :value="String(problem.problemId)"/></el-select><el-select v-model="submissionStatusFilter" placeholder="全部状态" @change="submissionPage = 1"><el-option label="全部状态" value="ALL"/><el-option v-for="status in submissionStatusOptions" :key="status" :label="statusText(status)" :value="status"/></el-select><el-input v-model="submissionUserFilter" clearable placeholder="搜索用户" @input="submissionPage = 1"/><el-button :loading="submissionsLoading" @click="loadSubmissions">刷新</el-button></div><el-table :data="filteredSubmissions" row-key="id" stripe empty-text="暂无提交记录"><el-table-column prop="id" label="提交ID" width="100"/><el-table-column label="用户"><template #default="{ row }">{{ row.displayName || row.username || `User ${row.userId ?? '?'}` }}</template></el-table-column><el-table-column label="题号"><template #default="{ row }">{{ submissionProblemLabel(row) }}</template></el-table-column><el-table-column label="语言"><template #default="{ row }">{{ languageLabel(row.language) }}</template></el-table-column><el-table-column label="状态"><template #default="{ row }"><el-tag :type="statusTag(row.status)">{{ statusText(row.status) }}</el-tag></template></el-table-column><el-table-column label="提交时间"><template #default="{ row }">{{ submissionDate(row) }}</template></el-table-column><el-table-column v-if="contest.status === 'ENDED' && contest.allowAfterEndViewCode" label="代码"><template #default="{ row }"><el-button link type="primary" @click="loadCode(row)">查看代码</el-button></template></el-table-column></el-table><div class="pagination"><Pagination v-model:page="submissionPage" v-model:limit="submissionPageSize" :page-sizes="[10,20,50]" :total="submissionsTotal" /></div></el-tab-pane>
+      <el-tab-pane v-if="canViewContestTabs && contest.type !== 'LANQIAO'" label="提交列表" name="submissions"><div class="filters"><el-select v-model="submissionProblemFilter" clearable placeholder="全部题目" @change="submissionPage = 1"><el-option label="全部题目" value="ALL"/><el-option v-for="problem in contest.problems" :key="problem.problemId" :label="problem.label" :value="String(problem.problemId)"/></el-select><el-select v-model="submissionStatusFilter" placeholder="全部状态" @change="submissionPage = 1"><el-option label="全部状态" value="ALL"/><el-option v-for="status in submissionStatusOptions" :key="status" :label="statusText(status)" :value="status"/></el-select><el-input v-model="submissionUserFilter" clearable placeholder="搜索用户" @input="submissionPage = 1"/><el-button :loading="submissionsLoading" @click="loadSubmissions">刷新</el-button></div><el-table :data="filteredSubmissions" row-key="id" stripe empty-text="暂无提交记录"><el-table-column prop="id" label="提交ID" width="100"/><el-table-column label="用户"><template #default="{ row }">{{ row.displayName || row.username || `User ${row.userId ?? '?'}` }}</template></el-table-column><el-table-column label="题号"><template #default="{ row }">{{ submissionProblemLabel(row) }}</template></el-table-column><el-table-column label="语言"><template #default="{ row }">{{ languageLabel(row.language) }}</template></el-table-column><el-table-column label="状态"><template #default="{ row }"><el-tag :type="statusTag(row.status)">{{ statusText(row.status) }}</el-tag></template></el-table-column><el-table-column label="提交时间"><template #default="{ row }">{{ submissionDate(row) }}</template></el-table-column><el-table-column v-if="contest.status === 'ENDED' && contest.allowAfterEndViewCode" label="代码"><template #default="{ row }"><el-button link type="primary" @click="loadCode(row)">查看代码</el-button></template></el-table-column></el-table><div class="pagination"><Pagination v-model:page="submissionPage" v-model:limit="submissionPageSize" :page-sizes="[10,20,50]" :total="submissionsTotal" /></div></el-tab-pane>
     </el-tabs>
     <el-dialog v-model="registrationDialog" title="报名比赛" width="460px"><p v-if="selectedOption">报名身份：{{ selectedOption.name }}</p><el-input v-if="contest.registrationType === 'PASSWORD'" v-model="registrationPassword" type="password" show-password placeholder="比赛报名密码"/><el-checkbox v-if="contest.allowStarRegistration" v-model="registrationStarred">以打星身份报名</el-checkbox><el-alert v-if="registrationMessage" type="warning" :title="registrationMessage" :closable="false"/><template #footer><el-button @click="registrationDialog = false">取消</el-button><el-button type="primary" :loading="registering" @click="submitRegistration">确认报名</el-button></template></el-dialog>
     <el-dialog v-model="codeDialog" :title="`提交代码 #${codeSubmission?.id ?? ''}`" width="min(900px, 92vw)"><pre class="submission-code">{{ codeSubmission?.code || '暂无代码内容' }}</pre></el-dialog>

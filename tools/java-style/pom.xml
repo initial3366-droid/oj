@@ -1,0 +1,29 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.qoj.tools</groupId>
+    <artifactId>agent-java-style</artifactId>
+    <version>1.0</version>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>net.revelc.code.formatter</groupId>
+                <artifactId>formatter-maven-plugin</artifactId>
+                <version>2.24.1</version>
+                <configuration>
+                    <configFile>${project.basedir}/eclipse-codestyle.xml</configFile>
+                    <directories>
+                        <directory>${project.basedir}/../../backend/src/main/java/com/qoj/module/agent/service</directory>
+                        <directory>${project.basedir}/../../agent-java/src/main/java/com/qojagent/service</directory>
+                    </directories>
+                    <lineEnding>LF</lineEnding>
+                    <encoding>UTF-8</encoding>
+                    <compilerSource>17</compilerSource>
+                    <compilerCompliance>17</compilerCompliance>
+                    <compilerTargetPlatform>17</compilerTargetPlatform>
+                    <targetDirectory>${project.basedir}/../../.runtime/agent-style/formatter</targetDirectory>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -1,5 +1,6 @@
 package com.qoj.module.contest.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qoj.common.exception.BizException;
 import com.qoj.module.contest.entity.*;
@@ -55,11 +56,24 @@ public class ContestOiRankService {
         }
 
         Contest contest = contestMapper.selectById(submission.contestId);
-        if (contest == null || !"OI".equals(contest.type)) {
+        if (contest == null || !ContestFeedbackPolicy.usesScores(contest)) {
             return;
         }
         if (!ContestRankTimePolicy.isRankedSubmission(contest, submission)) {
             return;
+        }
+
+        if (ContestFeedbackPolicy.isLanqiao(contest)) {
+            Submission latest = submissionMapper.selectOne(new QueryWrapper<Submission>()
+                .eq("contest_id", submission.contestId)
+                .eq("participant_id", submission.participantId)
+                .eq("contest_problem_id", submission.contestProblemId)
+                .ge("submit_time", contest.startTime)
+                .le("submit_time", contest.endTime)
+                .orderByDesc("submit_time", "id").last("LIMIT 1"));
+            if (latest != null && !latest.id.equals(submission.id)) {
+                return;
+            }
         }
 
         // 获取题目满分
@@ -98,7 +112,7 @@ public class ContestOiRankService {
 
         // 幂等检查：如果当前分数没有超过历史最高分，不更新
         int oldBestScore = problemRank.bestScore != null ? problemRank.bestScore : 0;
-        boolean scoreImproved = currentScore > oldBestScore;
+        boolean scoreImproved = ContestFeedbackPolicy.isLanqiao(contest) || currentScore > oldBestScore;
 
         if (scoreImproved) {
             problemRank.bestScore = currentScore;
@@ -220,7 +234,7 @@ public class ContestOiRankService {
              */
             throw new BizException(404, "比赛不存在");
         }
-        if (!"OI".equals(contest.type)) {
+        if (!ContestFeedbackPolicy.usesScores(contest)) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
              */

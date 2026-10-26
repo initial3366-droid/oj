@@ -29,6 +29,7 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
     private final ContestParticipantMapper participantMapper;
     private final SubmissionMapper submissionMapper;
     private final ContestIpAccessService contestIpAccessService;
+    private final UserSocketSessions userSocketSessions;
 
     // 频道模式
     private static final Pattern CONTEST_SCOREBOARD_PATTERN = Pattern.compile("^/topic/contests/(\\d+)/scoreboard$");
@@ -44,17 +45,34 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
         ContestMapper contestMapper,
         ContestParticipantMapper participantMapper,
         SubmissionMapper submissionMapper,
-        ContestIpAccessService contestIpAccessService
+        ContestIpAccessService contestIpAccessService,
+        UserSocketSessions userSocketSessions
     ) {
         this.contestMapper = contestMapper;
         this.participantMapper = participantMapper;
         this.submissionMapper = submissionMapper;
         this.contestIpAccessService = contestIpAccessService;
+        this.userSocketSessions = userSocketSessions;
     }
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+
+        if (accessor != null && StompCommand.SEND.equals(accessor.getCommand())) {
+            Map<String, Object> attributes = accessor.getSessionAttributes();
+            boolean authenticated = accessor.getUser() != null && attributes != null
+                && attributes.get("authUser") instanceof AuthUser;
+            String destination = accessor.getDestination();
+            // Broker destinations are server-only, regardless of the client's role.
+            // Keep this allowlist aligned with the explicit @MessageMapping handlers.
+            boolean applicationDestination = "/app/contest-messages/send".equals(destination)
+                || "/app/contest-messages/ready".equals(destination);
+            if (!authenticated || !applicationDestination) {
+                userSocketSessions.reject(accessor.getSessionId(), "Forbidden STOMP destination");
+                return null;
+            }
+        }
 
         if (accessor != null && accessor.getDestination() != null && accessor.getDestination().contains("contest-message")) {
             String destination = accessor.getDestination();
@@ -63,11 +81,12 @@ public class WebSocketSubscriptionInterceptor implements ChannelInterceptor {
                 // Per-session destinations: recipients are checked again on every push.
                 return accessor.getSessionAttributes() != null && accessor.getSessionAttributes().get("authUser") != null ? message : null;
             }
-            if (StompCommand.SEND.equals(accessor.getCommand()) && !destination.startsWith("/app/contest-messages/")) return null;
         }
 
         if (accessor != null && StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
-            AuthUser authUser = (AuthUser) accessor.getSessionAttributes().get("authUser");
+            Map<String, Object> attributes = accessor.getSessionAttributes();
+            AuthUser authUser = attributes != null && attributes.get("authUser") instanceof AuthUser user
+                ? user : null;
             if (authUser == null) {
                 return null; // 未认证，拒绝订阅
             }

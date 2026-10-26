@@ -41,29 +41,34 @@ public class AgentModelFactory {
     }
 
     /** Also cancels the transport before the provider has sent response headers. */
-    public Flux<ChatResponse> stream(
-            AgentSettingsVO settings, Prompt prompt) {
+    public Flux<ChatResponse> stream(AgentSettingsVO settings, Prompt prompt) {
         return Flux.defer(() -> {
             String id = UUID.randomUUID().toString();
             var call = new StreamCall();
             streamCalls.put(id, call);
-            var options = prompt.getOptions() instanceof OpenAiChatOptions configured
-                ? configured.mutate() : OpenAiChatOptions.builder();
+            var options = prompt.getOptions() instanceof OpenAiChatOptions configured ? configured.mutate()
+                : OpenAiChatOptions.builder();
             var headers = new HashMap<String, String>();
             if (prompt.getOptions() instanceof OpenAiChatOptions configured && configured.getCustomHeaders() != null) {
                 headers.putAll(configured.getCustomHeaders());
             }
             headers.put(RUN_HEADER, id);
-            return Flux.defer(() -> getStreaming(settings).stream(
-                    new Prompt(prompt.getInstructions(), options.customHeaders(headers).build())))
-                .doFinally(signal -> { call.cancel(); streamCalls.remove(id, call); });
+            return Flux
+                .defer(() -> getStreaming(settings)
+                    .stream(new Prompt(prompt.getInstructions(), options.customHeaders(headers).build())))
+                .doFinally(signal -> {
+                    call.cancel();
+                    streamCalls.remove(id, call);
+                });
         });
     }
 
     public OpenAiHttpClientBuilderCustomizer cancellationCustomizer() {
         return builder -> builder.interceptor(chain -> {
             String id = chain.request().header(RUN_HEADER);
-            if (id == null) return chain.proceed(chain.request());
+            if (id == null) {
+                return chain.proceed(chain.request());
+            }
             var registered = streamCalls.get(id);
             if (registered == null || !registered.attach(chain.call())) {
                 chain.call().cancel();
@@ -76,14 +81,20 @@ public class AgentModelFactory {
     private static final class StreamCall {
         private Call call;
         private boolean cancelled;
+
         synchronized boolean attach(Call value) {
-            if (cancelled) return false;
+            if (cancelled) {
+                return false;
+            }
             call = value;
             return true;
         }
+
         synchronized void cancel() {
             cancelled = true;
-            if (call != null) call.cancel();
+            if (call != null) {
+                call.cancel();
+            }
         }
     }
 
@@ -107,35 +118,34 @@ public class AgentModelFactory {
             if (current != null && current.matches(baseUrl, apiKeyHash, settings.model, timeoutMs)) {
                 return current.model();
             }
-            OpenAiChatOptions options = OpenAiChatOptions.builder()
-                .baseUrl(baseUrl)
-                .apiKey(settings.apiKey)
-                .model(settings.model)
-                .timeout(Duration.ofMillis(timeoutMs))
-                .maxRetries(0)
-                .store(false)
-                .build();
-            OpenAiChatModel model = OpenAiChatModel.builder().options(options).httpClientBuilderCustomizer(cancellationCustomizer()).build();
+            OpenAiChatOptions options = OpenAiChatOptions.builder().baseUrl(baseUrl).apiKey(settings.apiKey)
+                .model(settings.model).timeout(Duration.ofMillis(timeoutMs)).maxRetries(0).store(false).build();
+            OpenAiChatModel model = OpenAiChatModel.builder().options(options)
+                .httpClientBuilderCustomizer(cancellationCustomizer()).build();
             CachedModel cached = new CachedModel(baseUrl, apiKeyHash, settings.model, timeoutMs, model);
-            if (streaming) cachedStreamingModel = cached;
-            else cachedModel = cached;
+            if (streaming) {
+                cachedStreamingModel = cached;
+            } else {
+                cachedModel = cached;
+            }
             return model;
         }
     }
 
     private String sha256(String value) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                .digest(value.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of()
+                .formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is unavailable", e);
         }
     }
 
-    private record CachedModel(String baseUrl, String apiKeyHash, String modelName, long timeoutMs, OpenAiChatModel model) {
+    private record CachedModel(String baseUrl, String apiKeyHash, String modelName, long timeoutMs,
+        OpenAiChatModel model) {
         private boolean matches(String url, String keyHash, String configuredModel, long timeout) {
-            return baseUrl.equals(url) && apiKeyHash.equals(keyHash)
-                && modelName.equals(configuredModel) && timeoutMs == timeout;
+            return baseUrl.equals(url) && apiKeyHash.equals(keyHash) && modelName.equals(configuredModel)
+                && timeoutMs == timeout;
         }
     }
 }

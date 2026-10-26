@@ -1,3 +1,4 @@
+import { getTeacherToken, refreshTeacherAccessToken } from "../teacher/teacherApi";
 import { readAuthToken } from '../api/tokenStorage';
 /**
  * STOMP over WebSocket 客户端（单例模式）。
@@ -413,6 +414,17 @@ export const adminWsClient = new WebSocketClient(async () => {
   try {
     const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
     if (typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now() + 30000) return refreshAdminAccessToken();
+  } catch { return null; }
+  return token;
+});
+
+/** Teacher management messages must never reuse an administrator session. */
+export const teacherWsClient = new WebSocketClient(async () => {
+  const token = getTeacherToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now() + 30000) return refreshTeacherAccessToken();
   } catch { return null; }
   return token;
 });

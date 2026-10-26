@@ -268,7 +268,7 @@ public class UserAdminService {
 
     @Transactional
     public void delete(long id) {
-        User user = userMapper.selectById(id);
+        User user = userMapper.selectOne(new QueryWrapper<User>().eq("id", id).last("FOR UPDATE"));
         if (user == null) {
             /**
              * 封装BizException相关逻辑。不满足业务约束时直接抛出明确异常。
@@ -276,11 +276,26 @@ public class UserAdminService {
             throw new BizException(404, "用户不存在");
         }
 
-        // Delete related records first
+        assertNoOwnedContent(id);
+
+        // Personal records are removed by the database's ON DELETE CASCADE constraints.
         userScoreMapper.deleteById(id);
 
         // Delete the user
         userMapper.deleteById(id);
+    }
+
+    /** Shared content must be transferred before its USER owner is permanently deleted. */
+    private void assertNoOwnedContent(long userId) {
+        // Ownership is polymorphic: ADMIN and TEACHER ids can overlap with USER ids.
+        Long ownedCount = jdbcTemplate.queryForObject("""
+            SELECT (SELECT COUNT(*) FROM problems WHERE owner_id = ? AND owner_account_type = 'USER')
+                + (SELECT COUNT(*) FROM contests WHERE owner_id = ? AND owner_account_type = 'USER')
+                + (SELECT COUNT(*) FROM practices WHERE owner_id = ? AND owner_account_type = 'USER')
+            """, Long.class, userId, userId, userId);
+        if (ownedCount != null && ownedCount > 0) {
+            throw new BizException(400, "该学生仍拥有 " + ownedCount + " 项题目、比赛或题单，请先转移归属后再删除");
+        }
     }
 
     private AdminUserVO toVO(User user, String className, Integer acCount) {

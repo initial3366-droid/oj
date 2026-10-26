@@ -5,6 +5,7 @@ import com.qoj.common.PageResult;
 import com.qoj.module.submission.dto.SubmissionCreateRequest;
 import com.qoj.module.submission.service.SubmissionService;
 import com.qoj.module.submission.vo.SubmissionVO;
+import com.qoj.module.submission.vo.SubmissionListVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -38,7 +39,7 @@ public class SubmissionController {
     }
 
     @GetMapping
-    public ApiResponse<PageResult<SubmissionVO>> list(
+    public ApiResponse<PageResult<SubmissionListVO>> list(
         @RequestParam(defaultValue = "1") int page,
         @RequestParam(defaultValue = "20") int pageSize,
         @RequestParam(required = false) Long problemId,

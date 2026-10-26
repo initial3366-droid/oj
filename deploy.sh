@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# QOJ 一键部署脚本：生成随机密钥配置并用 Docker Compose 拉起完整技术栈。
+# HEVTTCOJ 一键部署脚本：生成随机密钥配置并用 Docker Compose 拉起完整技术栈。
 #
 # 适用平台：Linux / macOS / Windows（WSL 或 Git Bash），需要 Docker 与 Compose v2。
 # 常用命令：

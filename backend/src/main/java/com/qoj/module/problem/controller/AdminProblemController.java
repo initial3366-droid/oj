@@ -8,12 +8,14 @@ import com.qoj.common.exception.BizException;
 import com.qoj.module.problem.dto.CommunicationConfig;
 import com.qoj.module.problem.dto.ProblemBatchRequest;
 import com.qoj.module.problem.dto.ProblemDraftTestCasesRequest;
+import com.qoj.module.problem.dto.ProblemTestCaseChangesRequest;
 import com.qoj.module.problem.dto.ProblemTestCaseRequest;
 import com.qoj.module.problem.dto.ProblemUpdateRequest;
 import com.qoj.module.problem.entity.Problem;
 import com.qoj.module.problem.mapper.ProblemMapper;
 import com.qoj.module.problem.service.ProblemService;
 import com.qoj.module.problem.vo.AdminProblemVO;
+import com.qoj.module.problem.vo.ProblemTestCaseSummaryVO;
 import com.qoj.module.problem.vo.ProblemTestCaseVO;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
@@ -154,6 +156,23 @@ public class AdminProblemController {
     @GetMapping("/{id}/test-cases")
     public ApiResponse<List<ProblemTestCaseVO>> testCases(@PathVariable long id) {
         return ApiResponse.ok(problemService.testCases(id));
+    }
+
+    @GetMapping("/{id}/test-cases/summary")
+    public ApiResponse<List<ProblemTestCaseSummaryVO>> testCaseSummaries(@PathVariable long id) {
+        return ApiResponse.ok(problemService.testCaseSummaries(id));
+    }
+
+    @GetMapping("/{id}/test-cases/{caseId}")
+    public ApiResponse<ProblemTestCaseVO> testCase(@PathVariable long id, @PathVariable long caseId) {
+        return ApiResponse.ok(problemService.testCase(id, caseId));
+    }
+
+    @PostMapping("/{id}/test-cases/changes")
+    public ApiResponse<List<ProblemTestCaseSummaryVO>> changeTestCases(
+        @PathVariable long id, @Valid @RequestBody ProblemTestCaseChangesRequest request
+    ) {
+        return ApiResponse.ok(problemService.changeTestCases(id, request));
     }
 
     @PutMapping("/{id}/test-cases")

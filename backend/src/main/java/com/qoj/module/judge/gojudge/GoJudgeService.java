@@ -652,25 +652,56 @@ public class GoJudgeService implements JudgeService {
         return value == null ? 0 : value.getBytes(StandardCharsets.UTF_8).length;
     }
 
+    /** Compare token spans without allocating a string for every token in large outputs. */
     private boolean sameOutput(String actual, String expected) {
-        String[] actualTokens = tokenize(actual);
-        String[] expectedTokens = tokenize(expected);
-        if (actualTokens.length != expectedTokens.length) {
-            return false;
-        }
-        for (int index = 0; index < actualTokens.length; index++) {
-            if (!actualTokens[index].equals(expectedTokens[index])) {
+        String left = actual == null ? "" : actual;
+        String right = expected == null ? "" : expected;
+        int leftEnd = strippedEnd(left);
+        int rightEnd = strippedEnd(right);
+        int leftPos = strippedStart(left, leftEnd);
+        int rightPos = strippedStart(right, rightEnd);
+        while (leftPos < leftEnd && rightPos < rightEnd) {
+            int leftStart = leftPos;
+            int rightStart = rightPos;
+            while (leftPos < leftEnd && !tokenWhitespace(left.charAt(leftPos))) {
+                leftPos++;
+            }
+            while (rightPos < rightEnd && !tokenWhitespace(right.charAt(rightPos))) {
+                rightPos++;
+            }
+            int length = leftPos - leftStart;
+            if (length != rightPos - rightStart || !left.regionMatches(leftStart, right, rightStart, length)) {
                 return false;
             }
+            while (leftPos < leftEnd && tokenWhitespace(left.charAt(leftPos))) {
+                leftPos++;
+            }
+            while (rightPos < rightEnd && tokenWhitespace(right.charAt(rightPos))) {
+                rightPos++;
+            }
         }
-        return true;
+        return leftPos == leftEnd && rightPos == rightEnd;
     }
 
-    private String[] tokenize(String value) {
-        if (value == null || value.isBlank()) {
-            return new String[0];
+    private int strippedStart(String value, int end) {
+        int start = 0;
+        while (start < end && Character.isWhitespace(value.codePointAt(start))) {
+            start += Character.charCount(value.codePointAt(start));
         }
-        return value.strip().split("\\s+");
+        return start;
+    }
+
+    private int strippedEnd(String value) {
+        int end = value.length();
+        while (end > 0 && Character.isWhitespace(value.codePointBefore(end))) {
+            end -= Character.charCount(value.codePointBefore(end));
+        }
+        return end;
+    }
+
+    private boolean tokenWhitespace(char value) {
+        // Preserve the previous default Java regex whitespace semantics inside the output.
+        return value == ' ' || (value >= '\t' && value <= '\r');
     }
 
     private int nanosToMillis(long value) {

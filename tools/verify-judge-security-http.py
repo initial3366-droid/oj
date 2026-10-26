@@ -30,6 +30,8 @@ environment = dict(line.split('=', 1) for line in (ROOT / '.env').read_text().sp
 checks, requests, deleted = [], [], []
 redis_keys, sessions = set(), []
 mode = 'fast'
+faults_remaining = 0
+fault_lock = threading.Lock()
 started = threading.Event()
 backend = None
 created = False
@@ -80,6 +82,24 @@ class Sandbox(BaseHTTPRequestHandler):
         compiler = bool(command.get('copyOutCached'))
         entry = {'mode': mode, 'compiler': compiler, 'clockLimit': command['clockLimit'], 'at': time.monotonic()}
         requests.append(entry)
+        global faults_remaining
+        with fault_lock:
+            fail = mode == 'persistent' or (faults_remaining > 0 and (
+                mode == 'transient-compile' and compiler or mode == 'transient-run' and not compiler))
+            if fail and faults_remaining > 0:
+                faults_remaining -= 1
+        if fail:
+            self.send_response(503)
+            self.end_headers()
+            return
+        if mode == 'compile-error' and compiler:
+            data = json.dumps([{'status': 'Nonzero Exit Status', 'exitStatus': 1,
+                'files': {'stdout': '', 'stderr': 'fixture syntax error'}}]).encode()
+            self.send_response(200)
+            self.send_header('Content-Length', str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if not compiler:
             started.set()
             if mode == 'slow':
@@ -252,6 +272,44 @@ try:
     assert sql(f'SELECT retry_count FROM submissions WHERE id={recovered};') == '1'
     assert deleted
     checks.append({'name': 'expired lease recovers once and compiler artifacts are deleted', 'passed': True})
+    for fault_mode in ['transient-compile', 'transient-run']:
+        mode = fault_mode
+        faults_remaining = 1
+        submission = submit(problem, token)
+        result = finished(submission, token)
+        assert result['status'] == 'AC' and len(result['cases']) == 1, result
+        assert sql(f'SELECT retry_count FROM submissions WHERE id={submission};') == '1'
+        checks.append({'name': fault_mode + ' recovers automatically with full result', 'passed': True})
+    mode = 'persistent'
+    start = time.monotonic()
+    before = len(requests)
+    submission = submit(problem, token)
+    result = finished(submission, token)
+    attempts = [entry for entry in requests[before:] if entry['compiler']]
+    assert result['status'] == 'SE' and len(attempts) == 4, (result, attempts)
+    assert sql(f'SELECT retry_count FROM submissions WHERE id={submission};') == '3'
+    deltas = [round(attempts[i + 1]['at'] - attempts[i]['at'], 2) for i in range(3)]
+    assert deltas[0] >= 0.2 and deltas[1] >= 1 and deltas[2] >= 3, deltas
+    checks.append({'name': 'persistent infrastructure failure stops after three backed-off retries',
+        'passed': True, 'attempts': len(attempts), 'backoffSeconds': deltas})
+    redis('DEL', f'oj:judge:pending:{uid}:practice:{problem}')
+    mode = 'compile-error'
+    before = len(requests)
+    submission = submit(problem, token)
+    assert finished(submission, token)['status'] == 'CE'
+    assert sql(f'SELECT retry_count FROM submissions WHERE id={submission};') in ('0', 'NULL')
+    assert len(requests) == before + 1
+    checks.append({'name': 'user compile errors remain terminal without infrastructure retry', 'passed': True})
+    mode = 'fast'
+    sql("CREATE TRIGGER fixture_problem_update_failure BEFORE UPDATE ON problems FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fixture post-commit statistics failure';")
+    submission = submit(problem, token)
+    assert finished(submission, token)['status'] == 'AC'
+    time.sleep(0.6)
+    result = http(f'/api/v1/submissions/{submission}', token=token)
+    assert result['status'] == 'AC' and len(result['cases']) == 1
+    assert sql(f'SELECT retry_count FROM submissions WHERE id={submission};') in ('0', 'NULL')
+    sql('DROP TRIGGER fixture_problem_update_failure;')
+    checks.append({'name': 'post-commit statistics failure cannot overwrite committed verdict or cases', 'passed': True})
 finally:
     if backend and backend.poll() is None:
         os.killpg(backend.pid, signal.SIGTERM)
@@ -274,7 +332,7 @@ finally:
                 redis_keys.add('oj:refresh:family:' + data['familyId'])
     if redis_keys:
         redis('DEL', *redis_keys)
-    report = {'passed': len(checks) == 9, 'checks': checks, 'sandboxRequests': requests,
+    report = {'passed': len(checks) == 14, 'checks': checks, 'sandboxRequests': requests,
         'cachedArtifactsDeleted': len(deleted), 'isolatedDatabaseRemoved': created,
         'command': 'python3 tools/verify-judge-security-http.py'}
     (OUT / 'judge-http-report.json').write_text(json.dumps(report, indent=2))

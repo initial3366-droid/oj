@@ -10,6 +10,7 @@
  */
 package com.qoj.module.submission.service;
 
+import com.qoj.module.contest.service.ContestFeedbackPolicy;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qoj.common.ErrorCode;
@@ -46,6 +47,7 @@ import com.qoj.module.submission.vo.AdminSubmissionVO;
 import com.qoj.module.submission.vo.SandboxRunVO;
 import com.qoj.module.submission.vo.SubmissionCaseVO;
 import com.qoj.module.submission.vo.SubmissionVO;
+import com.qoj.module.submission.vo.SubmissionListVO;
 import com.qoj.module.user.entity.User;
 import com.qoj.module.user.mapper.UserMapper;
 import com.qoj.module.user.service.UserScoreService;
@@ -280,7 +282,7 @@ public class SubmissionService {
     /**
      * 查询目标数据列表。调用前会结合当前登录身份执行权限判断；从持久化层读取数据；结果依赖当前时间；返回结果包含分页边界。
      */
-    public PageResult<SubmissionVO> list(
+    public PageResult<SubmissionListVO> list(
         int page,
         int pageSize,
         Long problemId,
@@ -321,7 +323,8 @@ public class SubmissionService {
         if (language != null && !language.isBlank()) {
             wrapper.eq("language", language);
         }
-        if (status != null && !status.isBlank()) {
+        if (status != null && !status.isBlank()
+            && !ContestFeedbackPolicy.isLanqiao(contest)) {
             wrapper.eq("status", status);
         }
         if (freezeCutoff != null) {
@@ -347,24 +350,13 @@ public class SubmissionService {
         final Long uid = currentUserId;
         SubmissionViewData viewData = loadViewData(result.getRecords(), false);
 
-        return new PageResult<>(result.getTotal(), result.getRecords().stream().map(item -> {
-            SubmissionVO vo = toVO(item, false, false, viewData);
-            if (doMask && !Objects.equals(item.userId, uid)) {
-                /**
-                 * 封装提交VO相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
-                 */
-                return new SubmissionVO(
-                    vo.id(), vo.userId(), vo.username(), vo.displayName(),
-                    vo.problemId(), vo.problemTitle(), vo.contestId(), vo.practiceId(),
-                    vo.language(), "PENDING",
-                    null, null,
-                    vo.identityType(), vo.identityId(),
-                    vo.submitTime(), vo.createdAt(),
-                    null, null, null, null, null
-                );
-            }
-            return vo;
-        }).toList());
+        return new PageResult<>(result.getTotal(), result.getRecords().stream()
+            .map(item -> {
+                SubmissionVO view = toVO(item, false, false, viewData);
+                return SubmissionListVO.from(view,
+                    doMask && !"SUBMITTED".equals(view.status()) && !Objects.equals(item.userId, uid));
+            })
+            .toList());
     }
 
     private boolean shouldHideFrozenSubmissions(Contest contest, AuthUser authUser, boolean ownQuery) {
@@ -433,6 +425,33 @@ public class SubmissionService {
         String sortBy,
         String sortOrder
     ) {
+        return adminList(
+            page, pageSize, id, userId, classId, problemId, contestId, contestProblemId,
+            practiceId, language, status, judgeServer, identityType, from, to, sortBy, sortOrder, null, false
+        );
+    }
+
+    public PageResult<AdminSubmissionVO> adminList(
+        int page,
+        int pageSize,
+        Long id,
+        Long userId,
+        Long classId,
+        Long problemId,
+        Long contestId,
+        Long contestProblemId,
+        Long practiceId,
+        String language,
+        String status,
+        String judgeServer,
+        String identityType,
+        LocalDateTime from,
+        LocalDateTime to,
+        String sortBy,
+        String sortOrder,
+        String keyword,
+        boolean practiceOnly
+    ) {
         page = normalizePage(page);
         pageSize = normalizePageSize(pageSize);
         AuthUser authUser = CurrentUser.required();
@@ -440,6 +459,7 @@ public class SubmissionService {
         selectAdminListColumns(wrapper);
         applyAdminFilters(wrapper, authUser, id, userId, classId, problemId, contestId,
             contestProblemId, practiceId, language, status, judgeServer, identityType, from, to);
+        applySearchFilters(wrapper, keyword, practiceOnly);
         applyAdminSorting(wrapper, sortBy, sortOrder);
         Page<Submission> result = submissionMapper.selectPage(Page.of(page, pageSize), wrapper);
         SubmissionViewData viewData = loadViewData(result.getRecords(), true);
@@ -447,6 +467,26 @@ public class SubmissionService {
             result.getTotal(),
             result.getRecords().stream().map(item -> toAdminVO(item, false, false, viewData)).toList()
         );
+    }
+
+    /** Apply search before pagination and share exactly the same scope with CSV exports. */
+    private void applySearchFilters(QueryWrapper<Submission> wrapper, String keyword, boolean practiceOnly) {
+        if (practiceOnly) {
+            wrapper.isNotNull("practice_id");
+        }
+        if (keyword == null || keyword.isBlank()) {
+            return;
+        }
+        String value = keyword.trim();
+        if (value.length() > 100) {
+            throw new BizException(ErrorCode.BAD_REQUEST.getCode(), "搜索内容不能超过 100 个字符");
+        }
+        String pattern = "%" + value + "%";
+        wrapper.and(search -> search.like("id", value)
+            .or().apply("user_id IN (SELECT id FROM users WHERE display_name LIKE {0} "
+                + "OR username LIKE {0} OR student_no LIKE {0})", pattern)
+            .or().apply("problem_id IN (SELECT id FROM problems WHERE title LIKE {0})", pattern)
+            .or().apply("practice_id IN (SELECT id FROM practices WHERE title LIKE {0})", pattern));
     }
 
     /**
@@ -544,11 +584,38 @@ public class SubmissionService {
         String sortBy,
         String sortOrder
     ) {
+        return adminExportList(
+            limit, id, userId, classId, problemId, contestId, contestProblemId, practiceId,
+            language, status, judgeServer, identityType, from, to, sortBy, sortOrder, null, false
+        );
+    }
+
+    public List<AdminSubmissionVO> adminExportList(
+        int limit,
+        Long id,
+        Long userId,
+        Long classId,
+        Long problemId,
+        Long contestId,
+        Long contestProblemId,
+        Long practiceId,
+        String language,
+        String status,
+        String judgeServer,
+        String identityType,
+        LocalDateTime from,
+        LocalDateTime to,
+        String sortBy,
+        String sortOrder,
+        String keyword,
+        boolean practiceOnly
+    ) {
         AuthUser authUser = CurrentUser.required();
         QueryWrapper<Submission> wrapper = new QueryWrapper<>();
         selectAdminListColumns(wrapper);
         applyAdminFilters(wrapper, authUser, id, userId, classId, problemId, contestId,
             contestProblemId, practiceId, language, status, judgeServer, identityType, from, to);
+        applySearchFilters(wrapper, keyword, practiceOnly);
         applyAdminSorting(wrapper, sortBy, sortOrder);
         wrapper.last("LIMIT " + normalizeExportLimit(limit));
         List<Submission> submissions = submissionMapper.selectList(wrapper);
@@ -931,11 +998,16 @@ public class SubmissionService {
             if (userId != null) {
                 wrapper.eq("user_id", userId);
             }
-            wrapper.apply(
+            // Contest owners must see all entrants, including students outside their classes.
+            wrapper.and(scope -> scope.apply(
                 "user_id IN (SELECT cm.user_id FROM class_members cm "
                     + "WHERE cm.class_id IN (SELECT id FROM classes WHERE teacher_id = {0}))",
                 authUser.id()
-            );
+            ).or().apply(
+                "contest_id IN (SELECT id FROM contests "
+                    + "WHERE owner_id = {0} AND owner_account_type = 'TEACHER')",
+                authUser.id()
+            ));
             return;
         }
         // 普通学生：非比赛（练习）提交全员可见，其余提交仅本人可见
@@ -984,7 +1056,10 @@ public class SubmissionService {
         if (!submissions.isEmpty()) {
             List<Long> userIds = submissions.stream().map(item -> item.userId).filter(Objects::nonNull).distinct().toList();
             if (!userIds.isEmpty()) {
-                userMapper.selectList(new QueryWrapper<User>().select("id", "username", "display_name").in("id", userIds))
+                String[] columns = admin
+                    ? new String[] {"id", "username", "display_name"}
+                    : new String[] {"id", "display_name"};
+                userMapper.selectList(new QueryWrapper<User>().select(columns).in("id", userIds))
                     .forEach(item -> users.put(item.id, item));
             }
             List<Long> contestProblemIds = submissions.stream().map(item -> item.contestProblemId).filter(Objects::nonNull).distinct().toList();
@@ -1002,12 +1077,13 @@ public class SubmissionService {
                 problemMapper.selectList(new QueryWrapper<Problem>().select("id", "title").in("id", problemIds))
                     .forEach(item -> problems.put(item.id, item));
             }
+            List<Long> contestIds = submissions.stream().map(item -> item.contestId)
+                .filter(Objects::nonNull).distinct().toList();
+            if (!contestIds.isEmpty()) {
+                contestMapper.selectList(new QueryWrapper<Contest>().select("id", "title", "type").in("id", contestIds))
+                    .forEach(item -> contests.put(item.id, item));
+            }
             if (admin) {
-                List<Long> contestIds = submissions.stream().map(item -> item.contestId).filter(Objects::nonNull).distinct().toList();
-                if (!contestIds.isEmpty()) {
-                    contestMapper.selectList(new QueryWrapper<Contest>().select("id", "title").in("id", contestIds))
-                        .forEach(item -> contests.put(item.id, item));
-                }
                 List<Long> practiceIds = submissions.stream().map(item -> item.practiceId).filter(Objects::nonNull).distinct().toList();
                 if (!practiceIds.isEmpty()) {
                     practiceMapper.selectList(new QueryWrapper<Practice>().select("id", "title").in("id", practiceIds))
@@ -1092,6 +1168,14 @@ public class SubmissionService {
     }
 
     private SubmissionVO toVO(Submission submission, boolean includeCode, boolean includeCases, SubmissionViewData viewData) {
+        if (ContestFeedbackPolicy.isLanqiao(viewData.contests().get(submission.contestId))) {
+            User user = viewData.users().get(submission.userId);
+            return new SubmissionVO(submission.id, submission.userId,
+                user == null || user.displayName == null ? "用户" : user.displayName,
+                submission.problemId, problemTitle(submission, viewData), submission.language,
+                "SUBMITTED", null, null, submission.submitTime == null ? submission.createdAt : submission.submitTime,
+                submission.codeLength, null, null, includeCode ? submission.code : null, List.of());
+        }
         SubmissionCaseSummary summary = viewData.caseSummaries().getOrDefault(submission.id, EMPTY_CASE_SUMMARY);
         List<SubmissionCaseVO> cases = includeCases
             ? submissionCaseResultMapper
@@ -1133,20 +1217,14 @@ public class SubmissionService {
         return new SubmissionVO(
             submission.id,
             submission.userId,
-            user == null ? null : user.username,
-            user == null ? null : user.displayName,
+            user == null || user.displayName == null || user.displayName.isBlank() ? "用户" : user.displayName,
             submission.problemId,
             problemTitle(submission, viewData),
-            submission.contestId,
-            submission.practiceId,
             submission.language,
             submission.status,
             timeUsed,
             memoryUsed,
-            submission.identityType,
-            submission.identityId,
             submission.submitTime == null ? submission.createdAt : submission.submitTime,
-            submission.createdAt,
             codeLength,
             Math.toIntExact(summary.passedCaseCount()),
             Math.toIntExact(summary.totalCaseCount()),

@@ -20,17 +20,27 @@ public final class AgentTimeouts {
         boolean timeout = false;
         for (Throwable cause = error; cause != null && visited.add(cause); cause = cause.getCause()) {
             if (cause instanceof AgentRunStoppedException || cause instanceof InterruptedException
-                || cause instanceof CancellationException) return false;
+                || cause instanceof CancellationException) {
+                return false;
+            }
             if (cause instanceof TimeoutException || cause instanceof SocketTimeoutException
-                || cause instanceof HttpTimeoutException) timeout = true;
+                || cause instanceof HttpTimeoutException) {
+                timeout = true;
+            }
             if (cause instanceof OpenAIServiceException service
-                && (service.statusCode() == 408 || service.statusCode() == 504)) timeout = true;
+                && (service.statusCode() == 408 || service.statusCode() == 504)) {
+                timeout = true;
+            }
             String message = cause.getMessage();
             if (message != null) {
                 String normalized = message.toLowerCase(Locale.ROOT);
                 if (cause instanceof InterruptedIOException
-                    && (normalized.contains("timeout") || normalized.contains("timed out"))) timeout = true;
-                if (cause instanceof IllegalStateException && normalized.startsWith("timeout on blocking read")) timeout = true;
+                    && (normalized.contains("timeout") || normalized.contains("timed out"))) {
+                    timeout = true;
+                }
+                if (cause instanceof IllegalStateException && normalized.startsWith("timeout on blocking read")) {
+                    timeout = true;
+                }
             }
         }
         return timeout;

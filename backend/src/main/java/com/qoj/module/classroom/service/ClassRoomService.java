@@ -707,7 +707,7 @@ public class ClassRoomService {
             user.username = studentNo;
             user.studentNo = studentNo;
             user.displayName = displayName;
-            initialPassword = UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+            initialPassword = studentNo.substring(Math.max(0, studentNo.length() - 6));
             user.passwordHash = passwordEncoder.encode(initialPassword);
             user.role = UserRole.STUDENT.name();
             user.classId = classRoom.id;

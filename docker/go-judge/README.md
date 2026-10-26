@@ -55,3 +55,46 @@ as a system error rather than silently accepting a submission.
   application backend. Do not colocate it with database credentials or backups.
 - Rotate the token if it appears in logs or shell history, and restart both the
   worker and backend after rotation.
+
+## Kernel policy hardening (2026-10-25)
+
+The image now builds the pinned upstream module with `-tags seccomp`. The
+previous release executable accepted `-seccomp-conf` but silently ignored it
+when built without that tag. The image tag is `qoj-go-judge:seccomp-1.12.1`.
+`qoj-entrypoint` requires the policy file and clears supplementary groups before
+starting the worker. Setuid/setgid bits are removed from runtime executables.
+
+The sandbox-level policy in `seccomp.yaml` traps ptrace, cross-process memory
+access, namespace/mount manipulation, kernel module operations, BPF, keyrings,
+userfaultfd, perf and io_uring. Network connection/listener calls return EPERM.
+This applies to compilation, execution and special judges. It supplements the
+existing namespaces, cgroup limits, read-only mounts, dropped capabilities and
+upstream `NoNewPrivs` setting.
+
+Compiler drivers and JVM threads require exec/clone. They remain permitted,
+with every descendant inside the same sandbox limits. A program executing a
+shell inside this boundary is not evidence of host execution. Do not filter
+stdout or scan source keywords as a substitute for isolation.
+
+Build and repeat the real worker and business API checks locally:
+
+```bash
+docker build -t qoj-go-judge:seccomp-1.12.1 docker/go-judge
+python3 tools/verify-sandbox-isolation.py
+```
+
+Run those commands from the repository root. The script requires local Docker
+MySQL/Redis, Python bcrypt, Maven, and an empty Redis DB15. It creates and removes
+a temporary worker, backend and database, and writes
+`.runtime/security-remediation/sandbox-isolation-report.json`. It verifies
+`Seccomp: 2` from inside an executed program, rather than trusting flags alone.
+
+To apply the image to a judge deployment, rebuild/recreate its worker using the
+compose file above, then repeat the isolation checks on that deployment before
+accepting untrusted submissions. The repository's local existing worker and
+production worker are not replaced by the verification script.
+
+Upstream implementation references (pinned versions):
+- [seccomp-enabled configuration loader](https://github.com/criyle/go-judge/blob/v1.12.1/env/seccomp_linux.go)
+- [configuration ignored without the build tag](https://github.com/criyle/go-judge/blob/v1.12.1/env/noseccomp_linux.go)
+- [execution privilege settings](https://github.com/criyle/go-sandbox/blob/v0.13.5/container/container_exec_linux.go)

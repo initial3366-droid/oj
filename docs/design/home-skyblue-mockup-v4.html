@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QOJ 在线评测 · 秒级判题、题单练习与每周训练赛</title>
+<meta name="description" content="QOJ 是面向信息学课堂与竞赛训练的在线评测平台，提供秒级判题、课程题单与每周训练赛。" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="QOJ 在线评测 · 秒级判题、题单练习与每周训练赛" />
+<meta property="og:description" content="面向信息学课堂与竞赛训练的在线评测平台，注册即可参加每周训练赛。" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%232E97E8'/%3E%3Cg fill='%23fff'%3E%3Cellipse cx='11' cy='19' rx='6' ry='4.4'/%3E%3Cellipse cx='19' cy='15.5' rx='7' ry='5.6'/%3E%3Cellipse cx='25' cy='19' rx='5' ry='4'/%3E%3Crect x='5' y='17' width='24' height='6' rx='3'/%3E%3C/g%3E%3C/svg%3E" />
+<!--
+  ─────────────────────────────────────────────────────────────
+  QOJ 前台首页 · 设计稿 V4（单文件模板）
+  依据 landing-page-design skill 生成：
+    A. 布局类型 A（经典首屏 + 分区论证）：主行动 = 免费注册
+    B. 视觉系统：Manrope 单一字型（≤700）、字号/间距/圆角全部
+       落在 Tailwind 阶梯、纯扁平背景（唯一渐变 = 首屏标题文字
+       #000→#666）、Phosphor 图标、全套自定义缓动动效、
+       逐词点亮标语段、语义化 + skip link + favicon + meta
+  保留约束：顶部导航 6 项；轮播图保留（首屏浏览器窗内）；
+  无题目数量/题库统计卡；比赛信息位于首屏之后第一个分区
+  对接说明：轮播 .slide 对应 carouselSlides；比赛/见证/FAQ
+  为示例数据；导航 href 与现有路由一致
+  ─────────────────────────────────────────────────────────────
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>
+  /* ═══ 设计令牌：全部来自 skill B1/B2/B3 阶梯 ═══ */
+  :root{
+    /* 色板：扁平，无背景渐变；品牌色 = 天蓝 */
+    --brand:#2E97E8; --brand-hover:#1F7EC4; --brand-tint:#E9F5FE; --brand-tint-2:#F2F8FE;
+    --ink:#0F2438; --ink-2:#43607D; --ink-3:#7C93A8; --line:#E3EEF8; --bg:#FFFFFF; --bg-tint:#F5FAFF;
+    --green:#1FA87C; --gold:#D9A428;
+    /* 缓动（B7）：所有过渡统一 */
+    --ease:cubic-bezier(0.32,0.72,0,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"Manrope","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    color:var(--ink);background:var(--bg);font-size:16px;line-height:24px;
+    font-weight:500;-webkit-font-smoothing:antialiased;
+  }
+  /* 仅允许的渐变：首屏标题文字 #000→#666（B5） */
+  .hero-title{
+    font-size:36px;line-height:40px;font-weight:700;letter-spacing:.2px;text-wrap:balance;
+    background:linear-gradient(90deg,#000000,#666666);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  p{text-wrap:pretty}
+  a{color:inherit;text-decoration:none}
+  :focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:8px}
+  i.ph,i.phs{display:inline-block;line-height:1}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  .skip{
+    position:fixed;top:8px;left:8px;z-index:200;background:var(--ink);color:#fff;
+    padding:8px 12px;border-radius:12px;font-size:14px;transform:translateY(-64px);transition:transform .7s var(--ease);
+  }
+  .skip:focus-visible{transform:none}
+
+  /* ═══ 悬浮药丸导航（B7 fluid island） ═══ */
+  .island{
+    position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:100;
+    width:max-content;max-width:calc(100vw - 32px);
+    display:flex;align-items:center;gap:16px;
+    padding:8px 8px 8px 20px;border-radius:999px;
+    background:rgba(255,255,255,.72);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+    border:1px solid var(--line);box-shadow:0 8px 24px rgba(15,36,56,.08);
+    transition:background .7s var(--ease),box-shadow .7s var(--ease);
+  }
+  .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;line-height:28px;color:var(--ink)}
+  .brand i{color:var(--brand);font-size:24px}
+  .island-nav{display:flex;align-items:center;gap:4px}
+  .island-link{
+    display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:999px;
+    font-size:14px;line-height:20px;font-weight:600;color:var(--ink-2);
+    transition:all .7s var(--ease);white-space:nowrap;
+  }
+  .island-link i{font-size:16px}
+  .island-link:hover{background:var(--brand-tint);color:var(--brand-hover)}
+  .island-link[aria-current="page"]{background:var(--ink);color:#fff}
+  .island-link[aria-current="page"]:hover{background:var(--ink)}
+  .island-cta{display:flex;align-items:center;gap:8px}
+  .island-cta .ghost{font-size:14px;font-weight:600;color:var(--ink-2);padding:8px 12px;border-radius:999px;transition:all .7s var(--ease)}
+  .island-cta .ghost:hover{background:var(--brand-tint);color:var(--brand-hover)}
+
+  /* 按钮（B1/B2：16px 半粗，8/12 内边距；B9 全状态） */
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    padding:8px 12px;border-radius:999px;border:1px solid transparent;
+    font-size:16px;line-height:24px;font-weight:600;cursor:pointer;
+    transition:all .7s var(--ease);
+  }
+  .btn-primary{background:var(--brand);color:#fff}
+  .btn-primary:hover{background:var(--brand-hover);transform:translateY(-1px)}
+  .btn-primary:active{transform:scale(.98)}
+  .btn-lg{padding:12px 24px;font-size:16px}
+  .btn-outline{background:#fff;color:var(--brand-hover);border-color:var(--line)}
+  .btn-outline:hover{border-color:var(--brand);background:var(--brand-tint)}
+
+  /* 汉堡 → X 变形（B7） */
+  .burger{
+    display:none;position:relative;width:40px;height:40px;border-radius:999px;
+    background:var(--brand-tint);flex-shrink:0;
+  }
+  .burger span{
+    position:absolute;left:12px;width:16px;height:2px;border-radius:2px;background:var(--ink);
+    transition:all .7s var(--ease);
+  }
+  .burger span:nth-child(1){top:15px}
+  .burger span:nth-child(2){top:19px}
+  .burger span:nth-child(3){top:23px}
+  .burger[aria-expanded="true"] span:nth-child(1){top:19px;transform:rotate(45deg)}
+  .burger[aria-expanded="true"] span:nth-child(2){opacity:0;transform:translateX(6px)}
+  .burger[aria-expanded="true"] span:nth-child(3){top:19px;transform:rotate(-45deg)}
+
+  /* 全屏菜单：重玻璃 + 逐项上浮（B7） */
+  .overlay{
+    position:fixed;inset:0;z-index:90;background:rgba(255,255,255,.86);
+    backdrop-filter:blur(64px);-webkit-backdrop-filter:blur(64px);
+    display:flex;flex-direction:column;justify-content:center;align-items:center;gap:8px;
+    opacity:0;visibility:hidden;transition:opacity .7s var(--ease),visibility .7s var(--ease);
+  }
+  .overlay.open{opacity:1;visibility:visible}
+  .overlay a{
+    font-size:24px;line-height:32px;font-weight:600;color:var(--ink-2);padding:8px 12px;
+    transform:translateY(48px);opacity:0;transition:all .8s var(--ease);
+  }
+  .overlay a[aria-current="page"]{color:var(--brand)}
+  .overlay.open a{transform:none;opacity:1}
+  .overlay.open a:nth-child(1){transition-delay:.1s}
+  .overlay.open a:nth-child(2){transition-delay:.15s}
+  .overlay.open a:nth-child(3){transition-delay:.2s}
+  .overlay.open a:nth-child(4){transition-delay:.25s}
+  .overlay.open a:nth-child(5){transition-delay:.3s}
+  .overlay.open a:nth-child(6){transition-delay:.35s}
+  .overlay.open a:nth-child(7){transition-delay:.4s}
+  .overlay.open a:nth-child(8){transition-delay:.45s}
+  .overlay .auth{display:flex;gap:12px;margin-top:24px}
+
+  /* ═══ 滚动进场：translate+blur+fade（B7，IntersectionObserver） ═══ */
+  .reveal{opacity:0;transform:translateY(64px);filter:blur(8px);
+    transition:opacity .8s var(--ease),transform .8s var(--ease),filter .8s var(--ease)}
+  .reveal.in{opacity:1;transform:none;filter:none}
+
+  /* ═══ 首屏 ═══ */
+  .hero{padding:136px 0 80px}
+  .hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:48px;align-items:center}
+  .hero-copy{max-width:680px}
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border-radius:999px;
+    background:var(--brand-tint);color:var(--brand-hover);
+    font-size:12px;line-height:16px;font-weight:700;margin-bottom:16px;
+  }
+  .eyebrow i{font-size:14px}
+  .hero-sub{margin-top:16px;font-size:18px;line-height:28px;color:var(--ink-2);max-width:680px}
+  .hero-cta{margin-top:24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .hero-proof{
+    margin-top:24px;display:flex;align-items:center;gap:8px;
+    font-size:14px;line-height:20px;color:var(--ink-3);
+  }
+  .hero-proof i{color:var(--green);font-size:16px}
+  .hero-proof b{color:var(--ink);font-weight:700}
+
+  /* 轮播：浏览器窗口框（hero 视觉） */
+  .browser{
+    border:1px solid var(--line);border-radius:24px;background:#fff;
+    box-shadow:0 24px 48px rgba(15,36,56,.10);overflow:hidden;
+  }
+  .browser-bar{
+    display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);
+  }
+  .browser-bar .dot{width:8px;height:8px;border-radius:999px}
+  .browser-url{
+    flex:1;margin-left:8px;background:var(--bg-tint);border-radius:999px;
+    font-size:12px;line-height:16px;color:var(--ink-3);padding:4px 12px;
+    font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:6px;
+  }
+  .carousel{position:relative;height:392px;touch-action:pan-y;user-select:none}
+  .car-track{display:flex;height:100%;transition:transform .7s var(--ease)}
+  .slide{flex:0 0 100%;display:flex;align-items:center;justify-content:space-between;gap:24px;
+    padding:0 40px}
+  .sl-1{background:#E9F5FE}.sl-2{background:#E4F2FC}.sl-3{background:#F0F8FF}
+  .slide-copy{max-width:52%}
+  .slide-chip{display:inline-block;padding:4px 12px;border-radius:999px;background:#fff;
+    color:var(--brand-hover);font-size:12px;line-height:16px;font-weight:700;margin-bottom:12px}
+  .slide-copy h3{font-size:24px;line-height:32px;font-weight:700;text-wrap:balance}
+  .slide-copy p{margin-top:8px;font-size:14px;line-height:20px;color:var(--ink-2)}
+  .slide-link{display:inline-flex;align-items:center;gap:6px;margin-top:16px;
+    font-size:14px;line-height:20px;font-weight:700;color:var(--brand-hover)}
+  .slide-link i{font-size:16px;transition:transform .7s var(--ease)}
+  .slide-link:hover i{transform:translateX(4px)}
+  .slide-art{width:clamp(180px,32%,280px);flex-shrink:0}
+  .slide-art svg{width:100%;height:auto}
+  .car-ctl{position:absolute;top:12px;right:12px;display:flex;gap:8px;z-index:5}
+  .car-btn{
+    width:32px;height:32px;border-radius:999px;background:#fff;border:1px solid var(--line);
+    display:grid;place-items:center;color:var(--ink-2);font-size:16px;
+    transition:all .7s var(--ease);
+  }
+  .car-btn:hover{color:var(--brand-hover);border-color:var(--brand)}
+  .car-btn:active{transform:scale(.95)}
+  .car-dots{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:5}
+  .car-dot{width:8px;height:8px;border-radius:999px;background:rgba(67,96,125,.28);transition:all .7s var(--ease)}
+  .car-dot:hover{background:rgba(67,96,125,.5)}
+  .car-dot.is-active{width:24px;background:var(--brand)}
+
+  /* ═══ 分区骨架 ═══ */
+  section{padding:80px 0}
+  .sec-tint{background:var(--bg-tint)}
+  .sec-head{max-width:680px;margin-bottom:48px}
+  .sec-kicker{display:flex;align-items:center;gap:8px;color:var(--brand-hover);
+    font-size:14px;line-height:20px;font-weight:700;margin-bottom:8px}
+  .sec-kicker i{font-size:18px}
+  .sec-title{font-size:30px;line-height:36px;font-weight:700;text-wrap:balance}
+  .sec-desc{margin-top:12px;font-size:16px;color:var(--ink-2)}
+
+  /* 比赛列表 */
+  .contest-list{display:flex;flex-direction:column;gap:12px}
+  .contest-row{
+    display:flex;align-items:center;gap:24px;padding:24px;border-radius:16px;
+    background:#fff;border:1px solid var(--line);transition:all .7s var(--ease);
+  }
+  .contest-row:hover{border-color:var(--brand);transform:translateY(-2px);box-shadow:0 12px 24px rgba(46,151,232,.10)}
+  .contest-row:active{transform:scale(.99)}
+  .cr-date{
+    flex-shrink:0;width:64px;text-align:center;padding:8px 0;border-radius:12px;background:var(--brand-tint);
+  }
+  .cr-date b{display:block;font-size:20px;line-height:28px;font-weight:700;color:var(--brand-hover);font-variant-numeric:tabular-nums}
+  .cr-date span{font-size:12px;line-height:16px;color:var(--ink-3)}
+  .cr-main{flex:1;min-width:0}
+  .cr-name{font-size:18px;line-height:28px;font-weight:700}
+  .cr-meta{display:flex;align-items:center;gap:12px;margin-top:4px;font-size:14px;color:var(--ink-3);flex-wrap:wrap}
+  .cr-tag{padding:2px 12px;border-radius:999px;background:var(--brand-tint);color:var(--brand-hover);font-weight:700;font-size:12px;line-height:16px}
+  .cr-count{font-size:14px;font-weight:700;color:var(--brand-hover);font-variant-numeric:tabular-nums;flex-shrink:0}
+  .cr-go{flex-shrink:0;width:32px;height:32px;border-radius:999px;border:1px solid var(--line);
+    display:grid;place-items:center;color:var(--ink-3);font-size:16px;transition:all .7s var(--ease)}
+  .contest-row:hover .cr-go{color:#fff;background:var(--brand);border-color:var(--brand)}
+  .sec-side{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:48px}
+  .text-link{display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:700;color:var(--brand-hover);flex-shrink:0}
+  .text-link i{font-size:16px;transition:transform .7s var(--ease)}
+  .text-link:hover i{transform:translateX(4px)}
+
+  /* 三个收益 */
+  .benefit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+  .benefit{padding:32px 24px;border-radius:16px;border:1px solid var(--line);background:#fff;
+    transition:all .7s var(--ease)}
+  .benefit:hover{border-color:var(--brand);transform:translateY(-4px)}
+  .b-ic{width:48px;height:48px;border-radius:12px;background:var(--brand-tint);color:var(--brand-hover);
+    display:grid;place-items:center;font-size:24px;margin-bottom:24px}
+  .benefit h3{font-size:18px;line-height:28px;font-weight:700}
+  .benefit p{margin-top:8px;font-size:14px;line-height:20px;color:var(--ink-2)}
+
+  /* 逐词点亮标语段（B11）：粘性钉在视口内，按滚动进度逐词点亮 */
+  .tagline-sec{height:170vh;background:#fff}
+  .tagline-pin{position:sticky;top:0;height:100vh;display:flex;align-items:center}
+  .tagline{max-width:680px;margin:0 auto;font-size:30px;line-height:36px;font-weight:700;text-wrap:balance;text-align:center}
+  .tagline .w{color:rgba(15,36,56,.28);transition:color .7s var(--ease)}
+  .tagline .w.on{color:var(--ink)}
+
+  /* 三步上手 */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;counter-reset:step}
+  .step{position:relative;padding:32px 24px;border-radius:16px;background:#fff;border:1px solid var(--line)}
+  .step-no{
+    display:inline-flex;align-items:center;gap:8px;font-size:12px;line-height:16px;font-weight:700;
+    color:var(--ink-3);font-variant-numeric:tabular-nums;margin-bottom:16px;
+  }
+  .step-no::before{content:"0" counter(step);counter-increment:step;font-size:24px;line-height:32px;color:var(--brand);font-weight:700}
+  .step h3{font-size:18px;line-height:28px;font-weight:700;margin-top:8px}
+  .step p{margin-top:8px;font-size:14px;line-height:20px;color:var(--ink-2)}
+
+  /* 见证 */
+  .quote-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+  .quote{padding:32px 24px;border-radius:16px;background:#fff;border:1px solid var(--line);display:flex;flex-direction:column}
+  .quote i.ph-quotes{font-size:24px;color:var(--brand);margin-bottom:16px}
+  .quote p{font-size:16px;flex:1}
+  .quote-who{display:flex;align-items:center;gap:12px;margin-top:24px}
+  .avatar{width:40px;height:40px;border-radius:999px;display:grid;place-items:center;
+    color:#fff;font-size:14px;font-weight:700;flex-shrink:0}
+  .quote-who b{display:block;font-size:14px;line-height:20px;font-weight:700}
+  .quote-who span{font-size:12px;line-height:16px;color:var(--ink-3)}
+
+  /* FAQ（原生 details，语义化 + AEO 友好） */
+  .faq{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+  .faq details{border:1px solid var(--line);border-radius:16px;background:#fff;overflow:hidden;transition:border-color .7s var(--ease)}
+  .faq details[open]{border-color:var(--brand)}
+  .faq summary{
+    list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:16px 24px;font-size:16px;font-weight:600;cursor:pointer;
+  }
+  .faq summary::-webkit-details-marker{display:none}
+  .faq summary i{font-size:18px;color:var(--ink-3);transition:transform .7s var(--ease);flex-shrink:0}
+  .faq details[open] summary i{transform:rotate(180deg);color:var(--brand)}
+  .faq .a{padding:0 24px 16px;font-size:14px;line-height:20px;color:var(--ink-2)}
+
+  /* 最终 CTA（与首屏一致） */
+  .final-cta{text-align:center;padding:96px 0}
+  .final-cta h2{font-size:30px;line-height:36px;font-weight:700;text-wrap:balance}
+  .final-cta p{margin-top:12px;color:var(--ink-2)}
+  .final-cta .btn{margin-top:24px}
+
+  /* 页脚（B10：法务/站点链接齐全） */
+  footer{border-top:1px solid var(--line);padding:48px 0}
+  .foot-grid{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap}
+  .foot-brand{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--ink);margin-bottom:8px}
+  .foot-brand i{color:var(--brand);font-size:24px}
+  .foot-note{font-size:12px;line-height:16px;color:var(--ink-3)}
+  .foot-links{display:flex;gap:24px;flex-wrap:wrap}
+  .foot-links a{font-size:14px;color:var(--ink-2);padding:8px 12px;border-radius:8px;transition:color .7s var(--ease)}
+  .foot-links a:hover{color:var(--brand-hover)}
+  .copy{margin-top:32px;font-size:12px;color:var(--ink-3)}
+
+  /* ═══ 响应式（字号仍落在阶梯上） ═══ */
+  @media(min-width:768px){
+    .hero-title{font-size:48px;line-height:48px}
+    .tagline{font-size:36px;line-height:40px}
+  }
+  @media(min-width:1120px){
+    .hero-title{font-size:60px;line-height:60px}
+  }
+  @media(max-width:1023px){
+    .island-nav,.island-cta .ghost{display:none}
+    .burger{display:block}
+    .hero{padding-top:120px}
+    .hero-grid{grid-template-columns:1fr;gap:48px}
+    .hero-copy{max-width:680px}
+    .benefit-grid,.steps,.quote-grid{grid-template-columns:1fr;max-width:560px;margin:0 auto}
+  }
+  @media(max-width:639px){
+    .carousel{height:480px}
+    .slide{flex-direction:column;justify-content:center;text-align:center;padding:24px;gap:16px}
+    .slide-copy{max-width:100%}
+    .slide-art{width:min(62%,220px)}
+    .slide-chip{margin-inline:auto}
+    .contest-row{flex-wrap:wrap;gap:12px}
+    .cr-count{width:100%;order:3}
+    .sec-side{flex-direction:column;align-items:flex-start}
+    .tagline{font-size:24px;line-height:32px}
+    .final-cta h2{font-size:24px;line-height:32px}
+    .sec-title{font-size:24px;line-height:32px}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *,*::before,*::after{transition:none!important;animation:none!important}
+    .reveal{opacity:1;transform:none;filter:none}
+    .tagline .w{color:var(--ink)}
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+
+<!-- ═══ 悬浮药丸导航（6 项不变） ═══ -->
+<header class="island" id="island">
+  <a class="brand" href="/" aria-label="QOJ 首页"><i class="ph ph-cloud"></i>QOJ</a>
+  <nav class="island-nav" aria-label="前台导航">
+    <a class="island-link" href="/" aria-current="page"><i class="ph ph-house"></i>首页</a>
+    <a class="island-link" href="/problems"><i class="ph ph-book-open"></i>题库</a>
+    <a class="island-link" href="/courses"><i class="ph ph-graduation-cap"></i>课程</a>
+    <a class="island-link" href="/contests"><i class="ph ph-trophy"></i>比赛</a>
+    <a class="island-link" href="/leaderboard"><i class="ph ph-chart-bar"></i>排行榜</a>
+    <a class="island-link" href="/about"><i class="ph ph-info"></i>关于</a>
+  </nav>
+  <div class="island-cta">
+    <a class="ghost" href="/login">登录</a>
+    <a class="btn btn-primary" href="/register">免费注册</a>
+  </div>
+  <button class="burger" id="burger" aria-label="打开导航" aria-expanded="false" aria-controls="menuOverlay">
+    <span></span><span></span><span></span>
+  </button>
+</header>
+
+<!-- 全屏玻璃菜单（B7） -->
+<div class="overlay" id="menuOverlay" aria-hidden="true">
+  <a href="/" aria-current="page">首页</a>
+  <a href="/problems">题库</a>
+  <a href="/courses">课程</a>
+  <a href="/contests">比赛</a>
+  <a href="/leaderboard">排行榜</a>
+  <a href="/about">关于</a>
+  <div class="auth">
+    <a class="btn btn-outline" href="/login">登录</a>
+    <a class="btn btn-primary" href="/register">免费注册</a>
+  </div>
+</div>
+
+<main id="main">
+  <!-- ═══ 首屏：文案 + 浏览器窗内轮播 ═══ -->
+  <section class="hero" style="padding-bottom:80px">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <span class="eyebrow"><i class="ph ph-trophy"></i>每周训练赛 · 周六 14:00 开赛</span>
+        <h1 class="hero-title">从第一行代码到领奖台，只差每周一次训练</h1>
+        <p class="hero-sub">QOJ 为信息学课堂与竞赛训练打造：秒级评测的在线判题、老师可布置的课程题单，以及每周开放的训练赛。</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary btn-lg" href="/register">免费注册账号</a>
+        </div>
+        <p class="hero-proof"><i class="ph ph-check-circle"></i>已有 <b>2,847</b> 名同学在此练习 · 上周训练赛 <b>412</b> 人同场竞技</p>
+      </div>
+
+      <div class="browser" id="carousel" aria-roledescription="轮播图" aria-label="首页轮播">
+        <div class="browser-bar">
+          <span class="dot" style="background:#FF6B6B"></span>
+          <span class="dot" style="background:#FFD166"></span>
+          <span class="dot" style="background:#3ECF9A"></span>
+          <span class="browser-url"><i class="ph ph-globe" style="font-size:12px"></i>qoj.cloud/home</span>
+        </div>
+        <div class="carousel">
+          <div class="car-track">
+
+            <article class="slide sl-1">
+              <div class="slide-copy">
+                <span class="slide-chip">10-31 · 报名中</span>
+                <h3>十月月赛 · 云端嘉年华</h3>
+                <p>个人赛，IOI 赛制，赛后开放题解与补题。</p>
+                <a class="slide-link" href="/contests">查看赛程安排<i class="ph ph-arrow-right"></i></a>
+              </div>
+              <div class="slide-art" aria-hidden="true">
+                <svg viewBox="0 0 280 220">
+                  <g fill="#fff"><ellipse cx="70" cy="168" rx="52" ry="30"/><ellipse cx="150" cy="156" rx="60" ry="36"/><ellipse cx="228" cy="170" rx="48" ry="27"/><rect x="18" y="162" width="242" height="34" rx="17"/></g>
+                  <path d="M186 34v108" stroke="#7C93A8" stroke-width="5" stroke-linecap="round"/>
+                  <path d="M186 38 L246 52 L186 66 Z" fill="#FFD166"/>
+                  <circle cx="96" cy="64" r="46" fill="#5BB8F5"/>
+                  <ellipse cx="96" cy="70" rx="38" ry="34" fill="#FFE3CC"/>
+                  <path d="M58 64 C58 34 74 22 96 22 C118 22 134 34 134 64 C127 48 118 46 112 55 C107 42 96 41 91 52 C85 41 74 44 70 55 C64 47 60 50 58 64 Z" fill="#5BB8F5"/>
+                  <ellipse cx="78" cy="74" rx="7" ry="9" fill="#1F3A56"/><ellipse cx="114" cy="74" rx="7" ry="9" fill="#1F3A56"/>
+                  <circle cx="75.5" cy="71" r="2.6" fill="#fff"/><circle cx="111.5" cy="71" r="2.6" fill="#fff"/>
+                  <path d="M88 88 Q96 95 104 88" stroke="#D96A86" stroke-width="3.4" stroke-linecap="round" fill="none"/>
+                  <ellipse cx="62" cy="84" rx="6" ry="3.6" fill="#FFB7C9" opacity=".8"/><ellipse cx="130" cy="84" rx="6" ry="3.6" fill="#FFB7C9" opacity=".8"/>
+                  <g fill="#FFD166"><path d="M42 96 l3 6 6.4 3 -6.4 3 -3 6 -3 -6 -6.4 -3 6.4 -3z"/><path d="M238 88 l2.6 5.2 5.4 2.6 -5.4 2.6 -2.6 5.2 -2.6 -5.2 -5.4 -2.6 5.4 -2.6z"/></g>
+                </svg>
+              </div>
+            </article>
+
+            <article class="slide sl-2">
+              <div class="slide-copy">
+                <span class="slide-chip">评测</span>
+                <h3>提交之后 1.8 秒，结果就到</h3>
+                <p>编译、运行、比对全程自动，卡题时先把思路写进题解。</p>
+                <a class="slide-link" href="/problems">去试一道题<i class="ph ph-arrow-right"></i></a>
+              </div>
+              <div class="slide-art" aria-hidden="true">
+                <svg viewBox="0 0 280 220">
+                  <rect x="52" y="30" width="176" height="126" rx="12" fill="#fff"/>
+                  <rect x="52" y="30" width="176" height="30" rx="12" fill="#2E97E8"/>
+                  <rect x="52" y="46" width="176" height="14" fill="#2E97E8"/>
+                  <circle cx="70" cy="45" r="4" fill="#EAF5FE"/><circle cx="84" cy="45" r="4" fill="#EAF5FE"/><circle cx="98" cy="45" r="4" fill="#EAF5FE"/>
+                  <g font-family="ui-monospace,monospace" font-size="13" font-weight="700">
+                    <text x="68" y="84" fill="#7C93A8">1 #include &lt;bits/stdc++.h&gt;</text>
+                    <text x="68" y="106" fill="#43607D">2 int main(){</text>
+                    <text x="68" y="128" fill="#1FA87C">3 &nbsp;&nbsp;return ac();</text>
+                    <text x="68" y="150" fill="#43607D">4 }</text>
+                  </g>
+                  <path d="M212 168 l10 22 24 3 -17 17 4 24 -21 -11 -21 11 4 -24 -17 -17 24 -3 z" fill="#FFD166"/>
+                  <g fill="#5BB8F5" opacity=".85"><path d="M36 160 l3 6 6.4 3 -6.4 3 -3 6 -3 -6 -6.4 -3 6.4 -3z"/><path d="M254 60 l2.6 5.2 5.4 2.6 -5.4 2.6 -2.6 5.2 -2.6 -5.2 -5.4 -2.6 5.4 -2.6z"/></g>
+                  <g fill="#fff"><ellipse cx="228" cy="196" rx="34" ry="16"/><ellipse cx="252" cy="190" rx="20" ry="12"/></g>
+                </svg>
+              </div>
+            </article>
+
+            <article class="slide sl-3">
+              <div class="slide-copy">
+                <span class="slide-chip">萌新指南</span>
+                <h3>三步开始你的第一题</h3>
+                <p>注册、认领课程、提交代码，全程不到五分钟。</p>
+                <a class="slide-link" href="/about">阅读上手指南<i class="ph ph-arrow-right"></i></a>
+              </div>
+              <div class="slide-art" aria-hidden="true">
+                <svg viewBox="0 0 280 220">
+                  <circle cx="60" cy="54" r="30" fill="#FFEFB8"/>
+                  <path d="M30 186 C86 186 108 148 142 122 C180 92 210 96 250 74" fill="none" stroke="#5BB8F5" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 15"/>
+                  <g transform="translate(150,60) rotate(-12)">
+                    <path d="M0 0 L96 30 L28 52 Z" fill="#fff" stroke="#2E97E8" stroke-width="4" stroke-linejoin="round"/>
+                    <path d="M0 0 L96 30 L28 24 Z" fill="#CFE8FB" stroke="#2E97E8" stroke-width="4" stroke-linejoin="round"/>
+                  </g>
+                  <g fill="#fff"><ellipse cx="84" cy="150" rx="40" ry="22"/><ellipse cx="118" cy="142" rx="26" ry="16"/><rect x="44" y="146" width="112" height="22" rx="11"/></g>
+                  <g fill="#FFD166"><path d="M44 84 l3 6 6.4 3 -6.4 3 -3 6 -3 -6 -6.4 -3 6.4 -3z"/><path d="M236 140 l2.6 5.2 5.4 2.6 -5.4 2.6 -2.6 5.2 -2.6 -5.2 -5.4 -2.6 5.4 -2.6z"/></g>
+                  <g fill="#5BB8F5" opacity=".8"><path d="M212 176 l2.4 4.8 5 2.4 -5 2.4 -2.4 4.8 -2.4 -4.8 -5 -2.4 5 -2.4z"/></g>
+                </svg>
+              </div>
+            </article>
+          </div>
+
+          <div class="car-ctl">
+            <button class="car-btn" data-go="-1" aria-label="上一张"><i class="ph ph-caret-left"></i></button>
+            <button class="car-btn" data-go="1" aria-label="下一张"><i class="ph ph-caret-right"></i></button>
+          </div>
+          <div class="car-dots" role="tablist" aria-label="轮播指示器">
+            <button class="car-dot is-active" aria-label="第 1 张"></button>
+            <button class="car-dot" aria-label="第 2 张"></button>
+            <button class="car-dot" aria-label="第 3 张"></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 即将开始的比赛 ═══ -->
+  <section class="sec-tint" id="contests">
+    <div class="wrap">
+      <div class="sec-side reveal">
+        <div class="sec-head" style="margin-bottom:0">
+          <div class="sec-kicker"><i class="ph ph-calendar-check"></i>比赛日程</div>
+          <h2 class="sec-title">接下来可以参加什么</h2>
+        </div>
+        <a class="text-link" href="/contests">全部比赛<i class="ph ph-arrow-right"></i></a>
+      </div>
+      <div class="contest-list">
+        <a class="contest-row reveal" href="/contests">
+          <span class="cr-date"><b>28</b><span>10 月</span></span>
+          <span class="cr-main">
+            <span class="cr-name">周常训练赛 #89</span>
+            <span class="cr-meta"><span class="cr-tag">个人赛</span><span>10-28 14:00 · 赛时 3 小时 · IOI 赛制</span></span>
+          </span>
+          <span class="cr-count" data-at="2026-10-28T14:00:00+08:00">--</span>
+          <span class="cr-go"><i class="ph ph-arrow-right"></i></span>
+        </a>
+        <a class="contest-row reveal" href="/contests">
+          <span class="cr-date"><b>31</b><span>10 月</span></span>
+          <span class="cr-main">
+            <span class="cr-name">十月月赛 · 云端嘉年华</span>
+            <span class="cr-meta"><span class="cr-tag">月赛</span><span>10-31 14:00 · 赛时 4 小时 · Rated</span></span>
+          </span>
+          <span class="cr-count" data-at="2026-10-31T14:00:00+08:00">--</span>
+          <span class="cr-go"><i class="ph ph-arrow-right"></i></span>
+        </a>
+        <a class="contest-row reveal" href="/contests">
+          <span class="cr-date"><b>08</b><span>11 月</span></span>
+          <span class="cr-main">
+            <span class="cr-name">算法组队训练赛</span>
+            <span class="cr-meta"><span class="cr-tag">团队赛</span><span>11-08 13:00 · 三人一队 · 赛时 5 小时</span></span>
+          </span>
+          <span class="cr-count" data-at="2026-11-08T13:00:00+08:00">--</span>
+          <span class="cr-go"><i class="ph ph-arrow-right"></i></span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 三个收益 ═══ -->
+  <section>
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="sec-kicker"><i class="ph ph-flag-banner"></i>为什么留在 QOJ</div>
+        <h2 class="sec-title">为课堂与赛场同时准备</h2>
+      </div>
+      <div class="benefit-grid">
+        <article class="benefit reveal">
+          <span class="b-ic"><i class="ph ph-lightning"></i></span>
+          <h3>判题快到不用等</h3>
+          <p>提交后平均 1.8 秒返回全部测试点结果，把等待时间还给调试与思考。</p>
+        </article>
+        <article class="benefit reveal">
+          <span class="b-ic"><i class="ph ph-list-checks"></i></span>
+          <h3>课堂到赛场一条路</h3>
+          <p>老师把作业组成题单发布到班级，学生按单练习，周六训练赛检验成果。</p>
+        </article>
+        <article class="benefit reveal">
+          <span class="b-ic"><i class="ph ph-chart-line-up"></i></span>
+          <h3>成长被完整记录</h3>
+          <p>每道题的提交与题解自动归档，学期末可以导出一份属于自己的练习档案。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 逐词点亮标语段（B11） ═══ -->
+  <section class="tagline-sec" aria-label="平台理念">
+    <div class="tagline-pin">
+      <div class="wrap">
+        <p class="tagline" data-tagline>
+          每一行 代码， 都值得 被认真 评测。
+          每一场 周赛， 都值得 全力 以赴。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 三步上手 ═══ -->
+  <section class="sec-tint">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="sec-kicker"><i class="ph ph-path"></i>如何开始</div>
+        <h2 class="sec-title">三步开始你的第一题</h2>
+      </div>
+      <div class="steps">
+        <article class="step reveal">
+          <span class="step-no">创建账号</span>
+          <span class="b-ic"><i class="ph ph-user-plus"></i></span>
+          <h3>注册并选择身份</h3>
+          <p>学生加入班级，教师获得题单与课程管理权限，邮箱可用于找回密码。</p>
+        </article>
+        <article class="step reveal">
+          <span class="step-no">开始练习</span>
+          <span class="b-ic"><i class="ph ph-code"></i></span>
+          <h3>按题单刷题</h3>
+          <p>打开老师发布的题单，在线编写并提交，评测结果即时返回。</p>
+        </article>
+        <article class="step reveal">
+          <span class="step-no">检验成果</span>
+          <span class="b-ic"><i class="ph ph-trophy"></i></span>
+          <h3>参加每周训练赛</h3>
+          <p>周六 14:00 开赛，榜单实时更新，赛后开放题解与补题。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 见证 ═══ -->
+  <section>
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="sec-kicker"><i class="ph ph-users-three"></i>使用者说</div>
+        <h2 class="sec-title">课堂和赛场都在用</h2>
+      </div>
+      <div class="quote-grid">
+        <article class="quote reveal">
+          <i class="ph ph-quotes"></i>
+          <p>题单功能省了我每周出作业一半的时间，每个学生的完成度在后台一目了然。</p>
+          <div class="quote-who">
+            <span class="avatar" style="background:#2E97E8">陈</span>
+            <span><b>陈嘉树</b><span>华南某高中 · 信息学教练</span></span>
+          </div>
+        </article>
+        <article class="quote reveal">
+          <i class="ph ph-quotes"></i>
+          <p>判题快，卡题的时候翻题解区，基本都能找到一条看得懂的思路。</p>
+          <div class="quote-who">
+            <span class="avatar" style="background:#1FA87C">林</span>
+            <span><b>林晓萌</b><span>高二学生 · 入门半年</span></span>
+          </div>
+        </article>
+        <article class="quote reveal">
+          <i class="ph ph-quotes"></i>
+          <p>从十月开始打周赛，rating 从 1243 涨到 1571，下个月目标 1600。</p>
+          <div class="quote-who">
+            <span class="avatar" style="background:#D9A428">周</span>
+            <span><b>周子航</b><span>大一学生 · 校 ACM 集训队</span></span>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ FAQ ═══ -->
+  <section class="sec-tint">
+    <div class="wrap">
+      <div class="sec-head reveal" style="margin-inline:auto;text-align:center">
+        <div class="sec-kicker" style="justify-content:center"><i class="ph ph-chat-circle-text"></i>常见问题</div>
+        <h2 class="sec-title">你可能想先弄清楚这些</h2>
+      </div>
+      <div class="faq reveal">
+        <details open>
+          <summary>QOJ 支持哪些编程语言？<i class="ph ph-caret-down"></i></summary>
+          <div class="a">目前评测机支持 C、C++、Java、Python 四种语言，与主流竞赛环境保持一致。</div>
+        </details>
+        <details>
+          <summary>参加训练赛需要付费吗？<i class="ph ph-caret-down"></i></summary>
+          <div class="a">所有比赛与题库完全免费，注册账号即可报名参赛。</div>
+        </details>
+        <details>
+          <summary>比赛结束后还能提交代码吗？<i class="ph ph-caret-down"></i></summary>
+          <div class="a">可以。赛后题目会进入题库，随时补题、写题解，提交记录全部保留。</div>
+        </details>
+        <details>
+          <summary>教师如何给学生布置题单？<i class="ph ph-caret-down"></i></summary>
+          <div class="a">注册教师账号后，在后台的题单管理中创建题单，发布到指定班级或课程即可。</div>
+        </details>
+        <details>
+          <summary>评测一般多久出结果？<i class="ph ph-caret-down"></i></summary>
+          <div class="a">平均 1.8 秒返回全部测试点，高峰期不超过 10 秒，超时会自动重新评测。</div>
+        </details>
+        <details>
+          <summary>忘记密码怎么办？<i class="ph ph-caret-down"></i></summary>
+          <div class="a">在登录页选择忘记密码，通过绑定的邮箱接收重置链接。</div>
+        </details>
+        <details>
+          <summary>可以组队参加比赛吗？<i class="ph ph-caret-down"></i></summary>
+          <div class="a">团队赛支持三人组队，个人赛独立作战，两种赛制每周轮流开放。</div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 最终 CTA（与首屏一致） ═══ -->
+  <section class="final-cta">
+    <div class="wrap reveal">
+      <h2>这周六的训练赛，等你来打</h2>
+      <p>免费注册账号，从第一题开始。</p>
+      <a class="btn btn-primary btn-lg" href="/register">免费注册账号</a>
+    </div>
+  </section>
+</main>
+
+<!-- ═══ 页脚 ═══ -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <div class="foot-brand"><i class="ph ph-cloud"></i>QOJ</div>
+        <p class="foot-note">面向信息学课堂与竞赛训练的在线评测平台。</p>
+      </div>
+      <nav class="foot-links" aria-label="页脚导航">
+        <a href="/problems">题库</a>
+        <a href="/courses">课程</a>
+        <a href="/contests">比赛</a>
+        <a href="/leaderboard">排行榜</a>
+        <a href="/about">关于</a>
+        <a href="/about">帮助</a>
+        <a href="/about">使用条款</a>
+        <a href="/about">隐私政策</a>
+      </nav>
+    </div>
+    <p class="copy">© 2026 QOJ Online Judge · 保持热爱，奔赴云端</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── 轮播（唯一交互组件，700ms 自定义缓动） ── */
+  var root = document.getElementById('carousel');
+  var track = root.querySelector('.car-track');
+  var slides = Array.prototype.slice.call(track.children);
+  var dots = Array.prototype.slice.call(root.querySelectorAll('.car-dot'));
+  var index = 0, timer = null, paused = false;
+
+  function render() {
+    track.style.transform = 'translateX(' + (-index * 100) + '%)';
+    slides.forEach(function (s, i) { s.classList.toggle('is-active', i === index); });
+    dots.forEach(function (d, i) { d.classList.toggle('is-active', i === index); });
+  }
+  function go(i) { index = (i + slides.length) % slides.length; render(); }
+  function play() { stop(); timer = setInterval(function () { if (!paused) { go(index + 1); } }, 5200); }
+  function stop() { if (timer) { clearInterval(timer); timer = null; } }
+
+  root.addEventListener('mouseenter', function () { paused = true; });
+  root.addEventListener('mouseleave', function () { paused = false; });
+  Array.prototype.forEach.call(root.querySelectorAll('[data-go]'), function (b) {
+    b.addEventListener('click', function () { go(index + Number(b.dataset.go)); play(); });
+  });
+  dots.forEach(function (d, i) { d.addEventListener('click', function () { go(i); play(); }); });
+  var startX = null;
+  root.addEventListener('pointerdown', function (e) { startX = e.clientX; });
+  root.addEventListener('pointerup', function (e) {
+    if (startX === null) { return; }
+    var dx = e.clientX - startX;
+    startX = null;
+    if (Math.abs(dx) > 40) { go(index + (dx < 0 ? 1 : -1)); play(); }
+  });
+  render(); play();
+
+  /* ── 比赛倒计时 ── */
+  var counters = document.querySelectorAll('.cr-count[data-at]');
+  function tick() {
+    counters.forEach(function (n) {
+      var diff = Math.max(0, new Date(n.dataset.at).getTime() - Date.now());
+      var d = Math.floor(diff / 864e5);
+      var h = Math.floor(diff % 864e5 / 36e5);
+      n.textContent = d > 0 ? ('还有 ' + d + ' 天') : (h > 0 ? ('还有 ' + h + ' 小时') : '即将开始');
+    });
+  }
+  tick(); setInterval(tick, 60000);
+
+  /* ── 汉堡变形 + 全屏玻璃菜单 ── */
+  var burger = document.getElementById('burger');
+  var overlay = document.getElementById('menuOverlay');
+  function setMenu(open) {
+    burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    burger.setAttribute('aria-label', open ? '关闭导航' : '打开导航');
+    overlay.classList.toggle('open', open);
+    overlay.setAttribute('aria-hidden', open ? 'false' : 'true');
+    document.body.style.overflow = open ? 'hidden' : '';
+  }
+  burger.addEventListener('click', function () {
+    setMenu(burger.getAttribute('aria-expanded') !== 'true');
+  });
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) { setMenu(false); } });
+
+  /* ── 滚动进场（B7：IntersectionObserver，不用 scroll 监听） ── */
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+
+  /* ── 逐词点亮标语（B11：单词逐个过触发线，rAF 节流） ── */
+  var tagline = document.querySelector('[data-tagline]');
+  var lines = tagline.textContent.trim().split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+  tagline.textContent = '';
+  var words = [];
+  lines.forEach(function (line) {
+    var div = document.createElement('div');
+    line.split(' ').forEach(function (w) {
+      if (!w) { return; }
+      var s = document.createElement('span');
+      s.className = 'w';
+      s.textContent = w;
+      div.appendChild(s);
+      words.push(s);
+    });
+    tagline.appendChild(div);
+  });
+  var raf = null;
+  var sec = document.querySelector('.tagline-sec');
+  function activate() {
+    raf = null;
+    var r = sec.getBoundingClientRect();
+    var total = r.height - window.innerHeight;
+    var passed = Math.min(Math.max(-r.top, 0), total);
+    var p = total > 0 ? passed / total : 1;
+    var n = Math.round(p * words.length);
+    words.forEach(function (w, i) { w.classList.toggle('on', i < n); });
+  }
+  window.addEventListener('scroll', function () {
+    if (raf === null) { raf = requestAnimationFrame(activate); }
+  }, { passive: true });
+  activate();
+
+  /* ── FAQ：一次只展开一个 ── */
+  var faqs = document.querySelectorAll('.faq details');
+  faqs.forEach(function (d) {
+    d.addEventListener('toggle', function () {
+      if (d.open) { faqs.forEach(function (o) { if (o !== d) { o.open = false; } }); }
+    });
+  });
+})();
+</script>
+</body>
+</html>

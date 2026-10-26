@@ -71,7 +71,8 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
     @Select("""
         SELECT s.* FROM submissions s
         JOIN (SELECT user_id, MIN(id) AS next_id FROM submissions
-              WHERE status IN ('WAITING', 'PENDING', 'REJUDGE_PENDING') GROUP BY user_id) pending
+              WHERE status IN ('WAITING', 'PENDING', 'REJUDGE_PENDING')
+                AND (judge_retry_after IS NULL OR judge_retry_after <= NOW()) GROUP BY user_id) pending
           ON pending.next_id = s.id
         WHERE NOT EXISTS (SELECT 1 FROM submissions active WHERE active.user_id = s.user_id
             AND active.status IN ('JUDGING', 'RUNNING', 'COMPILING'))
@@ -92,8 +93,9 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
      * - judgeWorkerId IS NULL 确保未被其他 worker 抢占
      */
     @Update("UPDATE submissions SET status = #{newStatus}, judge_worker_id = #{workerId}, " +
-            "judge_start_time = #{startTime}, judge_server = #{judgeServer}, updated_at = #{startTime} " +
-            "WHERE id = #{id} AND status = #{currentStatus} AND judge_worker_id IS NULL")
+            "judge_start_time = #{startTime}, judge_server = #{judgeServer}, judge_retry_after = NULL, updated_at = #{startTime} " +
+            "WHERE id = #{id} AND status = #{currentStatus} AND judge_worker_id IS NULL " +
+            "AND (judge_retry_after IS NULL OR judge_retry_after <= #{startTime})")
     /**
      * 封装atomicClaim相关逻辑。保持该职责的输入、输出和异常边界集中，便于调用方复用。
      */
@@ -198,6 +200,22 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
         @Param("updatedAt") LocalDateTime updatedAt
     );
 
+    /** Requeues only the active owning attempt, leaving committed terminal results immutable. */
+    @Update("""
+        UPDATE submissions
+        SET status = 'WAITING', judge_worker_id = NULL, judge_server = NULL,
+            judge_start_time = NULL, judge_end_time = NULL,
+            retry_count = COALESCE(retry_count, 0) + 1,
+            judge_retry_after = #{retryAfter}, error_message = #{message},
+            judge_message = #{message}, updated_at = #{now}
+        WHERE id = #{id} AND judge_server = 'GO_JUDGE' AND judge_worker_id = #{workerId}
+          AND status IN ('JUDGING', 'COMPILING', 'RUNNING')
+          AND COALESCE(retry_count, 0) < 3
+        """)
+    int retryGoJudgeFailure(@Param("id") Long id, @Param("workerId") String workerId,
+        @Param("retryAfter") LocalDateTime retryAfter, @Param("message") String message,
+        @Param("now") LocalDateTime now);
+
     /** Marks a go-judge execution as failed only while its worker claim is valid. */
     @Update("""
         UPDATE submissions
@@ -210,6 +228,7 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
         WHERE id = #{id}
           AND judge_server = 'GO_JUDGE'
           AND judge_worker_id = #{workerId}
+          AND status IN ('JUDGING', 'COMPILING', 'RUNNING')
         """)
     int markGoJudgeFailure(
         @Param("id") Long id,
@@ -233,6 +252,7 @@ public interface SubmissionMapper extends BaseMapper<Submission> {
         UPDATE submissions
         SET judge_worker_id = NULL, updated_at = #{releasedAt}
         WHERE id = #{id} AND judge_worker_id = #{workerId}
+          AND status NOT IN ('JUDGING', 'COMPILING', 'RUNNING')
         """)
     int releaseWorker(
         @Param("id") Long id,

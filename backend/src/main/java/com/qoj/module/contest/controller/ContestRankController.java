@@ -69,7 +69,7 @@ public class ContestRankController {
         if ("ACM".equals(rankMode)) {
             List<ContestAcmRankVO> ranks = acmRankService.getRankList(contestId);
             return ApiResponse.ok(ranks);
-        } else if ("OI".equals(rankMode)) {
+        } else if (("OI".equals(rankMode) || "LANQIAO".equals(rankMode))) {
             List<ContestOiRankVO> ranks = oiRankService.getRankList(contestId);
             return ApiResponse.ok(ranks);
         } else {

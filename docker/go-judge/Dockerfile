@@ -1,3 +1,9 @@
+# Release binaries can silently omit seccomp support. Build the pinned module
+# explicitly with its seccomp tag; Go verifies dependencies through go.sum.
+FROM public.ecr.aws/docker/library/golang:1.25.0-bookworm@sha256:81dc45d05a7444ead8c92a389621fafabc8e40f8fd1a19d7e5df14e61e98bc1a AS judge-builder
+ARG GO_JUDGE_VERSION=1.12.1
+RUN CGO_ENABLED=0 go install -tags seccomp github.com/criyle/go-judge/cmd/go-judge@v${GO_JUDGE_VERSION}
+
 # Docker Official Image mirrored by AWS Public ECR and pinned to a multi-arch digest.
 FROM public.ecr.aws/docker/library/debian:bookworm-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df
 
@@ -27,6 +33,7 @@ RUN set -eu; \
         install -y --no-install-recommends \
         ca-certificates \
         curl \
+        util-linux \
         gcc \
         g++ \
         openjdk-17-jdk-headless \
@@ -42,21 +49,19 @@ RUN set -eu; \
     rm -rf "${java_home}/conf"; \
     mv /tmp/qoj-java-conf "${java_home}/conf"
 
-# Pin the upstream binary and verify its release checksum before installation.
-RUN set -eu; \
-    case "${TARGETARCH}" in \
-      amd64) asset="go-judge_${GO_JUDGE_VERSION}_linux_amd64v2"; checksum="7d6ef61a43920ec5fde94165c4fa6dcb8520745face0f097517f0b14b2ee94b9" ;; \
-      arm64) asset="go-judge_${GO_JUDGE_VERSION}_linux_arm64"; checksum="e688d80a27a5737d89ca763820ea60f1aa1dd2b428a5716e9a5df89912f17425" ;; \
-      *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    curl -fsSL "https://github.com/criyle/go-judge/releases/download/v${GO_JUDGE_VERSION}/${asset}" -o /usr/local/bin/go-judge; \
-    echo "${checksum}  /usr/local/bin/go-judge" | sha256sum -c -; \
-    chmod 0755 /usr/local/bin/go-judge
+# Copy only the explicitly seccomp-enabled worker into the runtime image.
+COPY --from=judge-builder /go/bin/go-judge /usr/local/bin/go-judge
 
 # Java compilation uses a fixed image-owned helper. The
 # REST request never supplies shell text or file names in command arguments.
 COPY qoj-java-compile /usr/local/bin/qoj-java-compile
 RUN chmod 0755 /usr/local/bin/qoj-java-compile
 
+# No language toolchain needs setuid/setgid executables.
+RUN find /usr /bin /sbin -xdev -type f \( -perm -4000 -o -perm -2000 \) -exec chmod a-s {} +
+COPY seccomp.yaml /etc/qoj/seccomp.yaml
+COPY qoj-entrypoint /usr/local/bin/qoj-entrypoint
+RUN chmod 0755 /usr/local/bin/qoj-entrypoint && chmod 0644 /etc/qoj/seccomp.yaml
+
 EXPOSE 5050
-ENTRYPOINT ["/usr/local/bin/go-judge"]
+ENTRYPOINT ["/usr/local/bin/qoj-entrypoint"]

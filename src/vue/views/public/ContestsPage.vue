@@ -82,7 +82,7 @@ function openContest(id: number) { window.location.assign(`/contests/${id}`); }
             <button v-for="item in [{ value: 'ALL', label: '全部' }, { value: 'RUNNING', label: '进行中' }, { value: 'NOT_STARTED', label: '即将开始' }, { value: 'ENDED', label: '已结束' }]" :key="item.value" type="button" class="contests-status-tab" :class="{ 'is-active': statusFilter === item.value }" @click="statusFilter = item.value as StatusFilter">{{ item.label }}</button>
           </div>
           <el-input v-model="searchKeyword" class="contests-search-field" placeholder="搜索比赛名称" clearable><template #prefix><el-icon><Search /></el-icon></template></el-input>
-          <el-select v-model="typeFilter" class="contests-type-field" placeholder="全部赛制" clearable><el-option label="ACM" value="ACM" /><el-option label="OI" value="OI" /></el-select>
+          <el-select v-model="typeFilter" class="contests-type-field" placeholder="全部赛制" clearable><el-option label="ACM" value="ACM" /><el-option label="OI" value="OI" /><el-option label="蓝桥杯" value="LANQIAO" /></el-select>
           <el-checkbox v-model="joinedOnly">只看已报名</el-checkbox>
           <button type="button" class="contests-clear-button" @click="clearFilters"><el-icon><Delete /></el-icon>清空筛选</button>
         </div>
@@ -95,7 +95,7 @@ function openContest(id: number) { window.location.assign(`/contests/${id}`); }
           <article v-for="contest in pagedContests" :key="contest.id" class="contest-list-item">
             <div class="contest-list-status" :class="statusClass(contest.status)"><strong>{{ statusText(contest.status) }}</strong></div>
             <div class="contest-list-main">
-              <div class="contest-list-title-row"><button class="contest-list-title" type="button" @click="openContest(contest.id)">{{ contest.title }}</button><el-tag :class="['contest-type-tag', { 'is-oi': contest.type === 'OI' }]">{{ contest.type }}</el-tag><el-tag v-if="contest.registered" class="contest-joined-tag" type="success"><el-icon><Check /></el-icon>已报名</el-tag></div>
+              <div class="contest-list-title-row"><button class="contest-list-title" type="button" @click="openContest(contest.id)">{{ contest.title }}</button><el-tag :class="['contest-type-tag', { 'is-oi': contest.type === 'OI' }]">{{ contest.type === "LANQIAO" ? "蓝桥杯" : contest.type }}</el-tag><el-tag v-if="contest.registered" class="contest-joined-tag" type="success"><el-icon><Check /></el-icon>已报名</el-tag></div>
               <div class="contest-list-meta">
                 <span class="contest-list-time"><el-icon><Calendar /></el-icon><b>时间</b><span class="contest-list-date-range"><time :datetime="contest.startTime">{{ formatDisplayDateTime(contest.startTime) }}</time><span> – </span><time :datetime="contest.endTime">{{ formatDisplayDateTime(contest.endTime) }}</time></span></span>
                 <span><el-icon><Clock /></el-icon><b>时长</b>{{ contest.durationMinutes }} 分钟</span>

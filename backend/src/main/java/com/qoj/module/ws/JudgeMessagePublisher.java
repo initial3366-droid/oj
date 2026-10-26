@@ -1,5 +1,7 @@
 package com.qoj.module.ws;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import com.qoj.module.contest.service.ContestFeedbackPolicy;
 import java.util.Map;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
@@ -13,12 +15,20 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Component
 public class JudgeMessagePublisher {
     private final SimpMessagingTemplate messagingTemplate;
+    private final ContestFeedbackPolicy feedbackPolicy;
 
     /**
      * 构造 判题消息Publisher 实例并保存其必要依赖或初始状态。在状态变化后发布异步消息。
      */
-    public JudgeMessagePublisher(SimpMessagingTemplate messagingTemplate) {
+    @Autowired
+    public JudgeMessagePublisher(SimpMessagingTemplate messagingTemplate,
+        ContestFeedbackPolicy feedbackPolicy) {
+        this.feedbackPolicy = feedbackPolicy;
         this.messagingTemplate = messagingTemplate;
+    }
+
+    public JudgeMessagePublisher(SimpMessagingTemplate messagingTemplate) {
+        this(messagingTemplate, null);
     }
 
     /**
@@ -27,13 +37,14 @@ public class JudgeMessagePublisher {
      */
     public void submissionChanged(Long submissionId, String status, Integer time, Integer memory) {
         afterCommitOrNow(() -> {
+            boolean hidden = feedbackPolicy != null && feedbackPolicy.hidesSubmission(submissionId);
             messagingTemplate.convertAndSend(
                 "/topic/submissions/" + submissionId,
                 Map.of(
                     "submissionId", submissionId,
-                    "status", status,
-                    "time", time == null ? 0 : time,
-                    "memory", memory == null ? 0 : memory,
+                    "status", hidden ? "SUBMITTED" : status,
+                    "time", hidden || time == null ? 0 : time,
+                    "memory", hidden || memory == null ? 0 : memory,
                     "timestamp", System.currentTimeMillis()
                 ),
                 Map.of()

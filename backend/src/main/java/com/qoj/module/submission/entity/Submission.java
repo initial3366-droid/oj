@@ -40,6 +40,7 @@ public class Submission {
     public String judgeWorkerId;
     public Integer priority;
     public Integer retryCount;
+    public LocalDateTime judgeRetryAfter;
     public String errorMessage;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;

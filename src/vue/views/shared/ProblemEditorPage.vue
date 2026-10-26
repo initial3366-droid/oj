@@ -10,7 +10,7 @@ import { adminPath } from "../../../utils/adminPath";
 import { decryptIdFromUrl } from "../../../utils/cipher";
 
 type Sample = { input: string; output: string; explanation: string };
-type TestCase = { id?: number; caseNo: number; input: string; output: string; publicInput?: string };
+type TestCase = { id?: number; caseNo: number; input: string; output: string; publicInput?: string; loaded?: boolean; inputBytes?: number; outputBytes?: number };
 type BasicForm = {
   title: string; timeLimit: number; memoryLimit: number; statement: string; inputFormat: string; outputFormat: string;
   checkerSource: string; difficulty: number; folderId?: number; isPublic: boolean; accessScope: "ALL" | "MAJOR" | "PRIVATE";
@@ -38,6 +38,23 @@ const tags = ref<string[]>([]);
 const folders = ref<Array<{ id: number; name: string }>>([]);
 const majors = ref<Array<{ id: number; name: string; code: string }>>([]);
 const cases = ref<TestCase[]>([]);
+const originalCases = new Map<number, TestCase>();
+const deletedCaseIds = new Set<number>();
+const casesLoaded = ref(false);
+
+function rememberCases(items: TestCase[], loaded: boolean) {
+  cases.value = items.map((item, index) => ({ ...normalizeCase(item, index), ...item, loaded }));
+  originalCases.clear();
+  deletedCaseIds.clear();
+  for (const item of cases.value) {
+    if (item.id) originalCases.set(item.id, { ...item });
+  }
+  casesLoaded.value = true;
+}
+async function loadCases() {
+  if (casesLoaded.value) return;
+  rememberCases(await get<TestCase[]>(casesEndpoint.value), true);
+}
 const file = ref<File | null>(null);
 const importBusy = ref(false);
 const importMessage = ref("");
@@ -73,49 +90,77 @@ async function loadOptions() {
   majors.value = majorResult.status === "fulfilled" ? majorResult.value : [];
 }
 async function initialize() {
-  ready.value = false; loading.value = true; draftId.value = ""; cases.value = []; step.value = testCaseMode.value ? 1 : 0;
+  ready.value = false; loading.value = true; draftId.value = ""; cases.value = []; casesLoaded.value = false; originalCases.clear(); deletedCaseIds.clear(); step.value = testCaseMode.value ? 1 : 0;
   try {
     await loadOptions();
     if (problemId.value) {
-      const [problem, checker, communication, testCases] = await Promise.all([
+      const [problem, checker, communication] = await Promise.all([
         get<Record<string, unknown>>(`/api/admin/v1/problems/${problemId.value}`),
         get<string>(`/api/admin/v1/problems/${problemId.value}/checker-source`).catch(() => ""),
         get<BasicForm["communication"] | null>(`/api/admin/v1/problems/${problemId.value}/communication-config`).catch(() => null),
-        get<TestCase[]>(`/api/admin/v1/problems/${problemId.value}/test-cases`).catch(() => []),
       ]);
       Object.assign(form, { title: String(problem.title ?? ""), timeLimit: Number(problem.timeLimit ?? 1000), memoryLimit: Number(problem.memoryLimit ?? 256), statement: String(problem.statement ?? ""), inputFormat: String(problem.inputFormat ?? ""), outputFormat: String(problem.outputFormat ?? ""), checkerSource: checker ?? "", difficulty: Number(problem.difficulty ?? 1), folderId: problem.folderId ? Number(problem.folderId) : undefined, isPublic: problem.isPublic !== false, accessScope: String(problem.accessScope ?? "PRIVATE") as BasicForm["accessScope"], majorId: problem.majorId ? Number(problem.majorId) : undefined, studentPublishStatus: String(problem.studentPublishStatus ?? (problem.isPublic ? "PUBLISHED" : "DRAFT")) as BasicForm["studentPublishStatus"], communication: communication ?? { enabled: false, maxMessageBytes: 1024, allowEmptyMessage: false, channelSource: "", checkerSource: "" }, samples: (problem.samples as Sample[] ?? []).map((sample) => ({ input: sample.input ?? "", output: sample.output ?? "", explanation: sample.explanation ?? "" })) });
       tags.value = Array.isArray(problem.tags) ? problem.tags.map(String) : [];
-      cases.value = testCases.map(normalizeCase);
+      if (testCaseMode.value) await loadCases();
     } else {
       const draft = await post<{ draftId: string; basic?: Partial<BasicForm> & { tags?: string[] }; testCases?: TestCase[] }>("/api/admin/v1/problem-drafts", {});
       draftId.value = draft.draftId;
       if (draft.basic) { Object.assign(form, draft.basic); tags.value = draft.basic.tags ?? []; }
-      cases.value = (draft.testCases ?? []).map(normalizeCase);
+      rememberCases(draft.testCases ?? [], true);
     }
     ready.value = true;
   } catch (cause) { ElMessage.error(cause instanceof Error ? cause.message : "题目信息加载失败"); }
   finally { loading.value = false; }
 }
-async function saveBasic(nextStep = true) {
+async function saveBasic(nextStep = false) {
+  if (saving.value) return false;
   if (!form.title.trim() || !form.statement.trim()) { ElMessage.warning("请填写题目名称和题面"); return false; }
   saving.value = true;
-  try { await put(issueEndpoint.value, makePayload()); ElMessage.success("题目信息已保存"); if (nextStep) step.value = 1; return true; }
+  try { await put(issueEndpoint.value, makePayload()); ElMessage.success("题目信息已保存"); if (nextStep) {
+    try { await loadCases(); step.value = 1; }
+    catch (cause) { ElMessage.error(`题目信息已保存，但测试点列表加载失败：${cause instanceof Error ? cause.message : "请重试"}`); return false; }
+  } return true; }
   catch (cause) { ElMessage.error(cause instanceof Error ? cause.message : "保存题目信息失败"); return false; }
   finally { saving.value = false; }
 }
 function addSample() { form.samples.push({ input: "", output: "", explanation: "" }); }
 function removeSample(index: number) { form.samples.splice(index,1); }
 function addTag() { const tag=tagInput.value.trim();if(tag&&!tags.value.includes(tag))tags.value.push(tag);tagInput.value=""; }
-function addCase() { cases.value.push({ caseNo: Math.max(0,...cases.value.map((item)=>item.caseNo))+1,input:"",output:"",publicInput:"" }); }
-function removeCase(index: number) { cases.value.splice(index,1); }
+function addCase() { cases.value.push({ caseNo: Math.max(0,...cases.value.map((item)=>item.caseNo))+1,input:"",output:"",publicInput:"",loaded:true }); }
+function removeCase(index: number) { const item = cases.value[index]; if (item?.id) deletedCaseIds.add(item.id); cases.value.splice(index,1); }
 async function saveCases(showSuccess=true) {
-  const sorted = cases.value.map((item,index)=>({caseNo:Number(item.caseNo)||index+1,input:item.input??"",output:item.output??"",publicInput:item.publicInput??""})).sort((a,b)=>a.caseNo-b.caseNo);
-  if (!sorted.length) { ElMessage.warning("至少添加一个测试点");return false; }
-  if (new Set(sorted.map((item)=>item.caseNo)).size!==sorted.length) { ElMessage.warning("测试点编号不能重复");return false; }
-  saving.value=true;
-  try { await put(casesEndpoint.value,{testCases:sorted}); if(showSuccess)ElMessage.success("测试点已保存"); return true; }
-  catch(cause){ElMessage.error(cause instanceof Error?cause.message:"保存测试点失败");return false;}
-  finally{saving.value=false;}
+  if (!casesLoaded.value) { ElMessage.error("测试点尚未加载，请重试"); return false; }
+  if (!cases.value.length) { ElMessage.warning("至少添加一个测试点"); return false; }
+  if (new Set(cases.value.map(item => item.caseNo)).size !== cases.value.length) {
+    ElMessage.warning("测试点编号不能重复"); return false;
+  }
+  saving.value = true;
+  try {
+    if (problemId.value) {
+      const changes = cases.value.filter(item => {
+        const original = item.id ? originalCases.get(item.id) : undefined;
+        return !original || (item.loaded && (item.caseNo !== original.caseNo || item.input !== original.input
+          || item.output !== original.output || item.publicInput !== original.publicInput));
+      }).map(item => ({ id: item.id, caseNo: item.caseNo, input: item.input ?? "",
+        output: item.output ?? "", publicInput: item.publicInput ?? "" }));
+      if (changes.length || deletedCaseIds.size) {
+        const summaries = await post<TestCase[]>(`${casesEndpoint.value}/changes`,
+          { changes, deletedIds: [...deletedCaseIds] });
+        // The changes endpoint returns metadata. Keep the saved bodies visible and reset the diff baseline.
+        const savedCases = cases.value;
+        rememberCases(summaries.map(summary => ({
+          ...savedCases.find(item => item.id === summary.id || (!item.id && item.caseNo === summary.caseNo)),
+          ...summary,
+        })), true);
+      }
+    } else {
+      await put(casesEndpoint.value, { testCases: cases.value.map(item => ({ caseNo: item.caseNo,
+        input: item.input ?? "", output: item.output ?? "", publicInput: item.publicInput ?? "" })) });
+    }
+    if (showSuccess) ElMessage.success("测试点已保存");
+    return true;
+  } catch (cause) { ElMessage.error(cause instanceof Error ? cause.message : "保存测试点失败"); return false; }
+  finally { saving.value = false; }
 }
 async function finish() {
   if (!await saveCases(false)) return;
@@ -140,7 +185,7 @@ async function importZip(overwrite: boolean) {
     const importedCases = problemId.value
       ? await get<TestCase[]>(casesEndpoint.value)
       : result?.testCases ?? (await get<{ testCases: TestCase[] }>(`/api/admin/v1/problem-drafts/${draftId.value}`)).testCases;
-    cases.value=importedCases.map(normalizeCase);importMessage.value=`${overwrite?"覆盖":"追加"}导入完成`;ElMessage.success(importMessage.value);
+    rememberCases(importedCases, true);importMessage.value=`${overwrite?"覆盖":"追加"}导入完成`;ElMessage.success(importMessage.value);
   } catch(cause){importMessage.value=imported?"测试点已导入，但列表刷新失败。请刷新页面查看，勿重复导入。":cause instanceof Error?cause.message:"ZIP 导入失败";ElMessage.error(importMessage.value);}
   finally{importBusy.value=false;}
 }
@@ -152,8 +197,8 @@ watch(()=>route.fullPath,()=>{void initialize();},{immediate:true});
   <main class="problem-editor page-container"><el-skeleton v-if="loading&&!ready" :rows="10" animated/><template v-else-if="ready"><el-steps :active="step" finish-status="success" simple><el-step title="题目内容"/><el-step title="测试数据"/></el-steps>
     <section v-if="step===0" class="editor-panel"><el-form label-position="top"><div class="two-col"><el-form-item label="题目名称" required><el-input v-model="form.title" maxlength="200"/></el-form-item><div class="two-col"><el-form-item label="时间限制（毫秒）"><el-input-number v-model="form.timeLimit" :min="100" :max="10000"/></el-form-item><el-form-item label="内存限制（MB）"><el-input-number v-model="form.memoryLimit" :min="16" :max="1024"/></el-form-item></div></div><div class="two-col"><el-form-item label="难度"><el-select v-model="form.difficulty"><el-option v-for="item in [{v:1,l:'入门'},{v:2,l:'简单'},{v:3,l:'中等'},{v:4,l:'困难'},{v:5,l:'地狱'}]" :key="item.v" :value="item.v" :label="item.l"/></el-select></el-form-item><el-form-item label="所属文件夹"><el-select v-model="form.folderId" clearable filterable placeholder="搜索题目文件夹" aria-label="搜索题目文件夹"><el-option v-for="folder in folders" :key="folder.id" :label="folder.name" :value="folder.id"/></el-select></el-form-item></div><div class="tag-row"><el-tag v-for="tag in tags" :key="tag" closable @close="tags=tags.filter((item)=>item!==tag)">{{tag}}</el-tag><el-input v-model="tagInput" class="tag-input" placeholder="输入标签后回车" @keyup.enter="addTag"/><el-button @click="addTag">添加标签</el-button></div><el-form-item label="题面（支持 HTML 和 LaTeX）" required><HtmlMathEditor v-model="form.statement" :rows="18" :height="355.2" aria-label="题面内容"/></el-form-item><div class="two-col"><el-form-item label="输入格式"><HtmlMathEditor v-model="form.inputFormat" :rows="10" aria-label="输入格式内容"/></el-form-item><el-form-item label="输出格式"><HtmlMathEditor v-model="form.outputFormat" :rows="10" aria-label="输出格式内容"/></el-form-item></div><el-form-item label="教师开放范围"><el-radio-group v-model="form.accessScope"><el-radio-button label="所有人" value="ALL"/><el-radio-button label="本专业" value="MAJOR"/><el-radio-button label="私有" value="PRIVATE"/></el-radio-group></el-form-item><el-form-item v-if="form.accessScope==='MAJOR'" label="所属专业"><el-select v-model="form.majorId"><el-option v-for="major in majors" :key="major.id" :value="major.id" :label="`${major.name}（${major.code}）`"/></el-select></el-form-item><div class="two-col"><el-form-item label="学生题库状态"><el-select v-model="form.studentPublishStatus"><el-option label="已发布" value="PUBLISHED"/><el-option label="未发布" value="DRAFT"/></el-select></el-form-item><el-form-item label="后台可见"><el-switch v-model="form.isPublic" active-text="公开" inactive-text="私有"/></el-form-item></div>
       <el-divider content-position="left">样例</el-divider><el-card v-for="(sample,index) in form.samples" :key="index" shadow="never" class="case-card sample-card"><template #header><div class="case-heading"><strong>样例 {{index+1}}</strong><el-button link type="danger" @click="removeSample(index)">删除</el-button></div></template><div class="two-col"><el-form-item label="输入"><el-input v-model="sample.input" type="textarea" :rows="4"/></el-form-item><el-form-item label="输出"><el-input v-model="sample.output" type="textarea" :rows="4"/></el-form-item></div><el-form-item label="说明"><el-input v-model="sample.explanation" type="textarea" :rows="2"/></el-form-item></el-card><el-button plain @click="addSample">添加样例</el-button>
-      <el-divider content-position="left">特殊评测与通信题</el-divider><el-form-item label="评测方式"><el-switch v-model="form.communication.enabled" active-text="通信题" inactive-text="普通题 / SPJ"/></el-form-item><template v-if="form.communication.enabled"><el-alert type="info" :closable="false" title="通信题会分别启动发送方和接收方；通信数据与检查器源代码按题目配置保存。"/><div class="two-col"><el-form-item label="消息字节上限"><el-input-number v-model="form.communication.maxMessageBytes" :min="1" :max="1048576"/></el-form-item><el-form-item label="允许空消息"><el-switch v-model="form.communication.allowEmptyMessage"/></el-form-item></div><el-form-item label="信道程序（C++17）"><CodeEditor v-model="form.communication.channelSource" language="cpp"/></el-form-item><el-form-item label="最终检查器（C++17）"><CodeEditor v-model="form.communication.checkerSource" language="cpp"/></el-form-item></template><el-form-item v-else label="SPJ 检查器（C++17，留空使用默认比较）"><CodeEditor v-model="form.checkerSource" language="cpp"/></el-form-item></el-form><div class="editor-actions"><el-button @click="router.replace(basePath)">取消</el-button><el-button type="primary" :loading="saving" @click="saveBasic()">保存并编辑测试点</el-button></div></section>
-    <section v-else class="editor-panel"><div class="testcase-toolbar"><div><h2>测试数据</h2><p>测试点编号必须唯一。通信题可填写接收方公开数据。</p></div><label class="upload-button"><input type="file" accept=".zip" :disabled="importBusy" @change="chooseZip">导入 ZIP</label><el-button @click="addCase">添加测试点</el-button></div><el-alert v-if="importMessage" :type="importBusy?'info':importMessage.includes('失败')?'error':'success'" :closable="false" :title="importMessage"><template #default><div v-if="importBusy">{{uploadProgress===null?'等待上传…':`上传 ${uploadProgress}%`}}<span v-if="currentImport"> · 正在处理第 {{currentImport.current}} 个测试点</span></div></template></el-alert><el-empty v-if="!cases.length" description="还没有测试数据，请手动添加或导入 ZIP"/><el-card v-for="(item,index) in cases" :key="item.id??`${item.caseNo}-${index}`" shadow="never" class="case-card"><template #header><div class="case-heading"><strong>测试点 <el-input-number v-model="item.caseNo" :min="1" :max="100000" size="small"/></strong><el-button link type="danger" @click="removeCase(index)">删除</el-button></div></template><div class="two-col"><el-form-item label="输入数据"><el-input v-model="item.input" type="textarea" :rows="5"/></el-form-item><el-form-item v-if="!form.communication.enabled" label="标准输出"><el-input v-model="item.output" type="textarea" :rows="5"/></el-form-item></div><el-form-item v-if="form.communication.enabled" label="接收方公开输入（可选）"><el-input v-model="item.publicInput" type="textarea" :rows="4"/></el-form-item><el-form-item v-if="form.communication.enabled" label="标准输出（可选）"><el-input v-model="item.output" type="textarea" :rows="3"/></el-form-item></el-card><div class="editor-actions"><el-button @click="step=0">上一步</el-button><el-button :loading="saving" @click="saveCases()">保存测试数据</el-button><el-button type="primary" :loading="saving" @click="finish">{{problemId?'完成':'创建题目'}}</el-button></div></section>
+      <el-divider content-position="left">特殊评测与通信题</el-divider><el-form-item label="评测方式"><el-switch v-model="form.communication.enabled" active-text="通信题" inactive-text="普通题 / SPJ"/></el-form-item><template v-if="form.communication.enabled"><el-alert type="info" :closable="false" title="通信题会分别启动发送方和接收方；通信数据与检查器源代码按题目配置保存。"/><div class="two-col"><el-form-item label="消息字节上限"><el-input-number v-model="form.communication.maxMessageBytes" :min="1" :max="1048576"/></el-form-item><el-form-item label="允许空消息"><el-switch v-model="form.communication.allowEmptyMessage"/></el-form-item></div><el-form-item label="信道程序（C++17）"><CodeEditor v-model="form.communication.channelSource" language="cpp"/></el-form-item><el-form-item label="最终检查器（C++17）"><CodeEditor v-model="form.communication.checkerSource" language="cpp"/></el-form-item></template><el-form-item v-else label="SPJ 检查器（C++17，留空使用默认比较）"><CodeEditor v-model="form.checkerSource" language="cpp"/></el-form-item></el-form><div class="editor-actions"><el-button @click="router.replace(basePath)">取消</el-button><template v-if="problemId"><el-button :loading="saving" @click="saveBasic(true)">保存题目并查看测试点</el-button><el-button type="primary" :loading="saving" @click="saveBasic(false)">保存题目</el-button></template><el-button v-else type="primary" :loading="saving" @click="saveBasic(true)">保存并编辑测试点</el-button></div></section>
+    <section v-else class="editor-panel"><div class="testcase-toolbar"><div><h2>测试数据</h2><p>测试点编号必须唯一。通信题可填写接收方公开数据。</p></div><label class="upload-button"><input type="file" accept=".zip" :disabled="importBusy" @change="chooseZip">导入 ZIP</label><el-button @click="addCase">添加测试点</el-button></div><el-alert v-if="importMessage" :type="importBusy?'info':importMessage.includes('失败')?'error':'success'" :closable="false" :title="importMessage"><template #default><div v-if="importBusy">{{uploadProgress===null?'等待上传…':`上传 ${uploadProgress}%`}}<span v-if="currentImport"> · 正在处理第 {{currentImport.current}} 个测试点</span></div></template></el-alert><el-empty v-if="!cases.length" description="还没有测试数据，请手动添加或导入 ZIP"/><el-card v-for="(item,index) in cases" :key="item.id??`${item.caseNo}-${index}`" shadow="never" class="case-card"><template #header><div class="case-heading"><strong>测试点 <el-input-number v-model="item.caseNo" :min="1" :max="100000" size="small" :disabled="!item.loaded"/></strong><el-button link type="danger" @click="removeCase(index)">删除</el-button></div></template><div class="two-col"><el-form-item label="输入数据"><el-input v-model="item.input" type="textarea" :rows="5"/></el-form-item><el-form-item v-if="!form.communication.enabled" label="标准输出"><el-input v-model="item.output" type="textarea" :rows="5"/></el-form-item></div><el-form-item v-if="form.communication.enabled" label="接收方公开输入（可选）"><el-input v-model="item.publicInput" type="textarea" :rows="4"/></el-form-item><el-form-item v-if="form.communication.enabled" label="标准输出（可选）"><el-input v-model="item.output" type="textarea" :rows="3"/></el-form-item></el-card><div class="editor-actions"><el-button @click="step=0">上一步</el-button><el-button :loading="saving" @click="saveCases()">保存测试数据</el-button><el-button type="primary" :loading="saving" @click="finish">{{problemId?'完成':'创建题目'}}</el-button></div></section>
   </template></main>
 </template>
 

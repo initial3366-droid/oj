@@ -3,9 +3,9 @@ import { computed, onUnmounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { createContestMessageRequestId, getContestMessages, sendContestMessage, type ContestMessage, type ContestMessageFeed } from "../../api/contestMessages";
 import { formatDisplayDateTime } from "../../lib/format";
-import { adminWsClient } from "../../utils/websocket";
+import { adminWsClient, teacherWsClient } from "../../utils/websocket";
 
-const props = defineProps<{ contestId: number }>();
+const props = defineProps<{ contestId: number; teacher?: boolean }>();
 const messages = ref<ContestMessage[]>([]); const feed = ref<ContestMessageFeed | null>(null); const error = ref(""); const loading = ref(false);
 const selected = ref<number | null>(null); const mode = ref<"reply" | "broadcast">("reply"); const drafts = ref<Record<string, string>>({});
 const sending = ref(false); const sendError = ref(""); const sent = ref(""); let unsubscribe: (() => void) | undefined; let cursor = 0; let again = false; let request: { key: string; id: string } | null = null;
@@ -27,7 +27,7 @@ async function refresh() {
   loading.value = true;
   try {
     let more = true;
-    while (more) { const result = await getContestMessages(props.contestId, cursor, true); feed.value = result; merge(result.messages); if (result.messages.length) cursor = result.messages[result.messages.length - 1].id; more = result.hasMore && result.messages.length > 0; }
+    while (more) { const result = await getContestMessages(props.contestId, cursor, true, props.teacher); feed.value = result; merge(result.messages); if (result.messages.length) cursor = result.messages[result.messages.length - 1].id; more = result.hasMore && result.messages.length > 0; }
     error.value = "";
   } catch (cause) { error.value = cause instanceof Error ? cause.message : "比赛消息加载失败"; }
   finally { loading.value = false; if (again) { again = false; void refresh(); } }
@@ -38,7 +38,7 @@ async function send() {
   const key = `${draftKey.value}:${content}`; if (request?.key !== key) request = { key, id: createContestMessageRequestId() };
   sending.value = true; sendError.value = ""; sent.value = "";
   try {
-    await sendContestMessage(props.contestId, content, request.id, mode.value === "broadcast" ? "BROADCAST" : "REPLY", selectedId.value ?? undefined);
+    await sendContestMessage(props.contestId, content, request.id, mode.value === "broadcast" ? "BROADCAST" : "REPLY", selectedId.value ?? undefined, props.teacher);
     drafts.value = { ...drafts.value, [draftKey.value]: "" }; request = null; sent.value = mode.value === "broadcast" ? "广播已发送，所有报名选手可接收并在刷新后补看。" : "回复已发送，仅该选手可查看。"; await refresh();
   } catch (cause) { sendError.value = cause instanceof Error ? cause.message : "发送失败，请重试"; }
   finally { sending.value = false; }
@@ -46,7 +46,7 @@ async function send() {
 watch(() => props.contestId, (id) => {
   unsubscribe?.(); messages.value = []; feed.value = null; error.value = ""; cursor = 0; again = false;
   if (!id) return;
-  unsubscribe = adminWsClient.subscribeContestMessages((event) => { if (event.contestId === id) merge([event.message]); }, () => { void refresh(); }, (connected) => { if (!connected) error.value ||= "消息连接已断开，正在重连"; });
+  unsubscribe = (props.teacher ? teacherWsClient : adminWsClient).subscribeContestMessages((event) => { if (event.contestId === id) merge([event.message]); }, () => { void refresh(); }, (connected) => { if (!connected) error.value ||= "消息连接已断开，正在重连"; });
   void refresh();
 }, { immediate: true });
 onUnmounted(() => unsubscribe?.());

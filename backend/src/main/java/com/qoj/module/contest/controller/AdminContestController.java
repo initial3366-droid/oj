@@ -20,6 +20,7 @@ import com.qoj.module.contest.vo.ContestProblemVO;
 import com.qoj.module.contest.vo.ContestRegistrationCandidateVO;
 import com.qoj.module.contest.vo.ContestRegistrationVO;
 import com.qoj.module.contest.vo.ContestVO;
+import com.qoj.module.contest.vo.ContestScoreboardVO;
 import com.qoj.security.AuthUser;
 import com.qoj.security.CurrentUser;
 import com.qoj.security.policy.ContestAccessPolicy;
@@ -207,6 +208,18 @@ public class AdminContestController {
     ) {
         contestService.removeRegistration(id, registrationId);
         return ApiResponse.ok();
+    }
+
+    /** Independent scoreboard for authorized managers, including class information. */
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','TEACHER')")
+    @GetMapping("/{id}/management-scoreboard")
+    public ApiResponse<ContestScoreboardVO> independentManagementScoreboard(@PathVariable long id) {
+        return ApiResponse.ok(contestService.independentManagementScoreboard(id));
+    }
+
+    @GetMapping("/{id}/scoreboard")
+    public ApiResponse<ContestScoreboardVO> scoreboard(@PathVariable long id) {
+        return ApiResponse.ok(contestService.managementScoreboard(id));
     }
 
     @GetMapping("/{id}/scoreboard/export")

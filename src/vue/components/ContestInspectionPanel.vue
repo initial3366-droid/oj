@@ -2,13 +2,15 @@
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { adminGet } from "../../admin/api/adminClient";
+import { teacherGet } from "../../teacher/teacherApi";
 import { adminPath } from "../../utils/adminPath";
 import { formatDisplayDateTime } from "../../lib/format";
 type QueueStats = { waiting: number; judging: number; finished: number; total: number };
 type Failure = { id: number; displayName?: string; username?: string; problemTitle?: string; contestProblemLabel?: string; status: string; errorMessage?: string; judgeMessage?: string };
 type Page = { total: number; list: Failure[] };
 type Snapshot = { stats: QueueStats; failures: number; recentFailures: Failure[]; updatedAt: string };
-const props = defineProps<{ contestId: number; active?: boolean }>();
+const props = defineProps<{ contestId: number; active?: boolean; teacher?: boolean }>();
+function get<T>(path: string) { return props.teacher ? teacherGet<T>(path) : adminGet<T>(adminPath(path)); }
 const loading = ref(false); const error = ref(""); const snapshot = ref<Snapshot | null>(null); let timer: number | undefined; let disposed = false;
 async function load() {
   if (!props.active || disposed) return;
@@ -16,9 +18,9 @@ async function load() {
   try {
     const query = new URLSearchParams({ contestId: String(props.contestId), page: "1", pageSize: "5", sortBy: "updatedAt", sortOrder: "desc" });
     const [stats, systemErrors, failed] = await Promise.all([
-      adminGet<QueueStats>(adminPath(`/api/admin/v1/submission-queue/stats?contestId=${props.contestId}`)),
-      adminGet<Page>(adminPath(`/api/admin/v1/submissions?${query}&status=SE`)),
-      adminGet<Page>(adminPath(`/api/admin/v1/submissions?${query}&status=FAILED`)),
+      get<QueueStats>(`/api/admin/v1/submission-queue/stats?contestId=${props.contestId}`),
+      get<Page>(`/api/admin/v1/submissions?${query}&status=SE`),
+      get<Page>(`/api/admin/v1/submissions?${query}&status=FAILED`),
     ]);
     if (![stats.waiting, stats.judging, stats.finished, stats.total, systemErrors.total, failed.total].every(Number.isFinite)) throw new Error("巡查统计暂不可用，请检查访问权限后重试");
     snapshot.value = { stats, failures: systemErrors.total + failed.total, recentFailures: [...systemErrors.list, ...failed.list], updatedAt: new Date().toISOString() }; error.value = "";

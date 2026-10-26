@@ -35,14 +35,14 @@ function cellClass(scoreboard: ContestScoreboard, item?: ContestScoreboardCell) 
   if (!item) return "scoreboard-cell-empty";
   if (item.hasHiddenSubmissions) return "scoreboard-cell-hidden";
   if (item.accepted) return "scoreboard-cell-accepted";
-  if (scoreboard.type === "OI" && item.score > 0) return "scoreboard-cell-partial";
+  if (scoreboard.type !== "ACM" && item.score > 0) return "scoreboard-cell-partial";
   if (item.attempts > 0) return "scoreboard-cell-failed";
   return "scoreboard-cell-empty";
 }
 function cellText(scoreboard: ContestScoreboard, item?: ContestScoreboardCell) {
   if (!item) return "-";
   if (item.hasHiddenSubmissions) return `+ ${item.hiddenAttempts ?? 0} tries`;
-  if (scoreboard.type === "OI") return item.attempts > 0 ? item.score : "-";
+  if (scoreboard.type !== "ACM") return item.attempts > 0 ? item.score : "-";
   if (item.accepted) return `+${item.attempts > 1 ? item.attempts - 1 : ""}`;
   return item.attempts > 0 ? `-${item.attempts}` : "-";
 }
@@ -68,9 +68,9 @@ usePageTitle(computed(() => scoreboard.value ? `${scoreboard.value.title} - 实�
         <el-table-column label="Medal" width="88" align="center"><template #default="{ row }"><el-tag v-if="row.medal" :type="medalType(row.medal)">{{ medalText(row.medal) }}</el-tag><span v-else>-</span></template></el-table-column>
         <el-table-column label="User" width="220" align="center"><template #default="{ row }"><div class="scoreboard-user"><strong>{{ row.displayName || row.userId }}</strong><small>个人{{ row.starred ? " · 打星" : "" }}</small></div></template></el-table-column>
         <el-table-column prop="solved" label="Solved" width="88" align="center" />
-        <el-table-column :label="scoreboard.type === 'OI' ? 'Score' : 'Penalty'" prop="penalty" width="96" align="center"><template #default="{ row }">{{ scoreboard.type === "OI" ? row.score : row.penalty }}</template></el-table-column>
+        <el-table-column :label="scoreboard.type !== 'ACM' ? 'Score' : 'Penalty'" prop="penalty" width="96" align="center"><template #default="{ row }">{{ scoreboard.type !== "ACM" ? row.score : row.penalty }}</template></el-table-column>
         <el-table-column v-for="problem in scoreboard.problems" :key="problemId(problem)" :label="problem.label" min-width="76" align="center">
-          <template #header><div :title="problem.title"><strong>{{ problem.label }}</strong><small v-if="scoreboard.type === 'OI'">{{ problem.score ?? 0 }}</small></div></template>
+          <template #header><div :title="problem.title"><strong>{{ problem.label }}</strong><small v-if="scoreboard.type !== 'ACM'">{{ problem.score ?? 0 }}</small></div></template>
           <template #default="{ row }"><div :class="['scoreboard-cell', cellClass(scoreboard, cell(row, problem))]">{{ cellText(scoreboard, cell(row, problem)) }}</div></template>
         </el-table-column>
       </el-table>

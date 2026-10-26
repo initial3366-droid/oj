@@ -9,5 +9,7 @@ public class AgentApprovalRequiredException extends RuntimeException {
         this.approval = approval;
     }
 
-    public AgentRunState.Approval approval() { return approval; }
+    public AgentRunState.Approval approval() {
+        return approval;
+    }
 }

@@ -49,6 +49,8 @@ public record ContestVO(
     Long sourceContestId,
     String allowedIpRanges,
     Boolean hidden,
-    Long activeParticipantCount
+    Long activeParticipantCount,
+    Boolean scoreboardEnabled,
+    Boolean resultsPublished
 ) {
 }

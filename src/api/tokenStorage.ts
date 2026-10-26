@@ -36,11 +36,9 @@ export function readAuthToken(portal: Portal, kind: TokenKind = 'access'): strin
   return storage.getItem(keys[portal][kind]);
 }
 
-/** 登录显式指定存储方式；令牌轮换保持原来的存储方式。密码不进入浏览器存储。 */
-export function storeAuthTokens(portal: Portal, accessToken: string, refreshToken?: string, rememberMe?: boolean) {
-  const persistent = rememberMe ?? Boolean(window.localStorage.getItem(keys[portal].access)
-    && !window.sessionStorage.getItem(keys[portal].access));
-  const storage = persistent ? window.localStorage : window.sessionStorage;
+/** 登录及令牌轮换统一持久存储，截止时间由后端令牌控制。密码不进入浏览器存储。 */
+export function storeAuthTokens(portal: Portal, accessToken: string, refreshToken?: string, _rememberMe?: boolean) {
+  const storage = window.localStorage;
   clearAuthTokens(portal);
   storage.setItem(keys[portal].access, accessToken);
   if (refreshToken) storage.setItem(keys[portal].refresh, refreshToken);

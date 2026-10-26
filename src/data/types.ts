@@ -13,7 +13,7 @@ export type Difficulty = "入门" | "简单" | "中等" | "困难" | "地狱";
 /**
  * 比赛类型类型别名，明确该模块内部及 API 边界使用的数据结构。
  */
-export type ContestType = "ACM" | "OI";
+export type ContestType = "ACM" | "OI" | "LANQIAO";
 /**
  * 比赛状态类型别名，明确该模块内部及 API 边界使用的数据结构。
  */

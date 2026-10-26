@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
  * JWT 令牌签发与验证服务。
  *
  * 双令牌体系：Access Token（默认15分钟）+ Refresh Token（固定会话截止时间）。
- * 所有入口统一 8 小时，记住登录仅影响浏览器存储方式。
+ * 所有入口统一 48 小时，浏览器默认持久保存登录状态。
  * Token Family 机制：每次刷新产生新 refresh token 但共享 familyId，用于检测重放攻击。
  * 签名算法：HMAC-SHA，Keys.hmacShaKeyFor 根据密钥长度自动选择 HS256/HS384/HS512。
  */
@@ -42,9 +42,9 @@ public class JwtService {
         return issueTokens(user, false);
     }
 
-    /** 登录截止时间固定，刷新不会重新计算 8 小时。 */
+    /** 登录截止时间固定，刷新不会重新计算 48 小时。 */
     public TokenPair issueTokens(AuthUser user, boolean rememberMe) {
-        long sessionExpiresAt = Instant.now().getEpochSecond() + 8 * 3600;
+        long sessionExpiresAt = Instant.now().getEpochSecond() + 48 * 3600;
         return issueSessionTokens(user, UUID.randomUUID().toString(), sessionExpiresAt);
     }
 

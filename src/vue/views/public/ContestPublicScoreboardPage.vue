@@ -12,7 +12,7 @@ const scoreboard = ref<ContestPublicScoreboard | null>(null);
 const loading = ref(false);
 const message = ref("");
 const contestId = computed(() => Number(route.params.contestId));
-const isOi = computed(() => scoreboard.value?.contestType === "OI");
+const isOi = computed(() => scoreboard.value?.contestType !== "ACM");
 const showClass = computed(() => Boolean(scoreboard.value?.showClassOnScoreboard));
 const boardState = computed(() => scoreboard.value?.boardState ?? "LIVE");
 

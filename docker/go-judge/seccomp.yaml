@@ -1,0 +1,41 @@
+# Applied inside each sandbox, including compiler and checker processes.
+# exec/clone remain available to compiler drivers and JVM threads; cgroup pids
+# and network namespaces still apply to every descendant.
+default_action: allow
+syscalls:
+  - action: trap
+    names:
+      - ptrace
+      - process_vm_readv
+      - process_vm_writev
+      - mount
+      - umount2
+      - pivot_root
+      - chroot
+      - setns
+      - unshare
+      - bpf
+      - perf_event_open
+      - userfaultfd
+      - keyctl
+      - add_key
+      - request_key
+      - init_module
+      - finit_module
+      - delete_module
+      - kexec_load
+      - kexec_file_load
+      - reboot
+      - swapon
+      - swapoff
+      - open_by_handle_at
+      - io_uring_setup
+      - io_uring_enter
+      - io_uring_register
+  - action: errno
+    names:
+      - connect
+      - bind
+      - listen
+      - accept
+      - accept4

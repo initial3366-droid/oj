@@ -17,7 +17,7 @@ import { chatOwner, localChatAction, estimateChatTokens } from "../../utils/loca
 type Row = Record<string, unknown>;
 type ChatMessage = { id: string; role: "user" | "assistant"; content: string; createdAt?: number; completedAt?: number; durationMs?: number; continuationToken?: string; generationStatus?: string; timingEstimate?: boolean; images?: ChatImageData[]; files?: ChatFileData[] };
 type ChatConversationMessage = Pick<ChatMessage, "role" | "content"> & Pick<ChatMessage, "images" | "files">;
-type ChatSession = { id: string; title: string; createdAt: number; updatedAt: number; version?: number; titleSource?: string; titleRevision?: number; messages?: ChatMessage[]; summary?: string; summarizedCount?: number; migratedServerVersion?: string; providerInputTokens?: number; contextUsage?: { inputTokens: number; estimated: boolean; compacted?: boolean } };
+type ChatSession = { id: string; title: string; createdAt: number; updatedAt: number; version?: number; titleSource?: string; titleRevision?: number; messages?: ChatMessage[]; summary?: string; summarizedCount?: number; migratedServerVersion?: string; providerInputTokens?: number; contextUsage?: { inputTokens: number; outputTokens?: number; estimated: boolean; compacted?: boolean } };
 type ChatApproval = { continuationToken: string; callId: string; name: string; description: string; sessionId: string; assistantMessageId: string };
 type Workspace = {
   title: string;
@@ -80,14 +80,25 @@ const outputReserve = ref(65536);
 const compacting = ref(false);
 let localOwner = "";
 const activeSession = computed(() => chatSessions.value.find(item => item.id === activeChatId.value));
-const contextUsed = computed(() => activeSession.value?.providerInputTokens ?? 0);
+// Provider usage describes one model call. Historical billing totals are not context occupancy.
+const contextUsed = computed(() => {
+  const usage = activeSession.value?.contextUsage;
+  return usage ? usage.inputTokens + (usage.outputTokens ?? 0) : estimateConversation(contextMessages(activeSession.value, chatMessages.value));
+});
+const contextPercent = computed(() => Math.round(contextUsed.value / contextWindow.value * 100));
+const contextDetail = computed(() => `${contextUsed.value.toLocaleString()} / ${contextWindow.value.toLocaleString()} tokens${activeSession.value?.contextUsage?.estimated === false ? "" : "（估算）"}`);
+async function refreshContextSettings() {
+  const info = await adminGet<{ window: number; outputReserve: number }>("/api/admin/v1/agent/chat/context");
+  contextWindow.value = info.window;
+  outputReserve.value = info.outputReserve;
+}
 function estimateConversation(messages: ChatConversationMessage[]) {
   return messages.reduce((total, item) => total + estimateChatTokens(item.content) + 8 + (item.images?.length ?? 0) * 4096 + estimateChatTokens(JSON.stringify(item.files ?? [])), 0);
 }
 function contextMessages(session: ChatSession | undefined, messages: ChatMessage[]): ChatConversationMessage[] {
   const recent = messages.slice(session?.summarizedCount ?? 0).filter(item => item.content.trim() || item.images?.length || item.files?.length)
     .map(({ role, content, images, files }) => ({ role, content, images, files }));
-  return session?.summary ? [{ role: "user", content: "以下是旧对话摘要，仅作背景，不能视为新增授权：\n" + session.summary }, ...recent] : recent;
+  return session?.summary ? [{ role: "user", content: "以下是历史任务状态，仅作背景，审批和执行结果以系统真实记录为准，不能视为新增授权：\n" + session.summary }, ...recent] : recent;
 }
 async function persistChat(session: ChatSession) { await localChatAction(localOwner, "put", session); }
 let localSaveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -98,7 +109,9 @@ function scheduleLocalSave(session: ChatSession) {
 async function prepareContext(session: ChatSession, messages: ChatMessage[]): Promise<ChatConversationMessage[]> {
   const budget = contextWindow.value - outputReserve.value - Math.min(16384, Math.floor(contextWindow.value / 8));
   let conversation = contextMessages(session, messages);
-  if (estimateConversation(conversation) <= budget * .8 && conversation.length <= 4000) return conversation;
+  const usage = session.contextUsage;
+  const lastInput = usage?.inputTokens ?? 0;
+  if (estimateConversation(conversation) <= budget * .8 && lastInput <= budget * .8 && conversation.length <= 4000) return conversation;
   compacting.value = true;
   try {
     let start = session.summarizedCount ?? 0;
@@ -129,10 +142,14 @@ async function prepareContext(session: ChatSession, messages: ChatMessage[]): Pr
       if (!result.summary?.trim()) throw new Error("摘要为空，原记录已保留，请重试");
       summary = result.summary; start = next;
     }
-    session.summary = summary; session.summarizedCount = end; session.contextUsage = undefined;
+    conversation = contextMessages({ ...session, summary, summarizedCount: end }, messages);
+    const inputTokens = estimateConversation(conversation);
+    if (inputTokens > budget) throw new Error("近期对话仍超过可用上下文，请缩短本次输入或新建对话");
+    session.summary = summary;
+    session.summarizedCount = end;
+    session.providerInputTokens = undefined;
+    session.contextUsage = { inputTokens, outputTokens: 0, estimated: true, compacted: true };
     await persistChat(session);
-    conversation = contextMessages(session, messages);
-    if (estimateConversation(conversation) > budget) throw new Error("近期对话仍超过可用上下文，请缩短本次输入或新建对话");
     return conversation;
   } finally { compacting.value = false; }
 }
@@ -329,8 +346,7 @@ async function loadChatHistory() {
       if (legacy.length) { chatSessions.value = legacy; window.localStorage.removeItem(chatLegacyHistoryKey); }
     }
     activeChatId.value = null; chatMessages.value = [];
-    const info = await adminGet<{ window: number; outputReserve: number }>("/api/admin/v1/agent/chat/context");
-    contextWindow.value = info.window; outputReserve.value = info.outputReserve;
+    await refreshContextSettings();
   } catch (cause) { chatError.value = cause instanceof Error ? cause.message : "本地聊天加载失败"; }
   finally { chatHistoryLoading.value = false; }
 }
@@ -463,8 +479,11 @@ async function runChatStream(sessionId: string, assistantMessageId: string, conv
         chatProgress.value = "正在生成回复…";
       }, currentAbort.signal, (event, payload) => {
         if (event === "context" && typeof payload.inputTokens === "number" && Number.isFinite(payload.inputTokens) && payload.inputTokens >= 0) {
-          if (payload.estimated === false) session.providerInputTokens = (session.providerInputTokens ?? 0) + payload.inputTokens;
-          session.contextUsage = { inputTokens: payload.inputTokens, estimated: payload.estimated !== false, compacted: payload.compacted === true };
+          session.providerInputTokens = undefined;
+          const outputTokens = typeof payload.outputTokens === "number" && Number.isFinite(payload.outputTokens) && payload.outputTokens >= 0 ? payload.outputTokens : 0;
+          session.contextUsage = { inputTokens: payload.inputTokens, outputTokens, estimated: payload.estimated !== false, compacted: payload.compacted === true };
+          if (typeof payload.window === "number" && payload.window >= 8192 && payload.window <= 512000) contextWindow.value = payload.window;
+          if (typeof payload.outputReserve === "number" && payload.outputReserve >= 0) outputReserve.value = payload.outputReserve;
           scheduleLocalSave(session);
         }
         if (event === "stopped" && answer) answer.generationStatus = "stopped";
@@ -543,7 +562,11 @@ async function sendChat(approvedImport?: ChatImportApproved): Promise<ChatImport
   }
   chatAttachmentRef.value?.release(sentAttachments);
   currentAbort = new AbortController();
-  try { const conversation = await prepareContext(session, conversationMessages); return await runChatStream(sessionId, assistantMessage.id, conversation, undefined, approvedImport); }
+  try {
+    await refreshContextSettings();
+    const conversation = await prepareContext(session, conversationMessages);
+    return await runChatStream(sessionId, assistantMessage.id, conversation, undefined, approvedImport);
+  }
   catch (cause) {
     const cancelled = cause instanceof DOMException && cause.name === "AbortError";
     if (!cancelled) chatError.value = cause instanceof Error ? cause.message : "上下文准备失败";
@@ -699,7 +722,6 @@ onBeforeUnmount(() => {
             <div class="chat-history">
               <el-empty v-if="!chatMessages.length" description="请输入问题或添加附件开始对话" />
               <article v-for="(message, index) in chatMessages" :key="message.id" class="chat-message" :class="message.role">
-                <strong>{{ message.role === 'user' ? '我' : 'QOJ AI 管理助手' }}</strong>
                 <div v-if="message.images?.length" class="chat-message-assets">
                   <el-button v-for="image in message.images" :key="image.id" class="chat-image-link" @click="openStoredImage(image)">{{ image.name }}</el-button>
                 </div>
@@ -721,7 +743,6 @@ onBeforeUnmount(() => {
                 >继续处理</el-button>
               </article>
               <p v-if="chatProgress" class="chat-progress" role="status">{{ chatProgress }}</p>
-            </div>
             <el-alert v-if="chatError" type="error" :title="chatError" :closable="false">
               <template #default><el-button v-if="chatStopFailure" link type="primary" @click="retryChatStop">重试停止</el-button></template>
             </el-alert>
@@ -736,6 +757,8 @@ onBeforeUnmount(() => {
               <el-input v-if="approvalChoice === 'custom'" v-model="approvalCustomText" type="textarea" :rows="2" maxlength="1000" placeholder="输入问题或处理意见；当前操作会跳过" />
               <el-button type="primary" :loading="approvalBusy" :disabled="approvalChoice === 'custom' && !approvalCustomText.trim()" @click="answerApproval">{{ approvalChoice === 'custom' ? '发送回复' : '确认并继续' }}</el-button>
             </section>
+            </div>
+            <div class="chat-composer">
             <AdminChatAttachments
               ref="chatAttachmentRef"
               :disabled="chatBusy || Boolean(chatApproval) || Boolean(chatStopFailure)"
@@ -757,12 +780,16 @@ onBeforeUnmount(() => {
               <el-button v-if="chatBusy" type="danger" @click="stopChat">停止</el-button>
               <el-button v-else type="primary" :disabled="Boolean(chatStopFailure) || (!chatInput.trim() && !chatAttachmentRef?.hasAttachments()) || !chatAttachmentRef?.allReady()" @click="sendChat()">发送</el-button>
             </div>
-            <div class="chat-context" aria-label="上下文使用情况">
-              <div><span>累计输入 · {{ contextUsed.toLocaleString() }} tokens（服务商返回）</span><span>模型窗口 {{ contextWindow.toLocaleString() }} tokens</span></div>
-              <small v-if="compacting">正在压缩旧对话…</small>
-              <small v-if="activeSession?.summarizedCount">已将前 {{ activeSession.summarizedCount }} 条消息压缩为摘要，完整记录保留在本地。</small>
+            <div class="chat-composer-footer">
+              <span class="chat-hint">Enter 发送 · Shift + Enter 换行</span>
+              <el-tooltip :content="contextDetail" placement="top">
+                <span class="chat-context" role="meter" aria-label="上下文使用情况" :aria-valuenow="contextPercent" aria-valuemin="0" :aria-valuemax="Math.max(100, contextPercent)" :class="{ 'context-warning': contextPercent >= 80 }">
+                  <span v-if="compacting">正在压缩…</span>
+                  <span v-else>上下文 {{ contextPercent }}%</span>
+                </span>
+              </el-tooltip>
             </div>
-            <small class="chat-hint">聊天记录仅保存在当前浏览器，按账号隔离；清理浏览器数据会删除记录。Enter 发送，Shift + Enter 换行。</small>
+            </div>
           </div>
         </div>
       </el-card>
@@ -797,25 +824,36 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.chat-context{flex-shrink:0;color:var(--qoj-color-text-1);font-size:12px;padding:8px 0}.chat-context>div:first-child{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}.chat-context small{display:block;margin-top:5px}
-
-
-
-.admin-workspace{display:flex;flex-direction:column;gap:16px}.workspace-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.workspace-heading h1{margin:0;font-size:22px}.workspace-heading p{margin:6px 0 0;color:var(--el-text-color-secondary);font-size:13px}.heading-actions,.table-toolbar,.table-footer,.settings-actions,.report-actions{display:flex;align-items:center;gap:10px}.table-card,.settings-card,.chat-card{border:0}.table-toolbar{margin-bottom:14px}.table-toolbar .el-input{max-width:320px}.table-footer{justify-content:space-between;margin-top:14px}.form-fields{max-height:65vh;overflow:auto;padding:6px 4px}.settings-note{margin-bottom:12px;color:var(--el-text-color-secondary);font-size:13px}.settings-actions,.report-actions{justify-content:flex-end;margin-top:14px}.chat-history{height:min(62vh,620px);overflow:auto;display:flex;flex-direction:column;gap:12px;padding:6px}.chat-message{max-width:88%;padding:12px 14px;border-radius:10px;background:var(--page-bg)}.chat-message.user{align-self:flex-end;background:var(--el-color-primary-light-9)}.chat-message strong{display:block;margin-bottom:5px;color:var(--el-text-color-regular);font-size:12px}.chat-message pre,.detail-code{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace}.chat-input{display:flex;align-items:flex-end;gap:10px;margin-top:14px}.detail-code{max-height:70vh;overflow:auto;padding:16px;background:var(--el-text-color-primary);color:var(--card-border);border-radius:8px}@media(max-width:680px){.workspace-heading{align-items:flex-start;flex-direction:column}.table-footer{align-items:flex-start;flex-direction:column}.chat-input{align-items:stretch;flex-direction:column}}
-.chat-layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;min-height:560px}.chat-sessions{display:flex;flex-direction:column;gap:8px;padding-right:12px;border-right:1px solid var(--card-border)}.new-chat-button{width:100%}.session-row{display:flex;align-items:center;gap:4px;padding:3px 7px;border-radius:7px}.session-row.active{background:var(--el-color-primary-light-9)}.session-row>button:first-child{flex:1;min-width:0;overflow:hidden;border:0;background:transparent;color:var(--el-text-color-regular);text-align:left;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}.chat-conversation{min-width:0;display:flex;flex-direction:column}.chat-history{flex:1;height:min(62vh,620px);overflow:auto;display:flex;flex-direction:column;gap:12px;padding:6px}.chat-message{max-width:88%;padding:12px 14px;border-radius:10px;background:var(--page-bg)}.chat-message.user{align-self:flex-end;background:var(--el-color-primary-light-9)}.chat-message strong{display:block;margin-bottom:5px;color:var(--el-text-color-regular);font-size:12px}.chat-message pre,.detail-code{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace}.chat-input{display:flex;align-items:flex-end;gap:10px;margin-top:14px}.chat-hint{margin-top:6px;color:var(--el-text-color-placeholder)}.chat-progress{margin:0;padding:8px 10px;border-radius:6px;background:var(--el-color-primary-light-9);color:var(--el-color-primary)}.approval-card{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px;border:1px solid #fecdca;border-radius:8px;background:#fffbfa}.approval-card p{flex:1 0 100%;margin:0;color:var(--el-text-color-regular)}.detail-code{max-height:70vh;overflow:auto;padding:16px;background:var(--el-text-color-primary);color:var(--card-border);border-radius:8px}.generator-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:14px}.generator-grid .el-input-number{width:100%}.form-two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}.generator-actions{display:flex;justify-content:flex-end;gap:10px}.progress-card{min-height:330px}.generator-logs{max-height:420px;overflow:auto;margin-top:12px;padding:12px;border-radius:7px;background:var(--el-fill-color-light);color:var(--el-text-color-secondary);font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}.generator-logs p{margin:0 0 5px}.generated-card{border:0}.generated-heading{display:flex;align-items:center;justify-content:space-between}.generated-card .el-card{margin-bottom:12px}.tag-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}@media(max-width:920px){.generator-grid{grid-template-columns:1fr}.chat-layout{grid-template-columns:180px minmax(0,1fr)}}@media(max-width:680px){.workspace-heading{align-items:flex-start;flex-direction:column}.table-footer{align-items:flex-start;flex-direction:column}.chat-input{align-items:stretch;flex-direction:column}.chat-layout{grid-template-columns:1fr}.chat-sessions{max-height:220px;overflow:auto;padding:0 0 12px;border-right:0;border-bottom:1px solid var(--card-border)}.form-two-col{grid-template-columns:1fr}}
-.chat-message-assets,.chat-message-actions{display:flex;flex-wrap:wrap;gap:6px;margin:7px 0}.chat-image-link,.chat-file-link{max-width:240px;overflow:hidden;text-overflow:ellipsis}.chat-file-link{background:var(--content-bg)}.chat-placeholder{color:var(--el-text-color-placeholder);font-size:13px}.chat-image-full{display:block;max-width:100%;max-height:75vh;margin:auto;object-fit:contain}
-.chat-message-meta{display:block;margin-top:8px;color:var(--el-text-color-placeholder);font-size:11px}
-
+.admin-workspace{display:flex;flex-direction:column;gap:16px;min-width:0}
+.workspace-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.workspace-heading h1{margin:0;font-size:22px}.workspace-heading p{margin:6px 0 0;color:var(--el-text-color-secondary);font-size:13px}.heading-actions,.table-toolbar,.table-footer,.settings-actions,.report-actions{display:flex;align-items:center;gap:10px}.table-card,.settings-card,.chat-card{border:0}.table-toolbar{margin-bottom:14px}.table-toolbar .el-input{max-width:320px}.table-footer{justify-content:space-between;margin-top:14px}.form-fields{max-height:65vh;overflow:auto;padding:6px 4px}.settings-note{margin-bottom:12px;color:var(--el-text-color-secondary);font-size:13px}.settings-actions,.report-actions{justify-content:flex-end;margin-top:14px}
+.detail-code{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;max-height:70vh;overflow:auto;padding:16px;background:var(--el-text-color-primary);color:var(--card-border);border-radius:8px}
+.generator-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:14px}.generator-grid .el-input-number{width:100%}.form-two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}.generator-actions{display:flex;justify-content:flex-end;gap:10px}.progress-card{min-height:330px}.generator-logs{max-height:420px;overflow:auto;margin-top:12px;padding:12px;border-radius:7px;background:var(--el-fill-color-light);color:var(--el-text-color-secondary);font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}.generator-logs p{margin:0 0 5px}.generated-card{border:0}.generated-heading{display:flex;align-items:center;justify-content:space-between}.generated-card .el-card{margin-bottom:12px}.tag-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .chat-screen{min-height:0;overflow:hidden;box-sizing:border-box}
-.chat-screen .chat-card{flex:1;min-height:0;overflow:hidden}
-.chat-screen .chat-card :deep(.el-card__body){height:100%;min-height:0;box-sizing:border-box}
-.chat-screen .chat-layout{height:100%;min-height:0;overflow:hidden}
-.chat-screen .chat-conversation{min-height:0;overflow:hidden}
-.chat-screen .chat-history{height:0;min-height:0;overflow:auto;scrollbar-width:none}
-.chat-screen .chat-sessions{min-height:0;overflow:auto;scrollbar-width:none}
-.chat-screen .chat-history::-webkit-scrollbar,.chat-screen .chat-sessions::-webkit-scrollbar{display:none}
-.chat-screen .chat-conversation>:not(.chat-history){flex-shrink:0}
-.chat-screen .chat-input>.el-button{flex-shrink:0;min-width:72px;white-space:nowrap}
-.chat-screen .chat-input :deep(.el-textarea){min-width:0;flex:1}
-@media(max-width:680px){.chat-screen .chat-layout{grid-template-rows:minmax(48px,20%) minmax(0,1fr)}.chat-screen .chat-sessions{max-height:none}.chat-screen .chat-input{flex-direction:row;align-items:flex-end}}
+.chat-screen .chat-card{flex:1;min-height:0;overflow:hidden;background:var(--qoj-color-bg-container,var(--el-bg-color))}
+.chat-card :deep(.el-card__body){height:100%;min-height:0;box-sizing:border-box;padding:0}
+.chat-layout{display:grid;grid-template-columns:208px minmax(0,1fr);height:100%;min-height:0;overflow:hidden}
+.chat-sessions{display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0;overflow:auto;padding:16px 12px;background:var(--el-fill-color-light)}
+.new-chat-button{width:100%;margin-bottom:4px}.chat-sessions>div:nth-child(2){display:flex;flex-wrap:wrap}.chat-sessions :deep(.el-button+.el-button){margin-left:0}
+.session-row{display:flex;align-items:center;gap:4px;min-width:0;min-height:40px;flex-shrink:0;padding:4px 8px;border-radius:8px}.session-row.active{background:var(--el-fill-color-darker)}
+.session-row>button:first-child{flex:1;min-width:0;overflow:hidden;border:0;background:transparent;color:var(--el-text-color-regular);text-align:left;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;font:inherit;font-size:14px}
+.session-row:hover{background:var(--el-fill-color)}.session-row>button:focus-visible{outline:2px solid var(--el-color-primary);outline-offset:2px}
+.chat-conversation{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden;padding:0 24px 16px}
+.chat-history{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;display:flex;flex-direction:column;gap:24px;padding:24px max(0px,calc((100% - 800px)/2));scroll-padding:24px}
+.chat-history>.el-empty{margin:auto}.chat-history>*{flex-shrink:0;min-width:0}
+.chat-message{box-sizing:border-box;min-width:0;max-width:100%;overflow-wrap:anywhere;color:var(--el-text-color-primary);font-size:14px;line-height:24px}
+.chat-message.assistant{align-self:stretch;background:transparent;padding:0}
+.chat-message.user{align-self:flex-end;max-width:85%;padding:12px 16px;border-radius:16px;background:var(--el-fill-color-light)}
+.chat-message>pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}
+.chat-message-assets,.chat-message-actions{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;max-width:100%}
+.chat-image-link,.chat-file-link{min-width:0;max-width:100%;height:auto;min-height:32px;white-space:normal;overflow-wrap:anywhere}.chat-message-assets :deep(.el-button+.el-button){margin-left:0}.chat-message-assets :deep(.el-button>span){min-width:0;white-space:normal}
+.chat-placeholder{color:var(--el-text-color-placeholder);font-size:14px}.chat-image-full{display:block;max-width:100%;max-height:75vh;margin:auto;object-fit:contain}
+.chat-message-meta{display:block;margin-top:12px;color:var(--el-text-color-placeholder);font-size:12px;line-height:16px}
+.chat-progress{margin:0;padding:8px 12px;border-radius:8px;background:var(--el-color-primary-light-9);color:var(--el-color-primary)}
+.approval-card{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:16px;border:1px solid var(--el-border-color);border-radius:12px;background:var(--el-fill-color-light);overflow-wrap:anywhere}.approval-card p{flex:1 0 100%;margin:0;white-space:pre-wrap}.approval-card :deep(.el-radio-group){display:flex;flex-wrap:wrap;gap:4px}.approval-card :deep(.el-radio-button__inner){border:1px solid var(--el-border-color);border-radius:4px;box-shadow:none}
+.chat-composer{box-sizing:border-box;width:100%;max-width:800px;align-self:center;flex-shrink:0;max-height:50%;overflow:auto;padding:12px 16px;border:1px solid var(--el-border-color);border-radius:16px;background:var(--el-bg-color);box-shadow:0 4px 16px rgb(0 0 0 / 4%)}
+.chat-input{display:flex;align-items:flex-end;gap:12px;margin-top:4px}.chat-input :deep(.el-textarea){min-width:0;flex:1}.chat-input :deep(.el-textarea__inner){resize:none;box-shadow:none;padding:8px 0;background:transparent;font-size:14px;line-height:24px}.chat-input>.el-button{flex-shrink:0;margin:0;min-width:64px}
+.chat-composer :deep(.attachment-list){max-height:144px;overflow:auto;width:100%;gap:8px}.chat-composer :deep(.attachment){max-width:100%;box-sizing:border-box}.chat-composer :deep(.attachment-box>.el-button small){display:none}
+.chat-composer-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:8px;color:var(--el-text-color-placeholder);font-size:12px;line-height:16px}.chat-context{margin-left:auto;white-space:nowrap;color:var(--el-text-color-secondary);font-variant-numeric:tabular-nums}.context-warning{color:var(--el-color-warning)}
+@media(max-width:920px){.generator-grid{grid-template-columns:1fr}.chat-layout{grid-template-columns:168px minmax(0,1fr)}.chat-conversation{padding:0 16px 12px}}
+@media(max-width:680px){.workspace-heading,.table-footer{align-items:flex-start;flex-direction:column}.form-two-col{grid-template-columns:1fr}.chat-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:72px minmax(0,1fr)}.chat-sessions{display:block;padding:8px 12px;white-space:nowrap}.chat-sessions>.new-chat-button{width:auto;margin:0 8px 4px 0}.chat-sessions>div:nth-child(2){display:inline-flex;vertical-align:middle}.session-row{display:inline-flex;max-width:200px;min-height:32px;margin-right:4px}.chat-sessions>.el-empty{display:none}.chat-conversation{padding:0 12px 12px}.chat-history{gap:24px;padding:16px 0}.chat-message.user{max-width:92%}.chat-composer{padding:8px 12px;border-radius:12px}.chat-hint{display:none}.chat-input{gap:8px}.chat-composer-footer{margin-top:4px}}
 </style>

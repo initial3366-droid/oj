@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+# Upstream inherits supplementary groups; clear them before creating containers.
+# An explicit profile must never silently fall back to an unfiltered worker.
+test -s /etc/qoj/seccomp.yaml || { echo 'Missing sandbox seccomp policy' >&2; exit 1; }
+exec /usr/bin/setpriv --clear-groups /usr/local/bin/go-judge -seccomp-conf=/etc/qoj/seccomp.yaml "$@"
